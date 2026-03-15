@@ -1,7 +1,7 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { Users, Car, ShieldCheck, TrendingUp, ArrowRight, LayoutDashboard, UserCheck, LogOut, AlertCircle } from 'lucide-react'
+import { Users, Car, ShieldCheck, TrendingUp, ArrowRight, LayoutDashboard, UserCheck, LogOut, AlertCircle, BarChart2 } from 'lucide-react'
 import api from '../../core/api'
 import { useAuthStore } from '../../core/authStore'
 
@@ -112,7 +112,7 @@ export default function DashboardPage() {
             <Link to="/admin" className="nav-link active"><LayoutDashboard size={14} /> Dashboard</Link>
             <Link to="/admin/users" className="nav-link"><Users size={14} /> Users</Link>
             <Link to="/admin/drivers" className="nav-link"><UserCheck size={14} /> Drivers</Link>
-            <Link to="/admin/rides" className="nav-link"><Car size={14} /> Rides</Link>
+            <Link to="/admin/rides" className="nav-link"><Car size={14} /> Rides</Link><Link to="/admin/analytics" className="nav-link"><BarChart2 size={14} /> Analytics</Link>
           </div>
           <div className="nav-right">
             <span className="nav-user">Hello, <strong>{user?.first_name}</strong></span>

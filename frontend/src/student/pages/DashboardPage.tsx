@@ -199,19 +199,13 @@ export default function DashboardPage() {
               <div className="stat-card-value">{profile?.total_trips ?? 0}</div>
               <div className="stat-card-sub">All time</div>
             </div>
-            <div className="stat-card">
-              <div className="stat-card-top">
-                <span className="stat-card-label">Wallet Balance</span>
+            <a href="/student/wallet" style={{ textDecoration: "none" }}><div className="stat-card"><div className="stat-card-top"><span className="stat-card-label">Wallet Balance</span>
                 <div className="stat-card-icon"><Wallet size={17} color="#007A47" /></div>
               </div>
               <div className="stat-card-value" style={{ fontSize: '24px' }}>
                 {naira(profile?.wallet_balance || 0)}
               </div>
-              <div className="stat-card-sub">Available</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-card-top">
-                <span className="stat-card-label">Account</span>
+              <div className="stat-card-sub">Tap to top up</div></div></a><div className="stat-card"><div className="stat-card-top"><span className="stat-card-label">Account</span>
                 <div className="stat-card-icon"><ShieldCheck size={17} color="#007A47" /></div>
               </div>
               <div className="stat-card-value" style={{ fontSize: '20px', marginTop: '4px' }}>
