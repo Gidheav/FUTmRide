@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { Car, Wallet, ShieldCheck, MapPin, ArrowRight, LayoutDashboard, History, LogOut } from 'lucide-react'
+import { Car, Wallet, ShieldCheck, MapPin, ArrowRight, LayoutDashboard, History, LogOut, MessageSquare, User } from 'lucide-react'
 import api from '../../core/api'
 import { useAuthStore } from '../../core/authStore'
 

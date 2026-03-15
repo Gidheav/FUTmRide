@@ -1,7 +1,7 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { Car, Wallet, Star, ToggleLeft, ToggleRight, ArrowRight, History, LayoutDashboard, LogOut, TrendingUp, Clock, MapPin } from 'lucide-react'
+import { Car, Wallet, Star, ToggleLeft, ToggleRight, ArrowRight, History, LayoutDashboard, LogOut, TrendingUp, Clock, MapPin, User } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../../core/api'
 import { useAuthStore } from '../../core/authStore'
@@ -176,7 +176,7 @@ export default function DashboardPage() {
           </div>
           <div className="nav-links">
             <Link to="/driver" className="nav-link active"><LayoutDashboard size={15} /> Dashboard</Link>
-            <Link to="/driver/rides" className="nav-link"><History size={15} /> My Trips</Link>
+            <Link to="/driver/rides" className="nav-link"><History size={15} /> My Trips</Link><Link to="/driver/profile" className="nav-link"><User size={15} /> Profile</Link>
           </div>
           <div className="nav-right">
             <span className="nav-greeting">Hello, <strong>{user?.first_name}</strong></span>
