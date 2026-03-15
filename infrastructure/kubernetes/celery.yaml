@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-worker
+  namespace: lrride
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: celery-worker
+  template:
+    metadata:
+      labels:
+        app: celery-worker
+    spec:
+      containers:
+        - name: celery-worker
+          image: lrride/backend:latest
+          command: [celery, -A, core, worker, -l, INFO, -c, "4", -Q, default,rides,payments,notifications]
+          envFrom:
+            - secretRef:
+                name: lrride-secrets
+          resources:
+            requests: {memory: 256Mi, cpu: 250m}
+            limits: {memory: 1Gi, cpu: 1000m}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-beat
+  namespace: lrride
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: celery-beat
+  template:
+    metadata:
+      labels:
+        app: celery-beat
+    spec:
+      containers:
+        - name: celery-beat
+          image: lrride/backend:latest
+          command: [celery, -A, core, beat, -l, INFO, --scheduler, django_celery_beat.schedulers:DatabaseScheduler]
+          envFrom:
+            - secretRef:
+                name: lrride-secrets
+          resources:
+            requests: {memory: 128Mi, cpu: 100m}
+            limits: {memory: 256Mi, cpu: 250m}
