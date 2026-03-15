@@ -1,18 +1,19 @@
-import logging
+﻿import logging
 from django.utils import timezone
-from rest_framework import generics, permissions, status
+from rest_framework import generics, permissions, status, filters
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.exceptions import NotFound, PermissionDenied
+from django_filters.rest_framework import DjangoFilterBackend
 
 from apps.accounts.models import UserRole, DriverProfile
+from apps.accounts.permissions import IsAdminUser
 from .models import Ride, RideStatus, DriverRideRequest
 from .serializers import (
     RideRequestSerializer,
     RideDetailSerializer,
     RideListSerializer,
     RideCancelSerializer,
-    DriverRideRequestSerializer,
 )
 from .services import FareCalculator, RideMatchingService
 
@@ -32,12 +33,9 @@ class RideRequestView(generics.CreateAPIView):
         active_ride = Ride.objects.filter(
             student=request.user,
             status__in=[
-                RideStatus.REQUESTED,
-                RideStatus.SEARCHING,
-                RideStatus.DRIVER_ASSIGNED,
-                RideStatus.DRIVER_EN_ROUTE,
-                RideStatus.DRIVER_ARRIVED,
-                RideStatus.IN_PROGRESS,
+                RideStatus.REQUESTED, RideStatus.SEARCHING,
+                RideStatus.DRIVER_ASSIGNED, RideStatus.DRIVER_EN_ROUTE,
+                RideStatus.DRIVER_ARRIVED, RideStatus.IN_PROGRESS,
             ]
         ).first()
         if active_ride:
@@ -61,14 +59,8 @@ class RideRequestView(generics.CreateAPIView):
         ride.save()
         assigned = RideMatchingService.assign_driver(ride)
         ride.refresh_from_db()
-        logger.info(
-            'ride_requested ride_ref=%s student_id=%s assigned=%s',
-            ride.reference, str(request.user.id), assigned,
-        )
-        return Response(
-            RideDetailSerializer(ride, context={'request': request}).data,
-            status=status.HTTP_201_CREATED,
-        )
+        logger.info('ride_requested ref=%s student=%s assigned=%s', ride.reference, str(request.user.id), assigned)
+        return Response(RideDetailSerializer(ride, context={'request': request}).data, status=status.HTTP_201_CREATED)
 
 
 class StudentRideListView(generics.ListAPIView):
@@ -76,9 +68,7 @@ class StudentRideListView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Ride.objects.filter(
-            student=self.request.user
-        ).select_related('student', 'driver').order_by('-requested_at')
+        return Ride.objects.filter(student=self.request.user).select_related('student', 'driver').order_by('-requested_at')
 
 
 class RideDetailView(generics.RetrieveAPIView):
@@ -87,13 +77,11 @@ class RideDetailView(generics.RetrieveAPIView):
 
     def get_object(self):
         try:
-            ride = Ride.objects.select_related('student', 'driver').get(
-                id=self.kwargs['ride_id']
-            )
+            ride = Ride.objects.select_related('student', 'driver').get(id=self.kwargs['ride_id'])
         except Ride.DoesNotExist:
             raise NotFound('Ride not found.')
         if ride.student != self.request.user and ride.driver != self.request.user:
-            if not self.request.user.is_staff:
+            if not self.request.user.is_staff and self.request.user.role != UserRole.ADMIN:
                 raise PermissionDenied('You do not have access to this ride.')
         return ride
 
@@ -106,11 +94,9 @@ class CancelRideView(APIView):
             ride = Ride.objects.get(id=ride_id)
         except Ride.DoesNotExist:
             raise NotFound('Ride not found.')
-
         serializer = RideCancelSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         reason = serializer.validated_data.get('reason', '')
-
         if ride.student == request.user:
             if not ride.is_active:
                 return Response(
@@ -121,13 +107,9 @@ class CancelRideView(APIView):
             ride.cancellation_reason = reason
             ride.save()
         elif ride.driver == request.user:
-            if ride.status not in [
-                RideStatus.DRIVER_ASSIGNED,
-                RideStatus.DRIVER_EN_ROUTE,
-                RideStatus.DRIVER_ARRIVED,
-            ]:
+            if ride.status not in [RideStatus.DRIVER_ASSIGNED, RideStatus.DRIVER_EN_ROUTE, RideStatus.DRIVER_ARRIVED]:
                 return Response(
-                    {'error': {'code': 'INVALID_STATUS', 'message': 'You cannot cancel this ride at this stage.'}},
+                    {'error': {'code': 'INVALID_STATUS', 'message': 'You cannot cancel at this stage.'}},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             ride.transition_to(RideStatus.CANCELLED_BY_DRIVER)
@@ -140,13 +122,9 @@ class CancelRideView(APIView):
             except DriverProfile.DoesNotExist:
                 pass
         else:
-            raise PermissionDenied('You do not have permission to cancel this ride.')
-
-        logger.info('ride_cancelled ride_ref=%s by=%s', ride.reference, str(request.user.id))
-        return Response(
-            RideDetailSerializer(ride, context={'request': request}).data,
-            status=status.HTTP_200_OK,
-        )
+            raise PermissionDenied('You cannot cancel this ride.')
+        logger.info('ride_cancelled ref=%s by=%s', ride.reference, str(request.user.id))
+        return Response(RideDetailSerializer(ride, context={'request': request}).data)
 
 
 class DriverRideStatusUpdateView(APIView):
@@ -169,22 +147,17 @@ class DriverRideStatusUpdateView(APIView):
             ride = Ride.objects.get(id=ride_id, driver=request.user)
         except Ride.DoesNotExist:
             raise NotFound('Ride not found.')
-
         next_status = self.STATUS_FLOW.get(ride.status)
         if not next_status:
             return Response(
-                {'error': {'code': 'INVALID_STATUS', 'message': f'No next step from current status: {ride.status}'}},
+                {'error': {'code': 'INVALID_STATUS', 'message': f'No next step from: {ride.status}'}},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:
             ride.transition_to(next_status)
             ride.save()
         except ValueError as e:
-            return Response(
-                {'error': {'code': 'INVALID_TRANSITION', 'message': str(e)}},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
+            return Response({'error': {'code': 'INVALID_TRANSITION', 'message': str(e)}}, status=status.HTTP_400_BAD_REQUEST)
         if next_status == RideStatus.COMPLETED:
             try:
                 profile = request.user.driver_profile
@@ -195,20 +168,13 @@ class DriverRideStatusUpdateView(APIView):
             except DriverProfile.DoesNotExist:
                 pass
             try:
-                student_profile = ride.student.student_profile
-                student_profile.total_trips += 1
-                student_profile.save(update_fields=['total_trips'])
+                sp = ride.student.student_profile
+                sp.total_trips += 1
+                sp.save(update_fields=['total_trips'])
             except Exception:
                 pass
-
-        logger.info(
-            'ride_status_updated ride_ref=%s new_status=%s driver_id=%s',
-            ride.reference, next_status, str(request.user.id),
-        )
-        return Response(
-            RideDetailSerializer(ride, context={'request': request}).data,
-            status=status.HTTP_200_OK,
-        )
+        logger.info('ride_advanced ref=%s to=%s driver=%s', ride.reference, next_status, str(request.user.id))
+        return Response(RideDetailSerializer(ride, context={'request': request}).data)
 
 
 class DriverActiveRideView(generics.RetrieveAPIView):
@@ -220,12 +186,7 @@ class DriverActiveRideView(generics.RetrieveAPIView):
             raise PermissionDenied('Only drivers can access this endpoint.')
         ride = Ride.objects.filter(
             driver=self.request.user,
-            status__in=[
-                RideStatus.DRIVER_ASSIGNED,
-                RideStatus.DRIVER_EN_ROUTE,
-                RideStatus.DRIVER_ARRIVED,
-                RideStatus.IN_PROGRESS,
-            ]
+            status__in=[RideStatus.DRIVER_ASSIGNED, RideStatus.DRIVER_EN_ROUTE, RideStatus.DRIVER_ARRIVED, RideStatus.IN_PROGRESS],
         ).select_related('student', 'driver').first()
         if not ride:
             raise NotFound('No active ride found.')
@@ -243,3 +204,16 @@ class DriverRideHistoryView(generics.ListAPIView):
             driver=self.request.user,
             status=RideStatus.COMPLETED,
         ).select_related('student', 'driver').order_by('-trip_completed_at')
+
+
+class AdminRideListView(generics.ListAPIView):
+    serializer_class = RideListSerializer
+    permission_classes = [permissions.IsAuthenticated, IsAdminUser]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'vehicle_type_requested', 'payment_method', 'is_paid']
+    search_fields = ['reference', 'student__first_name', 'student__phone_number', 'pickup_address', 'dropoff_address']
+    ordering_fields = ['requested_at', 'total_fare']
+    ordering = ['-requested_at']
+
+    def get_queryset(self):
+        return Ride.objects.all().select_related('student', 'driver')

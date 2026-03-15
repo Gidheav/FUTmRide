@@ -1,11 +1,14 @@
-import logging
-from rest_framework import generics, permissions, status
+﻿import logging
+from django.utils import timezone
+from rest_framework import generics, permissions, status, filters
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework_simplejwt.views import TokenObtainPairView
+from django_filters.rest_framework import DjangoFilterBackend
 
 from .models import DriverProfile, OTPVerification, StudentProfile, User, UserRole
+from .permissions import IsAdminUser
 from .serializers import (
     ChangePasswordSerializer,
     DriverAvailabilitySerializer,
@@ -71,7 +74,6 @@ class LogoutView(APIView):
                 )
             token = RefreshToken(refresh_token)
             token.blacklist()
-            logger.info('user_logout user_id=%s', str(request.user.id))
             return Response({'message': 'Logged out successfully.'}, status=status.HTTP_200_OK)
         except Exception:
             return Response(
@@ -96,10 +98,7 @@ class OTPRequestView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         OTPService.create_and_send(user, purpose)
-        return Response(
-            {'message': f'Verification code sent to {phone_number}.'},
-            status=status.HTTP_200_OK,
-        )
+        return Response({'message': f'Verification code sent to {phone_number}.'})
 
 
 class OTPVerifyView(APIView):
@@ -125,7 +124,7 @@ class OTPVerifyView(APIView):
                 user.save(update_fields=['is_phone_verified', 'is_verified'])
             except User.DoesNotExist:
                 pass
-        return Response({'message': message, 'verified': True}, status=status.HTTP_200_OK)
+        return Response({'message': message, 'verified': True})
 
 
 class MeView(generics.RetrieveUpdateAPIView):
@@ -144,8 +143,7 @@ class ChangePasswordView(APIView):
         serializer.is_valid(raise_exception=True)
         request.user.set_password(serializer.validated_data['new_password'])
         request.user.save(update_fields=['password'])
-        logger.info('password_changed user_id=%s', str(request.user.id))
-        return Response({'message': 'Password changed successfully.'}, status=status.HTTP_200_OK)
+        return Response({'message': 'Password changed successfully.'})
 
 
 class StudentProfileView(generics.RetrieveUpdateAPIView):
@@ -216,7 +214,88 @@ class DriverAvailabilityView(APIView):
             )
         profile.is_online = serializer.validated_data['is_online']
         profile.save(update_fields=['is_online'])
-        return Response(
-            {'is_online': profile.is_online, 'message': 'Availability updated.'},
-            status=status.HTTP_200_OK,
+        return Response({'is_online': profile.is_online, 'message': 'Availability updated.'})
+
+
+# ── Admin Views ────────────────────────────────────────────────────────────────
+
+class AdminUserListView(generics.ListAPIView):
+    serializer_class = UserProfileSerializer
+    permission_classes = [permissions.IsAuthenticated, IsAdminUser]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['role', 'is_verified', 'is_active']
+    search_fields = ['first_name', 'last_name', 'phone_number', 'email']
+    ordering_fields = ['created_at', 'first_name']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        return User.objects.all().select_related('student_profile', 'driver_profile')
+
+
+class AdminUserDetailView(generics.RetrieveUpdateAPIView):
+    serializer_class = UserProfileSerializer
+    permission_classes = [permissions.IsAuthenticated, IsAdminUser]
+    queryset = User.objects.all()
+    lookup_field = 'id'
+
+
+class AdminDriverListView(generics.ListAPIView):
+    serializer_class = DriverProfileSerializer
+    permission_classes = [permissions.IsAuthenticated, IsAdminUser]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['verification_status', 'is_online', 'vehicle_type']
+    search_fields = ['user__first_name', 'user__last_name', 'user__phone_number', 'plate_number']
+
+    def get_queryset(self):
+        return DriverProfile.objects.all().select_related('user')
+
+
+class AdminDriverVerifyView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAdminUser]
+
+    def patch(self, request, pk):
+        try:
+            profile = DriverProfile.objects.get(pk=pk)
+        except DriverProfile.DoesNotExist:
+            return Response(
+                {'error': {'code': 'NOT_FOUND', 'message': 'Driver profile not found.'}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        new_status = request.data.get('verification_status')
+        allowed = [s[0] for s in DriverProfile.VerificationStatus.choices]
+        if new_status not in allowed:
+            return Response(
+                {'error': {'code': 'INVALID_STATUS', 'message': f'Valid statuses: {allowed}'}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        profile.verification_status = new_status
+        if new_status == DriverProfile.VerificationStatus.APPROVED:
+            profile.verified_at = timezone.now()
+            profile.verified_by = request.user
+        notes = request.data.get('notes', '')
+        if notes:
+            profile.verification_notes = notes
+        profile.save()
+        logger.info(
+            'driver_verified driver_id=%s new_status=%s admin_id=%s',
+            str(profile.user.id), new_status, str(request.user.id)
         )
+        return Response(DriverProfileSerializer(profile, context={'request': request}).data)
+
+
+class AdminToggleUserActiveView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAdminUser]
+
+    def patch(self, request, pk):
+        try:
+            user = User.objects.get(pk=pk)
+        except User.DoesNotExist:
+            return Response(
+                {'error': {'code': 'NOT_FOUND', 'message': 'User not found.'}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        user.is_active = not user.is_active
+        user.save(update_fields=['is_active'])
+        action = 'activated' if user.is_active else 'deactivated'
+        logger.info('user_%s user_id=%s admin_id=%s', action, str(user.id), str(request.user.id))
+        return Response({'is_active': user.is_active, 'message': f'User {action}.'})

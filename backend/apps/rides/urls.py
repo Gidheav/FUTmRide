@@ -1,4 +1,4 @@
-from django.urls import path
+﻿from django.urls import path
 from .views import (
     RideRequestView,
     StudentRideListView,
@@ -7,6 +7,7 @@ from .views import (
     DriverRideStatusUpdateView,
     DriverActiveRideView,
     DriverRideHistoryView,
+    AdminRideListView,
 )
 
 urlpatterns = [
@@ -17,4 +18,7 @@ urlpatterns = [
     path('<uuid:ride_id>/advance/', DriverRideStatusUpdateView.as_view(), name='ride-advance'),
     path('driver/active/', DriverActiveRideView.as_view(), name='ride-driver-active'),
     path('driver/history/', DriverRideHistoryView.as_view(), name='ride-driver-history'),
+
+    # Admin
+    path('', AdminRideListView.as_view(), name='admin-ride-list'),
 ]

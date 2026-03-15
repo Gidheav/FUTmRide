@@ -1,0 +1,153 @@
+name: LR Ride CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.11.9"
+  NODE_VERSION: "20"
+
+jobs:
+  backend-test:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: lrride_test
+          POSTGRES_USER: lrride
+          POSTGRES_PASSWORD: testpass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements/development.txt
+
+      - name: Write test .env
+        working-directory: ./backend
+        run: |
+          cat > .env << EOF
+          SECRET_KEY=ci-test-secret-key-minimum-fifty-characters-long
+          JWT_SECRET_KEY=ci-test-jwt-secret-key-minimum-fifty-characters
+          DEBUG=True
+          DB_NAME=lrride_test
+          DB_USER=lrride
+          DB_PASSWORD=testpass
+          DB_HOST=localhost
+          DB_PORT=5432
+          REDIS_URL=redis://localhost:6379/0
+          ALLOWED_HOSTS=localhost,127.0.0.1
+          CORS_ALLOWED_ORIGINS=http://localhost:5174
+          PAYSTACK_SECRET_KEY=sk_test_placeholder
+          PAYSTACK_PUBLIC_KEY=pk_test_placeholder
+          FLUTTERWAVE_SECRET_KEY=FLWSECK_TEST-placeholder
+          FLUTTERWAVE_PUBLIC_KEY=FLWPUBK_TEST-placeholder
+          TERMII_API_KEY=placeholder
+          TERMII_SENDER_ID=LRRIDE
+          FCM_SERVER_KEY=placeholder
+          SENTRY_DSN=
+          APP_VERSION=ci
+          EOF
+
+      - name: Run migrations
+        working-directory: ./backend
+        run: python manage.py migrate --settings=core.settings.development
+
+      - name: Run system check
+        working-directory: ./backend
+        run: python manage.py check --settings=core.settings.development
+
+      - name: Run tests with coverage
+        working-directory: ./backend
+        run: |
+          python -m pytest apps/accounts/tests.py apps/rides/tests.py apps/payments/tests.py \
+            -v --tb=short \
+            --cov=apps \
+            --cov-report=term-missing \
+            --cov-fail-under=70
+
+      - name: Lint with flake8
+        working-directory: ./backend
+        run: |
+          flake8 apps/ core/ \
+            --max-line-length=120 \
+            --exclude=migrations \
+            --statistics
+
+  frontend-build:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Type check
+        working-directory: ./frontend
+        run: npx tsc --noEmit
+
+      - name: Build
+        working-directory: ./frontend
+        env:
+          VITE_API_BASE_URL: https://api.lrride.ng/api/v1
+          VITE_APP_NAME: LR Ride
+        run: npm run build
+
+      - name: Verify build output
+        working-directory: ./frontend
+        run: test -f dist/index.html
+
+  docker-build:
+    name: Docker Build Check
+    runs-on: ubuntu-latest
+    needs: [backend-test, frontend-build]
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: |
+          docker build \
+            -f infrastructure/docker/backend.Dockerfile \
+            -t lrride/backend:${{ github.sha }} \
+            ./backend
+
+      - name: Build frontend image
+        run: |
+          docker build \
+            -f infrastructure/docker/frontend.Dockerfile \
+            -t lrride/frontend:${{ github.sha }} \
+            ./frontend

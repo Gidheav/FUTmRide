@@ -1,0 +1,1 @@
+export default function RideHistoryPage() { return <div>RideHistoryPage</div> }
