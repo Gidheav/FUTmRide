@@ -1,4 +1,4 @@
-﻿import os
+import os
 from pathlib import Path
 from datetime import timedelta
 import environ
@@ -64,6 +64,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'core.middleware.RateLimitMiddleware',
     'django_prometheus.middleware.PrometheusAfterMiddleware',
 ]
 

@@ -1,0 +1,97 @@
+import { useState } from "react"
+import { Link } from "react-router-dom"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { ArrowLeft, User, Mail, Phone, Save } from "lucide-react"
+import toast from "react-hot-toast"
+import api from "../../core/api"
+
+const css = "@import url(https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap);" +
+  "*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }" +
+  "body { background: #f4f6f3; font-family: Instrument Sans, sans-serif; }" +
+  ".page { min-height: 100vh; }" +
+  ".nav { background: #fff; border-bottom: 1px solid #e8e8e8; padding: 0 40px; height: 64px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 100; }" +
+  ".nav-back { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; border: 1px solid #e8e8e8; background: #fff; color: #374151; text-decoration: none; }" +
+  ".nav-badge { width: 34px; height: 34px; background: #007A47; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 13px; }" +
+  ".nav-title { font-weight: 700; font-size: 16px; color: #0a0a0a; }" +
+  ".main { max-width: 600px; margin: 0 auto; padding: 36px 40px; }" +
+  ".avatar-row { display: flex; align-items: center; gap: 20px; margin-bottom: 28px; }" +
+  ".avatar { width: 68px; height: 68px; border-radius: 50%; background: #007A47; display: flex; align-items: center; justify-content: center; font-family: Instrument Serif, serif; font-size: 26px; color: #fff; flex-shrink: 0; }" +
+  ".avatar-name { font-family: Instrument Serif, serif; font-size: 22px; color: #0a0a0a; letter-spacing: -0.5px; }" +
+  ".avatar-role { font-size: 13px; color: #9ca3af; margin-top: 3px; text-transform: capitalize; }" +
+  ".card { background: #fff; border-radius: 16px; border: 1px solid #eaeaea; padding: 26px; margin-bottom: 18px; }" +
+  ".card-title { font-size: 11px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 20px; }" +
+  ".field { margin-bottom: 16px; }" +
+  ".field-label { font-size: 11px; font-weight: 700; color: #374151; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 7px; display: flex; align-items: center; gap: 5px; }" +
+  ".field-input { width: 100%; height: 46px; padding: 0 14px; background: #fafafa; border: 1.5px solid #e8e8e8; border-radius: 10px; font-family: Instrument Sans, sans-serif; font-size: 14px; color: #0a0a0a; outline: none; transition: border-color 0.15s; box-sizing: border-box; }" +
+  ".field-input:focus { border-color: #007A47; background: #fff; }" +
+  ".field-input:disabled { color: #9ca3af; cursor: not-allowed; background: #f9fafb; }" +
+  ".save-btn { height: 48px; padding: 0 26px; background: #007A47; border: none; border-radius: 10px; font-family: Instrument Sans, sans-serif; font-size: 14px; font-weight: 700; color: #fff; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background 0.15s; }" +
+  ".save-btn:hover:not(:disabled) { background: #006339; }" +
+  ".save-btn:disabled { opacity: 0.55; cursor: not-allowed; }" +
+  ".spinner { width: 13px; height: 13px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; }" +
+  "@keyframes spin { to { transform: rotate(360deg); } }" +
+  "@media (max-width: 640px) { .nav { padding: 0 16px; } .main { padding: 24px 16px; } }"
+
+export default function ProfilePage() {
+  const qc = useQueryClient()
+  const [form, setForm] = useState({ first_name: "", last_name: "", email: "" })
+  const [ready, setReady] = useState(false)
+
+  const { data: me } = useQuery({
+    queryKey: ["me"],
+    queryFn: async () => { const r = await api.get("/users/me/"); return r.data },
+    onSuccess: (d: any) => { if (!ready) { setForm({ first_name: d.first_name, last_name: d.last_name, email: d.email||"" }); setReady(true) } },
+  })
+
+  const mutation = useMutation({
+    mutationFn: () => api.patch("/users/me/", form).then(r => r.data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["me"] }); toast.success("Profile saved.") },
+    onError: () => toast.error("Failed to save."),
+  })
+
+  const initials = me ? `${me.first_name?.[0]||""}${me.last_name?.[0]||""}`.toUpperCase() : "?"
+
+  return (
+    <>
+      <style>{css}</style>
+      <div className="page">
+        <nav className="nav">
+          <Link to="/student" className="nav-back"><ArrowLeft size={16} /></Link>
+          <div className="nav-badge">LR</div>
+          <span className="nav-title">My Profile</span>
+        </nav>
+        <main className="main">
+          <div className="avatar-row">
+            <div className="avatar">{initials}</div>
+            <div>
+              <div className="avatar-name">{me?.first_name} {me?.last_name}</div>
+              <div className="avatar-role">{me?.phone_number} &middot; {me?.role}</div>
+            </div>
+          </div>
+          <div className="card">
+            <div className="card-title">Personal Information</div>
+            <div className="field">
+              <label className="field-label"><User size={11} /> First Name</label>
+              <input className="field-input" value={form.first_name} onChange={e => setForm(f=>({...f,first_name:e.target.value}))} />
+            </div>
+            <div className="field">
+              <label className="field-label"><User size={11} /> Last Name</label>
+              <input className="field-input" value={form.last_name} onChange={e => setForm(f=>({...f,last_name:e.target.value}))} />
+            </div>
+            <div className="field">
+              <label className="field-label"><Mail size={11} /> Email</label>
+              <input className="field-input" type="email" value={form.email} onChange={e => setForm(f=>({...f,email:e.target.value}))} placeholder="Optional" />
+            </div>
+            <div className="field">
+              <label className="field-label"><Phone size={11} /> Phone</label>
+              <input className="field-input" value={me?.phone_number||""} disabled />
+            </div>
+            <button className="save-btn" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+              {mutation.isPending ? <><span className="spinner" /> Saving...</> : <><Save size={14} /> Save Changes</>}
+            </button>
+          </div>
+        </main>
+      </div>
+    </>
+  )
+}
