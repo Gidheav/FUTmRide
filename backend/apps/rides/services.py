@@ -39,7 +39,7 @@ class FareCalculator:
         raw_fare = base + (per_km * distance_km)
         surged_fare = raw_fare * surge_multiplier
         final_fare = max(surged_fare, minimum)
-        commission_rate = settings.TRIP_FARE_PLATFORM_COMMISSION_PERCENT / 100
+        commission_rate = getattr(settings, 'PLATFORM_COMMISSION_RATE', 0.15)
         commission = final_fare * commission_rate
         driver_earnings = final_fare - commission
         return {
