@@ -26,7 +26,9 @@ export default function LoginPage() {
 
   const mutation = useMutation({
     mutationFn: async (data: FormData) => {
-      const res = await api.post('/auth/login/', data)
+      let phone = data.phone_number.trim()
+      if (phone.startsWith('0') && phone.length === 11) phone = '+234' + phone.slice(1)
+      const res = await api.post('/auth/login/', { ...data, phone_number: phone })
       return res.data
     },
     onSuccess: async (data) => {

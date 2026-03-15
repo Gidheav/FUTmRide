@@ -29,7 +29,7 @@ export default function RegisterPage() {
   const [showConfirm, setShowConfirm] = useState(false)
   const [focused, setFocused] = useState<string | null>(null)
 
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { role: 'student' },
   })
@@ -38,17 +38,22 @@ export default function RegisterPage() {
 
   const mutation = useMutation({
     mutationFn: async (data: FormData) => {
+      let phone = data.phone_number.trim()
+      if (phone.startsWith('0') && phone.length === 11) phone = '+234' + phone.slice(1)
       const res = await api.post('/auth/register/', {
         ...data,
+        phone_number: phone,
         email: data.email || undefined,
       })
       return { data: res.data, phone: data.phone_number }
     },
-    onSuccess: ({ data, phone }) => {
-      toast.success('Account created. Please verify your phone.')
+    onSuccess: ({ data }) => {
+      const msg = data.message || 'Account created. Please verify your phone.'
+      toast.success(msg)
       navigate(`/login`)
     },
     onError: (error: any) => {
+      console.error('REGISTER ERROR FULL:', JSON.stringify(error?.response?.data, null, 2))
       const msg = error?.response?.data?.error?.message || 'Registration failed.'
       toast.error(msg)
     },
@@ -276,25 +281,10 @@ export default function RegisterPage() {
 
             <form onSubmit={handleSubmit((data) => mutation.mutate(data))}>
 
+
               <div className="role-toggle">
-                <button
-                  type="button"
-                  className={`role-btn${selectedRole === 'student' ? ' active' : ''}`}
-                  onClick={() => {}}
-                  {...register('role')}
-                  value="student"
-                >
-                  I am a Student
-                </button>
-                <button
-                  type="button"
-                  className={`role-btn${selectedRole === 'driver' ? ' active' : ''}`}
-                  onClick={() => {}}
-                  {...register('role')}
-                  value="driver"
-                >
-                  I am a Driver
-                </button>
+                <button type="button" className={`role-btn${selectedRole === 'student' ? ' active' : ''}`} onClick={() => setValue('role', 'student')}>I am a Student</button>
+                <button type="button" className={`role-btn${selectedRole === 'driver' ? ' active' : ''}`} onClick={() => setValue('role', 'driver')}>I am a Driver</button>
               </div>
 
               <div className="row-2">
@@ -312,7 +302,7 @@ export default function RegisterPage() {
 
               <div className="field">
                 <div className="field-label">Phone Number</div>
-                <input {...register('phone_number')} placeholder="+234 801 234 5678" className={ic('phone', !!errors.phone_number) + ' no-icon'} {...fp('phone')} />
+                <input {...register('phone_number')} placeholder="09031234567 or +2349031234567" className={ic('phone', !!errors.phone_number) + ' no-icon'} {...fp('phone')} />
                 {errors.phone_number && <div className="field-error">{errors.phone_number.message}</div>}
               </div>
 
