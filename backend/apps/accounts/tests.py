@@ -12,13 +12,10 @@ class UserRegistrationTestCase(TestCase):
 
     def _payload(self, **overrides):
         data = {
-            'phone_number': '+2348011111111',
-            'first_name': 'Aisha',
-            'last_name': 'Bello',
-            'role': 'student',
+            'email': 'aisha.m2302417@st.futminna.edu.ng',
             'password': 'SecurePass123!',
             'confirm_password': 'SecurePass123!',
-            'data_consent_given': True,
+            'role': 'student',
         }
         data.update(overrides)
         return data
@@ -28,17 +25,33 @@ class UserRegistrationTestCase(TestCase):
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
         self.assertIn('user_id', res.data)
         self.assertEqual(res.data['role'], 'student')
-        user = User.objects.get(phone_number='+2348011111111')
+        user = User.objects.get(email='aisha.m2302417@st.futminna.edu.ng')
         self.assertTrue(hasattr(user, 'student_profile'))
 
     def test_driver_registration_creates_driver_profile_placeholder(self):
-        payload = self._payload(phone_number='+2348022222222', role='driver')
+        payload = self._payload(
+            phone_number='+2348022222222',
+            role='driver',
+            email='',
+            first_name='Musa',
+            last_name='Ibrahim',
+            data_consent_given=True,
+        )
         res = self.client.post(self.url, payload, format='json')
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
         self.assertEqual(res.data['role'], 'driver')
 
     def test_registration_sends_otp(self):
-        self.client.post(self.url, self._payload(), format='json')
+        self.client.post(
+            self.url,
+            self._payload(
+                phone_number='+2348011111111',
+                first_name='Aisha',
+                last_name='Bello',
+                data_consent_given=True,
+            ),
+            format='json',
+        )
         otp_count = OTPVerification.objects.filter(
             phone_number='+2348011111111',
             purpose=OTPVerification.Purpose.PHONE_VERIFICATION,
@@ -46,8 +59,16 @@ class UserRegistrationTestCase(TestCase):
         self.assertEqual(otp_count, 1)
 
     def test_duplicate_phone_rejected(self):
-        self.client.post(self.url, self._payload(), format='json')
-        res = self.client.post(self.url, self._payload(), format='json')
+        payload = self._payload(
+            phone_number='+2348011111111',
+            role='driver',
+            email='',
+            first_name='Aisha',
+            last_name='Bello',
+            data_consent_given=True,
+        )
+        self.client.post(self.url, payload, format='json')
+        res = self.client.post(self.url, payload, format='json')
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_mismatched_passwords_rejected(self):
@@ -61,7 +82,14 @@ class UserRegistrationTestCase(TestCase):
     def test_no_consent_rejected(self):
         res = self.client.post(
             self.url,
-            self._payload(data_consent_given=False),
+            self._payload(
+                phone_number='+2348022222222',
+                role='driver',
+                email='',
+                first_name='Musa',
+                last_name='Ibrahim',
+                data_consent_given=False,
+            ),
             format='json',
         )
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
@@ -76,6 +104,7 @@ class AuthenticationTestCase(TestCase):
         self.client = APIClient()
         self.user = User.objects.create_user(
             phone_number='+2348011111111',
+            email='aisha.m2302417@st.futminna.edu.ng',
             password='SecurePass123!',
             first_name='Aisha',
             last_name='Bello',
@@ -87,7 +116,7 @@ class AuthenticationTestCase(TestCase):
 
     def test_login_returns_tokens(self):
         res = self.client.post(self.login_url, {
-            'phone_number': '+2348011111111',
+            'email': 'aisha.m2302417@st.futminna.edu.ng',
             'password': 'SecurePass123!',
         }, format='json')
         self.assertEqual(res.status_code, status.HTTP_200_OK)
@@ -98,21 +127,21 @@ class AuthenticationTestCase(TestCase):
 
     def test_login_wrong_password_rejected(self):
         res = self.client.post(self.login_url, {
-            'phone_number': '+2348011111111',
+            'email': 'aisha.m2302417@st.futminna.edu.ng',
             'password': 'WrongPassword!',
         }, format='json')
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_login_nonexistent_user_rejected(self):
         res = self.client.post(self.login_url, {
-            'phone_number': '+2349999999999',
+            'email': 'ghost.m9999999@st.futminna.edu.ng',
             'password': 'SecurePass123!',
         }, format='json')
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_authenticated_me_endpoint(self):
         login_res = self.client.post(self.login_url, {
-            'phone_number': '+2348011111111',
+            'email': 'aisha.m2302417@st.futminna.edu.ng',
             'password': 'SecurePass123!',
         }, format='json')
         token = login_res.data['access']
@@ -128,7 +157,7 @@ class AuthenticationTestCase(TestCase):
     def test_account_lockout_after_five_failures(self):
         for _ in range(5):
             self.client.post(self.login_url, {
-                'phone_number': '+2348011111111',
+                'email': 'aisha.m2302417@st.futminna.edu.ng',
                 'password': 'WrongPassword!',
             }, format='json')
         self.user.refresh_from_db()
@@ -136,7 +165,7 @@ class AuthenticationTestCase(TestCase):
 
     def test_logout_blacklists_token(self):
         login_res = self.client.post(self.login_url, {
-            'phone_number': '+2348011111111',
+            'email': 'aisha.m2302417@st.futminna.edu.ng',
             'password': 'SecurePass123!',
         }, format='json')
         token = login_res.data['access']

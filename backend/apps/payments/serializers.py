@@ -27,6 +27,7 @@ class InitiateTopUpSerializer(serializers.Serializer):
     amount = serializers.DecimalField(max_digits=10, decimal_places=2)
     gateway = serializers.ChoiceField(choices=['paystack', 'flutterwave'])
     callback_url = serializers.URLField()
+    idempotency_key = serializers.CharField(max_length=64, required=False, allow_blank=False)
 
     def validate_amount(self, value):
         if value < 100:

@@ -60,6 +60,7 @@ class GatewayTransaction(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     internal_reference = models.CharField(max_length=40, unique=True)
+    idempotency_key = models.CharField(max_length=64, null=True, blank=True, db_index=True)
     gateway_reference = models.CharField(max_length=100, null=True, blank=True, db_index=True)
     user = models.ForeignKey(User, on_delete=models.PROTECT, related_name='gateway_transactions')
     gateway = models.CharField(max_length=20, choices=Gateway.choices)
@@ -83,3 +84,30 @@ class GatewayTransaction(models.Model):
 
     def __str__(self):
         return f'GatewayTx({self.internal_reference} {self.gateway} {self.gateway_status})'
+
+
+class WebhookEvent(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    gateway = models.CharField(max_length=20, choices=GatewayTransaction.Gateway.choices)
+    event_id = models.CharField(max_length=120, db_index=True)
+    reference = models.CharField(max_length=40, blank=True, null=True)
+    signature_hash = models.CharField(max_length=128, db_index=True)
+    payload_hash = models.CharField(max_length=128)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    received_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'webhook_events'
+        ordering = ['-received_at']
+        indexes = [
+            models.Index(fields=['gateway', 'event_id']),
+            models.Index(fields=['gateway', 'signature_hash']),
+            models.Index(fields=['gateway', 'reference']),
+        ]
+        constraints = [
+            models.UniqueConstraint(fields=['gateway', 'event_id'], name='webhook_event_gateway_event_id_uniq'),
+            models.UniqueConstraint(fields=['gateway', 'signature_hash'], name='webhook_event_gateway_sig_uniq'),
+        ]
+
+    def __str__(self):
+        return f'WebhookEvent({self.gateway} {self.event_id})'

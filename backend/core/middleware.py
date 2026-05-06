@@ -10,7 +10,7 @@ RATE_LIMIT_RULES = {
     "/api/v1/auth/register/": (5, 300),
     "/api/v1/auth/otp/": (5, 300),
     "/api/v1/rides/request/": (20, 60),
-    "/api/v1/payments/webhooks/": (100, 60),
+    "/api/v1/payments/webhooks/": (30, 60),
 }
 DEFAULT_RATE = (120, 60)
 

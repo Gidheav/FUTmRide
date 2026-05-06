@@ -1,13 +1,14 @@
-﻿import logging
+import logging
 from django.utils import timezone
 from rest_framework import generics, permissions, status, filters
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import DriverProfile, OTPVerification, StudentProfile, User, UserRole
+from .models import Campus, DriverProfile, OTPVerification, StudentProfile, User, UserRole
 from .permissions import IsAdminUser
 from .serializers import (
     ChangePasswordSerializer,
@@ -17,9 +18,13 @@ from .serializers import (
     FutminnaTokenObtainPairSerializer,
     OTPRequestSerializer,
     OTPVerifySerializer,
+    PasswordResetRequestSerializer,
+    PasswordResetConfirmSerializer,
     StudentProfileSerializer,
+    SessionTokenRefreshSerializer,
     UserProfileSerializer,
     UserRegistrationSerializer,
+    CampusSerializer,
 )
 from .services import OTPService
 
@@ -34,10 +39,11 @@ class RegisterView(generics.CreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        OTPService.create_and_send(user, OTPVerification.Purpose.PHONE_VERIFICATION)
+        if user.phone_number:
+            OTPService.create_and_send(user, OTPVerification.Purpose.PHONE_VERIFICATION)
         return Response(
             {
-                'message': 'Registration successful. A verification code has been sent to your phone.',
+                'message': 'Registration successful.' if not user.phone_number else 'Registration successful. A verification code has been sent to your phone.',
                 'user_id': str(user.id),
                 'role': user.role,
             },
@@ -53,12 +59,19 @@ class LoginView(TokenObtainPairView):
         response = super().post(request, *args, **kwargs)
         if response.status_code == 200:
             try:
-                user = User.objects.get(phone_number=request.data.get('phone_number'))
+                if request.data.get('email'):
+                    user = User.objects.get(email__iexact=request.data.get('email'))
+                else:
+                    user = User.objects.get(phone_number=request.data.get('phone_number'))
                 user.last_login_ip = request.META.get('REMOTE_ADDR')
                 user.save(update_fields=['last_login_ip'])
             except User.DoesNotExist:
                 pass
         return response
+
+
+class SessionTokenRefreshView(TokenRefreshView):
+    serializer_class = SessionTokenRefreshSerializer
 
 
 class LogoutView(APIView):
@@ -143,7 +156,74 @@ class ChangePasswordView(APIView):
         serializer.is_valid(raise_exception=True)
         request.user.set_password(serializer.validated_data['new_password'])
         request.user.save(update_fields=['password'])
-        return Response({'message': 'Password changed successfully.'})
+        # Invalidate all existing refresh tokens for this user
+        try:
+            from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
+            tokens = OutstandingToken.objects.filter(user=request.user)
+            for token in tokens:
+                try:
+                    from rest_framework_simplejwt.tokens import RefreshToken
+                    RefreshToken(token.token).blacklist()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return Response({'message': 'Password changed successfully. Please log in again.'})
+
+
+class PasswordResetRequestView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        phone_number = serializer.validated_data['phone_number']
+        try:
+            user = User.objects.get(phone_number=phone_number)
+        except User.DoesNotExist:
+            # Return success anyway to prevent phone enumeration
+            return Response({'message': f'If an account exists for {phone_number}, a reset code has been sent.'})
+        OTPService.create_and_send(user, 'password_reset')
+        return Response({'message': f'If an account exists for {phone_number}, a reset code has been sent.'})
+
+
+class PasswordResetConfirmView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        phone_number = serializer.validated_data['phone_number']
+        code = serializer.validated_data['code']
+        new_password = serializer.validated_data['new_password']
+        success, message = OTPService.verify(phone_number, code, 'password_reset')
+        if not success:
+            return Response(
+                {'error': {'code': 'OTP_INVALID', 'message': message}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            user = User.objects.get(phone_number=phone_number)
+            user.set_password(new_password)
+            user.save(update_fields=['password'])
+            # Invalidate all existing refresh tokens
+            try:
+                from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
+                tokens = OutstandingToken.objects.filter(user=user)
+                for token in tokens:
+                    try:
+                        from rest_framework_simplejwt.tokens import RefreshToken
+                        RefreshToken(token.token).blacklist()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        except User.DoesNotExist:
+            return Response(
+                {'error': {'code': 'USER_NOT_FOUND', 'message': 'Account not found.'}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response({'message': 'Password has been reset successfully. You can now log in.'})
 
 
 class StudentProfileView(generics.RetrieveUpdateAPIView):
@@ -156,6 +236,22 @@ class StudentProfileView(generics.RetrieveUpdateAPIView):
         except StudentProfile.DoesNotExist:
             from rest_framework.exceptions import NotFound
             raise NotFound('Student profile not found.')
+
+
+class CampusListView(generics.ListAPIView):
+    serializer_class = CampusSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        Campus.objects.get_or_create(
+            code='GK',
+            defaults={'name': 'Gidan Kwano (FUTMINNA)', 'is_active': True},
+        )
+        Campus.objects.get_or_create(
+            code='BOS',
+            defaults={'name': 'Bosso (FUTMINNA)', 'is_active': True},
+        )
+        return Campus.objects.filter(is_active=True).order_by('name')
 
 
 class DriverProfileView(generics.RetrieveUpdateAPIView):

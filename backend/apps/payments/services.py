@@ -93,7 +93,15 @@ class PaystackService:
         }
 
     @classmethod
-    def initialize_transaction(cls, user, amount_kobo: int, callback_url: str, metadata: dict = None) -> dict:
+    def initialize_transaction(
+        cls,
+        user,
+        amount_kobo: int,
+        callback_url: str,
+        metadata: dict = None,
+        idempotency_key: str | None = None,
+        ip_address: str | None = None,
+    ) -> dict:
         reference = generate_reference('PS')
         payload = {
             'email': user.email or f'{str(user.phone_number).replace("+", "")}@lrride.ng',
@@ -110,6 +118,14 @@ class PaystackService:
             user=user,
             gateway=GatewayTransaction.Gateway.PAYSTACK,
             amount=Decimal(amount_kobo) / 100,
+            gateway_status=GatewayTransaction.GatewayStatus.PENDING,
+            gateway_response={
+                'authorization_url': data.get('data', {}).get('authorization_url'),
+                'access_code': data.get('data', {}).get('access_code'),
+                'reference': data.get('data', {}).get('reference'),
+            },
+            idempotency_key=idempotency_key,
+            ip_address=ip_address,
         )
         logger.info('paystack_init ref=%s user=%s', reference, str(user.id))
         return data
@@ -129,6 +145,21 @@ class PaystackService:
         ).hexdigest()
         return hmac.compare_digest(expected, signature)
 
+    @classmethod
+    def is_allowed_webhook_ip(cls, ip_address: str) -> bool:
+        allowlist = getattr(settings, 'PAYSTACK_WEBHOOK_IP_ALLOWLIST', [])
+        if not allowlist:
+            return True
+        return ip_address in allowlist
+
+    @classmethod
+    def signature_hash(cls, signature: str) -> str:
+        return hashlib.sha256(signature.encode()).hexdigest()
+
+    @classmethod
+    def payload_hash(cls, payload_bytes: bytes) -> str:
+        return hashlib.sha256(payload_bytes).hexdigest()
+
 
 class FlutterwaveService:
     BASE_URL = 'https://api.flutterwave.com/v3'
@@ -141,7 +172,15 @@ class FlutterwaveService:
         }
 
     @classmethod
-    def initialize_transaction(cls, user, amount_naira: Decimal, redirect_url: str, metadata: dict = None) -> dict:
+    def initialize_transaction(
+        cls,
+        user,
+        amount_naira: Decimal,
+        redirect_url: str,
+        metadata: dict = None,
+        idempotency_key: str | None = None,
+        ip_address: str | None = None,
+    ) -> dict:
         reference = generate_reference('FW')
         payload = {
             'tx_ref': reference,
@@ -163,6 +202,13 @@ class FlutterwaveService:
             user=user,
             gateway=GatewayTransaction.Gateway.FLUTTERWAVE,
             amount=amount_naira,
+            gateway_status=GatewayTransaction.GatewayStatus.PENDING,
+            gateway_response={
+                'link': data.get('data', {}).get('link'),
+                'tx_ref': data.get('data', {}).get('tx_ref'),
+            },
+            idempotency_key=idempotency_key,
+            ip_address=ip_address,
         )
         logger.info('flutterwave_init ref=%s user=%s', reference, str(user.id))
         return data
@@ -172,3 +218,44 @@ class FlutterwaveService:
         resp = requests.get(f'{cls.BASE_URL}/transactions/{transaction_id}/verify', headers=cls._headers(), timeout=15)
         resp.raise_for_status()
         return resp.json()
+
+    @classmethod
+    def verify_transaction_by_reference(cls, reference: str) -> dict:
+        resp = requests.get(
+            f'{cls.BASE_URL}/transactions/verify_by_reference',
+            params={'tx_ref': reference},
+            headers=cls._headers(),
+            timeout=15,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    @classmethod
+    def verify_webhook_signature(cls, payload_bytes: bytes, signature: str) -> bool:
+        signature = (signature or '').strip()
+        if not signature:
+            return False
+        secret = getattr(settings, 'FLUTTERWAVE_WEBHOOK_SECRET', '')
+        secret_hash = getattr(settings, 'FLUTTERWAVE_WEBHOOK_SECRET_HASH', '')
+        if secret:
+            expected = hmac.new(secret.encode(), payload_bytes, hashlib.sha256).hexdigest()
+            if hmac.compare_digest(expected, signature):
+                return True
+        if secret_hash:
+            return hmac.compare_digest(secret_hash, signature)
+        return False
+
+    @classmethod
+    def is_allowed_webhook_ip(cls, ip_address: str) -> bool:
+        allowlist = getattr(settings, 'FLUTTERWAVE_WEBHOOK_IP_ALLOWLIST', [])
+        if not allowlist:
+            return True
+        return ip_address in allowlist
+
+    @classmethod
+    def signature_hash(cls, signature: str) -> str:
+        return hashlib.sha256(signature.encode()).hexdigest()
+
+    @classmethod
+    def payload_hash(cls, payload_bytes: bytes) -> str:
+        return hashlib.sha256(payload_bytes).hexdigest()

@@ -1,4 +1,4 @@
-﻿from rest_framework.permissions import BasePermission
+from rest_framework.permissions import BasePermission
 
 
 class IsAdminUser(BasePermission):
@@ -7,6 +7,15 @@ class IsAdminUser(BasePermission):
             request.user
             and request.user.is_authenticated
             and request.user.role == 'admin'
+        )
+
+
+class IsCampusAdminUser(BasePermission):
+    def has_permission(self, request, view):
+        return bool(
+            request.user
+            and request.user.is_authenticated
+            and request.user.role == 'campus_admin'
         )
 
 
@@ -35,3 +44,14 @@ class IsOwnerOrAdmin(BasePermission):
         if hasattr(obj, 'user'):
             return obj.user == request.user
         return obj == request.user
+
+
+class IsPhoneVerified(BasePermission):
+    message = "Your phone number must be verified to perform this action."
+
+    def has_permission(self, request, view):
+        return bool(
+            request.user
+            and request.user.is_authenticated
+            and request.user.is_phone_verified
+        )

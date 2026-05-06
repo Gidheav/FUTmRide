@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "LR Ride Driver",
+    "slug": "lr-ride-driver",
+    "version": "1.0.0",
+    "sdkVersion": "54.0.0",
+    "runtimeVersion": "54.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "updates": {
+      "enabled": false,
+      "checkAutomatically": "OFF"
+    },
+    "ios": {
+      "supportsTabletMode": true,
+      "bundleIdentifier": "com.lrride.driver"
+    },
+    "android": {
+      "package": "com.lrride.driver"
+    },
+    "scheme": "lrride-driver"
+  }
+}

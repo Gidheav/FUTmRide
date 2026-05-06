@@ -64,6 +64,12 @@ def _resolve_error_code(exc):
 def _resolve_message(data):
     if isinstance(data, dict) and 'detail' in data:
         return str(data['detail'])
+    if isinstance(data, dict):
+        for value in data.values():
+            if isinstance(value, list) and value:
+                return str(value[0])
+            if isinstance(value, str):
+                return value
     if isinstance(data, list):
         return str(data[0]) if data else 'An error occurred.'
     return 'An error occurred.'

@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Wallet, TrendingUp, TrendingDown, CreditCard, Plus } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../../core/api'
@@ -64,6 +64,10 @@ export default function WalletPage() {
   const [amount, setAmount] = useState('')
   const [gateway, setGateway] = useState<'paystack' | 'flutterwave'>('paystack')
   const [page, setPage] = useState(1)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const queryClient = useQueryClient()
+
+  const callbackReference = searchParams.get('reference') || searchParams.get('tx_ref') || ''
 
   const { data: profile } = useQuery({
     queryKey: ['student-profile'],
@@ -82,12 +86,16 @@ export default function WalletPage() {
   })
 
   const topupMutation = useMutation({
-    mutationFn: async () => {
-      const res = await api.post('/payments/wallet/topup/', {
-        amount: parseFloat(amount),
-        gateway,
-        callback_url: `${window.location.origin}/student/wallet`,
-      })
+    mutationFn: async (payload: { idempotencyKey: string }) => {
+      const res = await api.post(
+        '/payments/wallet/topup/',
+        {
+          amount: parseFloat(amount),
+          gateway,
+          callback_url: `${window.location.origin}/student/wallet`,
+        },
+        { headers: { 'Idempotency-Key': payload.idempotencyKey } },
+      )
       return res.data
     },
     onSuccess: (data) => {
@@ -103,8 +111,35 @@ export default function WalletPage() {
       toast.error('Minimum top-up amount is NGN 100.')
       return
     }
-    topupMutation.mutate()
+    const idempotencyKey = crypto.randomUUID()
+    topupMutation.mutate({ idempotencyKey })
   }
+
+  const { data: topupStatus } = useQuery({
+    queryKey: ['wallet-topup-status', callbackReference],
+    queryFn: async () => {
+      const res = await api.get(`/payments/wallet/topup/status/${callbackReference}/`)
+      return res.data
+    },
+    enabled: Boolean(callbackReference),
+    refetchInterval: (data) => {
+      if (!data) return 5000
+      return ['initiated', 'pending'].includes(data.status) ? 5000 : false
+    },
+  })
+
+  useEffect(() => {
+    if (!topupStatus) return
+    if (topupStatus.status === 'success') {
+      toast.success('Wallet top-up confirmed.')
+      queryClient.invalidateQueries({ queryKey: ['student-profile'] })
+      queryClient.invalidateQueries({ queryKey: ['wallet-transactions'] })
+      setSearchParams({})
+    } else if (['failed', 'abandoned'].includes(topupStatus.status)) {
+      toast.error('Top-up failed or was cancelled.')
+      setSearchParams({})
+    }
+  }, [topupStatus, queryClient, setSearchParams])
 
   const transactions = txData?.results || []
   const pagination = txData?.pagination

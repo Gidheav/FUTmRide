@@ -8,11 +8,34 @@ from .models import OTPVerification, User
 logger = logging.getLogger('apps.accounts')
 
 
+import requests
+
 class SMSService:
     @staticmethod
     def send(phone_number: str, message: str) -> None:
-        # In development, log to console. In production, call Termii API.
-        logger.info('SMS to %s: %s', phone_number, message)
+        api_key = getattr(settings, 'TERMII_API_KEY', None)
+        sender_id = getattr(settings, 'TERMII_SENDER_ID', 'FUTMINNA')
+        
+        if not api_key:
+            logger.warning('TERMII_API_KEY not set. Falling back to console log.')
+            logger.info('SMS to %s: %s', phone_number, message)
+            return
+
+        url = "https://api.ng.termii.com/api/sms/send"
+        payload = {
+            "to": phone_number,
+            "from": sender_id,
+            "sms": message,
+            "type": "plain",
+            "channel": "generic",
+            "api_key": api_key,
+        }
+        try:
+            response = requests.post(url, json=payload, timeout=10)
+            response.raise_for_status()
+            logger.info('SMS actually sent to %s via Termii', phone_number)
+        except requests.exceptions.RequestException as e:
+            logger.error('Failed to send SMS to %s: %s', phone_number, str(e))
 
 
 class OTPService:

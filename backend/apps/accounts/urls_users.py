@@ -5,6 +5,7 @@ from .views import (
     AdminUserListView, AdminUserDetailView,
     AdminDriverListView, AdminDriverVerifyView,
     AdminToggleUserActiveView,
+    CampusListView,
 )
 
 urlpatterns = [
@@ -13,6 +14,7 @@ urlpatterns = [
     path('me/driver-profile/', DriverProfileView.as_view(), name='user-driver-profile'),
     path('me/driver-profile/create/', DriverProfileCreateView.as_view(), name='user-driver-profile-create'),
     path('me/driver-profile/availability/', DriverAvailabilityView.as_view(), name='user-driver-availability'),
+    path('campuses/', CampusListView.as_view(), name='campus-list'),
 
     # Admin endpoints
     path('', AdminUserListView.as_view(), name='admin-user-list'),

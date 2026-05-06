@@ -86,6 +86,11 @@ AUTH_PASSWORD_VALIDATORS = [
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": ["rest_framework_simplejwt.authentication.JWTAuthentication"],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
+    "DEFAULT_PARSER_CLASSES": [
+        "rest_framework.parsers.JSONParser",
+        "rest_framework.parsers.MultiPartParser",
+        "rest_framework.parsers.FormParser",
+    ],
     "DEFAULT_PAGINATION_CLASS": "core.pagination.StandardResultsPagination",
     "PAGE_SIZE": 20,
     "DEFAULT_FILTER_BACKENDS": [
@@ -100,7 +105,7 @@ REST_FRAMEWORK = {
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=14),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "UPDATE_LAST_LOGIN": True,
@@ -111,7 +116,15 @@ SIMPLE_JWT = {
     "USER_ID_CLAIM": "user_id",
 }
 
-CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=["http://localhost:5174"])
+SESSION_MAX_AGE_DAYS = 14
+
+CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[
+    "http://localhost:5174",
+    "http://localhost:5175",
+    "http://127.0.0.1:5174",
+    "http://127.0.0.1:5175",
+    "http://127.0.0.1:8002",
+])
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
     "accept", "accept-encoding", "authorization", "content-type",
@@ -136,11 +149,31 @@ CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 300
 CELERY_RESULT_BACKEND = "django-db"
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+CELERY_BEAT_SCHEDULE = {
+    "reconcile-paystack-pending": {
+        "task": "apps.payments.tasks.reconcile_paystack_pending",
+        "schedule": 300.0,
+    },
+    "reconcile-flutterwave-pending": {
+        "task": "apps.payments.tasks.reconcile_flutterwave_pending",
+        "schedule": 300.0,
+    },
+}
 
 PAYSTACK_SECRET_KEY = env("PAYSTACK_SECRET_KEY", default="")
 PAYSTACK_PUBLIC_KEY = env("PAYSTACK_PUBLIC_KEY", default="")
+PAYSTACK_WEBHOOK_IP_ALLOWLIST = env.list("PAYSTACK_WEBHOOK_IP_ALLOWLIST", default=[])
+PAYSTACK_WEBHOOK_REPLAY_WINDOW_MINUTES = env.int("PAYSTACK_WEBHOOK_REPLAY_WINDOW_MINUTES", default=60)
+PAYSTACK_WEBHOOK_MAX_SKEW_MINUTES = env.int("PAYSTACK_WEBHOOK_MAX_SKEW_MINUTES", default=10)
+PAYSTACK_RECONCILE_AFTER_MINUTES = env.int("PAYSTACK_RECONCILE_AFTER_MINUTES", default=10)
 FLUTTERWAVE_SECRET_KEY = env("FLUTTERWAVE_SECRET_KEY", default="")
 FLUTTERWAVE_PUBLIC_KEY = env("FLUTTERWAVE_PUBLIC_KEY", default="")
+FLUTTERWAVE_WEBHOOK_SECRET = env("FLUTTERWAVE_WEBHOOK_SECRET", default="")
+FLUTTERWAVE_WEBHOOK_SECRET_HASH = env("FLUTTERWAVE_WEBHOOK_SECRET_HASH", default="")
+FLUTTERWAVE_WEBHOOK_IP_ALLOWLIST = env.list("FLUTTERWAVE_WEBHOOK_IP_ALLOWLIST", default=[])
+FLUTTERWAVE_WEBHOOK_REPLAY_WINDOW_MINUTES = env.int("FLUTTERWAVE_WEBHOOK_REPLAY_WINDOW_MINUTES", default=60)
+FLUTTERWAVE_WEBHOOK_MAX_SKEW_MINUTES = env.int("FLUTTERWAVE_WEBHOOK_MAX_SKEW_MINUTES", default=10)
+FLUTTERWAVE_RECONCILE_AFTER_MINUTES = env.int("FLUTTERWAVE_RECONCILE_AFTER_MINUTES", default=10)
 TERMII_API_KEY = env("TERMII_API_KEY", default="")
 TERMII_BASE_URL = env("TERMII_BASE_URL", default="https://api.ng.termii.com/api")
 TERMII_SENDER_ID = env("TERMII_SENDER_ID", default="LRRIDE")

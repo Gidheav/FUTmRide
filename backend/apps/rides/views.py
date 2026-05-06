@@ -1,5 +1,7 @@
-﻿import logging
+import logging
+from decimal import Decimal
 from django.utils import timezone
+from django.db import transaction
 from rest_framework import generics, permissions, status, filters
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -7,7 +9,9 @@ from rest_framework.exceptions import NotFound, PermissionDenied
 from django_filters.rest_framework import DjangoFilterBackend
 
 from apps.accounts.models import UserRole, DriverProfile
-from apps.accounts.permissions import IsAdminUser
+from apps.accounts.permissions import IsAdminUser, IsPhoneVerified
+from apps.payments.models import WalletTransaction
+from apps.payments.services import WalletService
 from .models import Ride, RideStatus, DriverRideRequest
 from .serializers import (
     RideRequestSerializer,
@@ -22,7 +26,7 @@ logger = logging.getLogger('apps.rides')
 
 class RideRequestView(generics.CreateAPIView):
     serializer_class = RideRequestSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsPhoneVerified]
 
     def create(self, request, *args, **kwargs):
         if request.user.role != UserRole.STUDENT:
@@ -173,6 +177,42 @@ class DriverRideStatusUpdateView(APIView):
                 sp.save(update_fields=['total_trips'])
             except Exception:
                 pass
+            if ride.payment_method == 'wallet' and not ride.is_paid:
+                try:
+                    with transaction.atomic():
+                        ride_locked = Ride.objects.select_for_update().get(id=ride.id)
+                        if ride_locked.is_paid:
+                            logger.info('ride_wallet_already_paid ref=%s', ride.reference)
+                        else:
+                            existing = WalletTransaction.objects.filter(
+                                ride=ride_locked,
+                                source=WalletTransaction.Source.RIDE_PAYMENT,
+                                transaction_type=WalletTransaction.TransactionType.DEBIT,
+                            ).first()
+                            if existing:
+                                ride_locked.is_paid = True
+                                ride_locked.save(update_fields=['is_paid'])
+                                logger.info('ride_wallet_existing_tx ref=%s tx=%s', ride.reference, existing.reference)
+                            else:
+                                fare = ride_locked.total_fare or Decimal('0.00')
+                                WalletService.debit(
+                                    user=ride_locked.student,
+                                    amount=fare,
+                                    source=WalletTransaction.Source.RIDE_PAYMENT,
+                                    narration=f'Ride payment — {ride_locked.reference}',
+                                    ride=ride_locked,
+                                    metadata={
+                                        'driver_id': str(ride_locked.driver_id or ''),
+                                        'platform_commission': str(ride_locked.platform_commission or 0),
+                                    },
+                                )
+                                ride_locked.is_paid = True
+                                ride_locked.save(update_fields=['is_paid'])
+                                logger.info('ride_wallet_debited ref=%s amount=%s', ride.reference, fare)
+                except ValueError:
+                    logger.warning('ride_wallet_insufficient ref=%s', ride.reference)
+                except Exception as e:
+                    logger.error('ride_wallet_debit_error ref=%s error=%s', ride.reference, str(e))
         logger.info('ride_advanced ref=%s to=%s driver=%s', ride.reference, next_status, str(request.user.id))
         return Response(RideDetailSerializer(ride, context={'request': request}).data)
 

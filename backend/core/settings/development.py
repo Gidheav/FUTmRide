@@ -22,6 +22,9 @@ CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
+# Allow all CORS origins in development
+CORS_ALLOW_ALL_ORIGINS = True
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,

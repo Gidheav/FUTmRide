@@ -6,14 +6,17 @@ from apps.accounts.models import User, StudentProfile, DriverProfile, UserRole
 from .models import Ride, RideStatus
 
 
-def make_student(phone='+2348011111111'):
+def make_student(phone='+2348011111111', email='aisha.m2302417@st.futminna.edu.ng'):
     user = User.objects.create_user(
         phone_number=phone,
+        email=email,
         password='SecurePass123!',
         first_name='Aisha',
         last_name='Bello',
         role=UserRole.STUDENT,
         data_consent_given=True,
+        is_phone_verified=True,
+        is_verified=True,
     )
     StudentProfile.objects.create(user=user)
     return user
@@ -61,7 +64,7 @@ class RideBookingTestCase(TestCase):
         self.student = make_student()
         self.driver = make_driver(approved=True)
         login = self.client.post(reverse('auth-login'), {
-            'phone_number': '+2348011111111',
+            'email': 'aisha.m2302417@st.futminna.edu.ng',
             'password': 'SecurePass123!',
         }, format='json')
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {login.data["access"]}')
@@ -116,7 +119,7 @@ class RideLifecycleTestCase(TestCase):
         self.student = make_student()
         self.driver = make_driver(approved=True)
         student_login = self.client.post(reverse('auth-login'), {
-            'phone_number': '+2348011111111',
+            'email': 'aisha.m2302417@st.futminna.edu.ng',
             'password': 'SecurePass123!',
         }, format='json')
         self.student_token = student_login.data['access']

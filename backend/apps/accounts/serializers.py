@@ -1,18 +1,38 @@
 import re
+from datetime import timedelta
+from django.conf import settings
+from django.utils import timezone
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import DriverProfile, StudentProfile, User, UserRole
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
+from rest_framework_simplejwt.tokens import RefreshToken
+from .models import DriverProfile, StudentProfile, User, UserRole, Campus, CampusAdminProfile
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, validators=[validate_password])
     confirm_password = serializers.CharField(write_only=True)
-    data_consent_given = serializers.BooleanField()
+    data_consent_given = serializers.BooleanField(required=False)
+    phone_number = serializers.CharField(required=False, allow_blank=True)
+    first_name = serializers.CharField(required=False, allow_blank=True)
+    last_name = serializers.CharField(required=False, allow_blank=True)
+    role = serializers.ChoiceField(choices=UserRole.choices, required=False, default=UserRole.STUDENT)
+    phone_number = serializers.CharField(required=False, allow_blank=True)
+
+    student_email_regex = re.compile(r"^[A-Za-z]+\.[mM]\d+@st\.futminna\.edu\.ng$")
 
     class Meta:
         model = User
-        fields = ["phone_number", "first_name", "last_name", "role", "password", "confirm_password", "data_consent_given"]
+        fields = [
+            "phone_number",
+            "email",
+            "first_name",
+            "last_name",
+            "role",
+            "password",
+            "confirm_password",
+            "data_consent_given",
+        ]
 
     def validate_role(self, value):
         if value == UserRole.ADMIN:
@@ -20,21 +40,50 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return value
 
     def validate_phone_number(self, value):
+        if not value:
+            return value
         cleaned = re.sub(r"[\s\-\(\)]", "", value)
         if not re.match(r"^\+?[0-9]{7,15}$", cleaned):
             raise serializers.ValidationError("Enter a valid phone number.")
+        if User.objects.filter(phone_number=cleaned).exists():
+            raise serializers.ValidationError("A user with this phone number already exists.")
         return cleaned
 
     def validate(self, attrs):
         if attrs["password"] != attrs.pop("confirm_password"):
             raise serializers.ValidationError({"confirm_password": "Passwords do not match."})
-        if not attrs.get("data_consent_given"):
-            raise serializers.ValidationError({"data_consent_given": "You must accept the data consent policy."})
+        role = attrs.get("role") or UserRole.STUDENT
+        if role == UserRole.STUDENT:
+            email = (attrs.get("email") or "").strip().lower()
+            if not email:
+                raise serializers.ValidationError({"email": "Student email is required."})
+            if not self.student_email_regex.match(email):
+                raise serializers.ValidationError({
+                    "email": "Use format name.m1234567@st.futminna.edu.ng for student accounts.",
+                })
+            attrs["email"] = email
+            attrs["phone_number"] = (attrs.get("phone_number") or "").strip() or None
+            if not attrs.get("first_name"):
+                attrs["first_name"] = email.split("@", 1)[0].split(".")[0].capitalize()
+            if not attrs.get("last_name"):
+                attrs["last_name"] = "Student"
+            if attrs.get("data_consent_given") is None:
+                attrs["data_consent_given"] = True
+        else:
+            if not (attrs.get("phone_number") or "").strip():
+                raise serializers.ValidationError({"phone_number": "Phone number is required."})
+            if not attrs.get("first_name"):
+                raise serializers.ValidationError({"first_name": "First name is required."})
+            if not attrs.get("last_name"):
+                raise serializers.ValidationError({"last_name": "Last name is required."})
+            if not attrs.get("data_consent_given"):
+                raise serializers.ValidationError({"data_consent_given": "You must accept the data consent policy."})
         return attrs
 
     def create(self, validated_data):
         user = User.objects.create_user(
-            phone_number=validated_data["phone_number"],
+            phone_number=validated_data.get("phone_number"),
+            email=validated_data.get("email"),
             first_name=validated_data["first_name"],
             last_name=validated_data["last_name"],
             role=validated_data["role"],
@@ -42,20 +91,52 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             data_consent_given=validated_data["data_consent_given"],
         )
         if user.role == UserRole.STUDENT:
-            StudentProfile.objects.create(user=user)
+            matric = None
+            if user.email:
+                local_part = user.email.split("@", 1)[0]
+                if "." in local_part:
+                    matric = local_part.split(".")[-1].lower()
+            StudentProfile.objects.create(user=user, matric_number=matric)
         return user
 
 
 class FutminnaTokenObtainPairSerializer(TokenObtainPairSerializer):
     username_field = "phone_number"
+    phone_number = serializers.CharField(required=False, allow_blank=True)
+    email = serializers.EmailField(required=False, allow_blank=True)
+
+    student_email_regex = re.compile(r"^[A-Za-z]+\.[mM]\d+@st\.futminna\.edu\.ng$")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.username_field in self.fields:
+            self.fields[self.username_field].required = False
+            self.fields[self.username_field].allow_blank = True
 
     def validate(self, attrs):
-        from django.utils import timezone
-        from django.conf import settings as django_settings
-        try:
-            user = User.objects.get(phone_number=attrs.get("phone_number"))
-        except User.DoesNotExist:
-            raise serializers.ValidationError({"error": "No account found with this phone number."})
+        email = (attrs.get("email") or "").strip().lower()
+        phone_number = (attrs.get("phone_number") or "").strip()
+
+        if email:
+            if not self.student_email_regex.match(email):
+                raise serializers.ValidationError({
+                    "error": "Student email must match name.m1234567@st.futminna.edu.ng.",
+                })
+            try:
+                user = User.objects.get(email__iexact=email)
+            except User.DoesNotExist:
+                raise serializers.ValidationError({"error": "No account found with this email."})
+            if user.role != UserRole.STUDENT:
+                raise serializers.ValidationError({"error": "Only student accounts can sign in with email."})
+        else:
+            if not phone_number:
+                raise serializers.ValidationError({"error": "Phone number or email is required."})
+            try:
+                user = User.objects.get(phone_number=phone_number)
+            except User.DoesNotExist:
+                raise serializers.ValidationError({"error": "No account found with this phone number."})
+            if user.role == UserRole.STUDENT:
+                raise serializers.ValidationError({"error": "Students must sign in with their university email."})
         if user.is_locked:
             raise serializers.ValidationError({"error": "Account locked. Too many failed attempts."})
         if not user.check_password(attrs.get("password")):
@@ -64,18 +145,71 @@ class FutminnaTokenObtainPairSerializer(TokenObtainPairSerializer):
         if not user.is_active:
             raise serializers.ValidationError({"error": "This account has been deactivated."})
         user.reset_failed_login()
-        user.last_login = timezone.now()
-        user.save(update_fields=["last_login"])
-        data = super().validate(attrs)
+        now = timezone.now()
+        user.last_login = now
+        user.session_started_at = now
+        user.last_refresh_at = now
+        user.save(update_fields=["last_login", "session_started_at", "last_refresh_at"])
+        campus_info = None
+        try:
+            if user.role == UserRole.STUDENT and user.student_profile.campus:
+                campus_info = {"id": str(user.student_profile.campus.id), "name": user.student_profile.campus.name}
+            elif user.role == UserRole.DRIVER and hasattr(user, 'driver_profile') and user.driver_profile.campus:
+                campus_info = {"id": str(user.driver_profile.campus.id), "name": user.driver_profile.campus.name}
+            elif user.role == UserRole.CAMPUS_ADMIN and hasattr(user, 'campus_admin_profile'):
+                campus_info = {"id": str(user.campus_admin_profile.campus.id), "name": user.campus_admin_profile.campus.name}
+        except Exception:
+            pass
+
+        refresh = self.get_token(user)
+        data = {
+            "refresh": str(refresh),
+            "access": str(refresh.access_token),
+        }
         data["user"] = {
             "id": str(user.id),
-            "phone_number": str(user.phone_number),
+            "phone_number": str(user.phone_number) if user.phone_number else None,
+            "email": user.email,
             "full_name": user.full_name,
             "first_name": user.first_name,
             "last_name": user.last_name,
             "role": user.role,
             "is_verified": user.is_verified,
+            "campus": campus_info,
         }
+        return data
+
+
+class SessionTokenRefreshSerializer(TokenRefreshSerializer):
+    def validate(self, attrs):
+        refresh = RefreshToken(attrs["refresh"])
+        user_id = refresh.get("user_id")
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            raise serializers.ValidationError({
+                "error": {
+                    "code": "USER_NOT_FOUND",
+                    "message": "Account not found. Please log in again.",
+                }
+            })
+
+        now = timezone.now()
+        session_started_at = user.session_started_at or user.last_login or user.created_at
+        max_age = timedelta(days=getattr(settings, "SESSION_MAX_AGE_DAYS", 14))
+        if session_started_at and now - session_started_at > max_age:
+            raise serializers.ValidationError({
+                "error": {
+                    "code": "SESSION_EXPIRED",
+                    "message": "Session expired. Please log in again.",
+                }
+            })
+
+        data = super().validate(attrs)
+        user.last_refresh_at = now
+        if not user.session_started_at:
+            user.session_started_at = now
+        user.save(update_fields=["last_refresh_at", "session_started_at"])
         return data
 
 
@@ -91,15 +225,17 @@ class UserPublicSerializer(serializers.ModelSerializer):
 class UserProfileSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(read_only=True)
     wallet_balance = serializers.SerializerMethodField()
+    campus = serializers.SerializerMethodField()
+    profile_photo = serializers.ImageField(required=False, allow_null=True)
 
     class Meta:
         model = User
         fields = [
             "id", "phone_number", "first_name", "last_name", "full_name",
-            "email", "role", "is_verified", "is_phone_verified", "is_active",
-            "fcm_token", "wallet_balance", "created_at",
+            "email", "role", "is_verified", "is_phone_verified", "is_active", "profile_photo",
+            "fcm_token", "wallet_balance", "campus", "created_at",
         ]
-        read_only_fields = ["id", "phone_number", "role", "is_verified", "is_phone_verified", "is_active", "created_at", "full_name"]
+        read_only_fields = ["id", "phone_number", "role", "is_verified", "is_phone_verified", "is_active", "created_at", "full_name", "campus"]
 
     def get_wallet_balance(self, obj):
         try:
@@ -111,12 +247,66 @@ class UserProfileSerializer(serializers.ModelSerializer):
             pass
         return "0.00"
 
+    def get_campus(self, obj):
+        try:
+            if obj.role == UserRole.STUDENT and obj.student_profile.campus:
+                return {"id": str(obj.student_profile.campus.id), "name": obj.student_profile.campus.name}
+            elif obj.role == UserRole.DRIVER and hasattr(obj, 'driver_profile') and obj.driver_profile.campus:
+                return {"id": str(obj.driver_profile.campus.id), "name": obj.driver_profile.campus.name}
+            elif obj.role == UserRole.CAMPUS_ADMIN and hasattr(obj, 'campus_admin_profile'):
+                return {"id": str(obj.campus_admin_profile.campus.id), "name": obj.campus_admin_profile.campus.name}
+        except Exception:
+            pass
+        return None
+
+
+class CampusSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Campus
+        fields = ["id", "name", "code"]
+
 
 class StudentProfileSerializer(serializers.ModelSerializer):
+    campus = CampusSerializer(read_only=True)
+    campus_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
+
     class Meta:
         model = StudentProfile
-        fields = ["id", "matric_number", "department", "wallet_balance", "total_trips", "average_rating_given", "created_at"]
-        read_only_fields = ["id", "wallet_balance", "total_trips", "created_at"]
+        fields = [
+            "id",
+            "matric_number",
+            "department",
+            "level",
+            "campus",
+            "campus_id",
+            "wallet_balance",
+            "total_trips",
+            "average_rating_given",
+            "created_at",
+        ]
+        read_only_fields = ["id", "wallet_balance", "total_trips", "created_at", "campus"]
+
+    def validate_matric_number(self, value):
+        if not value:
+            return value
+        pattern = r"^\d{4}/\d/\d{5}[A-Za-z]{0,3}$"
+        if not re.match(pattern, value):
+            raise serializers.ValidationError(
+                "Matric number must match YYYY/D/#####AAA (e.g. 1983/11/00000ABC)."
+            )
+        return value
+
+    def update(self, instance, validated_data):
+        campus_id = validated_data.pop("campus_id", None)
+        if campus_id is not None:
+            if campus_id:
+                try:
+                    instance.campus = Campus.objects.get(id=campus_id, is_active=True)
+                except Campus.DoesNotExist:
+                    raise serializers.ValidationError({"campus_id": "Selected campus is invalid."})
+            else:
+                instance.campus = None
+        return super().update(instance, validated_data)
 
 
 class DriverProfileSerializer(serializers.ModelSerializer):
@@ -170,3 +360,19 @@ class ChangePasswordSerializer(serializers.Serializer):
         if not self.context["request"].user.check_password(value):
             raise serializers.ValidationError("Current password is incorrect.")
         return value
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    phone_number = serializers.CharField()
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    phone_number = serializers.CharField()
+    code = serializers.CharField(max_length=6)
+    new_password = serializers.CharField(validators=[validate_password])
+    confirm_password = serializers.CharField()
+
+    def validate(self, attrs):
+        if attrs['new_password'] != attrs.pop('confirm_password'):
+            raise serializers.ValidationError({'confirm_password': 'Passwords do not match.'})
+        return attrs

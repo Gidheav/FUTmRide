@@ -1,4 +1,4 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -55,7 +55,7 @@ export default function LoginPage() {
     },
     onSuccess: async (data) => {
       if (data.user.role !== 'admin') {
-        toast.error('Admin access only.')
+        toast.error('Super admin access only.')
         return
       }
       const userRes = await api.get('/users/me/', {
@@ -74,8 +74,8 @@ export default function LoginPage() {
         <div className="card">
           <div className="card-top">
             <div className="admin-badge"><ShieldCheck size={24} color="#fff" /></div>
-            <h1 className="card-title">Admin Portal</h1>
-            <p className="card-sub">LR Ride management console</p>
+            <h1 className="card-title">Super Admin Portal</h1>
+            <p className="card-sub">LR Ride global management console</p>
           </div>
           <form onSubmit={handleSubmit(d => mutation.mutate(d))}>
             <div className="field">
@@ -94,6 +94,9 @@ export default function LoginPage() {
             <button type="submit" className="submit-btn" disabled={mutation.isPending}>
               {mutation.isPending ? <><span className="spinner" />Signing in...</> : 'Sign In'}
             </button>
+            <p style={{ marginTop: '14px', textAlign: 'center', fontSize: '12px', color: '#666' }}>
+              Campus moderator? <a href="/campus-admin/login" style={{ color: '#007A47', textDecoration: 'none', fontWeight: 600 }}>Use Campus Admin Login</a>
+            </p>
           </form>
         </div>
       </div>

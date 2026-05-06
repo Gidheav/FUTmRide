@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "FUTmRide",
+    "slug": "lr-ride-mobile",
+    "version": "1.0.0",
+    "sdkVersion": "54.0.0",
+    "runtimeVersion": "54.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/icon2.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#5B2D8E"
+    },
+    "updates": {
+      "enabled": false,
+      "checkAutomatically": "OFF"
+    },
+    "ios": {
+      "supportsTabletMode": true,
+      "bundleIdentifier": "com.lrride.mobile",
+      "config": {
+        "googleMapsApiKey": "AIzaSyD5nLbEz_xY6UOHJ1mbjvipD1PY1A14erQ"
+      }
+    },
+    "android": {
+      "package": "com.lrride.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#5B2D8E"
+      },
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyD5nLbEz_xY6UOHJ1mbjvipD1PY1A14erQ"
+        }
+      }
+    },
+    "scheme": "lrride",
+    "extra": {
+      "eas": {
+        "projectId": "f7d791f1-e8c4-4454-a701-5bbfc5c1e80b"
+      }
+    },
+    "plugins": [
+      "expo-secure-store"
+    ],
+    "owner": "heavpro"
+  }
+}

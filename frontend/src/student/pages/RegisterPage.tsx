@@ -1,33 +1,70 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Link, useNavigate, Navigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useMutation } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import api from '../../core/api'
+import { useAuthStore } from '../../core/authStore'
 
-const schema = z.object({
-  first_name: z.string().min(2, 'First name is required'),
-  last_name: z.string().min(2, 'Last name is required'),
-  phone_number: z.string().min(7, 'Enter a valid phone number'),
-  email: z.string().email('Enter a valid email').optional().or(z.literal('')),
-  role: z.enum(['student', 'driver']),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
-  confirm_password: z.string(),
-  data_consent_given: z.boolean().refine(v => v === true, 'You must accept to continue'),
-}).refine(d => d.password === d.confirm_password, {
-  message: 'Passwords do not match',
-  path: ['confirm_password'],
-})
+const studentEmailRegex = /^[A-Za-z]+\.[mM]\d+@st\.futminna\.edu\.ng$/
+
+const schema = z
+  .object({
+    first_name: z.string().optional().or(z.literal('')),
+    last_name: z.string().optional().or(z.literal('')),
+    phone_number: z.string().optional().or(z.literal('')),
+    email: z.string().optional().or(z.literal('')),
+    role: z.enum(['student', 'driver']),
+    password: z.string().min(8, 'Password must be at least 8 characters'),
+    confirm_password: z.string(),
+    data_consent_given: z.boolean().optional(),
+  })
+  .refine(d => d.password === d.confirm_password, {
+    message: 'Passwords do not match',
+    path: ['confirm_password'],
+  })
+  .superRefine((data, ctx) => {
+    if (data.role === 'student') {
+      if (!data.email) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'University email is required', path: ['email'] })
+      } else if (!studentEmailRegex.test(data.email)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Use name.m1234567@st.futminna.edu.ng', path: ['email'] })
+      }
+    } else {
+      if (!data.first_name) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'First name is required', path: ['first_name'] })
+      }
+      if (!data.last_name) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Last name is required', path: ['last_name'] })
+      }
+      if (!data.phone_number) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Phone number is required', path: ['phone_number'] })
+      }
+      if (!data.data_consent_given) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'You must accept to continue', path: ['data_consent_given'] })
+      }
+    }
+  })
 
 type FormData = z.infer<typeof schema>
 
 export default function RegisterPage() {
   const navigate = useNavigate()
+  const { isAuthenticated, user } = useAuthStore()
   const [showPass, setShowPass] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [focused, setFocused] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      if (user.role === 'driver') navigate('/driver', { replace: true })
+      else if (user.role === 'admin') navigate('/admin', { replace: true })
+      else if (user.role === 'campus_admin') navigate('/campus-admin', { replace: true })
+      else navigate('/student', { replace: true })
+    }
+  }, [isAuthenticated, user, navigate])
 
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -38,19 +75,20 @@ export default function RegisterPage() {
 
   const mutation = useMutation({
     mutationFn: async (data: FormData) => {
-      let phone = data.phone_number.trim()
+      let phone = data.phone_number?.trim() || ''
       if (phone.startsWith('0') && phone.length === 11) phone = '+234' + phone.slice(1)
       const res = await api.post('/auth/register/', {
         ...data,
-        phone_number: phone,
-        email: data.email || undefined,
+        phone_number: phone || undefined,
+        email: data.role === 'student' ? data.email?.trim().toLowerCase() : data.email || undefined,
+        data_consent_given: data.role === 'student' ? true : data.data_consent_given,
       })
       return { data: res.data, phone: data.phone_number }
     },
-    onSuccess: ({ data }) => {
+    onSuccess: ({ data, phone }) => {
       const msg = data.message || 'Account created. Please verify your phone.'
       toast.success(msg)
-      navigate(`/login`)
+      navigate(`/verify`, { state: { phone } })
     },
     onError: (error: any) => {
       console.error('REGISTER ERROR FULL:', JSON.stringify(error?.response?.data, null, 2))
@@ -287,28 +325,44 @@ export default function RegisterPage() {
                 <button type="button" className={`role-btn${selectedRole === 'driver' ? ' active' : ''}`} onClick={() => setValue('role', 'driver')}>I am a Driver</button>
               </div>
 
-              <div className="row-2">
-                <div className="field">
-                  <div className="field-label">First Name</div>
-                  <input {...register('first_name')} placeholder="Aisha" className={ic('fname', !!errors.first_name) + ' no-icon'} {...fp('fname')} />
-                  {errors.first_name && <div className="field-error">{errors.first_name.message}</div>}
-                </div>
-                <div className="field">
-                  <div className="field-label">Last Name</div>
-                  <input {...register('last_name')} placeholder="Bello" className={ic('lname', !!errors.last_name) + ' no-icon'} {...fp('lname')} />
-                  {errors.last_name && <div className="field-error">{errors.last_name.message}</div>}
-                </div>
-              </div>
+              {selectedRole === 'driver' && (
+                <>
+                  <div className="row-2">
+                    <div className="field">
+                      <div className="field-label">First Name</div>
+                      <input {...register('first_name')} placeholder="Aisha" className={ic('fname', !!errors.first_name) + ' no-icon'} {...fp('fname')} />
+                      {errors.first_name && <div className="field-error">{errors.first_name.message}</div>}
+                    </div>
+                    <div className="field">
+                      <div className="field-label">Last Name</div>
+                      <input {...register('last_name')} placeholder="Bello" className={ic('lname', !!errors.last_name) + ' no-icon'} {...fp('lname')} />
+                      {errors.last_name && <div className="field-error">{errors.last_name.message}</div>}
+                    </div>
+                  </div>
+
+                  <div className="field">
+                    <div className="field-label">Phone Number</div>
+                    <input {...register('phone_number')} placeholder="09031234567 or +2349031234567" className={ic('phone', !!errors.phone_number) + ' no-icon'} {...fp('phone')} />
+                    {errors.phone_number && <div className="field-error">{errors.phone_number.message}</div>}
+                  </div>
+                </>
+              )}
 
               <div className="field">
-                <div className="field-label">Phone Number</div>
-                <input {...register('phone_number')} placeholder="09031234567 or +2349031234567" className={ic('phone', !!errors.phone_number) + ' no-icon'} {...fp('phone')} />
-                {errors.phone_number && <div className="field-error">{errors.phone_number.message}</div>}
-              </div>
-
-              <div className="field">
-                <div className="field-label">Email <span style={{color:'#c4c4c4',fontWeight:400,textTransform:'none',letterSpacing:0}}>(optional)</span></div>
-                <input {...register('email')} placeholder="aisha@example.com" className={ic('email', !!errors.email) + ' no-icon'} {...fp('email')} />
+                <div className="field-label">
+                  University Email
+                  {selectedRole !== 'student' && (
+                    <span style={{ color: '#c4c4c4', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+                      {' '}(optional)
+                    </span>
+                  )}
+                </div>
+                <input
+                  {...register('email')}
+                  placeholder="adeniran.m2302417@st.futminna.edu.ng"
+                  className={ic('email', !!errors.email) + ' no-icon'}
+                  {...fp('email')}
+                />
                 {errors.email && <div className="field-error">{errors.email.message}</div>}
               </div>
 
@@ -330,13 +384,17 @@ export default function RegisterPage() {
                 {errors.confirm_password && <div className="field-error">{errors.confirm_password.message}</div>}
               </div>
 
-              <div className="consent">
-                <input type="checkbox" id="consent" {...register('data_consent_given')} />
-                <label htmlFor="consent" className="consent-text">
-                  I agree to the processing of my personal data for ride services in accordance with applicable data protection regulations.
-                </label>
-              </div>
-              {errors.data_consent_given && <div className="consent-error">{errors.data_consent_given.message}</div>}
+              {selectedRole === 'driver' && (
+                <>
+                  <div className="consent">
+                    <input type="checkbox" id="consent" {...register('data_consent_given')} />
+                    <label htmlFor="consent" className="consent-text">
+                      I agree to the processing of my personal data for ride services in accordance with applicable data protection regulations.
+                    </label>
+                  </div>
+                  {errors.data_consent_given && <div className="consent-error">{errors.data_consent_given.message}</div>}
+                </>
+              )}
 
               <button type="submit" className="submit-btn" disabled={mutation.isPending}>
                 {mutation.isPending ? <><span className="spinner" />Creating account...</> : 'Create Account'}

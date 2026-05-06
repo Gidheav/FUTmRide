@@ -8,13 +8,32 @@ from phonenumber_field.modelfields import PhoneNumberField
 class UserRole(models.TextChoices):
     STUDENT = 'student', 'Student'
     DRIVER = 'driver', 'Driver'
-    ADMIN = 'admin', 'Admin'
+    ADMIN = 'admin', 'Super Admin'
+    CAMPUS_ADMIN = 'campus_admin', 'Campus Admin'
+
+
+class Campus(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=150, unique=True)
+    code = models.CharField(max_length=20, unique=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'campuses'
+        verbose_name_plural = 'Campuses'
+
+    def __str__(self):
+        return self.name
 
 
 class UserManager(BaseUserManager):
-    def create_user(self, phone_number, password=None, **extra_fields):
+    def create_user(self, phone_number=None, password=None, **extra_fields):
+        role = extra_fields.get('role', UserRole.STUDENT)
         if not phone_number:
-            raise ValueError('Phone number is required.')
+            if role != UserRole.STUDENT or not extra_fields.get('email'):
+                raise ValueError('Phone number is required.')
         user = self.model(phone_number=phone_number, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
@@ -30,7 +49,7 @@ class UserManager(BaseUserManager):
 
 class User(AbstractBaseUser, PermissionsMixin):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    phone_number = PhoneNumberField(unique=True, db_index=True)
+    phone_number = PhoneNumberField(unique=True, db_index=True, null=True, blank=True)
     email = models.EmailField(unique=True, null=True, blank=True)
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
@@ -46,6 +65,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     last_login_ip = models.GenericIPAddressField(null=True, blank=True)
     failed_login_attempts = models.PositiveSmallIntegerField(default=0)
     locked_until = models.DateTimeField(null=True, blank=True)
+
+    session_started_at = models.DateTimeField(null=True, blank=True)
+    last_refresh_at = models.DateTimeField(null=True, blank=True)
 
     data_consent_given = models.BooleanField(default=False)
     data_consent_timestamp = models.DateTimeField(null=True, blank=True)
@@ -69,7 +91,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         ]
 
     def __str__(self):
-        return f'{self.full_name} ({self.phone_number})'
+        return f'{self.full_name} ({self.phone_number or "no-phone"})'
 
     @property
     def full_name(self):
@@ -98,7 +120,7 @@ class StudentProfile(models.Model):
     matric_number = models.CharField(max_length=20, unique=True, null=True, blank=True)
     department = models.CharField(max_length=150, blank=True)
     level = models.PositiveSmallIntegerField(null=True, blank=True)
-    campus = models.CharField(max_length=100, default='Gidan Kwano')
+    campus = models.ForeignKey(Campus, on_delete=models.SET_NULL, null=True, related_name='students')
     wallet_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     total_trips = models.PositiveIntegerField(default=0)
     total_distance_km = models.DecimalField(max_digits=10, decimal_places=2, default=0)
@@ -111,6 +133,18 @@ class StudentProfile(models.Model):
 
     def __str__(self):
         return f'StudentProfile({self.user.full_name})'
+
+
+class CampusAdminProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='campus_admin_profile')
+    campus = models.ForeignKey(Campus, on_delete=models.CASCADE, related_name='campus_admins')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'campus_admin_profiles'
+
+    def __str__(self):
+        return f'{self.user.full_name} ({self.campus.name})'
 
 
 class DriverProfile(models.Model):
@@ -136,6 +170,7 @@ class DriverProfile(models.Model):
     vehicle_color = models.CharField(max_length=40)
     plate_number = models.CharField(max_length=20, unique=True)
     vehicle_seats = models.PositiveSmallIntegerField(default=4)
+    campus = models.ForeignKey(Campus, on_delete=models.SET_NULL, null=True, related_name='drivers')
 
     verification_status = models.CharField(
         max_length=20,

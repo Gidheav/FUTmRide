@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -8,17 +8,29 @@ import toast from 'react-hot-toast'
 import api from '../../core/api'
 import { useAuthStore } from '../../core/authStore'
 
+const studentEmailRegex = /^[A-Za-z]+\.[mM]\d+@st\.futminna\.edu\.ng$/
+
 const schema = z.object({
-  phone_number: z.string().min(7, 'Enter a valid phone number'),
+  email: z
+    .string()
+    .min(1, 'University email is required')
+    .regex(studentEmailRegex, 'Use name.m1234567@st.futminna.edu.ng'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
 })
 type FormData = z.infer<typeof schema>
 
 export default function LoginPage() {
   const navigate = useNavigate()
-  const { setAuth } = useAuthStore()
-  const [showPassword, setShowPassword] = useState(false)
-  const [focused, setFocused] = useState<string | null>(null)
+  const { setAuth, isAuthenticated, user } = useAuthStore()
+
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      if (user.role === 'driver') navigate('/driver', { replace: true })
+      else if (user.role === 'admin') navigate('/admin', { replace: true })
+      else if (user.role === 'campus_admin') navigate('/campus-admin', { replace: true })
+      else navigate('/student', { replace: true })
+    }
+  }, [isAuthenticated, user, navigate])
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -26,9 +38,8 @@ export default function LoginPage() {
 
   const mutation = useMutation({
     mutationFn: async (data: FormData) => {
-      let phone = data.phone_number.trim()
-      if (phone.startsWith('0') && phone.length === 11) phone = '+234' + phone.slice(1)
-      const res = await api.post('/auth/login/', { ...data, phone_number: phone })
+      const email = data.email.trim().toLowerCase()
+      const res = await api.post('/auth/login/', { email, password: data.password })
       return res.data
     },
     onSuccess: async (data) => {
@@ -39,6 +50,7 @@ export default function LoginPage() {
       toast.success(`Welcome back, ${data.user.full_name}`)
       const role = data.user.role
       if (role === 'admin') navigate('/admin')
+      else if (role === 'campus_admin') navigate('/campus-admin')
       else if (role === 'driver') navigate('/driver')
       else navigate('/student')
     },
@@ -51,476 +63,403 @@ export default function LoginPage() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Plus+Jakarta+Sans:wght@700;800&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
 
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        * { box-sizing: border-box; }
 
-        .page {
+        .replica-page {
           min-height: 100vh;
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          font-family: 'Instrument Sans', sans-serif;
-        }
-
-        /* ── LEFT PANEL ── */
-        .panel-left {
-          background: #007A47;
-          position: relative;
           display: flex;
           flex-direction: column;
-          padding: 52px;
-          overflow: hidden;
+          background: #f9f9f9;
+          color: #1a1c1c;
+          font-family: 'Inter', sans-serif;
         }
 
-        .panel-left-bg {
-          position: absolute;
-          inset: 0;
-          background:
-            radial-gradient(ellipse 80% 60% at 110% 110%, rgba(0,0,0,0.18) 0%, transparent 70%),
-            radial-gradient(ellipse 60% 50% at -10% -10%, rgba(255,255,255,0.07) 0%, transparent 60%);
-        }
-
-        .panel-left-grid {
-          position: absolute;
-          inset: 0;
-          background-image:
-            linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
-          background-size: 48px 48px;
-        }
-
-        .left-top {
+        .replica-hero {
+          display: none;
           position: relative;
-          z-index: 2;
-          display: flex;
-          align-items: center;
-          gap: 10px;
+          overflow: hidden;
+          background: #e8e8e8;
         }
 
-        .logo-badge {
-          width: 36px;
-          height: 36px;
-          background: #ffffff;
-          border-radius: 8px;
+        .replica-hero img {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .replica-hero-gradient {
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(to top, rgba(0, 33, 12, 0.8), transparent 55%);
+        }
+
+        .replica-hero-copy {
+          position: absolute;
+          left: 32px;
+          right: 32px;
+          bottom: 32px;
+          color: #ffffff;
+          z-index: 2;
+        }
+
+        .replica-hero-copy h1 {
+          margin: 0 0 8px;
+          font-family: 'Plus Jakarta Sans', sans-serif;
+          font-weight: 800;
+          font-size: 32px;
+          line-height: 40px;
+          letter-spacing: -0.02em;
+        }
+
+        .replica-hero-copy p {
+          margin: 0;
+          max-width: 520px;
+          color: rgba(255, 255, 255, 0.9);
+          font-size: 18px;
+          line-height: 28px;
+        }
+
+        .replica-right {
+          width: 100%;
+          min-height: 100vh;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-weight: 700;
-          font-size: 13px;
-          color: #007A47;
-          letter-spacing: -0.5px;
-          flex-shrink: 0;
+          padding: 20px;
+          background: #f9f9f9;
         }
 
-        .logo-name {
-          color: #fff;
-          font-weight: 600;
-          font-size: 17px;
-          letter-spacing: -0.3px;
+        .replica-card {
+          width: 100%;
+          max-width: 420px;
+          background: #ffffff;
+          border-radius: 12px;
+          padding: 24px 32px;
+          display: flex;
+          flex-direction: column;
+          gap: 32px;
+          box-shadow: 0 12px 40px rgba(0, 0, 0, 0.06);
         }
 
-        .left-mid {
-          position: relative;
-          z-index: 2;
-          margin-top: auto;
-          margin-bottom: auto;
-          padding: 60px 0;
-        }
-
-        .tag {
-          display: inline-flex;
-          align-items: center;
-          gap: 7px;
-          background: rgba(255,255,255,0.12);
-          border: 1px solid rgba(255,255,255,0.18);
-          border-radius: 100px;
-          padding: 5px 12px 5px 8px;
-          margin-bottom: 32px;
-        }
-
-        .tag-dot {
-          width: 7px;
-          height: 7px;
-          border-radius: 50%;
-          background: #5ddf9e;
-          box-shadow: 0 0 0 3px rgba(93,223,158,0.25);
-          animation: blink 2s ease infinite;
-        }
-
-        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.5} }
-
-        .tag-text {
-          color: rgba(255,255,255,0.9);
-          font-size: 11px;
-          font-weight: 500;
-          letter-spacing: 1px;
-          text-transform: uppercase;
-        }
-
-        .headline {
-          font-family: 'Instrument Serif', serif;
-          font-size: 52px;
-          line-height: 1.05;
-          color: #ffffff;
-          letter-spacing: -1.5px;
-          margin-bottom: 24px;
-        }
-
-        .headline em {
-          font-style: italic;
-          color: rgba(255,255,255,0.7);
-        }
-
-        .subline {
-          color: rgba(255,255,255,0.6);
-          font-size: 15px;
-          line-height: 1.7;
-          font-weight: 400;
-          max-width: 300px;
-        }
-
-        .left-bottom {
-          position: relative;
-          z-index: 2;
-          border-top: 1px solid rgba(255,255,255,0.12);
-          padding-top: 28px;
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
+        .replica-head {
+          display: flex;
+          flex-direction: column;
           gap: 8px;
         }
 
-        .stat-num {
-          font-family: 'Instrument Serif', serif;
-          font-size: 26px;
-          color: #ffffff;
-          letter-spacing: -0.5px;
-          line-height: 1;
-          margin-bottom: 4px;
+        .replica-brand {
+          margin: 0;
+          color: #0fa958;
+          font-family: 'Plus Jakarta Sans', sans-serif;
+          font-weight: 800;
+          font-size: 32px;
+          line-height: 40px;
+          letter-spacing: -0.02em;
         }
 
-        .stat-lbl {
-          font-size: 11px;
-          color: rgba(255,255,255,0.45);
-          letter-spacing: 0.8px;
-          text-transform: uppercase;
-          font-weight: 500;
+        .replica-title {
+          margin: 12px 0 0;
+          color: #1a1c1c;
+          font-family: 'Plus Jakarta Sans', sans-serif;
+          font-weight: 700;
+          font-size: 24px;
+          line-height: 32px;
+          letter-spacing: -0.01em;
         }
 
-        /* ── RIGHT PANEL ── */
-        .panel-right {
-          background: #ffffff;
+        .replica-sub {
+          margin: 0;
+          color: #5e5e5e;
+          font-size: 16px;
+          line-height: 24px;
+        }
+
+        .replica-form {
           display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 52px;
+          flex-direction: column;
+          gap: 16px;
         }
 
-        .form-box {
-          width: 100%;
-          max-width: 360px;
+        .replica-field {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
         }
 
-        .form-eyebrow {
-          font-size: 11px;
-          font-weight: 600;
-          letter-spacing: 1.5px;
-          text-transform: uppercase;
-          color: #007A47;
-          margin-bottom: 12px;
-        }
-
-        .form-title {
-          font-family: 'Instrument Serif', serif;
-          font-size: 36px;
-          color: #0a0a0a;
-          letter-spacing: -1px;
-          line-height: 1.1;
-          margin-bottom: 8px;
-        }
-
-        .form-sub {
+        .replica-label {
+          color: #3d4a3e;
           font-size: 14px;
-          color: #9ca3af;
-          font-weight: 400;
-          margin-bottom: 40px;
+          line-height: 16px;
+          letter-spacing: 0.01em;
+          font-weight: 600;
         }
 
-        .field {
-          margin-bottom: 22px;
-        }
-
-        .field-label {
+        .replica-label-row {
           display: flex;
           justify-content: space-between;
+          align-items: center;
+        }
+
+        .replica-forgot {
+          color: #0fa958;
           font-size: 12px;
+          line-height: 14px;
           font-weight: 600;
-          color: #374151;
-          letter-spacing: 0.4px;
-          text-transform: uppercase;
-          margin-bottom: 8px;
+          text-decoration: none;
+          letter-spacing: 0.02em;
         }
 
-        .input-wrap {
+        .replica-input-wrap {
           position: relative;
+          display: flex;
+          align-items: center;
         }
 
-        .field-input {
-          width: 100%;
-          height: 50px;
-          padding: 0 50px 0 16px;
-          background: #fafafa;
-          border: 1.5px solid #e8e8e8;
-          border-radius: 12px;
-          font-family: 'Instrument Sans', sans-serif;
-          font-size: 15px;
-          color: #0a0a0a;
-          outline: none;
-          transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
-          box-sizing: border-box;
-        }
-
-        .field-input.focused {
-          border-color: #007A47;
-          background: #fff;
-          box-shadow: 0 0 0 4px rgba(0,122,71,0.08);
-        }
-
-        .field-input.has-error {
-          border-color: #ef4444;
-          background: #fff9f9;
-        }
-
-        .field-input::placeholder { color: #c4c4c4; }
-
-        .show-btn {
+        .replica-input-icon {
           position: absolute;
-          right: 0;
-          top: 0;
-          height: 50px;
-          width: 50px;
+          left: 12px;
+          font-family: 'Material Symbols Outlined';
+          font-size: 20px;
+          color: #5e5e5e;
+          pointer-events: none;
+          line-height: 1;
+        }
+
+        .replica-input {
+          width: 100%;
+          background: #f3f3f3;
+          color: #1a1c1c;
+          border-radius: 8px;
+          border: none;
+          outline: none;
+          padding: 12px 12px 12px 40px;
+          font-size: 16px;
+          line-height: 24px;
+          font-family: 'Inter', sans-serif;
+          transition: box-shadow 0.15s ease;
+        }
+
+        .replica-input::placeholder {
+          color: #939393;
+        }
+
+        .replica-input:focus {
+          box-shadow: 0 0 0 2px #0fa958;
+        }
+
+        .replica-error {
+          color: #ba1a1a;
+          font-size: 12px;
+          line-height: 14px;
+          font-weight: 600;
+          letter-spacing: 0.02em;
+        }
+
+        .replica-submit {
+          width: 100%;
+          margin-top: 8px;
+          background: #0fa958;
+          color: #ffffff;
+          border: none;
+          border-radius: 8px;
+          padding: 12px;
+          cursor: pointer;
+          font-size: 14px;
+          line-height: 16px;
+          font-weight: 600;
+          letter-spacing: 0.01em;
           display: flex;
           align-items: center;
           justify-content: center;
-          background: none;
-          border: none;
-          cursor: pointer;
-          color: #9ca3af;
-          font-size: 11px;
-          font-weight: 700;
-          letter-spacing: 0.5px;
-          text-transform: uppercase;
-          font-family: 'Instrument Sans', sans-serif;
-          transition: color 0.15s;
+          gap: 8px;
+          transition: all 0.2s ease;
+          box-shadow: 0 4px 14px rgba(15, 169, 88, 0.2);
         }
 
-        .show-btn:hover { color: #007A47; }
-
-        .field-error {
-          display: flex;
-          align-items: center;
-          gap: 5px;
-          color: #ef4444;
-          font-size: 12px;
-          margin-top: 6px;
-          font-weight: 400;
+        .replica-submit:hover:not(:disabled) {
+          background: #006d36;
         }
 
-        .submit-btn {
-          width: 100%;
-          height: 52px;
-          background: #007A47;
-          border: none;
-          border-radius: 12px;
-          color: #ffffff;
-          font-family: 'Instrument Sans', sans-serif;
-          font-size: 15px;
-          font-weight: 600;
-          letter-spacing: 0.2px;
-          cursor: pointer;
-          margin-top: 8px;
-          position: relative;
-          overflow: hidden;
-          transition: background 0.2s, transform 0.1s, box-shadow 0.2s;
-          box-shadow: 0 4px 20px rgba(0,122,71,0.3);
+        .replica-submit:active:not(:disabled) {
+          transform: scale(0.98);
         }
 
-        .submit-btn:hover:not(:disabled) {
-          background: #006339;
-          box-shadow: 0 6px 24px rgba(0,122,71,0.4);
-          transform: translateY(-1px);
-        }
-
-        .submit-btn:active:not(:disabled) {
-          transform: translateY(0);
-          box-shadow: 0 2px 12px rgba(0,122,71,0.25);
-        }
-
-        .submit-btn:disabled {
-          background: #a7d9c0;
-          box-shadow: none;
+        .replica-submit:disabled {
+          opacity: 0.7;
           cursor: not-allowed;
         }
 
-        .spinner {
-          display: inline-block;
-          width: 16px;
-          height: 16px;
-          border: 2px solid rgba(255,255,255,0.4);
-          border-top-color: #fff;
-          border-radius: 50%;
-          animation: spin 0.7s linear infinite;
-          vertical-align: middle;
-          margin-right: 8px;
+        .replica-submit-icon {
+          font-family: 'Material Symbols Outlined';
+          font-size: 18px;
+          line-height: 1;
         }
 
-        @keyframes spin { to { transform: rotate(360deg); } }
-
-        .divider {
+        .replica-info {
           display: flex;
-          align-items: center;
-          gap: 14px;
-          margin: 28px 0 24px;
+          align-items: flex-start;
+          gap: 12px;
+          padding: 12px;
+          background: #f9f9f9;
+          border-radius: 8px;
+          border: 1px solid #e8e8e8;
         }
 
-        .divider-line { flex: 1; height: 1px; background: #f0f0f0; }
-        .divider-txt { font-size: 12px; color: #d1d5db; font-weight: 500; }
+        .replica-info-icon {
+          font-family: 'Material Symbols Outlined';
+          font-size: 20px;
+          color: #0fa958;
+          font-variation-settings: 'FILL' 1;
+          line-height: 1;
+          margin-top: 1px;
+          flex: 0 0 auto;
+        }
 
-        .footer-links {
+        .replica-info p {
+          margin: 0;
+          color: #5e5e5e;
+          font-size: 14px;
+          line-height: 20px;
+        }
+
+        .replica-foot {
+          padding-top: 8px;
+          border-top: 1px solid #e8e8e8;
           display: flex;
           flex-direction: column;
-          gap: 10px;
+          gap: 12px;
         }
 
-        .footer-links p {
-          font-size: 13.5px;
-          color: #9ca3af;
+        .replica-foot p {
+          margin: 0;
           text-align: center;
+          color: #5e5e5e;
+          font-size: 16px;
+          line-height: 24px;
         }
 
-        .footer-links a {
-          color: #007A47;
-          font-weight: 600;
+        .replica-create {
+          width: 100%;
+          background: #f3f3f3;
+          color: #1a1c1c;
           text-decoration: none;
+          border-radius: 8px;
+          padding: 12px;
+          font-size: 14px;
+          line-height: 16px;
+          font-weight: 600;
+          letter-spacing: 0.01em;
+          text-align: center;
+          transition: background-color 0.2s ease;
         }
 
-        .footer-links a:hover { text-decoration: underline; }
+        .replica-create:hover {
+          background: #e8e8e8;
+        }
 
-        @media (max-width: 820px) {
-          .page { grid-template-columns: 1fr; }
-          .panel-left { display: none; }
-          .panel-right { padding: 40px 28px; }
+        @media (min-width: 768px) {
+          .replica-page {
+            flex-direction: row;
+          }
+
+          .replica-hero {
+            display: flex;
+            width: 50%;
+          }
+
+          .replica-right {
+            width: 50%;
+          }
+        }
+
+        @media (min-width: 1024px) {
+          .replica-hero {
+            width: 58.333333%;
+          }
+
+          .replica-right {
+            width: 41.666667%;
+          }
         }
       `}</style>
 
-      <div className="page">
-
-        <div className="panel-left">
-          <div className="panel-left-bg" />
-          <div className="panel-left-grid" />
-
-          <div className="left-top">
-            <div className="logo-badge">LR</div>
-            <span className="logo-name">LR Ride</span>
-          </div>
-
-          <div className="left-mid">
-            <div className="tag">
-              <span className="tag-dot" />
-              <span className="tag-text">Now accepting riders</span>
-            </div>
-            <h2 className="headline">
-              Move smarter,<br /><em>every day.</em>
-            </h2>
-            <p className="subline">
-              Reliable rides connecting students and drivers. Book in seconds, track in real time, arrive with confidence.
-            </p>
-          </div>
-
-          <div className="left-bottom">
-            <div>
-              <div className="stat-num">2 min</div>
-              <div className="stat-lbl">Avg pickup</div>
-            </div>
-            <div>
-              <div className="stat-num">24 / 7</div>
-              <div className="stat-lbl">Available</div>
-            </div>
-            <div>
-              <div className="stat-num">Vetted</div>
-              <div className="stat-lbl">All drivers</div>
-            </div>
+      <div className="replica-page">
+        <div className="replica-hero">
+          <img
+            alt="Campus transit"
+            src="https://lh3.googleusercontent.com/aida-public/AB6AXuBWYnkvBpkrfo8o23O39L1f2NkNgu3dcDKurLlR1i0kfZw02alyBYIBGeFPX0MooKLXcybx09JUz9Z1VStkp15m_K9ZeujTtyaWgFuRjFSqB0hSZNyLy5X2C5PUIRJkL9cw1OfhWFiHR7fb_kjK4Ve_kbg8tmO_13jxLpXRuWpC8R2is1aJmkspagAUcMEwhF8UxmIOdhMPjgYcOL8OCpjSiPBcVjkgNBc09JHa0oyB1khTKwocExKsqv_vIut7ymqdOJduGy1Barc"
+          />
+          <div className="replica-hero-gradient" />
+          <div className="replica-hero-copy">
+            <h1>Safe transit, <br />simplified for students.</h1>
+            <p>Join thousands of students using CampusRide for secure, reliable campus transportation.</p>
           </div>
         </div>
 
-        <div className="panel-right">
-          <div className="form-box">
+        <div className="replica-right">
+          <div className="replica-card">
+            <div className="replica-head">
+              <h2 className="replica-brand">CampusRide</h2>
+              <h3 className="replica-title">Welcome back</h3>
+              <p className="replica-sub">Log in with your university credentials to continue.</p>
+            </div>
 
-            <div className="form-eyebrow">Student Portal</div>
-            <h1 className="form-title">Welcome<br />back</h1>
-            <p className="form-sub">Sign in to book your next ride</p>
-
-            <form onSubmit={handleSubmit((data) => mutation.mutate(data))}>
-
-              <div className="field">
-                <div className="field-label">Phone Number</div>
-                <div className="input-wrap">
+            <form className="replica-form" onSubmit={handleSubmit((data) => mutation.mutate(data))}>
+              <div className="replica-field">
+                <label className="replica-label" htmlFor="email">University Email</label>
+                <div className="replica-input-wrap">
+                  <span className="replica-input-icon">mail</span>
                   <input
-                    {...register('phone_number')}
-                    placeholder="+234 801 234 5678"
-                    className={`field-input${focused === 'phone' ? ' focused' : ''}${errors.phone_number ? ' has-error' : ''}`}
-                    onFocus={() => setFocused('phone')}
-                    onBlur={() => setFocused(null)}
+                    id="email"
+                    type="email"
+                    placeholder="adeniran.m2302417@st.futminna.edu.ng"
+                    className="replica-input"
+                    {...register('email')}
                   />
                 </div>
-                {errors.phone_number && (
-                  <div className="field-error">{errors.phone_number.message}</div>
-                )}
+                {errors.email && <div className="replica-error">{errors.email.message}</div>}
               </div>
 
-              <div className="field">
-                <div className="field-label">
-                  <span>Password</span>
+              <div className="replica-field">
+                <div className="replica-label-row">
+                  <label className="replica-label" htmlFor="password">Password</label>
+                  <Link className="replica-forgot" to="/password-reset">Forgot?</Link>
                 </div>
-                <div className="input-wrap">
+                <div className="replica-input-wrap">
+                  <span className="replica-input-icon">lock</span>
                   <input
+                    id="password"
+                    type="password"
+                    placeholder="••••••••"
+                    className="replica-input"
                     {...register('password')}
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="Enter your password"
-                    className={`field-input${focused === 'pass' ? ' focused' : ''}${errors.password ? ' has-error' : ''}`}
-                    onFocus={() => setFocused('pass')}
-                    onBlur={() => setFocused(null)}
                   />
-                  <button type="button" className="show-btn" onClick={() => setShowPassword(!showPassword)}>
-                    {showPassword ? 'hide' : 'show'}
-                  </button>
                 </div>
-                {errors.password && (
-                  <div className="field-error">{errors.password.message}</div>
-                )}
+                {errors.password && <div className="replica-error">{errors.password.message}</div>}
               </div>
 
-              <button type="submit" className="submit-btn" disabled={mutation.isPending}>
-                {mutation.isPending ? (
-                  <><span className="spinner" />Signing in...</>
-                ) : 'Sign In'}
+              <button className="replica-submit" type="submit" disabled={mutation.isPending}>
+                {mutation.isPending ? 'Signing in...' : 'Login Securely'}
+                <span className="replica-submit-icon">arrow_forward</span>
               </button>
-
             </form>
 
-            <div className="divider">
-              <div className="divider-line" />
-              <span className="divider-txt">or</span>
-              <div className="divider-line" />
+            <div className="replica-info">
+              <span className="replica-info-icon">verified_user</span>
+              <p>Student ID verification is required for all new riders to ensure campus safety and exclusive access.</p>
             </div>
 
-            <div className="footer-links">
-              <p>No account yet? <Link to="/register">Create one</Link></p>
-              <p>Are you a driver? <Link to="/driver/login">Driver login</Link></p>
+            <div className="replica-foot">
+              <p>New to CampusRide?</p>
+              <Link className="replica-create" to="/register">Create Account</Link>
+              <p>Are you a driver? <Link className="replica-forgot" to="/driver/login">Driver login</Link></p>
             </div>
-
           </div>
         </div>
-
       </div>
     </>
   )

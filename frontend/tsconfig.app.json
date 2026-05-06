@@ -7,6 +7,13 @@
     "module": "ESNext",
     "types": ["vite/client"],
     "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@core/*": ["src/core/*"],
+      "@student/*": ["src/student/*"],
+      "@driver/*": ["src/driver/*"],
+      "@admin/*": ["src/admin/*"]
+    },
 
     /* Bundler mode */
     "moduleResolution": "bundler",
