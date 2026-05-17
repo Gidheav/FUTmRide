@@ -22,7 +22,11 @@ const DEEP_SHADOW = {
 
 const MAP_IMAGE = "https://lh3.googleusercontent.com/aida-public/AB6AXuDH5Mc0CtUncK6AM9ekDcXpokpcii8T-mtnBtBSwJHLEFy-r2xky1Axae-FBOvLGIJbmjVXgxQx4IxrNYEuHgQu_QXdceeZKdIg2isg_qJULq9See4bWpI3mkejzY0yL_9XzwHsDVjrKHXAHyvqb13fZu_VcptaomSO-OO8AUkiluQwANgxVUlYG9yyqbufqOrOjXYKIlk41RQE4cK4IoO2eBFTaqQ1Bs1hzcbGqJCEK1gYXC2Jb2Z6z8HZeRr_C3iH3F6Rsr8j7lI";
 
-const DashboardScreen = () => {
+type DashboardScreenProps = {
+  onCreateGarageRide?: () => void;
+};
+
+const DashboardScreen = ({ onCreateGarageRide }: DashboardScreenProps) => {
   const pulseAnim = useRef(new Animated.Value(0)).current;
   const heatPulse1 = useRef(new Animated.Value(0.4)).current;
   const heatPulse2 = useRef(new Animated.Value(0.3)).current;
@@ -155,12 +159,12 @@ const DashboardScreen = () => {
         <Text style={styles.sectionTitle}>QUICK ACTIONS</Text>
         <View style={styles.quickActionsGrid}>
           {[
-            { icon: 'map' as const, label: 'Map' },
-            { icon: 'support-agent' as const, label: 'Support' },
-            { icon: 'calendar-month' as const, label: 'Schedule' },
-            { icon: 'car-repair' as const, label: 'Vehicle' },
+            { icon: 'map' as const, label: 'Map', action: undefined },
+            { icon: 'support-agent' as const, label: 'Support', action: undefined },
+            { icon: 'qr-code-scanner' as const, label: 'Garage QR', action: onCreateGarageRide },
+            { icon: 'car-repair' as const, label: 'Vehicle', action: undefined },
           ].map((item, idx) => (
-            <TouchableOpacity key={idx} style={styles.quickActionItem} activeOpacity={0.8}>
+            <TouchableOpacity key={idx} style={styles.quickActionItem} activeOpacity={0.8} onPress={item.action}>
               <MaterialIcons name={item.icon} size={24} color={COLORS.primaryContainer} />
               <Text style={[FONTS.labelMd, { color: COLORS.onSurface }]}>{item.label}</Text>
             </TouchableOpacity>

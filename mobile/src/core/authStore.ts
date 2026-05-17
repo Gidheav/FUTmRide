@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { clearAuthTokens, setAuthTokens } from '../../utils/storage'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
 export type UserRole = 'student' | 'driver'
@@ -32,30 +33,36 @@ export const useAuthStore = create<AuthStore>()(
       accessToken: null,
       refreshToken: null,
       isAuthenticated: false,
-      setAuth: (user, accessToken, refreshToken) =>
-        set({
+      setAuth: (user, accessToken, refreshToken) => {
+        void setAuthTokens({ accessToken, refreshToken })
+        return set({
           user,
           accessToken,
           refreshToken,
           isAuthenticated: true,
-        }),
+        })
+      },
       setUser: (user) =>
         set({
           user,
         }),
-      setTokens: (accessToken, refreshToken) =>
-        set({
+      setTokens: (accessToken, refreshToken) => {
+        void setAuthTokens({ accessToken, refreshToken })
+        return set({
           accessToken,
           refreshToken,
           isAuthenticated: true,
-        }),
-      logout: () =>
-        set({
+        })
+      },
+      logout: () => {
+        void clearAuthTokens()
+        return set({
           user: null,
           accessToken: null,
           refreshToken: null,
           isAuthenticated: false,
-        }),
+        })
+      },
     }),
     {
       name: 'auth-store',

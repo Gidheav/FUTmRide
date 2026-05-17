@@ -15,6 +15,7 @@ import AppLockPage from './pages/AppLockPage'
 import BookRidePage from './pages/BookRidePage'
 import RideMatchingPage from './pages/RideMatchingPage'
 import ActiveRidePage from './pages/ActiveRidePage'
+import GarageRidePage from './pages/GarageRidePage'
 import StudentLayout from './layout/StudentLayout'
 import StudentSidebar from './components/StudentSidebar'
 import type { StudentTab } from './types'
@@ -26,7 +27,7 @@ import useWalletStore from '../core/walletStore'
 // Statuses where we show the matching (searching) screen
 const MATCHING_STATUSES = ['requested', 'searching']
 
-type RideScreen = 'none' | 'booking' | 'matching' | 'active'
+type RideScreen = 'none' | 'booking' | 'matching' | 'active' | 'garage'
 
 export default function StudentApp() {
   const { isAuthenticated, user, refreshToken, setTokens, setUser, logout } = useAuthStore()
@@ -63,6 +64,8 @@ export default function StudentApp() {
   const [activeRideId, setActiveRideId] = useState<string | null>(null)
   // Shallow active ride info for the dashboard button
   const [activeRideSummary, setActiveRideSummary] = useState<{ id: string; status: string } | null>(null)
+  // Token from scanned garage ride QR code
+  const [garageQrToken, setGarageQrToken] = useState<string | null>(null)
   // Track if we have already done the initial active-ride check
   const rideCheckedRef = useRef(false)
 
@@ -296,6 +299,20 @@ export default function StudentApp() {
         />
       )
     }
+
+    if (rideScreen === 'garage' && garageQrToken) {
+      return (
+        <GarageRidePage
+          qrToken={garageQrToken}
+          onClose={() => setRideScreen('none')}
+          onBoarded={() => {
+            // Optionally, we could show a list of boarded garage rides somewhere, 
+            // but for now returning to dashboard is fine.
+            setRideScreen('none')
+          }}
+        />
+      )
+    }
     return null
   }
 
@@ -314,6 +331,10 @@ export default function StudentApp() {
             } else {
               setRideScreen('active')
             }
+          }}
+          onQrScanned={(token) => {
+            setGarageQrToken(token)
+            setRideScreen('garage')
           }}
           activeRide={activeRideSummary}
         />

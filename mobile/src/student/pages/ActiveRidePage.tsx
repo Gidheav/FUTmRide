@@ -5,6 +5,7 @@ import {
   AppState,
   Image,
   Linking,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,9 +14,12 @@ import {
 } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps'
 import api from '../../core/api'
 import useWalletStore from '../../core/walletStore'
 import { showRideStatusNotification } from '../../core/pushNotifications'
+import { WS_BASE_URL } from '../../../config/apiConfig'
+import { getAuthTokens } from '../../../utils/storage'
 
 type ActiveRidePageProps = {
   rideId?: string | null
@@ -49,6 +53,8 @@ export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRi
   const [error, setError] = useState<string | null>(null)
   const [cancelling, setCancelling] = useState(false)
   const lastStatusRef = useRef<string | null>(null)
+  const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null)
+  const wsRef = useRef<WebSocket | null>(null)
 
   useEffect(() => {
     let isMounted = true
@@ -98,6 +104,56 @@ export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRi
     return () => {
       isMounted = false
       if (intervalId) clearInterval(intervalId)
+    }
+  }, [rideId])
+
+  useEffect(() => {
+    let isActive = true
+
+    const connectWs = async () => {
+      if (!rideId) return
+      const tokens = await getAuthTokens()
+      const accessToken = tokens?.accessToken
+      if (!accessToken) return
+
+      const wsUrl = `${WS_BASE_URL}/ws/ride/${rideId}/track/?token=${accessToken}`
+      const socket = new WebSocket(wsUrl)
+      wsRef.current = socket
+
+      socket.onmessage = (event) => {
+        if (!isActive) return
+        try {
+          const payload = JSON.parse(event.data)
+          if (payload?.type === 'driver_location') {
+            const lat = Number(payload.latitude)
+            const lng = Number(payload.longitude)
+            if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
+              setDriverLocation({ latitude: lat, longitude: lng })
+            }
+          }
+        } catch {
+          // ignore malformed messages
+        }
+      }
+
+      socket.onerror = () => {
+        // keep silent, REST polling continues
+      }
+
+      socket.onclose = () => {
+        if (!isActive) return
+        wsRef.current = null
+      }
+    }
+
+    void connectWs()
+
+    return () => {
+      isActive = false
+      if (wsRef.current) {
+        wsRef.current.close()
+        wsRef.current = null
+      }
     }
   }, [rideId])
 
@@ -163,6 +219,22 @@ export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRi
   const etaLabel = ride?.estimated_duration_minutes ? `${ride.estimated_duration_minutes} min` : null
   const refLabel = ride?.reference || ''
 
+  const pickupCoords = ride?.pickup_latitude && ride?.pickup_longitude
+    ? { latitude: Number(ride.pickup_latitude), longitude: Number(ride.pickup_longitude) }
+    : null
+  const dropoffCoords = ride?.dropoff_latitude && ride?.dropoff_longitude
+    ? { latitude: Number(ride.dropoff_latitude), longitude: Number(ride.dropoff_longitude) }
+    : null
+
+  const mapRegion: Region | undefined = pickupCoords
+    ? {
+      latitude: pickupCoords.latitude,
+      longitude: pickupCoords.longitude,
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    }
+    : undefined
+
   return (
     <View style={[styles.page, { paddingTop: insets.top }]}>
       {/* Header */}
@@ -175,6 +247,25 @@ export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRi
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {mapRegion ? (
+          <View style={styles.mapCard}>
+            <MapView
+              style={styles.map}
+              provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+              initialRegion={mapRegion}
+            >
+              {pickupCoords ? (
+                <Marker coordinate={pickupCoords} title="Pickup" />
+              ) : null}
+              {dropoffCoords ? (
+                <Marker coordinate={dropoffCoords} title="Dropoff" pinColor="#1D4ED8" />
+              ) : null}
+              {driverLocation ? (
+                <Marker coordinate={driverLocation} title="Driver" pinColor="#6A1B9A" />
+              ) : null}
+            </MapView>
+          </View>
+        ) : null}
         {loading && (
           <View style={styles.loadingRow}>
             <ActivityIndicator size="small" color="#6A1B9A" />
@@ -345,6 +436,17 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
     paddingBottom: 40,
+  },
+  mapCard: {
+    height: 220,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#f3f3f3',
+    marginBottom: 16,
+  },
+  map: {
+    width: '100%',
+    height: '100%',
   },
   loadingRow: {
     flexDirection: 'row',

@@ -16,7 +16,7 @@ import {
 import { useEffect, useState } from 'react'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useAuthStore } from '../../core/authStore'
-import api from '../../core/api'
+import api, { API_BASE_URL } from '../../core/api'
 
 const ILLUSTRATION_IMAGE = require('../../homeslide3-1-1024x499.png')
 const studentEmailRegex = /^[A-Za-z]+\.[mM]\d+@st\.futminna\.edu\.ng$/
@@ -39,7 +39,7 @@ const getApiErrorMessage = (err: any, fallback: string) => {
   }
 
   if (!err?.response) {
-    return 'Cannot reach server. Ensure backend is running on 0.0.0.0:8002 and your phone is on the same Wi-Fi.'
+    return `Cannot reach server. Ensure backend is running and reachable at ${API_BASE_URL}.`
   }
 
   return fallback
@@ -92,9 +92,9 @@ export default function StudentLoginScreen() {
     setError('')
 
     try {
-      const loginRes = await api.post('/auth/login/', { email, password })
+      const loginRes = await api.post('auth/login/', { email, password })
 
-      const userRes = await api.get('/users/me/', {
+      const userRes = await api.get('users/me/', {
         headers: { Authorization: `Bearer ${loginRes.data.access}` },
       })
 
@@ -122,7 +122,7 @@ export default function StudentLoginScreen() {
     setSignupError('')
 
     try {
-      await api.post('/auth/register/', {
+      await api.post('auth/register/', {
         email,
         password: signupPassword,
         confirm_password: signupPassword,

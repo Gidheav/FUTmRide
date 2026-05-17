@@ -213,3 +213,35 @@ class DriverRideRequestSerializer(serializers.ModelSerializer):
         model = DriverRideRequest
         fields = ['id', 'ride', 'response', 'offered_at', 'responded_at']
         read_only_fields = fields
+
+
+class AvailableRidesQuerySerializer(serializers.Serializer):
+    latitude = serializers.FloatField()
+    longitude = serializers.FloatField()
+    radius_km = serializers.FloatField(default=5)
+    vehicle_type = serializers.ChoiceField(choices=VehicleType.choices, required=False)
+    max_age_seconds = serializers.IntegerField(default=300, required=False)
+
+    def validate_radius_km(self, value):
+        if value <= 0 or value > 50:
+            raise serializers.ValidationError('radius_km must be between 0 and 50.')
+        return value
+
+    def validate_max_age_seconds(self, value):
+        if value < 30 or value > 3600:
+            raise serializers.ValidationError('max_age_seconds must be between 30 and 3600.')
+        return value
+
+
+class AvailableDriverSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    full_name = serializers.CharField()
+    profile_photo = serializers.CharField(allow_null=True)
+    vehicle_type = serializers.CharField(allow_null=True)
+    vehicle_make = serializers.CharField(allow_null=True)
+    vehicle_model = serializers.CharField(allow_null=True)
+    vehicle_color = serializers.CharField(allow_null=True)
+    plate_number = serializers.CharField(allow_null=True)
+    average_rating = serializers.CharField(allow_null=True)
+    distance_km = serializers.FloatField()
+    location_updated_at = serializers.DateTimeField()

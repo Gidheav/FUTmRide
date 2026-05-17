@@ -9,6 +9,7 @@ from rest_framework.exceptions import NotFound, PermissionDenied
 from django_filters.rest_framework import DjangoFilterBackend
 
 from apps.accounts.models import UserRole, DriverProfile
+from apps.rides.garage_models import GarageRide, GarageRideStatus
 from apps.accounts.permissions import IsAdminUser
 from apps.payments.models import WalletTransaction
 from apps.payments.services import WalletService
@@ -18,8 +19,10 @@ from .serializers import (
     RideDetailSerializer,
     RideListSerializer,
     RideCancelSerializer,
+    AvailableRidesQuerySerializer,
+    AvailableDriverSerializer,
 )
-from .services import FareCalculator
+from .services import FareCalculator, get_available_drivers_nearby
 from .notifications import notify_student_ride_status
 
 logger = logging.getLogger('apps.rides')
@@ -346,7 +349,15 @@ class DriverMarketplaceListView(generics.ListAPIView):
             driver=request.user,
             status__in=ACTIVE_DRIVER_STATUSES,
         ).exists()
-        if has_active:
+        has_active_garage = GarageRide.objects.filter(
+            driver=request.user,
+            status__in=[
+                GarageRideStatus.OPEN,
+                GarageRideStatus.FULL,
+                GarageRideStatus.DEPARTED,
+            ],
+        ).exists()
+        if has_active or has_active_garage:
             return Response({'results': [], 'driver_has_active_ride': True})
 
         queryset = self.filter_queryset(self.get_queryset())
@@ -414,6 +425,23 @@ class DriverAcceptRideView(APIView):
                     },
                     status=status.HTTP_409_CONFLICT,
                 )
+            if GarageRide.objects.filter(
+                driver=request.user,
+                status__in=[
+                    GarageRideStatus.OPEN,
+                    GarageRideStatus.FULL,
+                    GarageRideStatus.DEPARTED,
+                ],
+            ).exists():
+                return Response(
+                    {
+                        'error': {
+                            'code': 'ACTIVE_GARAGE_RIDE_EXISTS',
+                            'message': 'Finish your garage ride before accepting on-demand requests.',
+                        }
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
             if profile.is_on_trip:
                 return Response(
                     {
@@ -453,6 +481,65 @@ class DriverAcceptRideView(APIView):
             profile.save(update_fields=['is_on_trip'])
         notify_student_ride_status(ride)
         return Response(RideDetailSerializer(ride, context={'request': request}).data)
+
+
+class AvailableRidesView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != UserRole.STUDENT:
+            return Response(
+                {'error': {'code': 'FORBIDDEN', 'message': 'Only students can view available rides.'}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = AvailableRidesQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        lat = float(data['latitude'])
+        lng = float(data['longitude'])
+        radius_km = float(data['radius_km'])
+        vehicle_type = data.get('vehicle_type')
+        max_age_seconds = int(data.get('max_age_seconds') or 300)
+
+        candidates = get_available_drivers_nearby(
+            latitude=lat,
+            longitude=lng,
+            radius_km=radius_km,
+            vehicle_type=vehicle_type,
+            max_age_seconds=max_age_seconds,
+        )
+
+        results = []
+        for distance_km, loc in candidates:
+            user = loc.driver
+            profile = getattr(user, 'driver_profile', None)
+            photo_url = None
+            if user.profile_photo:
+                photo_url = request.build_absolute_uri(user.profile_photo.url)
+            results.append({
+                'id': user.id,
+                'full_name': user.full_name,
+                'profile_photo': photo_url,
+                'vehicle_type': getattr(profile, 'vehicle_type', None),
+                'vehicle_make': getattr(profile, 'vehicle_make', None),
+                'vehicle_model': getattr(profile, 'vehicle_model', None),
+                'vehicle_color': getattr(profile, 'vehicle_color', None),
+                'plate_number': getattr(profile, 'plate_number', None),
+                'average_rating': str(profile.average_rating) if profile and profile.average_rating is not None else None,
+                'distance_km': round(distance_km, 2),
+                'location_updated_at': loc.updated_at,
+            })
+
+        return Response({
+            'center': {'latitude': lat, 'longitude': lng},
+            'radius_km': radius_km,
+            'max_age_seconds': max_age_seconds,
+            'vehicle_type': vehicle_type,
+            'count': len(results),
+            'results': AvailableDriverSerializer(results, many=True).data,
+        })
 
 
 class AdminRideListView(generics.ListAPIView):

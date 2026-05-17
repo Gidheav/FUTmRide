@@ -1,0 +1,370 @@
+import logging
+from decimal import Decimal
+
+from django.db import transaction
+from rest_framework import generics, permissions, status
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
+
+from apps.accounts.models import UserRole, DriverProfile
+from apps.payments.models import WalletTransaction
+from apps.payments.services import WalletService
+
+from .garage_models import GarageRide, GarageRidePassenger, GarageRideStatus
+from .garage_serializers import (
+    GarageRideCreateSerializer,
+    GarageRideDetailSerializer,
+    GarageRideBoardSerializer,
+    GarageRidePassengerSerializer,
+)
+
+logger = logging.getLogger('apps.rides')
+
+
+# ─── Driver endpoints ────────────────────────────────────────────────────────
+
+class GarageRideCreateView(generics.CreateAPIView):
+    """
+    POST /rides/garage/create/
+    Driver creates a new garage ride. Returns the full ride detail
+    including the qr_token (which the driver app encodes into a QR).
+    """
+    serializer_class = GarageRideCreateSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def create(self, request, *args, **kwargs):
+        if request.user.role != UserRole.DRIVER:
+            return Response(
+                {'error': {'code': 'FORBIDDEN', 'message': 'Only drivers can create garage rides.'}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            profile = request.user.driver_profile
+        except DriverProfile.DoesNotExist:
+            return Response(
+                {'error': {'code': 'NO_PROFILE', 'message': 'Driver profile not found.'}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if profile.verification_status != DriverProfile.VerificationStatus.APPROVED:
+            return Response(
+                {'error': {'code': 'NOT_APPROVED', 'message': 'Your driver account is not yet approved.'}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        active_exists = GarageRide.objects.filter(
+            driver=request.user,
+            status__in=[
+                GarageRideStatus.OPEN,
+                GarageRideStatus.FULL,
+                GarageRideStatus.DEPARTED,
+            ],
+        ).exists()
+        if active_exists:
+            return Response(
+                {
+                    'error': {
+                        'code': 'ACTIVE_GARAGE_RIDE_EXISTS',
+                        'message': 'You already have an active garage ride. Complete it before creating another.',
+                    }
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        garage_ride = serializer.save()
+
+        logger.info(
+            'garage_ride_created ref=%s driver=%s qr=%s',
+            garage_ride.reference,
+            str(request.user.id),
+            str(garage_ride.qr_token),
+        )
+        return Response(
+            GarageRideDetailSerializer(garage_ride, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class DriverGarageRideListView(generics.ListAPIView):
+    """
+    GET /rides/garage/mine/
+    Driver lists their own garage rides (active ones first).
+    """
+    serializer_class = GarageRideDetailSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        if self.request.user.role != UserRole.DRIVER:
+            raise PermissionDenied('Only drivers can access this endpoint.')
+        return GarageRide.objects.filter(
+            driver=self.request.user
+        ).prefetch_related('passengers').select_related('driver', 'driver__driver_profile')
+
+
+class GarageRideDepartView(APIView):
+    """
+    POST /rides/garage/<id>/depart/
+    Driver marks the ride as departed (closes boarding).
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, ride_id):
+        if request.user.role != UserRole.DRIVER:
+            return Response(
+                {'error': {'code': 'FORBIDDEN', 'message': 'Only drivers can update garage rides.'}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            ride = GarageRide.objects.get(id=ride_id, driver=request.user)
+        except GarageRide.DoesNotExist:
+            raise NotFound('Garage ride not found.')
+
+        if ride.status != GarageRideStatus.OPEN:
+            return Response(
+                {'error': {'code': 'INVALID_STATUS', 'message': f'Cannot depart a ride with status: {ride.status}'}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from django.utils import timezone
+        ride.status = GarageRideStatus.DEPARTED
+        ride.departed_at = timezone.now()
+        ride.save(update_fields=['status', 'departed_at'])
+        logger.info('garage_ride_departed ref=%s driver=%s', ride.reference, str(request.user.id))
+        return Response(GarageRideDetailSerializer(ride, context={'request': request}).data)
+
+
+class GarageRideCancelView(APIView):
+    """
+    POST /rides/garage/<id>/cancel/
+    Driver cancels/deletes an open garage ride. Refunds any passengers.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, ride_id):
+        if request.user.role != UserRole.DRIVER:
+            return Response(
+                {'error': {'code': 'FORBIDDEN', 'message': 'Only drivers can cancel garage rides.'}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            ride = GarageRide.objects.get(id=ride_id, driver=request.user)
+        except GarageRide.DoesNotExist:
+            raise NotFound('Garage ride not found.')
+
+        if ride.status == GarageRideStatus.DEPARTED:
+            return Response(
+                {'error': {'code': 'ALREADY_DEPARTED', 'message': 'Ride has already departed.'}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            # Refund all passengers
+            for passenger in ride.passengers.select_related('student'):
+                try:
+                    WalletService.credit(
+                        user=passenger.student,
+                        amount=passenger.amount_paid,
+                        source=WalletTransaction.Source.RIDE_REFUND,
+                        narration=f'Refund — garage ride {ride.reference} cancelled',
+                        metadata={'garage_ride_id': str(ride.id), 'garage_reference': ride.reference},
+                    )
+                    logger.info(
+                        'garage_ride_passenger_refunded ride=%s student=%s amount=%s',
+                        ride.reference,
+                        str(passenger.student_id),
+                        str(passenger.amount_paid),
+                    )
+                except Exception as e:
+                    logger.error(
+                        'garage_ride_refund_error ride=%s student=%s error=%s',
+                        ride.reference,
+                        str(passenger.student_id),
+                        str(e),
+                    )
+
+            ride.status = GarageRideStatus.CANCELLED
+            ride.save(update_fields=['status'])
+
+        logger.info('garage_ride_cancelled ref=%s driver=%s', ride.reference, str(request.user.id))
+        return Response(GarageRideDetailSerializer(ride, context={'request': request}).data)
+
+
+# ─── Public scan endpoint (requires auth so we know who is scanning) ─────────
+
+class GarageRideScanView(APIView):
+    """
+    GET /rides/garage/scan/<qr_token>/
+    Student scans the QR code. Returns ride details so the student
+    can review before paying. This is READ-ONLY — no payment yet.
+    Any authenticated user can call this (student or driver previewing).
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, qr_token):
+        try:
+            ride = GarageRide.objects.select_related(
+                'driver', 'driver__driver_profile'
+            ).get(qr_token=qr_token)
+        except GarageRide.DoesNotExist:
+            raise NotFound('Ride not found. This QR code may be invalid or expired.')
+
+        # Check if the student has already boarded
+        already_boarded = False
+        if request.user.role == UserRole.STUDENT:
+            already_boarded = GarageRidePassenger.objects.filter(
+                garage_ride=ride,
+                student=request.user,
+            ).exists()
+
+        data = GarageRideDetailSerializer(ride, context={'request': request}).data
+        data['already_boarded'] = already_boarded
+        return Response(data)
+
+
+# ─── Student board (pay) endpoint ────────────────────────────────────────────
+
+class GarageRideBoardView(APIView):
+    """
+    POST /rides/garage/scan/<qr_token>/board/
+    Student confirms payment and boards the garage ride.
+    Atomically debits wallet and reserves seats.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, qr_token):
+        if request.user.role != UserRole.STUDENT:
+            return Response(
+                {'error': {'code': 'FORBIDDEN', 'message': 'Only students can board garage rides.'}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = GarageRideBoardSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        seats_requested = serializer.validated_data['seats']
+
+        with transaction.atomic():
+            # Lock the ride row
+            try:
+                ride = GarageRide.objects.select_for_update().select_related(
+                    'driver', 'driver__driver_profile'
+                ).get(qr_token=qr_token)
+            except GarageRide.DoesNotExist:
+                raise NotFound('Ride not found. Invalid QR code.')
+
+            # Validate ride state
+            if ride.status != GarageRideStatus.OPEN:
+                return Response(
+                    {
+                        'error': {
+                            'code': 'RIDE_NOT_OPEN',
+                            'message': f'This ride is no longer accepting passengers (status: {ride.status}).',
+                        }
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if ride.is_expired:
+                return Response(
+                    {'error': {'code': 'QR_EXPIRED', 'message': 'This QR code has expired.'}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Prevent driver boarding their own ride
+            if ride.driver == request.user:
+                return Response(
+                    {'error': {'code': 'OWN_RIDE', 'message': 'You cannot board your own garage ride.'}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Prevent duplicate boarding
+            if GarageRidePassenger.objects.filter(garage_ride=ride, student=request.user).exists():
+                return Response(
+                    {'error': {'code': 'ALREADY_BOARDED', 'message': 'You have already paid for this ride.'}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Check seat availability
+            if seats_requested > ride.available_seats:
+                return Response(
+                    {
+                        'error': {
+                            'code': 'INSUFFICIENT_SEATS',
+                            'message': f'Only {ride.available_seats} seat(s) available.',
+                        }
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            total_amount = Decimal(str(ride.fare_per_seat)) * seats_requested
+
+            # Debit student wallet atomically
+            try:
+                tx = WalletService.debit(
+                    user=request.user,
+                    amount=total_amount,
+                    source=WalletTransaction.Source.RIDE_PAYMENT,
+                    narration=f'Garage ride — {ride.reference} ({seats_requested} seat{"s" if seats_requested > 1 else ""})',
+                    metadata={
+                        'garage_ride_id': str(ride.id),
+                        'garage_reference': ride.reference,
+                        'seats': seats_requested,
+                    },
+                )
+            except ValueError:
+                return Response(
+                    {'error': {'code': 'INSUFFICIENT_WALLET', 'message': 'Insufficient wallet balance.'}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Reserve seats
+            ride.booked_seats += seats_requested
+            if ride.booked_seats >= ride.total_seats:
+                ride.status = GarageRideStatus.FULL
+            ride.save(update_fields=['booked_seats', 'status'])
+
+            # Create passenger record
+            passenger = GarageRidePassenger.objects.create(
+                garage_ride=ride,
+                student=request.user,
+                seats_booked=seats_requested,
+                amount_paid=total_amount,
+                wallet_transaction_reference=tx.reference,
+            )
+
+        logger.info(
+            'garage_ride_boarded ref=%s student=%s seats=%s amount=%s',
+            ride.reference,
+            str(request.user.id),
+            seats_requested,
+            str(total_amount),
+        )
+
+        return Response(
+            {
+                'message': f'Successfully boarded! {seats_requested} seat(s) reserved.',
+                'passenger': GarageRidePassengerSerializer(passenger).data,
+                'ride': GarageRideDetailSerializer(ride, context={'request': request}).data,
+                'amount_paid': str(total_amount),
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+# ─── Passenger list (driver sees who has boarded) ─────────────────────────
+
+class GarageRidePassengersView(generics.ListAPIView):
+    """
+    GET /rides/garage/<id>/passengers/
+    Driver sees who has boarded their garage ride.
+    """
+    serializer_class = GarageRidePassengerSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        ride_id = self.kwargs['ride_id']
+        try:
+            ride = GarageRide.objects.get(id=ride_id, driver=self.request.user)
+        except GarageRide.DoesNotExist:
+            raise NotFound('Garage ride not found.')
+        return ride.passengers.select_related('student')

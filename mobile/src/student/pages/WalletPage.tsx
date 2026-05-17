@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { WebView } from 'react-native-webview'
 import api from '../../core/api'
+import { PAYMENT_CALLBACK_URL } from '../../../config/apiConfig'
 import useWalletStore from '../../core/walletStore'
 
 export default function StudentWalletPage() {
@@ -26,9 +27,7 @@ export default function StudentWalletPage() {
   const [webviewReference, setWebviewReference] = useState<string | null>(null)
   const { walletBalance, setWalletBalance } = useWalletStore()
 
-  const callbackUrl =
-    process.env.EXPO_PUBLIC_PAYMENT_CALLBACK_URL ||
-    'https://alpha-paroxysmic-revertively.ngrok-free.dev'
+  const callbackUrl = PAYMENT_CALLBACK_URL
 
   const formatAmount = useCallback((value: number | string) => {
     const numeric = Number(value || 0)
@@ -136,8 +135,12 @@ export default function StudentWalletPage() {
         setWebviewUrl(paymentUrl)
         setWebviewVisible(true)
       }
-    } catch (err) {
-      setTopupError('Failed to initiate top-up. Please try again.')
+    } catch (err: any) {
+      const message =
+        err?.response?.data?.error?.message ||
+        err?.response?.data?.message ||
+        'Failed to initiate top-up. Please try again.'
+      setTopupError(String(message))
     } finally {
       setTopupLoading(false)
     }

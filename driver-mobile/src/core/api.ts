@@ -1,22 +1,6 @@
 import axios from 'axios'
-import Constants from 'expo-constants'
-import { Platform } from 'react-native'
 import { useAuthStore } from './authStore'
-
-const getDevHost = () => {
-  const hostUri =
-    Constants.expoConfig?.hostUri ||
-    (Constants as { manifest?: { hostUri?: string } }).manifest?.hostUri
-  if (!hostUri) return null
-  return hostUri.split(':')[0]
-}
-
-export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL ||
-  (getDevHost() ? `http://${getDevHost()}:8002/api/v1` : null) ||
-  (Platform.OS === 'android'
-    ? 'http://10.0.2.2:8002/api/v1'
-    : 'http://localhost:8002/api/v1')
+import { API_BASE_URL } from '../../config/apiConfig'
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -44,6 +28,11 @@ export const driverApi = {
   advanceRide: (rideId: string) => api.post(`rides/${rideId}/advance/`),
   getMarketplaceRequests: () => api.get('rides/driver/requests/'),
   acceptRideRequest: (rideId: string) => api.post(`rides/driver/requests/${rideId}/accept/`),
+  getGarageRides: () => api.get('rides/garage/mine/'),
+  createGarageRide: (data: any) => api.post('rides/garage/create/', data),
+  departGarageRide: (rideId: string) => api.post(`rides/garage/${rideId}/depart/`),
+  cancelGarageRide: (rideId: string) => api.post(`rides/garage/${rideId}/cancel/`),
+  getGaragePassengers: (rideId: string) => api.get(`rides/garage/${rideId}/passengers/`),
 }
 
 export const verificationApi = {

@@ -1,7 +1,10 @@
 import logging
+import math
+from datetime import timedelta
 from django.utils import timezone
 from django.conf import settings
 from apps.accounts.models import DriverProfile, UserRole
+from apps.tracking.models import DriverLocation
 from .models import Ride, DriverRideRequest, RideStatus
 
 logger = logging.getLogger('apps.rides')
@@ -99,3 +102,54 @@ class RideMatchingService:
             str(driver_profile.user.id),
         )
         return True
+
+
+def haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    # Radius of Earth in km
+    radius = 6371.0
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lng2 - lng1)
+
+    a = math.sin(delta_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return radius * c
+
+
+def get_available_drivers_nearby(
+    latitude: float,
+    longitude: float,
+    radius_km: float,
+    vehicle_type: str | None = None,
+    max_age_seconds: int = 300,
+    limit: int = 50,
+):
+    cutoff = timezone.now() - timedelta(seconds=max_age_seconds)
+    # Rough bounding box to reduce candidate rows
+    delta_lat = radius_km / 111.0
+    delta_lng = radius_km / (111.0 * max(math.cos(math.radians(latitude)), 0.0001))
+
+    qs = DriverLocation.objects.filter(
+        updated_at__gte=cutoff,
+        latitude__gte=latitude - delta_lat,
+        latitude__lte=latitude + delta_lat,
+        longitude__gte=longitude - delta_lng,
+        longitude__lte=longitude + delta_lng,
+        driver__is_active=True,
+        driver__driver_profile__verification_status=DriverProfile.VerificationStatus.APPROVED,
+        driver__driver_profile__is_online=True,
+        driver__driver_profile__is_on_trip=False,
+    ).select_related('driver', 'driver__driver_profile')
+
+    if vehicle_type:
+        qs = qs.filter(driver__driver_profile__vehicle_type=vehicle_type)
+
+    candidates = []
+    for loc in qs:
+        dist_km = haversine_km(latitude, longitude, float(loc.latitude), float(loc.longitude))
+        if dist_km <= radius_km:
+            candidates.append((dist_km, loc))
+
+    candidates.sort(key=lambda item: item[0])
+    return candidates[:limit]

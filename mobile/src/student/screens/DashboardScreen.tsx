@@ -174,6 +174,7 @@ type StudentDashboardScreenProps = {
   onNavigateToWallet?: () => void
   onBookRide?: () => void
   onViewRideStatus?: () => void
+  onQrScanned?: (qrToken: string) => void
   activeRide?: { id: string; status: string } | null
 }
 
@@ -181,6 +182,7 @@ export default function StudentDashboardScreen({
   onNavigateToWallet,
   onBookRide,
   onViewRideStatus,
+  onQrScanned,
   activeRide,
 }: StudentDashboardScreenProps) {
   const mapRef = useRef<MapView | null>(null)
@@ -303,8 +305,17 @@ export default function StudentDashboardScreen({
   const handleScan = ({ data }: { data: string }) => {
     setScanned(true)
     setScannerVisible(false)
-    // TODO: handle scanned QR data
-    console.log('Scanned QR:', data)
+    // Extract the UUID qr_token from the scanned data.
+    // The QR payload could be a plain UUID, or a URL containing a UUID.
+    const uuidPattern = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+    const match = data.match(uuidPattern)
+    if (match && onQrScanned) {
+      onQrScanned(match[0])
+    } else {
+      // If no valid UUID found, show an alert
+      const { Alert } = require('react-native')
+      Alert.alert('Invalid QR', 'This QR code is not a valid ride code.')
+    }
   }
 
   const handleLocateUser = async () => {

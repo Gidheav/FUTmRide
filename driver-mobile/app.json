@@ -11,12 +11,19 @@
       "enabled": false,
       "checkAutomatically": "OFF"
     },
+    "android": {
+      "package": "com.lrride.driver",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
+    },
     "ios": {
       "supportsTabletMode": true,
-      "bundleIdentifier": "com.lrride.driver"
-    },
-    "android": {
-      "package": "com.lrride.driver"
+      "bundleIdentifier": "com.lrride.driver",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "We use your location to connect you with nearby students and update ride tracking."
+      }
     },
     "scheme": "lrride-driver"
   }

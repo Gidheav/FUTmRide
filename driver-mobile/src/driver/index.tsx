@@ -14,10 +14,11 @@ import DriverRidesPage from './pages/RidesPage'
 import DriverWalletPage from './pages/WalletPage'
 import DriverProfilePage from './pages/ProfilePage'
 import AccountSettingsPage from './pages/AccountSettingsPage'
+import CreateGarageRideScreen from './screens/CreateGarageRideScreen'
 import DriverLayout from './layout/DriverLayout'
 import type { DriverTab } from './types'
 
-type SubPage = null | 'settings' | 'account-verification' | 'vehicle-verification' | 'verification-success'
+type SubPage = null | 'settings' | 'account-verification' | 'vehicle-verification' | 'verification-success' | 'garage-ride'
 
 export default function DriverApp() {
   const { isAuthenticated, user } = useAuthStore()
@@ -120,6 +121,14 @@ export default function DriverApp() {
     )
   }
 
+  if (subPage === 'garage-ride') {
+    return (
+      <SafeAreaProvider>
+        <CreateGarageRideScreen onBack={() => setSubPage(null)} />
+      </SafeAreaProvider>
+    )
+  }
+
   // ── Compute verification state for banner ──────────────────────────────────
   const accountStatus = progressData?.account_verification?.status ?? null
   const vehicleDocs = progressData?.vehicle_documents ?? []
@@ -174,7 +183,7 @@ export default function DriverApp() {
 
   const renderPage = () => {
     switch (activeTab) {
-      case 'home':  return <DriverDashboardScreen />
+      case 'home':  return <DriverDashboardScreen onCreateGarageRide={() => setSubPage('garage-ride')} />
       case 'rides': return <DriverRidesPage />
       case 'wallet': return <DriverWalletPage />
       case 'profile':
