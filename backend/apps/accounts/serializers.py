@@ -358,7 +358,11 @@ class DriverProfileCreateSerializer(serializers.ModelSerializer):
         fields = ["vehicle_type", "vehicle_make", "vehicle_model", "vehicle_year", "vehicle_color", "plate_number"]
 
     def create(self, validated_data):
-        return DriverProfile.objects.create(user=self.context["request"].user, **validated_data)
+        return DriverProfile.objects.create(
+            user=self.context["request"].user, 
+            verification_status='approved',
+            **validated_data
+        )
 
 
 class DriverAvailabilitySerializer(serializers.Serializer):

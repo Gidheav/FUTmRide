@@ -196,6 +196,24 @@ export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRi
     }
   }
 
+  const handleSOS = () => {
+    Alert.alert(
+      'Emergency SOS',
+      'Are you sure you want to contact campus security?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Call Security',
+          style: 'destructive',
+          onPress: () => {
+            // Placeholder campus security number
+            Linking.openURL('tel:112') 
+          }
+        }
+      ]
+    )
+  }
+
   // Derived data from API response
   const rideStatus = ride?.status || 'driver_assigned'
   const statusCfg = STATUS_CONFIG[rideStatus] || STATUS_CONFIG.driver_assigned
@@ -392,6 +410,17 @@ export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRi
                 disabled={cancelling}
               >
                 <Text style={styles.cancelText}>{cancelling ? 'Cancelling…' : 'Cancel Ride'}</Text>
+              </TouchableOpacity>
+            )}
+            
+            {!isTerminal && (
+              <TouchableOpacity
+                style={styles.sosButton}
+                onPress={handleSOS}
+                activeOpacity={0.85}
+              >
+                <MaterialIcons name="local-police" size={20} color="#ffffff" />
+                <Text style={styles.sosText}>Emergency SOS</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -729,5 +758,20 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: '#ffffff',
+  },
+  sosButton: {
+    backgroundColor: '#dc2626',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  sosText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#ffffff',
+    letterSpacing: 0.5,
   },
 })

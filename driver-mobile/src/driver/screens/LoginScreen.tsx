@@ -56,7 +56,8 @@ export default function DriverLoginScreen() {
     }
 
     if (!err?.response) {
-      return `Cannot reach server. Ensure backend is reachable at ${API_BASE_URL}.`
+      const msg = err?.message ? ` (${err.message})` : ''
+      return `Cannot reach server${msg}. Ensure backend is reachable at ${API_BASE_URL}`
     }
 
     return fallback

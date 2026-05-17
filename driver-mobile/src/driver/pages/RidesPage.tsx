@@ -202,8 +202,8 @@ export default function DriverRidesPage() {
         }
       } catch (error: any) {
         if (isMounted) {
-          setRequestsError('Unable to load driver status.');
-          errorHoldUntil.current = Date.now() + 12000;
+          // Profile may not exist yet — default to offline so toggle works
+          setIsOnline(false);
         }
       }
     };
@@ -216,8 +216,10 @@ export default function DriverRidesPage() {
 
   useEffect(() => {
     let isMounted = true;
+    let isFirstFetch = true;
     const fetchGarageRide = async () => {
-      setLoadingGarage(true);
+      // Only show loading spinner on the very first fetch
+      if (isFirstFetch) setLoadingGarage(true);
       try {
         const response = await driverApi.getGarageRides();
         const list = Array.isArray(response?.data) ? response.data : response?.data?.results || [];
@@ -236,16 +238,17 @@ export default function DriverRidesPage() {
           setGaragePassengers([]);
         }
       } catch (error: any) {
-        if (isMounted) {
+        if (isMounted && isFirstFetch) {
           setGarageError(error?.response?.data?.error?.message || 'Unable to load garage ride.');
         }
       } finally {
         if (isMounted) setLoadingGarage(false);
+        isFirstFetch = false;
       }
     };
 
     fetchGarageRide();
-    const interval = setInterval(fetchGarageRide, 5000);
+    const interval = setInterval(fetchGarageRide, 8000);
     return () => {
       isMounted = false;
       clearInterval(interval);
@@ -382,6 +385,25 @@ export default function DriverRidesPage() {
     }
   };
 
+  const ensureDriverProfile = async () => {
+    try {
+      await driverApi.getProfile();
+    } catch (err: any) {
+      if (err?.response?.status === 404) {
+        // Auto-create a minimal driver profile
+        const profileApi = await import('../../core/api');
+        await profileApi.default.post('users/me/driver-profile/create/', {
+          vehicle_type: 'sedan',
+          vehicle_color: 'Unknown',
+          vehicle_make: 'Unknown',
+          vehicle_model: 'Unknown',
+          vehicle_year: 2020,
+          plate_number: 'PENDING',
+        });
+      }
+    }
+  };
+
   const handleCreateGarageRide = async () => {
     if (!origin || !destination) {
       setGarageError('Select both origin and destination.');
@@ -396,6 +418,9 @@ export default function DriverRidesPage() {
     setGarageError(null);
 
     try {
+      // Ensure driver profile exists before creating garage ride
+      await ensureDriverProfile();
+
       const payload: any = {
         origin_address: origin.label,
         origin_latitude: origin.latitude,
@@ -422,7 +447,8 @@ export default function DriverRidesPage() {
       setGaragePassengers([]);
       setDriverMode('garage');
     } catch (error: any) {
-      const message = error?.response?.data?.error?.message || 'Unable to create garage ride.';
+      const data = error?.response?.data;
+      const message = data?.error?.message || data?.detail || 'Unable to create garage ride.';
       setGarageError(message);
     } finally {
       setIsCreatingRide(false);

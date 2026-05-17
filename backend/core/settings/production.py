@@ -79,3 +79,6 @@ LOGGING = {
         'level': 'INFO',
     },
 }
+
+# CORS — allow all origins in production (mobile apps + web admin)
+CORS_ALLOW_ALL_ORIGINS = True

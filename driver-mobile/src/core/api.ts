@@ -2,9 +2,31 @@ import axios from 'axios'
 import { useAuthStore } from './authStore'
 import { API_BASE_URL } from '../../config/apiConfig'
 
+const normalizeBaseUrl = (rawUrl: string) => {
+  try {
+    const url = new URL(rawUrl)
+    let path = url.pathname.replace(/\/+$/, '')
+
+    if (!path.endsWith('/api/v1')) {
+      if (path.endsWith('/v1')) {
+        path = `${path.slice(0, -3)}/api/v1`
+      } else {
+        path = `${path}/api/v1`
+      }
+    }
+
+    url.pathname = `${path}/`
+    return url.toString()
+  } catch {
+    return rawUrl
+  }
+}
+
+const NORMALIZED_API_BASE_URL = normalizeBaseUrl(API_BASE_URL)
+
 const api = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 10000,
+  baseURL: NORMALIZED_API_BASE_URL,
+  timeout: 25000,
 })
 
 api.interceptors.request.use((config) => {
@@ -17,13 +39,13 @@ api.interceptors.request.use((config) => {
 })
 
 export const authApi = {
-  getMe: () => api.get('/users/me/'),
-  updateMe: (data: any) => api.patch('/users/me/', data),
+  getMe: () => api.get('users/me/'),
+  updateMe: (data: any) => api.patch('users/me/', data),
 }
 
 export const driverApi = {
-  getProfile: () => api.get('/users/me/driver-profile/'),
-  updateProfile: (data: any) => api.patch('/users/me/driver-profile/', data),
+  getProfile: () => api.get('users/me/driver-profile/'),
+  updateProfile: (data: any) => api.patch('users/me/driver-profile/', data),
   getActiveRide: () => api.get('rides/driver/active/'),
   advanceRide: (rideId: string) => api.post(`rides/${rideId}/advance/`),
   getMarketplaceRequests: () => api.get('rides/driver/requests/'),
@@ -37,25 +59,25 @@ export const driverApi = {
 
 export const verificationApi = {
   // Driver: Account Verification
-  getAccountStatus: () => api.get('/verification/account/'),
+  getAccountStatus: () => api.get('verification/account/'),
   submitAccount: (formData: FormData) =>
-    api.post('/verification/account/', formData, {
+    api.post('verification/account/', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
   resubmitAccount: (formData: FormData) =>
-    api.patch('/verification/account/resubmit/', formData, {
+    api.patch('verification/account/resubmit/', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
 
   // Driver: Verification Progress
-  getProgress: () => api.get('/verification/progress/'),
+  getProgress: () => api.get('verification/progress/'),
 
   // Driver: Vehicle Documents
   uploadDocument: (formData: FormData) =>
-    api.post('/verification/documents/', formData, {
+    api.post('verification/documents/', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
-  getMyDocuments: () => api.get('/verification/documents/'),
+  getMyDocuments: () => api.get('verification/documents/'),
 }
 
 export default api
