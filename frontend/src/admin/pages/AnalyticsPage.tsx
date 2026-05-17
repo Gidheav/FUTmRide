@@ -3,9 +3,9 @@ import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Users, Car, TrendingUp, DollarSign, CheckCircle, XCircle, Clock } from 'lucide-react'
 import api from '../../core/api'
 
-const css = '@import url(https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap);' +
+const css = '' +
   '*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }' +
-  'body { background: #f4f6f3; font-family: Instrument Sans, sans-serif; }' +
+  'body { background: #f4f6f3; font-family: system-ui, -apple-system, sans-serif; }' +
   '.page { min-height: 100vh; background: #f4f6f3; }' +
   '.nav { background: #0a0a0a; padding: 0 40px; height: 64px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 100; }' +
   '.nav-back { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: transparent; color: rgba(255,255,255,0.6); cursor: pointer; text-decoration: none; transition: all 0.15s; }' +
@@ -14,7 +14,7 @@ const css = '@import url(https://fonts.googleapis.com/css2?family=Instrument+San
   '.nav-title { font-weight: 700; font-size: 16px; color: #fff; }' +
   '.main { max-width: 1100px; margin: 0 auto; padding: 36px 40px; }' +
   '.page-head { margin-bottom: 28px; }' +
-  '.page-title { font-family: Instrument Serif, serif; font-size: 28px; color: #0a0a0a; letter-spacing: -0.8px; margin-bottom: 4px; }' +
+  '.page-title { font-family: ui-serif, Georgia, serif; font-size: 28px; color: #0a0a0a; letter-spacing: -0.8px; margin-bottom: 4px; }' +
   '.page-sub { font-size: 14px; color: #9ca3af; }' +
   '.section-label { font-size: 11px; font-weight: 700; color: #9ca3af; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 14px; }' +
   '.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 32px; }' +
@@ -22,18 +22,18 @@ const css = '@import url(https://fonts.googleapis.com/css2?family=Instrument+San
   '.stat-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }' +
   '.stat-label { font-size: 11px; font-weight: 700; color: #9ca3af; letter-spacing: 0.5px; text-transform: uppercase; }' +
   '.stat-icon { width: 34px; height: 34px; border-radius: 9px; background: #f0fdf4; display: flex; align-items: center; justify-content: center; }' +
-  '.stat-value { font-family: Instrument Serif, serif; font-size: 28px; color: #0a0a0a; letter-spacing: -0.8px; line-height: 1; margin-bottom: 4px; }' +
+  '.stat-value { font-family: ui-serif, Georgia, serif; font-size: 28px; color: #0a0a0a; letter-spacing: -0.8px; line-height: 1; margin-bottom: 4px; }' +
   '.stat-sub { font-size: 12px; color: #9ca3af; }' +
   '.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 32px; }' +
   '.metric-card { background: #fff; border-radius: 14px; padding: 20px 22px; border: 1px solid #eaeaea; }' +
   '.metric-title { font-size: 12px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }' +
-  '.metric-value { font-family: Instrument Serif, serif; font-size: 24px; color: #0a0a0a; letter-spacing: -0.6px; }' +
+  '.metric-value { font-family: ui-serif, Georgia, serif; font-size: 24px; color: #0a0a0a; letter-spacing: -0.6px; }' +
   '.metric-sub { font-size: 12px; color: #9ca3af; margin-top: 4px; }' +
   '.trend-card { background: #fff; border-radius: 16px; border: 1px solid #eaeaea; padding: 24px; }' +
   '.trend-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }' +
   '.trend-title { font-size: 14px; font-weight: 700; color: #0a0a0a; }' +
   '.trend-days { display: flex; gap: 6px; }' +
-  '.day-btn { padding: 5px 12px; border-radius: 8px; border: 1.5px solid #e8e8e8; background: #fff; font-family: Instrument Sans, sans-serif; font-size: 12px; font-weight: 600; color: #6b7280; cursor: pointer; transition: all 0.15s; }' +
+  '.day-btn { padding: 5px 12px; border-radius: 8px; border: 1.5px solid #e8e8e8; background: #fff; font-family: system-ui, -apple-system, sans-serif; font-size: 12px; font-weight: 600; color: #6b7280; cursor: pointer; transition: all 0.15s; }' +
   '.day-btn.active { background: #007A47; border-color: #007A47; color: #fff; }' +
   '.chart-area { position: relative; height: 200px; display: flex; align-items: flex-end; gap: 4px; }' +
   '.bar-group { flex: 1; display: flex; align-items: flex-end; gap: 2px; height: 100%; }' +

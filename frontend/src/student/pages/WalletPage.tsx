@@ -5,9 +5,9 @@ import { ArrowLeft, Wallet, TrendingUp, TrendingDown, CreditCard, Plus } from 'l
 import toast from 'react-hot-toast'
 import api from '../../core/api'
 
-const css = '@import url(https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap);' +
+const css = '' +
   '*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }' +
-  'body { background: #f4f6f3; font-family: Instrument Sans, sans-serif; }' +
+  'body { background: #f4f6f3; font-family: var(--font-sans); }' +
   '.page { min-height: 100vh; background: #f4f6f3; }' +
   '.nav { background: #fff; border-bottom: 1px solid #e8e8e8; padding: 0 40px; height: 64px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 100; }' +
   '.nav-back { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; border: 1px solid #e8e8e8; background: #fff; color: #374151; cursor: pointer; text-decoration: none; transition: background 0.15s; }' +
@@ -18,14 +18,14 @@ const css = '@import url(https://fonts.googleapis.com/css2?family=Instrument+San
   '.balance-card { background: #0a0a0a; border-radius: 20px; padding: 32px 36px; margin-bottom: 24px; position: relative; overflow: hidden; }' +
   '.balance-card::before { content: ""; position: absolute; top: -60px; right: -60px; width: 200px; height: 200px; border-radius: 50%; background: rgba(0,122,71,0.15); }' +
   '.balance-label { font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.4); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px; }' +
-  '.balance-amount { font-family: Instrument Serif, serif; font-size: 44px; color: #fff; letter-spacing: -2px; line-height: 1; margin-bottom: 20px; }' +
+  '.balance-amount { font-family: var(--font-serif); font-size: 44px; color: #fff; letter-spacing: -2px; line-height: 1; margin-bottom: 20px; }' +
   '.topup-row { display: flex; align-items: center; gap: 10px; }' +
-  '.amount-input { height: 46px; padding: 0 14px; background: rgba(255,255,255,0.08); border: 1.5px solid rgba(255,255,255,0.12); border-radius: 10px; font-family: Instrument Sans, sans-serif; font-size: 15px; color: #fff; outline: none; transition: border-color 0.15s; width: 160px; }' +
+  '.amount-input { height: 46px; padding: 0 14px; background: rgba(255,255,255,0.08); border: 1.5px solid rgba(255,255,255,0.12); border-radius: 10px; font-family: var(--font-sans); font-size: 15px; color: #fff; outline: none; transition: border-color 0.15s; width: 160px; }' +
   '.amount-input:focus { border-color: #007A47; }' +
   '.amount-input::placeholder { color: rgba(255,255,255,0.3); }' +
-  '.gateway-select { height: 46px; padding: 0 14px; background: rgba(255,255,255,0.08); border: 1.5px solid rgba(255,255,255,0.12); border-radius: 10px; font-family: Instrument Sans, sans-serif; font-size: 14px; color: #fff; outline: none; cursor: pointer; }' +
+  '.gateway-select { height: 46px; padding: 0 14px; background: rgba(255,255,255,0.08); border: 1.5px solid rgba(255,255,255,0.12); border-radius: 10px; font-family: var(--font-sans); font-size: 14px; color: #fff; outline: none; cursor: pointer; }' +
   '.gateway-select option { background: #1a1a1a; color: #fff; }' +
-  '.topup-btn { height: 46px; padding: 0 20px; background: #007A47; border: none; border-radius: 10px; font-family: Instrument Sans, sans-serif; font-size: 14px; font-weight: 700; color: #fff; cursor: pointer; display: flex; align-items: center; gap: 7px; transition: background 0.15s; white-space: nowrap; }' +
+  '.topup-btn { height: 46px; padding: 0 20px; background: #007A47; border: none; border-radius: 10px; font-family: var(--font-sans); font-size: 14px; font-weight: 700; color: #fff; cursor: pointer; display: flex; align-items: center; gap: 7px; transition: background 0.15s; white-space: nowrap; }' +
   '.topup-btn:hover:not(:disabled) { background: #006339; }' +
   '.topup-btn:disabled { opacity: 0.5; cursor: not-allowed; }' +
   '.spinner { display: inline-block; width: 13px; height: 13px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; }' +
@@ -48,7 +48,7 @@ const css = '@import url(https://fonts.googleapis.com/css2?family=Instrument+San
   '.skeleton { background: #f3f4f6; height: 58px; animation: shimmer 1.2s infinite; }' +
   '@keyframes shimmer { 0%,100%{opacity:1} 50%{opacity:0.5} }' +
   '.pagination { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 24px; }' +
-  '.page-btn { height: 34px; padding: 0 14px; border-radius: 8px; border: 1.5px solid #e8e8e8; background: #fff; font-family: Instrument Sans, sans-serif; font-size: 13px; font-weight: 600; color: #374151; cursor: pointer; display: flex; align-items: center; gap: 5px; transition: all 0.15s; }' +
+  '.page-btn { height: 34px; padding: 0 14px; border-radius: 8px; border: 1.5px solid #e8e8e8; background: #fff; font-family: var(--font-sans); font-size: 13px; font-weight: 600; color: #374151; cursor: pointer; display: flex; align-items: center; gap: 5px; transition: all 0.15s; }' +
   '.page-btn:hover:not(:disabled) { border-color: #007A47; color: #007A47; }' +
   '.page-btn:disabled { opacity: 0.4; cursor: not-allowed; }' +
   '.page-info { font-size: 13px; color: #9ca3af; padding: 0 8px; }' +

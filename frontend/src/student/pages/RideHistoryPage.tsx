@@ -45,9 +45,8 @@ export default function RideHistoryPage() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap');
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: #f4f6f3; font-family: 'Instrument Sans', sans-serif; }
+        body { background: #f4f6f3; font-family: var(--font-sans); }
         .page { min-height: 100vh; background: #f4f6f3; }
 
         .nav { background: #fff; border-bottom: 1px solid #e8e8e8; padding: 0 40px; height: 64px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 100; }
@@ -62,12 +61,12 @@ export default function RideHistoryPage() {
         .main { max-width: 860px; margin: 0 auto; padding: 36px 40px; }
 
         .page-header { margin-bottom: 28px; }
-        .page-title { font-family: 'Instrument Serif', serif; font-size: 30px; color: #0a0a0a; letter-spacing: -0.8px; margin-bottom: 6px; }
+        .page-title { font-family: var(--font-serif); font-size: 30px; color: #0a0a0a; letter-spacing: -0.8px; margin-bottom: 6px; }
         .page-sub { font-size: 14px; color: #9ca3af; }
 
         .toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; }
         .filter-icon { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
-        .filter-btn { padding: 7px 14px; border-radius: 100px; border: 1.5px solid #e8e8e8; background: #fff; font-family: 'Instrument Sans', sans-serif; font-size: 13px; font-weight: 500; color: #6b7280; cursor: pointer; transition: all 0.15s; }
+        .filter-btn { padding: 7px 14px; border-radius: 100px; border: 1.5px solid #e8e8e8; background: #fff; font-family: var(--font-sans); font-size: 13px; font-weight: 500; color: #6b7280; cursor: pointer; transition: all 0.15s; }
         .filter-btn:hover { border-color: #007A47; color: #007A47; }
         .filter-btn.active { background: #007A47; border-color: #007A47; color: #fff; }
 
@@ -100,7 +99,7 @@ export default function RideHistoryPage() {
         @keyframes shimmer { 0%,100%{opacity:1} 50%{opacity:0.5} }
 
         .pagination { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 28px; }
-        .page-btn { width: 36px; height: 36px; border-radius: 10px; border: 1.5px solid #e8e8e8; background: #fff; font-family: 'Instrument Sans', sans-serif; font-size: 13px; font-weight: 600; color: #374151; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+        .page-btn { width: 36px; height: 36px; border-radius: 10px; border: 1.5px solid #e8e8e8; background: #fff; font-family: var(--font-sans); font-size: 13px; font-weight: 600; color: #374151; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
         .page-btn:hover:not(:disabled) { border-color: #007A47; color: #007A47; }
         .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
         .page-info { font-size: 13px; color: #9ca3af; padding: 0 8px; }

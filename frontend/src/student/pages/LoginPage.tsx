@@ -63,7 +63,7 @@ export default function LoginPage() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Plus+Jakarta+Sans:wght@700;800&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
 
         * { box-sizing: border-box; }
 
@@ -73,7 +73,7 @@ export default function LoginPage() {
           flex-direction: column;
           background: #f9f9f9;
           color: #1a1c1c;
-          font-family: 'Inter', sans-serif;
+          font-family: var(--font-sans);
         }
 
         .replica-hero {
@@ -108,7 +108,7 @@ export default function LoginPage() {
 
         .replica-hero-copy h1 {
           margin: 0 0 8px;
-          font-family: 'Plus Jakarta Sans', sans-serif;
+          font-family: var(--font-sans);
           font-weight: 800;
           font-size: 32px;
           line-height: 40px;
@@ -154,7 +154,7 @@ export default function LoginPage() {
         .replica-brand {
           margin: 0;
           color: #0fa958;
-          font-family: 'Plus Jakarta Sans', sans-serif;
+          font-family: var(--font-sans);
           font-weight: 800;
           font-size: 32px;
           line-height: 40px;
@@ -164,7 +164,7 @@ export default function LoginPage() {
         .replica-title {
           margin: 12px 0 0;
           color: #1a1c1c;
-          font-family: 'Plus Jakarta Sans', sans-serif;
+          font-family: var(--font-sans);
           font-weight: 700;
           font-size: 24px;
           line-height: 32px;
@@ -239,7 +239,7 @@ export default function LoginPage() {
           padding: 12px 12px 12px 40px;
           font-size: 16px;
           line-height: 24px;
-          font-family: 'Inter', sans-serif;
+          font-family: var(--font-sans);
           transition: box-shadow 0.15s ease;
         }
 

@@ -117,7 +117,7 @@ export default function PasswordResetPage() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap');
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: #f9fafb; font-family: 'Instrument Sans', sans-serif; }
+        body { background: #f9fafb; font-family: system-ui, -apple-system, sans-serif; }
         
         .reset-page {
           min-height: 100vh; display: flex; flex-direction: column;
@@ -136,14 +136,14 @@ export default function PasswordResetPage() {
           padding: 40px; box-shadow: 0 10px 40px -10px rgba(0,0,0,0.08);
         }
 
-        .form-title { font-family: 'Instrument Serif', serif; font-size: 32px; color: #0a0a0a; text-align: center; margin-bottom: 8px; line-height: 1.1; }
+        .form-title { font-family: ui-serif, Georgia, serif; font-size: 32px; color: #0a0a0a; text-align: center; margin-bottom: 8px; line-height: 1.1; }
         .form-sub { font-size: 15px; color: #6b7280; text-align: center; margin-bottom: 32px; line-height: 1.5; }
         
         .field { margin-bottom: 20px; }
         .field-label { font-size: 12px; font-weight: 600; color: #374151; letter-spacing: 0.4px; text-transform: uppercase; margin-bottom: 8px; }
         .field-input {
           width: 100%; height: 50px; padding: 0 16px; background: #fafafa; border: 1.5px solid #e8e8e8;
-          border-radius: 12px; font-family: 'Instrument Sans', sans-serif; font-size: 15px; outline: none; transition: 0.2s;
+          border-radius: 12px; font-family: system-ui, -apple-system, sans-serif; font-size: 15px; outline: none; transition: 0.2s;
         }
         .field-input:focus { border-color: #007A47; background: #fff; box-shadow: 0 0 0 4px rgba(0,122,71,0.08); }
         .field-error { color: #ef4444; font-size: 13px; margin-top: 6px; }

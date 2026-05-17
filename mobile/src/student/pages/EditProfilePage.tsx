@@ -67,6 +67,7 @@ const STATIC_CAMPUSES = [
 ]
 
 const matricRegex = /^\d{4}\/\d\/\d{5}[A-Za-z]{0,3}$/
+const phoneRegex = /^(0\d{10}|\+234\d{10})$/
 const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 type CampusOption = {
@@ -92,6 +93,7 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  const [phoneNumber, setPhoneNumber] = useState('')
   const [matricNumber, setMatricNumber] = useState('')
   const [department, setDepartment] = useState('')
   const [level, setLevel] = useState<number | null>(null)
@@ -111,13 +113,16 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
       setLoading(true)
       setError('')
       try {
-        const [profileRes, campusRes] = await Promise.all([
+        const [profileRes, campusRes, userRes] = await Promise.all([
           api.get('users/me/student-profile/'),
           api.get('users/campuses/'),
+          api.get('users/me/'),
         ])
 
         if (isMounted) {
           const profile = profileRes.data || {}
+          const userProfile = userRes.data || {}
+          setPhoneNumber(userProfile.phone_number ? String(userProfile.phone_number) : '')
           const savedMatric = profile.matric_number
           setMatricNumber(savedMatric && matricRegex.test(String(savedMatric)) ? String(savedMatric) : '')
           setDepartment(profile.department || '')
@@ -199,6 +204,10 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
   const selectedDepartmentLabel = department || 'Select department'
 
   const validate = () => {
+    if (phoneNumber && !phoneRegex.test(phoneNumber.trim())) {
+      setError('Enter a valid phone number (e.g. +2348012345678).')
+      return false
+    }
     if (matricNumber && !matricRegex.test(matricNumber.trim())) {
       setError('Matric number must match YYYY/D/#####AAA (e.g. 1983/11/00000ABC).')
       return false
@@ -220,6 +229,10 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
     setSaving(true)
     setError('')
     try {
+      await api.patch('users/me/', {
+        phone_number: phoneNumber ? phoneNumber.trim() : null,
+      })
+
       const payload: Record<string, any> = {
         matric_number: matricNumber ? matricNumber.trim() : null,
         department: department ? department.trim() : '',
@@ -234,6 +247,7 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
       onSaved()
     } catch (err: any) {
       const message = err?.response?.data?.error?.message ||
+        err?.response?.data?.phone_number?.[0] ||
         err?.response?.data?.matric_number?.[0] ||
         err?.response?.data?.campus_id?.[0] ||
         'Unable to update profile.'
@@ -264,6 +278,20 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
 
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Student Details</Text>
+
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Phone Number</Text>
+              <View style={styles.inputWrap}>
+                <MaterialIcons name="phone" size={18} color="#6A1B9A" />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter phone number"
+                  value={phoneNumber}
+                  onChangeText={setPhoneNumber}
+                  keyboardType="phone-pad"
+                />
+              </View>
+            </View>
 
             <View style={styles.fieldGroup}>
               <Text style={styles.label}>Matric Number</Text>

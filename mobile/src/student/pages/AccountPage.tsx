@@ -10,12 +10,13 @@ const PROFILE_IMAGE_URI =
 
 type AccountPageProps = {
   onEditProfile: () => void
+  onOpenNotifications: () => void
   onOpenSecurity: () => void
   onLogout: () => void
   refreshKey: number
 }
 
-export default function StudentAccountPage({ onEditProfile, onOpenSecurity, onLogout, refreshKey }: AccountPageProps) {
+export default function StudentAccountPage({ onEditProfile, onOpenNotifications, onOpenSecurity, onLogout, refreshKey }: AccountPageProps) {
   const { user, setUser } = useAuthStore()
   const [profile, setProfile] = useState<any>(null)
   const [userProfile, setUserProfile] = useState<any>(null)
@@ -100,6 +101,7 @@ export default function StudentAccountPage({ onEditProfile, onOpenSecurity, onLo
     : 'Not set'
 
   const details = [
+    { icon: 'phone', label: 'Phone Number', value: userProfile?.phone_number || user?.phone_number || 'Not set' },
     { icon: 'badge', label: 'Matric Number', value: matricValue },
     { icon: 'school', label: 'Department', value: profile?.department || 'Not set' },
     { icon: 'business', label: 'Campus', value: profile?.campus?.name || 'Not set' },
@@ -108,6 +110,7 @@ export default function StudentAccountPage({ onEditProfile, onOpenSecurity, onLo
 
   const settings = [
     { icon: 'manage-accounts', label: 'Edit Profile', danger: false, chevron: true },
+    { icon: 'tune', label: 'Notification Settings', danger: false, chevron: true },
     { icon: 'security', label: 'Security', danger: false, chevron: true },
     { icon: 'logout', label: 'Log Out', danger: true, chevron: false },
   ]
@@ -159,6 +162,8 @@ export default function StudentAccountPage({ onEditProfile, onOpenSecurity, onLo
             onPress={
               item.label === 'Edit Profile'
                 ? onEditProfile
+                : item.label === 'Notification Settings'
+                  ? onOpenNotifications
                 : item.label === 'Security'
                   ? onOpenSecurity
                   : item.label === 'Log Out'
@@ -190,10 +195,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#f9f9f9',
   },
   pageContent: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 32,
-    gap: 24,
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingBottom: 20,
+    gap: 12,
   },
   profileHeader: {
     alignItems: 'center',
@@ -203,7 +208,7 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 48,
-    borderWidth: 4,
+    borderWidth: 2,
     borderColor: '#ffffff',
     overflow: 'hidden',
     marginBottom: 8,
@@ -224,7 +229,7 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: 13,
-    backgroundColor: '#6A1B9A',
+    backgroundColor: '#4d2c62',
     borderWidth: 2,
     borderColor: '#ffffff',
     alignItems: 'center',
@@ -246,15 +251,15 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   card: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
+    backgroundColor: '#ffffffc7',
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#eeeeee',
     padding: 16,
-    shadowColor: '#000000',
+    shadowColor: '#00000010',
     shadowOpacity: 0.04,
     shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
+    shadowOffset: { width: 0, height: 3 },
     elevation: 3,
   },
   cardHeader: {

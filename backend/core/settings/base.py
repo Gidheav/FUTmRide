@@ -135,6 +135,7 @@ LANGUAGE_CODE = "en-us"
 TIME_ZONE = "Africa/Lagos"
 USE_I18N = True
 USE_TZ = True
+PHONENUMBER_DEFAULT_REGION = "NG"
 
 STATIC_URL = "/static/"
 MEDIA_URL = "/media/"
@@ -178,6 +179,7 @@ TERMII_API_KEY = env("TERMII_API_KEY", default="")
 TERMII_BASE_URL = env("TERMII_BASE_URL", default="https://api.ng.termii.com/api")
 TERMII_SENDER_ID = env("TERMII_SENDER_ID", default="LRRIDE")
 FCM_SERVER_KEY = env("FCM_SERVER_KEY", default="")
+ENABLE_PUSH_IN_DEBUG = env.bool("ENABLE_PUSH_IN_DEBUG", default=False)
 
 RIDE_REQUEST_TIMEOUT_SECONDS = 120
 MAX_DRIVER_SEARCH_RADIUS_KM = 5.0

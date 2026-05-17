@@ -15,6 +15,7 @@ class RideStatus(models.TextChoices):
     CANCELLED_BY_STUDENT = 'cancelled_by_student', 'Cancelled by Student'
     CANCELLED_BY_DRIVER = 'cancelled_by_driver', 'Cancelled by Driver'
     CANCELLED_NO_DRIVER = 'cancelled_no_driver', 'Cancelled - No Driver Found'
+    CANCELLED_NO_SHOW = 'cancelled_no_show', 'Cancelled - No Show'
     DISPUTED = 'disputed', 'Disputed'
 
 
@@ -49,6 +50,7 @@ class Ride(models.Model):
     vehicle_type_requested = models.CharField(
         max_length=20, choices=VehicleType.choices, default=VehicleType.SEDAN
     )
+    requested_seats = models.PositiveSmallIntegerField(default=1)
 
     pickup_latitude = models.DecimalField(max_digits=9, decimal_places=6)
     pickup_longitude = models.DecimalField(max_digits=9, decimal_places=6)
@@ -56,6 +58,8 @@ class Ride(models.Model):
     dropoff_latitude = models.DecimalField(max_digits=9, decimal_places=6)
     dropoff_longitude = models.DecimalField(max_digits=9, decimal_places=6)
     dropoff_address = models.CharField(max_length=255)
+
+    scheduled_pickup_time = models.DateTimeField(null=True, blank=True)
 
     estimated_distance_km = models.DecimalField(max_digits=8, decimal_places=3, null=True, blank=True)
     actual_distance_km = models.DecimalField(max_digits=8, decimal_places=3, null=True, blank=True)
@@ -73,6 +77,8 @@ class Ride(models.Model):
 
     cancellation_reason = models.TextField(blank=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)
+    no_show_fee_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    no_show_marked_at = models.DateTimeField(null=True, blank=True)
 
     emergency_activated = models.BooleanField(default=False)
     shared_with_contacts = models.JSONField(default=list, blank=True)
@@ -128,6 +134,7 @@ class Ride(models.Model):
                 RideStatus.IN_PROGRESS,
                 RideStatus.CANCELLED_BY_DRIVER,
                 RideStatus.CANCELLED_BY_STUDENT,
+                RideStatus.CANCELLED_NO_SHOW,
             ],
             RideStatus.IN_PROGRESS: [RideStatus.COMPLETED, RideStatus.DISPUTED],
             RideStatus.COMPLETED: [RideStatus.DISPUTED],
@@ -150,6 +157,7 @@ class Ride(models.Model):
             RideStatus.CANCELLED_BY_STUDENT,
             RideStatus.CANCELLED_BY_DRIVER,
             RideStatus.CANCELLED_NO_DRIVER,
+            RideStatus.CANCELLED_NO_SHOW,
         ]:
             self.cancelled_at = timezone.now()
 

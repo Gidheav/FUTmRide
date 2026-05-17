@@ -223,6 +223,7 @@ class UserPublicSerializer(serializers.ModelSerializer):
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
+    phone_number = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     full_name = serializers.CharField(read_only=True)
     wallet_balance = serializers.SerializerMethodField()
     campus = serializers.SerializerMethodField()
@@ -233,9 +234,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
         fields = [
             "id", "phone_number", "first_name", "last_name", "full_name",
             "email", "role", "is_verified", "is_phone_verified", "is_active", "profile_photo",
-            "fcm_token", "wallet_balance", "campus", "created_at",
+            "fcm_token", "wallet_balance", "campus", "created_at", "home_address"
         ]
-        read_only_fields = ["id", "phone_number", "role", "is_verified", "is_phone_verified", "is_active", "created_at", "full_name", "campus"]
+        read_only_fields = ["id", "role", "is_verified", "is_phone_verified", "is_active", "created_at", "full_name", "campus"]
 
     def get_wallet_balance(self, obj):
         try:
@@ -258,6 +259,29 @@ class UserProfileSerializer(serializers.ModelSerializer):
         except Exception:
             pass
         return None
+
+    def validate_phone_number(self, value):
+        if value is None:
+            return None
+        raw = str(value).strip().replace(' ', '')
+        if raw == '':
+            return None
+
+        if raw.startswith('0') and raw.isdigit() and len(raw) == 11:
+            raw = f'+234{raw[1:]}'
+        elif raw.isdigit() and len(raw) == 11:
+            raw = f'+234{raw[-10:]}'
+
+        if not raw.startswith('+'):
+            raise serializers.ValidationError('Enter a valid Nigerian phone number (11 digits).')
+
+        exists = User.objects.filter(phone_number=raw)
+        if self.instance:
+            exists = exists.exclude(id=self.instance.id)
+        if exists.exists():
+            raise serializers.ValidationError('A user with this phone number already exists.')
+
+        return raw
 
 
 class CampusSerializer(serializers.ModelSerializer):

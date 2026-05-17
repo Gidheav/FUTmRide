@@ -1,5 +1,6 @@
 import { ReactNode } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, Image, StatusBar } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useAuthStore } from '../../core/authStore'
 import type { StudentTab } from '../types'
@@ -8,6 +9,8 @@ type LayoutProps = {
   activeTab: StudentTab
   onTabChange: (tab: StudentTab) => void
   onMenuPress: () => void
+  onNotificationPress?: () => void
+  unreadCount?: number
   children: ReactNode
 }
 
@@ -21,27 +24,44 @@ const NAV_ITEMS: Array<{ key: StudentTab; label: string; icon: keyof typeof Mate
   { key: 'account', label: 'Account', icon: 'person' },
 ]
 
-export default function StudentLayout({ activeTab, onTabChange, onMenuPress, children }: LayoutProps) {
+export default function StudentLayout({ activeTab, onTabChange, onMenuPress, onNotificationPress, unreadCount = 0, children }: LayoutProps) {
   const { user } = useAuthStore()
   const avatarUri = user?.profile_photo || PROFILE_IMAGE_URI
+  const insets = useSafeAreaInsets()
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
 
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, { paddingTop: insets.top }]}>
         <TouchableOpacity style={styles.iconButton} onPress={onMenuPress} activeOpacity={0.85}>
           <MaterialIcons name="menu" size={22} color="#6A1B9A" />
         </TouchableOpacity>
-        <Text style={styles.brandText}>Campus Ride</Text>
-        <TouchableOpacity style={styles.avatarButton} activeOpacity={0.85}>
-          <Image source={{ uri: avatarUri }} style={styles.avatar} />
-        </TouchableOpacity>
+        <Text style={styles.brandText}>FUTmRide</Text>
+        <View style={styles.topBarRight}>
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={onNotificationPress}
+            activeOpacity={0.85}
+          >
+            <MaterialIcons name="notifications-none" size={22} color="#6A1B9A" />
+            {unreadCount > 0 && (
+              <View style={styles.notifBadge}>
+                <Text style={styles.notifBadgeText}>
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.avatarButton} activeOpacity={0.85}>
+            <Image source={{ uri: avatarUri }} style={styles.avatar} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.content}>{children}</View>
 
-      <View style={styles.bottomNav}>
+      <View style={[styles.bottomNav, { paddingBottom: insets.bottom || 8 }]}>
         {NAV_ITEMS.map((item) => {
           const isActive = activeTab === item.key
           return (
@@ -67,8 +87,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#f9f9f9',
   },
   topBar: {
-    height: 64,
     paddingHorizontal: 20,
+    paddingBottom: 12,
     backgroundColor: '#ffffff',
     borderBottomWidth: 1,
     borderBottomColor: '#f1f1f1',
@@ -76,6 +96,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     zIndex: 20,
+    minHeight: 64,
   },
   iconButton: {
     width: 36,
@@ -84,11 +105,36 @@ const styles = StyleSheet.create({
     backgroundColor: '#f9f9f9',
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
   },
   brandText: {
     fontSize: 20,
     fontWeight: '800',
     color: '#6A1B9A',
+  },
+  topBarRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  notifBadge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#e53935',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    borderWidth: 1.5,
+    borderColor: '#ffffff',
+  },
+  notifBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#ffffff',
   },
   avatarButton: {
     width: 36,
@@ -104,7 +150,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   bottomNav: {
-    height: 72,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
@@ -115,7 +160,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -2 },
     elevation: 12,
     paddingHorizontal: 12,
-    paddingBottom: 8,
+    paddingTop: 8,
   },
   navItemActive: {
     alignItems: 'center',

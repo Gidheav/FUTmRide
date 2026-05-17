@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { WebView } from 'react-native-webview'
 import api from '../../core/api'
+import useWalletStore from '../../core/walletStore'
 
 export default function StudentWalletPage() {
   const [profile, setProfile] = useState<any>(null)
@@ -21,6 +22,9 @@ export default function StudentWalletPage() {
   const [receiveModalVisible, setReceiveModalVisible] = useState(false)
   const [transferIdModalVisible, setTransferIdModalVisible] = useState(false)
   const [transferStudentId, setTransferStudentId] = useState('')
+  // Store reference during WebView session without triggering polls
+  const [webviewReference, setWebviewReference] = useState<string | null>(null)
+  const { walletBalance, setWalletBalance } = useWalletStore()
 
   const callbackUrl =
     process.env.EXPO_PUBLIC_PAYMENT_CALLBACK_URL ||
@@ -50,6 +54,7 @@ export default function StudentWalletPage() {
         api.get('payments/wallet/transactions/?page=1&page_size=10'),
       ])
       setProfile(profileRes.data)
+      setWalletBalance(profileRes.data?.wallet_balance ?? null)
       const list = Array.isArray(txRes.data?.results) ? txRes.data.results : txRes.data || []
       setTransactions(Array.isArray(list) ? list : [])
     } catch (err) {
@@ -78,11 +83,13 @@ export default function StudentWalletPage() {
       if (status === 'success') {
         setPendingReference(null)
         setTopupError(null)
+        setTopupAmount('')
         await loadWallet()
-      } else if (status === 'failed' || status === 'abandoned') {
+      } else if (status === 'failed') {
         setPendingReference(null)
-        setTopupError('Top-up failed or was cancelled.')
+        setTopupError('Top-up failed. Please try again.')
       }
+      // 'pending' / 'abandoned' — keep polling, payment may still be processing
     } catch (err) {
       setTopupError('Unable to verify top-up status.')
     }
@@ -93,12 +100,14 @@ export default function StudentWalletPage() {
   }, [loadWallet])
 
   useEffect(() => {
-    if (!pendingReference) return
+    if (!pendingReference || webviewVisible) return
+    // Immediately verify once, then poll every 5s
+    checkTopupStatus(pendingReference)
     const interval = setInterval(() => {
       checkTopupStatus(pendingReference)
     }, 5000)
     return () => clearInterval(interval)
-  }, [pendingReference, checkTopupStatus])
+  }, [pendingReference, webviewVisible, checkTopupStatus])
 
   const startTopUp = useCallback(async (selectedGateway: 'paystack' | 'flutterwave') => {
     const amountValue = Number(topupAmount)
@@ -121,7 +130,8 @@ export default function StudentWalletPage() {
       )
       const paymentUrl = res.data?.payment_url
       const reference = res.data?.reference
-      if (reference) setPendingReference(reference)
+      // Store reference but DON'T start polling yet — user is still on checkout
+      if (reference) setWebviewReference(reference)
       if (paymentUrl) {
         setWebviewUrl(paymentUrl)
         setWebviewVisible(true)
@@ -142,22 +152,39 @@ export default function StudentWalletPage() {
     setGatewayModalVisible(true)
   }, [topupAmount])
 
+  // Called when user closes WebView manually (X button)
+  const handleWebViewClose = useCallback(() => {
+    setWebviewVisible(false)
+    // Transfer stored reference to pending to start polling now
+    if (webviewReference) {
+      setPendingReference(webviewReference)
+      setWebviewReference(null)
+    }
+  }, [webviewReference])
+
   const handleWebViewNavigation = useCallback((url: string) => {
     if (!url) return
     if (url.startsWith(callbackUrl)) {
       setWebviewVisible(false)
-      const reference = parseReferenceFromUrl(url)
+      // Paystack redirected back — payment likely complete
+      const reference = parseReferenceFromUrl(url) || webviewReference
       if (reference) {
         setPendingReference(reference)
-        checkTopupStatus(reference)
+        setWebviewReference(null)
       }
     }
-  }, [callbackUrl, checkTopupStatus, parseReferenceFromUrl])
+  }, [callbackUrl, parseReferenceFromUrl, webviewReference])
 
   const activityItems = useMemo(() => {
     if (!Array.isArray(transactions)) return []
     return transactions
   }, [transactions])
+
+  const formatNarration = useCallback((narration: string) => {
+    if (!narration) return 'Wallet transaction'
+    // Pattern to catch PS- or FW- followed by hex chars, keeping first 4 and last 2
+    return narration.replace(/(PS-|FW-|TX-|CR-|DR-)([A-Z0-9]{4})[A-Z0-9]+([A-Z0-9]{2,4})/, '$1$2...$3')
+  }, [])
 
   return (
     <ScrollView style={styles.page} contentContainerStyle={styles.pageContent}>
@@ -223,13 +250,13 @@ export default function StudentWalletPage() {
       <Modal
         visible={webviewVisible}
         animationType="slide"
-        onRequestClose={() => setWebviewVisible(false)}
+        onRequestClose={handleWebViewClose}
         statusBarTranslucent={false}
       >
         <SafeAreaView style={styles.webviewContainer}>
           <View style={styles.webviewHeader}>
             <Text style={styles.webviewTitle}>Complete Payment</Text>
-            <TouchableOpacity onPress={() => setWebviewVisible(false)}>
+            <TouchableOpacity onPress={handleWebViewClose}>
               <MaterialIcons name="close" size={22} color="#1a1c1c" />
             </TouchableOpacity>
           </View>
@@ -328,7 +355,7 @@ export default function StudentWalletPage() {
             <View>
               <Text style={styles.balanceLabel}>Current Balance</Text>
               <Text style={styles.balanceValue}>
-                {profile ? formatAmount(profile.wallet_balance) : '--'}
+                {walletBalance !== null ? formatAmount(walletBalance) : '--'}
               </Text>
             </View>
             <View style={styles.walletIconWrap}>
@@ -454,7 +481,7 @@ export default function StudentWalletPage() {
         ) : (
           activityItems.map((tx) => (
             <View style={styles.activityItem} key={tx.id}>
-              <View style={styles.activityLeft}>
+              <View style={[styles.activityLeft, { flex: 1 }]}>
                 <View style={tx.transaction_type === 'credit' ? styles.activityIconAccent : styles.activityIconMuted}>
                   <MaterialIcons
                     name={tx.transaction_type === 'credit' ? 'add-circle' : 'directions-car'}
@@ -462,8 +489,10 @@ export default function StudentWalletPage() {
                     color={tx.transaction_type === 'credit' ? '#6A1B9A' : '#3d4a3e'}
                   />
                 </View>
-                <View>
-                  <Text style={styles.activityTitle}>{tx.narration || 'Wallet transaction'}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.activityTitle} numberOfLines={1} ellipsizeMode="tail">
+                    {formatNarration(tx.narration)}
+                  </Text>
                   <Text style={styles.activityTime}>{formatDate(tx.created_at)}</Text>
                 </View>
               </View>

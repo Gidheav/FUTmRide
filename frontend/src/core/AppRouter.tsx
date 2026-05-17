@@ -27,10 +27,21 @@ import AdminRides from "../admin/pages/RidesPage"
 import AdminDrivers from "../admin/pages/DriversPage"
 import AdminAnalytics from "../admin/pages/AnalyticsPage"
 import AdminSupport from "../admin/pages/SupportPage"
-import CampusAdminLoginPage from "../campus-admin/pages/LoginPage"
-import CampusAdminDashboard from "../campus-admin/pages/DashboardPage"
+import CampusAdminLoginPage from "../campus-admin/screens/LoginScreen"
+import CampusAdminDashboard from "../campus-admin/screens/DashboardScreen"
 import CampusAdminUsers from "../campus-admin/pages/UsersPage"
+import CampusAdminVerification from "../campus-admin/pages/VerificationPage"
+import CampusAdminAccountVerification from "../campus-admin/pages/AccountVerificationPage"
+import CampusAdminUnifiedVerification from "../campus-admin/pages/UnifiedVerificationPage"
 import CampusAdminRides from "../campus-admin/pages/RidesPage"
+import CampusAdminDispatch from "../campus-admin/pages/DispatchPage"
+import CampusAdminFleet from "../campus-admin/pages/FleetPage"
+import CampusAdminSchedule from "../campus-admin/pages/SchedulePage"
+import CampusAdminAnalytics from "../campus-admin/pages/AnalyticsPage"
+import CampusAdminProfile from "../campus-admin/pages/ProfilePage"
+import CampusAdminSettings from "../campus-admin/pages/SettingsPage"
+import CampusAdminNotifications from "../campus-admin/pages/NotificationsPage"
+import CampusAdminLayout from "../campus-admin/layout/CampusAdminLayout"
 
 function RequireAuth({ children, role }: { children: React.ReactNode; role?: string }) {
   const { isAuthenticated, user } = useAuthStore()
@@ -106,9 +117,21 @@ export default function AppRouter() {
       <Route path="/admin/support" element={<RequireAuth role="admin"><AdminSupport /></RequireAuth>} />
 
       <Route path="/campus-admin/login" element={<CampusAdminLoginPage />} />
-      <Route path="/campus-admin" element={<RequireAuth role="campus_admin"><CampusAdminDashboard /></RequireAuth>} />
-      <Route path="/campus-admin/users" element={<RequireAuth role="campus_admin"><CampusAdminUsers /></RequireAuth>} />
-      <Route path="/campus-admin/rides" element={<RequireAuth role="campus_admin"><CampusAdminRides /></RequireAuth>} />
+      <Route element={<RequireAuth role="campus_admin"><CampusAdminLayout /></RequireAuth>}>
+        <Route path="/campus-admin" element={null} />
+        <Route path="/campus-admin/users" element={<CampusAdminUsers />} />
+        <Route path="/campus-admin/users/verification" element={<CampusAdminVerification />} />
+        <Route path="/campus-admin/users/account-verification" element={<CampusAdminAccountVerification />} />
+        <Route path="/campus-admin/users/:driverId/verify" element={<CampusAdminUnifiedVerification />} />
+        <Route path="/campus-admin/rides" element={<CampusAdminRides />} />
+        <Route path="/campus-admin/dispatch" element={<CampusAdminDispatch />} />
+        <Route path="/campus-admin/fleet" element={<CampusAdminFleet />} />
+        <Route path="/campus-admin/schedule" element={<CampusAdminSchedule />} />
+        <Route path="/campus-admin/analytics" element={<CampusAdminAnalytics />} />
+        <Route path="/campus-admin/profile" element={<CampusAdminProfile />} />
+        <Route path="/campus-admin/settings" element={<CampusAdminSettings />} />
+        <Route path="/campus-admin/notifications" element={<CampusAdminNotifications />} />
+      </Route>
 
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>

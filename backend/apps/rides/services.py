@@ -67,6 +67,7 @@ class RideMatchingService:
 
     @classmethod
     def assign_driver(cls, ride: Ride) -> bool:
+        from .notifications import notify_student_ride_status
         already_offered = list(
             DriverRideRequest.objects.filter(ride=ride).values_list('driver_id', flat=True)
         )
@@ -77,6 +78,7 @@ class RideMatchingService:
             ride.transition_to(RideStatus.CANCELLED_NO_DRIVER)
             ride.cancellation_reason = 'No available drivers found in your area.'
             ride.save()
+            notify_student_ride_status(ride)
             logger.info('ride_no_driver ride_ref=%s', ride.reference)
             return False
 
@@ -90,6 +92,7 @@ class RideMatchingService:
         ride.save()
         driver_profile.is_on_trip = True
         driver_profile.save(update_fields=['is_on_trip'])
+        notify_student_ride_status(ride)
         logger.info(
             'ride_driver_assigned ride_ref=%s driver_id=%s',
             ride.reference,

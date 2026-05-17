@@ -5,30 +5,30 @@ import { ArrowLeft, MessageSquare, Plus, Send } from "lucide-react"
 import toast from "react-hot-toast"
 import api from "../../core/api"
 
-const css = "@import url(https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap);" +
+const css = "" +
   "*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }" +
-  "body { background: #f4f6f3; font-family: Instrument Sans, sans-serif; }" +
+  "body { background: #f4f6f3; font-family: var(--font-sans); }" +
   ".page { min-height: 100vh; }" +
   ".nav { background: #fff; border-bottom: 1px solid #e8e8e8; padding: 0 40px; height: 64px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 100; }" +
   ".nav-back { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; border: 1px solid #e8e8e8; background: #fff; color: #374151; text-decoration: none; }" +
   ".nav-badge { width: 34px; height: 34px; background: #007A47; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 13px; }" +
   ".nav-title { font-weight: 700; font-size: 16px; color: #0a0a0a; }" +
   ".nav-spacer { flex: 1; }" +
-  ".new-btn { display: flex; align-items: center; gap: 7px; background: #007A47; color: #fff; padding: 8px 16px; border-radius: 10px; font-size: 13px; font-weight: 600; border: none; cursor: pointer; transition: background 0.15s; font-family: Instrument Sans, sans-serif; }" +
+  ".new-btn { display: flex; align-items: center; gap: 7px; background: #007A47; color: #fff; padding: 8px 16px; border-radius: 10px; font-size: 13px; font-weight: 600; border: none; cursor: pointer; transition: background 0.15s; font-family: var(--font-sans); }" +
   ".new-btn:hover { background: #006339; }" +
   ".main { max-width: 720px; margin: 0 auto; padding: 36px 40px; }" +
-  ".page-title { font-family: Instrument Serif, serif; font-size: 28px; color: #0a0a0a; letter-spacing: -0.8px; margin-bottom: 4px; }" +
+  ".page-title { font-family: var(--font-serif); font-size: 28px; color: #0a0a0a; letter-spacing: -0.8px; margin-bottom: 4px; }" +
   ".page-sub { font-size: 14px; color: #9ca3af; margin-bottom: 28px; }" +
   ".form-card { background: #fff; border-radius: 16px; border: 1px solid #eaeaea; padding: 26px; margin-bottom: 24px; }" +
   ".form-title { font-size: 14px; font-weight: 700; color: #0a0a0a; margin-bottom: 20px; }" +
   ".field { margin-bottom: 16px; }" +
   ".field-label { font-size: 11px; font-weight: 700; color: #374151; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 7px; }" +
-  ".field-input { width: 100%; height: 46px; padding: 0 14px; background: #fafafa; border: 1.5px solid #e8e8e8; border-radius: 10px; font-family: Instrument Sans, sans-serif; font-size: 14px; color: #0a0a0a; outline: none; transition: border-color 0.15s; box-sizing: border-box; }" +
+  ".field-input { width: 100%; height: 46px; padding: 0 14px; background: #fafafa; border: 1.5px solid #e8e8e8; border-radius: 10px; font-family: var(--font-sans); font-size: 14px; color: #0a0a0a; outline: none; transition: border-color 0.15s; box-sizing: border-box; }" +
   ".field-input:focus { border-color: #007A47; background: #fff; }" +
-  ".field-select { width: 100%; height: 46px; padding: 0 14px; background: #fafafa; border: 1.5px solid #e8e8e8; border-radius: 10px; font-family: Instrument Sans, sans-serif; font-size: 14px; color: #0a0a0a; outline: none; cursor: pointer; }" +
-  ".field-textarea { width: 100%; padding: 12px 14px; background: #fafafa; border: 1.5px solid #e8e8e8; border-radius: 10px; font-family: Instrument Sans, sans-serif; font-size: 14px; color: #0a0a0a; outline: none; resize: vertical; min-height: 100px; transition: border-color 0.15s; box-sizing: border-box; }" +
+  ".field-select { width: 100%; height: 46px; padding: 0 14px; background: #fafafa; border: 1.5px solid #e8e8e8; border-radius: 10px; font-family: var(--font-sans); font-size: 14px; color: #0a0a0a; outline: none; cursor: pointer; }" +
+  ".field-textarea { width: 100%; padding: 12px 14px; background: #fafafa; border: 1.5px solid #e8e8e8; border-radius: 10px; font-family: var(--font-sans); font-size: 14px; color: #0a0a0a; outline: none; resize: vertical; min-height: 100px; transition: border-color 0.15s; box-sizing: border-box; }" +
   ".field-textarea:focus { border-color: #007A47; background: #fff; }" +
-  ".submit-btn { height: 48px; padding: 0 26px; background: #007A47; border: none; border-radius: 10px; font-family: Instrument Sans, sans-serif; font-size: 14px; font-weight: 700; color: #fff; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background 0.15s; }" +
+  ".submit-btn { height: 48px; padding: 0 26px; background: #007A47; border: none; border-radius: 10px; font-family: var(--font-sans); font-size: 14px; font-weight: 700; color: #fff; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background 0.15s; }" +
   ".submit-btn:hover:not(:disabled) { background: #006339; }" +
   ".submit-btn:disabled { opacity: 0.55; cursor: not-allowed; }" +
   ".ticket-list { display: flex; flex-direction: column; gap: 10px; }" +

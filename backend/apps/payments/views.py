@@ -1,4 +1,4 @@
-﻿import json
+import json
 import logging
 from decimal import Decimal
 from datetime import timedelta
@@ -135,6 +135,9 @@ class TopUpStatusView(APIView):
         except GatewayTransaction.DoesNotExist:
             return Response({'error': {'code': 'NOT_FOUND', 'message': 'Transaction not found.'}}, status=404)
 
+        if tx.gateway_status == GatewayTransaction.GatewayStatus.PENDING:
+            self._verify_pending_transaction(tx)
+
         payment_url = None
         if tx.gateway == GatewayTransaction.Gateway.PAYSTACK:
             payment_url = tx.gateway_response.get('authorization_url')
@@ -149,6 +152,68 @@ class TopUpStatusView(APIView):
             'currency': tx.currency,
             'payment_url': payment_url,
         })
+
+    def _verify_pending_transaction(self, tx):
+        try:
+            if tx.gateway == GatewayTransaction.Gateway.PAYSTACK:
+                data = PaystackService.verify_transaction(tx.internal_reference)
+                res_data = data.get('data', {})
+                status_str = res_data.get('status')
+                if status_str == 'success':
+                    with transaction.atomic():
+                        t_tx = GatewayTransaction.objects.select_for_update().get(id=tx.id)
+                        if t_tx.gateway_status == GatewayTransaction.GatewayStatus.PENDING:
+                            t_tx.gateway_status = GatewayTransaction.GatewayStatus.SUCCESS
+                            t_tx.gateway_reference = str(res_data.get('id', ''))
+                            t_tx.gateway_response = res_data
+                            t_tx.save()
+                            WalletService.credit(
+                                user=t_tx.user,
+                                amount=t_tx.amount,
+                                source=WalletTransaction.Source.TOPUP_PAYSTACK,
+                                narration=f'Wallet top-up via Paystack — {t_tx.internal_reference}',
+                                metadata={'gateway_reference': t_tx.gateway_reference, 'verified_via': 'api'},
+                            )
+                            tx.gateway_status = GatewayTransaction.GatewayStatus.SUCCESS
+                elif status_str == 'failed':
+                    with transaction.atomic():
+                        t_tx = GatewayTransaction.objects.select_for_update().get(id=tx.id)
+                        if t_tx.gateway_status == GatewayTransaction.GatewayStatus.PENDING:
+                            t_tx.gateway_status = GatewayTransaction.GatewayStatus.FAILED
+                            t_tx.gateway_response = res_data
+                            t_tx.save()
+                            tx.gateway_status = GatewayTransaction.GatewayStatus.FAILED
+
+            elif tx.gateway == GatewayTransaction.Gateway.FLUTTERWAVE:
+                data = FlutterwaveService.verify_transaction_by_reference(tx.internal_reference)
+                res_data = data.get('data', {})
+                status_str = res_data.get('status')
+                if status_str == 'successful':
+                    with transaction.atomic():
+                        t_tx = GatewayTransaction.objects.select_for_update().get(id=tx.id)
+                        if t_tx.gateway_status == GatewayTransaction.GatewayStatus.PENDING:
+                            t_tx.gateway_status = GatewayTransaction.GatewayStatus.SUCCESS
+                            t_tx.gateway_reference = str(res_data.get('id', ''))
+                            t_tx.gateway_response = res_data
+                            t_tx.save()
+                            WalletService.credit(
+                                user=t_tx.user,
+                                amount=t_tx.amount,
+                                source=WalletTransaction.Source.TOPUP_FLUTTERWAVE,
+                                narration=f'Wallet top-up via Flutterwave — {t_tx.internal_reference}',
+                                metadata={'gateway_reference': t_tx.gateway_reference, 'verified_via': 'api'},
+                            )
+                            tx.gateway_status = GatewayTransaction.GatewayStatus.SUCCESS
+                elif status_str == 'failed':
+                    with transaction.atomic():
+                        t_tx = GatewayTransaction.objects.select_for_update().get(id=tx.id)
+                        if t_tx.gateway_status == GatewayTransaction.GatewayStatus.PENDING:
+                            t_tx.gateway_status = GatewayTransaction.GatewayStatus.FAILED
+                            t_tx.gateway_response = res_data
+                            t_tx.save()
+                            tx.gateway_status = GatewayTransaction.GatewayStatus.FAILED
+        except Exception as e:
+            logger.error('active_verify_failed ref=%s error=%s', tx.internal_reference, str(e))
 
 
 @method_decorator(csrf_exempt, name='dispatch')

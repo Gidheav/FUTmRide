@@ -1,117 +1,311 @@
-import { Image, ImageBackground, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { useEffect, useState, useRef } from 'react'
+import {
+  ActivityIndicator,
+  Alert,
+  AppState,
+  Image,
+  Linking,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
-
-const MAP_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuACAymAvVMw1_C29t_JZNFHXMi-T5wwcAwgkT6N2VVyx2XV-1Xjo_Qr9SJ3xLb-716lqv-Swb1HgaR5B8r39cSQaSIJflKKytUBGy9Fl9PmgI5O8GCdx5HIpEd_TveEpmgfA27p5K9J_tG2lJmYOE1LBqbbqe9hm_UTSPJdGBCRURMe1LLu9IcP6045gOwgJxsOPDxdVK8j3tmKb5QaCajMywzbxWSC8Y5Fd-Dwqm2-AxyGwcVOP6UwWPyO-5pzQPFrHseLIibVVWA'
-
-const DRIVER_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuBQjnJ6thn41UR35nThYvk-c1bRE2vNk8x5xLU1HWUN-AHXTH05wBgoaMd3fj54h8GIAvwj5j3X_lKGg8oob9PVCYvhnAeKjBa911O815sftTF5kKeTZwfZ7MyDhmffLOHB1HPhm3CncfR7YTQQZMXonkgKyiAZe8U1dSthPBZg16-Wq26uv6VZwu4Nj90gHjmOIsa_HZd-yUtj-4xG5BQ3zv_T0kMLD_o93dHHkDLg3SYIwHCrTEBFaiHjUb0o_Wh6H23RVFi2mtQ'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import api from '../../core/api'
+import useWalletStore from '../../core/walletStore'
+import { showRideStatusNotification } from '../../core/pushNotifications'
 
 type ActiveRidePageProps = {
+  rideId?: string | null
   onBack: () => void
+  onRideEnded?: () => void
 }
 
-export default function ActiveRidePage({ onBack }: ActiveRidePageProps) {
+const CANCELLED_STATUSES = [
+  'cancelled_no_driver',
+  'cancelled_by_student',
+  'cancelled_by_driver',
+  'cancelled_no_show',
+]
+
+const STATUS_CONFIG: Record<string, { label: string; color: string; icon: keyof typeof MaterialIcons.glyphMap }> = {
+  driver_assigned: { label: 'Driver Assigned', color: '#6A1B9A', icon: 'person' },
+  driver_en_route: { label: 'Driver En Route', color: '#1565C0', icon: 'directions-car' },
+  driver_arrived: { label: 'Driver Arrived', color: '#2e7d32', icon: 'place' },
+  in_progress: { label: 'Trip In Progress', color: '#E65100', icon: 'navigation' },
+  completed: { label: 'Trip Completed', color: '#2e7d32', icon: 'check-circle' },
+  cancelled_by_student: { label: 'Cancelled', color: '#b91c1c', icon: 'cancel' },
+  cancelled_by_driver: { label: 'Driver Cancelled', color: '#b91c1c', icon: 'cancel' },
+  cancelled_no_driver: { label: 'No Driver Found', color: '#b91c1c', icon: 'error-outline' },
+  cancelled_no_show: { label: 'No Show', color: '#b91c1c', icon: 'warning' },
+}
+
+export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRidePageProps) {
+  const insets = useSafeAreaInsets()
+  const [ride, setRide] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [cancelling, setCancelling] = useState(false)
+  const lastStatusRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    let isMounted = true
+    let intervalId: ReturnType<typeof setInterval> | null = null
+
+    const loadRide = async () => {
+      if (!rideId) {
+        setError('Missing ride id.')
+        setLoading(false)
+        return
+      }
+      try {
+        const response = await api.get(`rides/${rideId}/`)
+        if (!isMounted) return
+        setRide(response.data)
+        setLoading(false)
+        setError(null)
+
+        const status = response.data?.status
+        if (status) {
+          const isInitial = lastStatusRef.current === null
+          if (isInitial || lastStatusRef.current !== status) {
+            lastStatusRef.current = status
+            const label = STATUS_CONFIG[status]?.label || 'Ride status updated.'
+            void showRideStatusNotification('Ride update', label, {
+              ride_id: String(response.data?.id || ''),
+              ride_status: status,
+            }, 'ride-status-alert', { sticky: status !== 'completed' && !CANCELLED_STATUSES.includes(status), silent: false })
+          }
+        }
+        // Stop polling on terminal states
+        if (status === 'completed' || CANCELLED_STATUSES.includes(status)) {
+          if (intervalId) clearInterval(intervalId)
+          useWalletStore.getState().syncBalance()
+        }
+      } catch (err: any) {
+        if (!isMounted) return
+        const message = err?.response?.data?.error?.message || 'Unable to load ride.'
+        setError(String(message))
+        setLoading(false)
+      }
+    }
+
+    void loadRide()
+    intervalId = setInterval(loadRide, 3000)
+
+    return () => {
+      isMounted = false
+      if (intervalId) clearInterval(intervalId)
+    }
+  }, [rideId])
+
+  const handleCancel = async () => {
+    if (!rideId) return
+    Alert.alert(
+      'Cancel Ride',
+      'Are you sure you want to cancel this ride?',
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Yes, Cancel',
+          style: 'destructive',
+          onPress: async () => {
+            setCancelling(true)
+            try {
+              await api.post(`rides/${rideId}/cancel/`, { reason: 'Student cancelled.' })
+              // Sync wallet balance to reflect any potential refund
+              useWalletStore.getState().syncBalance()
+              // Ride actually cancelled — tell parent to clear ride state
+              if (onRideEnded) onRideEnded()
+              else onBack()
+            } catch (err: any) {
+              const message = err?.response?.data?.error?.message || 'Unable to cancel ride.'
+              setError(String(message))
+              setCancelling(false)
+            }
+          },
+        },
+      ]
+    )
+  }
+
+  const handleCallDriver = () => {
+    const phone = ride?.driver?.phone_number
+    if (phone) {
+      Linking.openURL(`tel:${phone}`)
+    } else {
+      Alert.alert('Unavailable', 'Driver phone number is not available.')
+    }
+  }
+
+  // Derived data from API response
+  const rideStatus = ride?.status || 'driver_assigned'
+  const statusCfg = STATUS_CONFIG[rideStatus] || STATUS_CONFIG.driver_assigned
+  const isCancelled = CANCELLED_STATUSES.includes(rideStatus)
+  const isCompleted = rideStatus === 'completed'
+  const isTerminal = isCancelled || isCompleted
+  const canCancel = ride?.status && !isTerminal && rideStatus !== 'in_progress'
+
+  const driver = ride?.driver
+  const driverName = driver?.full_name || 'Awaiting driver…'
+  const driverVehicle = [driver?.vehicle_color, driver?.vehicle_make, driver?.vehicle_model]
+    .filter(Boolean)
+    .join(' ') || 'Vehicle info pending'
+  const driverPlate = driver?.plate_number || '—'
+  const driverRating = driver?.average_rating ? Number(driver.average_rating).toFixed(1) : null
+  const driverPhoto = driver?.profile_photo || null
+
+  const pickupLabel = ride?.pickup_address || '—'
+  const dropoffLabel = ride?.dropoff_address || '—'
+  const fareLabel = ride?.total_fare ? `₦${Number(ride.total_fare).toLocaleString()}` : '—'
+  const etaLabel = ride?.estimated_duration_minutes ? `${ride.estimated_duration_minutes} min` : null
+  const refLabel = ride?.reference || ''
+
   return (
-    <View style={styles.page}>
-      <ImageBackground source={{ uri: MAP_IMAGE }} style={styles.map} resizeMode="cover">
-        <View style={styles.mapButtons}>
-          <TouchableOpacity style={styles.mapButton} activeOpacity={0.85}>
-            <MaterialIcons name="my-location" size={20} color="#6A1B9A" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.mapButton} activeOpacity={0.85}>
-            <MaterialIcons name="layers" size={20} color="#1a1c1c" />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.etaBadge}>
-          <Text style={styles.etaBadgeText}>4 min away</Text>
-        </View>
-
-        <View style={styles.routeLineA} />
-        <View style={styles.routeLineB} />
-        <View style={styles.destinationMarker}>
-          <View style={styles.destinationInner} />
-        </View>
-        <View style={styles.driverMarker}>
-          <MaterialIcons name="directions-car" size={20} color="#6A1B9A" />
-        </View>
-      </ImageBackground>
-
-      <View style={styles.topBar}>
-        <TouchableOpacity style={styles.topBarButton} onPress={onBack} activeOpacity={0.85}>
+    <View style={[styles.page, { paddingTop: insets.top }]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.85}>
           <MaterialIcons name="arrow-back" size={20} color="#1a1c1c" />
         </TouchableOpacity>
-        <Text style={styles.topBarTitle}>En Route</Text>
-        <View style={styles.topBarSpacer} />
+        <Text style={styles.headerTitle}>Your Ride</Text>
+        <View style={styles.headerSpacer} />
       </View>
 
-      <View style={styles.sheet}>
-        <View style={styles.handle}>
-          <View style={styles.handleBar} />
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {loading && (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator size="small" color="#6A1B9A" />
+            <Text style={styles.loadingText}>Loading ride details…</Text>
+          </View>
+        )}
+
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+        {/* Status banner */}
+        <View style={[styles.statusBanner, { backgroundColor: statusCfg.color + '14' }]}>
+          <View style={[styles.statusIconWrap, { backgroundColor: statusCfg.color }]}>
+            <MaterialIcons name={statusCfg.icon} size={20} color="#ffffff" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.statusLabel, { color: statusCfg.color }]}>{statusCfg.label}</Text>
+            {refLabel ? <Text style={styles.statusRef}>Ref: {refLabel}</Text> : null}
+          </View>
+          {etaLabel && !isTerminal && (
+            <View style={styles.etaPill}>
+              <Text style={styles.etaPillText}>{etaLabel}</Text>
+            </View>
+          )}
         </View>
 
-        <View style={styles.sheetBody}>
-          <View style={styles.sheetHeader}>
-            <View>
-              <Text style={styles.sheetTitle}>Arriving in 4 mins</Text>
-              <Text style={styles.sheetSubtitle}>Drop-off at Engineering Block B</Text>
-            </View>
-            <View style={styles.statusBadge}>
-              <Text style={styles.statusBadgeText}>On Time</Text>
-            </View>
-          </View>
-
+        {/* Driver card */}
+        {driver && (
           <View style={styles.driverCard}>
             <View style={styles.driverTop}>
               <View style={styles.driverInfo}>
                 <View style={styles.driverAvatarWrap}>
-                  <Image source={{ uri: DRIVER_IMAGE }} style={styles.driverAvatar} />
-                  <View style={styles.driverRating}>
-                    <Text style={styles.driverRatingText}>4.9</Text>
-                    <MaterialIcons name="star" size={10} color="#6A1B9A" />
-                  </View>
+                  {driverPhoto ? (
+                    <Image source={{ uri: driverPhoto }} style={styles.driverAvatar} />
+                  ) : (
+                    <View style={[styles.driverAvatar, styles.driverAvatarPlaceholder]}>
+                      <MaterialIcons name="person" size={28} color="#6A1B9A" />
+                    </View>
+                  )}
+                  {driverRating && (
+                    <View style={styles.driverRatingBadge}>
+                      <MaterialIcons name="star" size={10} color="#F9A825" />
+                      <Text style={styles.driverRatingText}>{driverRating}</Text>
+                    </View>
+                  )}
                 </View>
-                <View>
-                  <Text style={styles.driverName}>Emmanuel</Text>
-                  <Text style={styles.driverCar}>Toyota Corolla - Silver</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.driverName}>{driverName}</Text>
+                  <Text style={styles.driverVehicle}>{driverVehicle}</Text>
                 </View>
               </View>
               <View style={styles.plateWrap}>
-                <Text style={styles.plateText}>KJA-452</Text>
+                <Text style={styles.plateText}>{driverPlate}</Text>
               </View>
             </View>
 
             <View style={styles.driverDivider} />
 
             <View style={styles.driverActions}>
-              <TouchableOpacity style={styles.driverActionButton} activeOpacity={0.85}>
-                <MaterialIcons name="chat" size={20} color="#1a1c1c" />
-                <Text style={styles.driverActionText}>Message</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.driverActionButton} activeOpacity={0.85}>
-                <MaterialIcons name="call" size={20} color="#1a1c1c" />
+              <TouchableOpacity style={styles.driverActionButton} onPress={handleCallDriver} activeOpacity={0.85}>
+                <MaterialIcons name="call" size={18} color="#6A1B9A" />
                 <Text style={styles.driverActionText}>Call</Text>
               </TouchableOpacity>
             </View>
           </View>
+        )}
 
-          <View style={styles.tripActions}>
-            <TouchableOpacity style={styles.shareButton} activeOpacity={0.85}>
-              <MaterialIcons name="share" size={20} color="#6A1B9A" />
-              <Text style={styles.shareText}>Share Trip</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.sosButton} activeOpacity={0.85}>
-              <MaterialIcons name="warning" size={20} color="#9c1b1b" />
-              <Text style={styles.sosText}>SOS</Text>
-            </TouchableOpacity>
+        {/* Route card */}
+        <View style={styles.routeCard}>
+          <View style={styles.routeRail}>
+            <View style={styles.routeDot} />
+            <View style={styles.routeLine} />
+            <View style={styles.routeSquare} />
           </View>
-
-          <TouchableOpacity style={styles.cancelButton} activeOpacity={0.85}>
-            <Text style={styles.cancelText}>Cancel Ride</Text>
-          </TouchableOpacity>
+          <View style={styles.routeTextWrap}>
+            <View>
+              <Text style={styles.routeLabel}>Pickup</Text>
+              <Text style={styles.routeValue}>{pickupLabel}</Text>
+            </View>
+            <View style={styles.routeSpacing}>
+              <Text style={styles.routeLabel}>Dropoff</Text>
+              <Text style={styles.routeValue}>{dropoffLabel}</Text>
+            </View>
+          </View>
         </View>
-      </View>
+
+        {/* Fare card */}
+        <View style={styles.fareCard}>
+          <View style={styles.fareRow}>
+            <Text style={styles.fareLabel}>Total Fare</Text>
+            <Text style={styles.fareValue}>{fareLabel}</Text>
+          </View>
+          <View style={styles.fareRow}>
+            <Text style={styles.fareLabel}>Payment</Text>
+            <View style={styles.paymentBadge}>
+              <MaterialIcons name="account-balance-wallet" size={14} color="#6A1B9A" />
+              <Text style={styles.paymentBadgeText}>
+                {ride?.payment_method === 'wallet' ? 'Wallet' : ride?.payment_method || '—'}
+              </Text>
+            </View>
+          </View>
+          {ride?.is_paid && (
+            <View style={styles.fareRow}>
+              <Text style={styles.fareLabel}>Status</Text>
+              <View style={[styles.paymentBadge, { backgroundColor: '#e8f5e9' }]}>
+                <MaterialIcons name="check-circle" size={14} color="#2e7d32" />
+                <Text style={[styles.paymentBadgeText, { color: '#2e7d32' }]}>Paid</Text>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* Actions */}
+        {isTerminal ? (
+          <TouchableOpacity style={styles.primaryButton} onPress={onRideEnded || onBack} activeOpacity={0.85}>
+            <Text style={styles.primaryButtonText}>Back to Dashboard</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.actionsRow}>
+            {canCancel && (
+              <TouchableOpacity
+                style={[styles.cancelButton, cancelling && { opacity: 0.6 }]}
+                onPress={handleCancel}
+                activeOpacity={0.85}
+                disabled={cancelling}
+              >
+                <Text style={styles.cancelText}>{cancelling ? 'Cancelling…' : 'Cancel Ride'}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </ScrollView>
     </View>
   )
 }
@@ -121,206 +315,101 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f9f9f9',
   },
-  map: {
-    flex: 1,
-  },
-  mapButtons: {
-    position: 'absolute',
-    top: 84,
-    right: 16,
-    gap: 8,
-  },
-  mapButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#ffffff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  etaBadge: {
-    position: 'absolute',
-    top: 380,
-    left: 150,
-    backgroundColor: '#6A1B9A',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  etaBadgeText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  routeLineA: {
-    position: 'absolute',
-    left: 160,
-    top: 260,
-    width: 6,
-    height: 220,
-    borderRadius: 4,
-    backgroundColor: '#6A1B9A',
-    opacity: 0.85,
-    transform: [{ rotate: '18deg' }],
-  },
-  routeLineB: {
-    position: 'absolute',
-    left: 210,
-    top: 170,
-    width: 6,
-    height: 140,
-    borderRadius: 4,
-    backgroundColor: '#6A1B9A',
-    opacity: 0.75,
-    transform: [{ rotate: '-22deg' }],
-  },
-  destinationMarker: {
-    position: 'absolute',
-    left: 198,
-    top: 140,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#6A1B9A',
-    borderWidth: 3,
-    borderColor: '#ffffff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  destinationInner: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#ffffff',
-  },
-  driverMarker: {
-    position: 'absolute',
-    left: 230,
-    top: 420,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#ffffff',
-    borderWidth: 2,
-    borderColor: '#6A1B9A',
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  topBar: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 64,
-    paddingHorizontal: 16,
-    paddingTop: 10,
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: 'rgba(255,255,255,0.84)',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e5e5',
-  },
-  topBarButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#ffffff',
-    elevation: 1,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  topBarTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1a1c1c',
-  },
-  topBarSpacer: {
-    width: 40,
-  },
-  sheet: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: '#ffffff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: -6 },
-  },
-  handle: {
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  handleBar: {
-    width: 48,
-    height: 6,
-    borderRadius: 999,
-    backgroundColor: '#e2e2e2',
-  },
-  sheetBody: {
     paddingHorizontal: 20,
-    paddingBottom: 24,
-    gap: 16,
+    paddingVertical: 12,
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
   },
-  sheetHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#f3f3f3',
     alignItems: 'center',
-    gap: 12,
+    justifyContent: 'center',
   },
-  sheetTitle: {
-    fontSize: 22,
+  headerTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 16,
     fontWeight: '700',
     color: '#1a1c1c',
   },
-  sheetSubtitle: {
-    marginTop: 4,
+  headerSpacer: {
+    width: 36,
+  },
+  content: {
+    padding: 20,
+    paddingBottom: 40,
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 16,
+  },
+  loadingText: {
     fontSize: 12,
     color: '#6b7280',
   },
-  statusBadge: {
-    borderWidth: 1,
-    borderColor: '#6A1B9A',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: 'rgba(106,27,154,0.08)',
-  },
-  statusBadgeText: {
+  errorText: {
+    textAlign: 'center',
+    color: '#b91c1c',
     fontSize: 12,
     fontWeight: '600',
-    color: '#6A1B9A',
+    marginBottom: 12,
   },
+  // Status banner
+  statusBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 16,
+  },
+  statusIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusLabel: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  statusRef: {
+    fontSize: 11,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  etaPill: {
+    backgroundColor: '#6A1B9A',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  etaPillText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  // Driver card
   driverCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: '#e5e5e5',
-    borderRadius: 16,
     padding: 16,
     gap: 12,
-    backgroundColor: '#ffffff',
+    marginBottom: 16,
+    elevation: 2,
     shadowColor: '#000',
     shadowOpacity: 0.04,
     shadowRadius: 10,
@@ -335,51 +424,67 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    flex: 1,
   },
   driverAvatarWrap: {
     position: 'relative',
-    width: 56,
-    height: 56,
+    width: 52,
+    height: 52,
   },
   driverAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: '#e5e5e5',
   },
-  driverRating: {
+  driverAvatarPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f3ecf8',
+  },
+  driverRatingBadge: {
     position: 'absolute',
-    right: -4,
+    right: -6,
     bottom: -4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
     backgroundColor: '#ffffff',
     borderRadius: 999,
-    padding: 2,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
   },
   driverRatingText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#6A1B9A',
+    color: '#1a1c1c',
   },
   driverName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: '#1a1c1c',
   },
-  driverCar: {
+  driverVehicle: {
     fontSize: 12,
     color: '#6b7280',
-    marginTop: 4,
+    marginTop: 2,
+    textTransform: 'capitalize',
   },
   plateWrap: {
     borderWidth: 1,
     borderColor: '#e2e2e2',
     borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     backgroundColor: '#f3f3f3',
   },
   plateText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
     color: '#1a1c1c',
     letterSpacing: 1,
@@ -390,7 +495,7 @@ const styles = StyleSheet.create({
   },
   driverActions: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
   },
   driverActionButton: {
     flex: 1,
@@ -398,58 +503,129 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingVertical: 12,
+    paddingVertical: 10,
     borderRadius: 12,
-    backgroundColor: '#f3f3f3',
+    backgroundColor: '#f5effb',
   },
   driverActionText: {
     fontSize: 13,
     fontWeight: '600',
+    color: '#6A1B9A',
+  },
+  // Route card
+  routeCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e8e8e8',
+    padding: 16,
+    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  routeRail: {
+    width: 22,
+    alignItems: 'center',
+  },
+  routeDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#6A1B9A',
+  },
+  routeLine: {
+    width: 2,
+    flex: 1,
+    backgroundColor: '#e2e2e2',
+    marginVertical: 6,
+  },
+  routeSquare: {
+    width: 10,
+    height: 10,
+    borderRadius: 2,
+    backgroundColor: '#1a1c1c',
+  },
+  routeTextWrap: {
+    flex: 1,
+    justifyContent: 'space-between',
+  },
+  routeLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#6b7280',
+    marginBottom: 2,
+  },
+  routeValue: {
+    fontSize: 14,
+    fontWeight: '600',
     color: '#1a1c1c',
   },
-  tripActions: {
-    flexDirection: 'row',
-    gap: 12,
+  routeSpacing: {
+    marginTop: 12,
   },
-  shareButton: {
-    flex: 2,
+  // Fare card
+  fareCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e8e8e8',
+    padding: 16,
+    marginBottom: 16,
+    gap: 10,
+  },
+  fareRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  fareLabel: {
+    fontSize: 13,
+    color: '#6b7280',
+    fontWeight: '600',
+  },
+  fareValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1c1c',
+  },
+  paymentBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#6A1B9A',
-    backgroundColor: '#ffffff',
+    gap: 4,
+    backgroundColor: '#f5effb',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
-  shareText: {
-    fontSize: 13,
+  paymentBadgeText: {
+    fontSize: 12,
     fontWeight: '600',
     color: '#6A1B9A',
   },
-  sosButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: '#ffe8e8',
-  },
-  sosText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#9c1b1b',
+  // Actions
+  actionsRow: {
+    gap: 10,
   },
   cancelButton: {
+    backgroundColor: '#f3f3f3',
+    borderRadius: 14,
+    paddingVertical: 14,
     alignItems: 'center',
-    paddingVertical: 8,
   },
   cancelText: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#7b7b7b',
+    color: '#b91c1c',
+  },
+  primaryButton: {
+    backgroundColor: '#6A1B9A',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  primaryButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#ffffff',
   },
 })

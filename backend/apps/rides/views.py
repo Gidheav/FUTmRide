@@ -9,7 +9,7 @@ from rest_framework.exceptions import NotFound, PermissionDenied
 from django_filters.rest_framework import DjangoFilterBackend
 
 from apps.accounts.models import UserRole, DriverProfile
-from apps.accounts.permissions import IsAdminUser, IsPhoneVerified
+from apps.accounts.permissions import IsAdminUser
 from apps.payments.models import WalletTransaction
 from apps.payments.services import WalletService
 from .models import Ride, RideStatus, DriverRideRequest
@@ -19,14 +19,22 @@ from .serializers import (
     RideListSerializer,
     RideCancelSerializer,
 )
-from .services import FareCalculator, RideMatchingService
+from .services import FareCalculator
+from .notifications import notify_student_ride_status
 
 logger = logging.getLogger('apps.rides')
+
+ACTIVE_DRIVER_STATUSES = [
+    RideStatus.DRIVER_ASSIGNED,
+    RideStatus.DRIVER_EN_ROUTE,
+    RideStatus.DRIVER_ARRIVED,
+    RideStatus.IN_PROGRESS,
+]
 
 
 class RideRequestView(generics.CreateAPIView):
     serializer_class = RideRequestSerializer
-    permission_classes = [permissions.IsAuthenticated, IsPhoneVerified]
+    permission_classes = [permissions.IsAuthenticated]
 
     def create(self, request, *args, **kwargs):
         if request.user.role != UserRole.STUDENT:
@@ -49,21 +57,43 @@ class RideRequestView(generics.CreateAPIView):
             )
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        ride = serializer.save()
-        ride.transition_to(RideStatus.SEARCHING)
-        fare_data = FareCalculator.calculate(
-            vehicle_type=ride.vehicle_type_requested,
-            distance_km=float(ride.estimated_distance_km or 2.0),
-        )
-        ride.base_fare = fare_data['base_fare']
-        ride.total_fare = fare_data['total_fare']
-        ride.platform_commission = fare_data['platform_commission']
-        ride.driver_earnings = fare_data['driver_earnings']
-        ride.surge_multiplier = fare_data['surge_multiplier']
-        ride.save()
-        assigned = RideMatchingService.assign_driver(ride)
-        ride.refresh_from_db()
-        logger.info('ride_requested ref=%s student=%s assigned=%s', ride.reference, str(request.user.id), assigned)
+
+        with transaction.atomic():
+            ride = serializer.save()
+            ride.transition_to(RideStatus.SEARCHING)
+            fare_data = FareCalculator.calculate(
+                vehicle_type=ride.vehicle_type_requested,
+                distance_km=float(ride.estimated_distance_km or 2.0),
+            )
+            ride.base_fare = fare_data['base_fare']
+            ride.total_fare = fare_data['total_fare']
+            ride.platform_commission = fare_data['platform_commission']
+            ride.driver_earnings = fare_data['driver_earnings']
+            ride.surge_multiplier = fare_data['surge_multiplier']
+            ride.save()
+
+            if ride.payment_method == 'wallet':
+                try:
+                    WalletService.debit(
+                        user=ride.student,
+                        amount=Decimal(str(ride.total_fare or 0)),
+                        source=WalletTransaction.Source.RIDE_PAYMENT,
+                        narration=f'Ride escrow — {ride.reference}',
+                        ride=ride,
+                    )
+                    ride.is_paid = True
+                    ride.save(update_fields=['is_paid'])
+                except ValueError:
+                    ride.transition_to(RideStatus.CANCELLED_BY_STUDENT)
+                    ride.cancellation_reason = 'Insufficient wallet balance.'
+                    ride.save(update_fields=['status', 'cancellation_reason', 'cancelled_at'])
+                    return Response(
+                        {'error': {'code': 'INSUFFICIENT_WALLET', 'message': 'Insufficient wallet balance.'}},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+        logger.info('ride_requested ref=%s student=%s assigned=%s', ride.reference, str(request.user.id), False)
+        notify_student_ride_status(ride)
         return Response(RideDetailSerializer(ride, context={'request': request}).data, status=status.HTTP_201_CREATED)
 
 
@@ -72,8 +102,25 @@ class StudentRideListView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Ride.objects.filter(student=self.request.user).select_related('student', 'driver').order_by('-requested_at')
+        return Ride.objects.filter(student=self.request.user).select_related('student', 'driver', 'driver__driver_profile').order_by('-requested_at')
 
+
+class StudentActiveRideView(generics.RetrieveAPIView):
+    serializer_class = RideDetailSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        ride = Ride.objects.filter(
+            student=self.request.user,
+            status__in=[
+                RideStatus.REQUESTED, RideStatus.SEARCHING,
+                RideStatus.DRIVER_ASSIGNED, RideStatus.DRIVER_EN_ROUTE,
+                RideStatus.DRIVER_ARRIVED, RideStatus.IN_PROGRESS,
+            ],
+        ).select_related('student', 'driver', 'driver__driver_profile').first()
+        if not ride:
+            raise NotFound('No active ride found.')
+        return ride
 
 class RideDetailView(generics.RetrieveAPIView):
     serializer_class = RideDetailSerializer
@@ -81,7 +128,7 @@ class RideDetailView(generics.RetrieveAPIView):
 
     def get_object(self):
         try:
-            ride = Ride.objects.select_related('student', 'driver').get(id=self.kwargs['ride_id'])
+            ride = Ride.objects.select_related('student', 'driver', 'driver__driver_profile').get(id=self.kwargs['ride_id'])
         except Ride.DoesNotExist:
             raise NotFound('Ride not found.')
         if ride.student != self.request.user and ride.driver != self.request.user:
@@ -101,6 +148,23 @@ class CancelRideView(APIView):
         serializer = RideCancelSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         reason = serializer.validated_data.get('reason', '')
+        def refund_student(refund_amount: Decimal, narration: str, metadata: dict | None = None):
+            existing = WalletTransaction.objects.filter(
+                ride=ride,
+                source=WalletTransaction.Source.RIDE_REFUND,
+                transaction_type=WalletTransaction.TransactionType.CREDIT,
+            ).first()
+            if existing:
+                return
+            WalletService.credit(
+                user=ride.student,
+                amount=refund_amount,
+                source=WalletTransaction.Source.RIDE_REFUND,
+                narration=narration,
+                ride=ride,
+                metadata=metadata or {},
+            )
+
         if ride.student == request.user:
             if not ride.is_active:
                 return Response(
@@ -110,6 +174,21 @@ class CancelRideView(APIView):
             ride.transition_to(RideStatus.CANCELLED_BY_STUDENT)
             ride.cancellation_reason = reason
             ride.save()
+            if ride.driver_id:
+                try:
+                    profile = ride.driver.driver_profile
+                    profile.is_on_trip = False
+                    profile.save(update_fields=['is_on_trip'])
+                except DriverProfile.DoesNotExist:
+                    pass
+            if ride.payment_method == 'wallet' and ride.is_paid:
+                if not ride.driver_arrived_at:
+                    refund_student(
+                        Decimal(str(ride.total_fare or 0)),
+                        f'Ride refund — {ride.reference}',
+                    )
+                    ride.is_paid = False
+                    ride.save(update_fields=['is_paid'])
         elif ride.driver == request.user:
             if ride.status not in [RideStatus.DRIVER_ASSIGNED, RideStatus.DRIVER_EN_ROUTE, RideStatus.DRIVER_ARRIVED]:
                 return Response(
@@ -125,9 +204,18 @@ class CancelRideView(APIView):
                 profile.save(update_fields=['is_on_trip'])
             except DriverProfile.DoesNotExist:
                 pass
+            if ride.payment_method == 'wallet' and ride.is_paid:
+                refund_student(
+                    Decimal(str(ride.total_fare or 0)),
+                    f'Ride refund — {ride.reference}',
+                    metadata={'cancelled_by': 'driver'},
+                )
+                ride.is_paid = False
+                ride.save(update_fields=['is_paid'])
         else:
             raise PermissionDenied('You cannot cancel this ride.')
         logger.info('ride_cancelled ref=%s by=%s', ride.reference, str(request.user.id))
+        notify_student_ride_status(ride)
         return Response(RideDetailSerializer(ride, context={'request': request}).data)
 
 
@@ -177,42 +265,31 @@ class DriverRideStatusUpdateView(APIView):
                 sp.save(update_fields=['total_trips'])
             except Exception:
                 pass
-            if ride.payment_method == 'wallet' and not ride.is_paid:
+            if ride.payment_method == 'wallet' and ride.is_paid and ride.driver_earnings:
                 try:
                     with transaction.atomic():
-                        ride_locked = Ride.objects.select_for_update().get(id=ride.id)
-                        if ride_locked.is_paid:
-                            logger.info('ride_wallet_already_paid ref=%s', ride.reference)
+                        existing = WalletTransaction.objects.filter(
+                            ride=ride,
+                            source=WalletTransaction.Source.DRIVER_EARNING,
+                            transaction_type=WalletTransaction.TransactionType.CREDIT,
+                        ).first()
+                        if existing:
+                            logger.info('ride_driver_already_paid ref=%s tx=%s', ride.reference, existing.reference)
                         else:
-                            existing = WalletTransaction.objects.filter(
-                                ride=ride_locked,
-                                source=WalletTransaction.Source.RIDE_PAYMENT,
-                                transaction_type=WalletTransaction.TransactionType.DEBIT,
-                            ).first()
-                            if existing:
-                                ride_locked.is_paid = True
-                                ride_locked.save(update_fields=['is_paid'])
-                                logger.info('ride_wallet_existing_tx ref=%s tx=%s', ride.reference, existing.reference)
-                            else:
-                                fare = ride_locked.total_fare or Decimal('0.00')
-                                WalletService.debit(
-                                    user=ride_locked.student,
-                                    amount=fare,
-                                    source=WalletTransaction.Source.RIDE_PAYMENT,
-                                    narration=f'Ride payment — {ride_locked.reference}',
-                                    ride=ride_locked,
-                                    metadata={
-                                        'driver_id': str(ride_locked.driver_id or ''),
-                                        'platform_commission': str(ride_locked.platform_commission or 0),
-                                    },
-                                )
-                                ride_locked.is_paid = True
-                                ride_locked.save(update_fields=['is_paid'])
-                                logger.info('ride_wallet_debited ref=%s amount=%s', ride.reference, fare)
-                except ValueError:
-                    logger.warning('ride_wallet_insufficient ref=%s', ride.reference)
+                            WalletService.credit(
+                                user=ride.driver,
+                                amount=Decimal(str(ride.driver_earnings)),
+                                source=WalletTransaction.Source.DRIVER_EARNING,
+                                narration=f'Earnings from ride {ride.reference}',
+                                ride=ride,
+                                metadata={
+                                    'platform_commission': str(ride.platform_commission or 0),
+                                },
+                            )
+                            logger.info('ride_driver_credited ref=%s amount=%s', ride.reference, ride.driver_earnings)
                 except Exception as e:
-                    logger.error('ride_wallet_debit_error ref=%s error=%s', ride.reference, str(e))
+                    logger.error('ride_driver_credit_error ref=%s error=%s', ride.reference, str(e))
+        notify_student_ride_status(ride)
         logger.info('ride_advanced ref=%s to=%s driver=%s', ride.reference, next_status, str(request.user.id))
         return Response(RideDetailSerializer(ride, context={'request': request}).data)
 
@@ -227,7 +304,7 @@ class DriverActiveRideView(generics.RetrieveAPIView):
         ride = Ride.objects.filter(
             driver=self.request.user,
             status__in=[RideStatus.DRIVER_ASSIGNED, RideStatus.DRIVER_EN_ROUTE, RideStatus.DRIVER_ARRIVED, RideStatus.IN_PROGRESS],
-        ).select_related('student', 'driver').first()
+        ).select_related('student', 'driver', 'driver__driver_profile').first()
         if not ride:
             raise NotFound('No active ride found.')
         return ride
@@ -243,7 +320,139 @@ class DriverRideHistoryView(generics.ListAPIView):
         return Ride.objects.filter(
             driver=self.request.user,
             status=RideStatus.COMPLETED,
-        ).select_related('student', 'driver').order_by('-trip_completed_at')
+        ).select_related('student', 'driver', 'driver__driver_profile').order_by('-trip_completed_at')
+
+
+class DriverMarketplaceListView(generics.ListAPIView):
+    serializer_class = RideListSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        if self.request.user.role != UserRole.DRIVER:
+            raise PermissionDenied('Only drivers can access this endpoint.')
+        return (
+            Ride.objects.filter(status=RideStatus.SEARCHING)
+            .select_related('student', 'driver', 'driver__driver_profile')
+            .order_by('-requested_at')
+        )
+
+    def list(self, request, *args, **kwargs):
+        try:
+            request.user.driver_profile
+        except DriverProfile.DoesNotExist:
+            raise PermissionDenied('Driver profile not found.')
+
+        has_active = Ride.objects.filter(
+            driver=request.user,
+            status__in=ACTIVE_DRIVER_STATUSES,
+        ).exists()
+        if has_active:
+            return Response({'results': [], 'driver_has_active_ride': True})
+
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({'results': serializer.data, 'driver_has_active_ride': False})
+
+
+class DriverAcceptRideView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, ride_id):
+        if request.user.role != UserRole.DRIVER:
+            return Response(
+                {'error': {'code': 'FORBIDDEN', 'message': 'Only drivers can accept rides.'}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if not request.user.is_active:
+            return Response(
+                {
+                    'error': {
+                        'code': 'ACCOUNT_INACTIVE',
+                        'message': 'Your account is inactive.',
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        with transaction.atomic():
+            try:
+                profile = DriverProfile.objects.select_for_update().get(user=request.user)
+            except DriverProfile.DoesNotExist:
+                return Response(
+                    {'error': {'code': 'NO_PROFILE', 'message': 'Driver profile not found.'}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if profile.verification_status != DriverProfile.VerificationStatus.APPROVED:
+                return Response(
+                    {
+                        'error': {
+                            'code': 'NOT_APPROVED',
+                            'message': 'Driver account is not approved yet.',
+                        }
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if not profile.is_online:
+                return Response(
+                    {
+                        'error': {
+                            'code': 'DRIVER_OFFLINE',
+                            'message': 'You are offline. Go online to accept rides.',
+                        }
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if Ride.objects.filter(
+                driver=request.user,
+                status__in=ACTIVE_DRIVER_STATUSES,
+            ).exists():
+                return Response(
+                    {
+                        'error': {
+                            'code': 'ACTIVE_RIDE_EXISTS',
+                            'message': 'Finish your active ride before accepting another.',
+                        }
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            if profile.is_on_trip:
+                return Response(
+                    {
+                        'error': {
+                            'code': 'ON_TRIP',
+                            'message': 'You are already on a trip.',
+                        }
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                ride = Ride.objects.select_for_update().get(id=ride_id)
+            except Ride.DoesNotExist:
+                raise NotFound('Ride not found.')
+            if ride.status != RideStatus.SEARCHING:
+                return Response(
+                    {'error': {'code': 'INVALID_STATUS', 'message': 'Ride is not available.'}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if ride.requested_seats and ride.requested_seats > profile.vehicle_seats:
+                return Response(
+                    {'error': {'code': 'SEATS_EXCEEDED', 'message': 'Not enough available seats.'}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            ride.driver = request.user
+            ride.transition_to(RideStatus.DRIVER_ASSIGNED)
+            ride.save()
+            DriverRideRequest.objects.update_or_create(
+                ride=ride,
+                driver=request.user,
+                defaults={
+                    'response': DriverRideRequest.Response.ACCEPTED,
+                    'responded_at': timezone.now(),
+                },
+            )
+            profile.is_on_trip = True
+            profile.save(update_fields=['is_on_trip'])
+        notify_student_ride_status(ride)
+        return Response(RideDetailSerializer(ride, context={'request': request}).data)
 
 
 class AdminRideListView(generics.ListAPIView):
@@ -256,4 +465,4 @@ class AdminRideListView(generics.ListAPIView):
     ordering = ['-requested_at']
 
     def get_queryset(self):
-        return Ride.objects.all().select_related('student', 'driver')
+        return Ride.objects.all().select_related('student', 'driver', 'driver__driver_profile')

@@ -11,6 +11,7 @@ export interface AuthUser {
   email: string
   role: UserRole
   profile_photo?: string | null
+  fcm_token?: string | null
 }
 
 interface AuthStore {

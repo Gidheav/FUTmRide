@@ -4,9 +4,9 @@ import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Users, Search, ArrowRight, ShieldCheck, ShieldOff } from 'lucide-react'
 import api from '../../core/api'
 
-const css = '@import url(https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap);' +
+const css = '' +
   '*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }' +
-  'body { background: #f4f6f3; font-family: Instrument Sans, sans-serif; }' +
+  'body { background: #f4f6f3; font-family: system-ui, -apple-system, sans-serif; }' +
   '.page { min-height: 100vh; background: #f4f6f3; }' +
   '.nav { background: #0a0a0a; padding: 0 40px; height: 64px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 100; }' +
   '.nav-back { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: transparent; color: rgba(255,255,255,0.6); cursor: pointer; text-decoration: none; transition: all 0.15s; }' +
@@ -15,15 +15,15 @@ const css = '@import url(https://fonts.googleapis.com/css2?family=Instrument+San
   '.nav-title { font-weight: 700; font-size: 16px; color: #fff; }' +
   '.main { max-width: 1100px; margin: 0 auto; padding: 36px 40px; }' +
   '.page-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; gap: 20px; }' +
-  '.page-title { font-family: Instrument Serif, serif; font-size: 28px; color: #0a0a0a; letter-spacing: -0.8px; margin-bottom: 4px; }' +
+  '.page-title { font-family: ui-serif, Georgia, serif; font-size: 28px; color: #0a0a0a; letter-spacing: -0.8px; margin-bottom: 4px; }' +
   '.page-sub { font-size: 14px; color: #9ca3af; }' +
   '.toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }' +
   '.search-wrap { position: relative; flex: 1; max-width: 360px; }' +
   '.search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; }' +
-  '.search-input { width: 100%; height: 40px; padding: 0 14px 0 38px; background: #fff; border: 1.5px solid #e8e8e8; border-radius: 10px; font-family: Instrument Sans, sans-serif; font-size: 13px; color: #0a0a0a; outline: none; transition: border-color 0.15s; box-sizing: border-box; }' +
+  '.search-input { width: 100%; height: 40px; padding: 0 14px 0 38px; background: #fff; border: 1.5px solid #e8e8e8; border-radius: 10px; font-family: system-ui, -apple-system, sans-serif; font-size: 13px; color: #0a0a0a; outline: none; transition: border-color 0.15s; box-sizing: border-box; }' +
   '.search-input:focus { border-color: #007A47; }' +
   '.search-input::placeholder { color: #9ca3af; }' +
-  '.filter-btn { padding: 8px 14px; border-radius: 100px; border: 1.5px solid #e8e8e8; background: #fff; font-family: Instrument Sans, sans-serif; font-size: 12px; font-weight: 600; color: #6b7280; cursor: pointer; transition: all 0.15s; }' +
+  '.filter-btn { padding: 8px 14px; border-radius: 100px; border: 1.5px solid #e8e8e8; background: #fff; font-family: system-ui, -apple-system, sans-serif; font-size: 12px; font-weight: 600; color: #6b7280; cursor: pointer; transition: all 0.15s; }' +
   '.filter-btn:hover { border-color: #007A47; color: #007A47; }' +
   '.filter-btn.active { background: #007A47; border-color: #007A47; color: #fff; }' +
   '.table-card { background: #fff; border-radius: 16px; border: 1px solid #eaeaea; overflow: hidden; }' +
@@ -50,7 +50,7 @@ const css = '@import url(https://fonts.googleapis.com/css2?family=Instrument+San
   '.pagination { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-top: 1px solid #f3f4f6; }' +
   '.page-info { font-size: 13px; color: #9ca3af; }' +
   '.page-btns { display: flex; align-items: center; gap: 6px; }' +
-  '.page-btn { height: 34px; padding: 0 14px; border-radius: 8px; border: 1.5px solid #e8e8e8; background: #fff; font-family: Instrument Sans, sans-serif; font-size: 13px; font-weight: 600; color: #374151; cursor: pointer; display: flex; align-items: center; gap: 5px; transition: all 0.15s; }' +
+  '.page-btn { height: 34px; padding: 0 14px; border-radius: 8px; border: 1.5px solid #e8e8e8; background: #fff; font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: 600; color: #374151; cursor: pointer; display: flex; align-items: center; gap: 5px; transition: all 0.15s; }' +
   '.page-btn:hover:not(:disabled) { border-color: #007A47; color: #007A47; }' +
   '.page-btn:disabled { opacity: 0.4; cursor: not-allowed; }' +
   '@media (max-width: 900px) { .table-head { display: none; } .table-row { grid-template-columns: 1fr; gap: 4px; } }' +

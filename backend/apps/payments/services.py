@@ -1,4 +1,4 @@
-﻿import hashlib
+import hashlib
 import hmac
 import logging
 import uuid
@@ -35,7 +35,7 @@ class WalletService:
             profile.save(update_fields=['wallet_balance'])
             balance_after = profile.wallet_balance
 
-        return WalletTransaction.objects.create(
+        tx = WalletTransaction.objects.create(
             reference=generate_reference('CR'),
             user=user,
             ride=ride,
@@ -47,6 +47,20 @@ class WalletService:
             narration=narration,
             metadata=metadata or {},
         )
+
+        try:
+            from apps.notifications.services import NotificationService
+            NotificationService.notify(
+                user=user,
+                notification_type='payment_received',
+                title='Wallet Credited',
+                body=f'Your wallet has been credited with NGN {amount:,.2f}.',
+                data={'transaction_id': str(tx.id), 'reference': tx.reference}
+            )
+        except Exception as e:
+            logger.error('failed_to_notify_wallet_credit user=%s error=%s', str(user.id), str(e))
+
+        return tx
 
     @staticmethod
     @transaction.atomic
@@ -68,7 +82,7 @@ class WalletService:
             profile.save(update_fields=['wallet_balance'])
             balance_after = profile.wallet_balance
 
-        return WalletTransaction.objects.create(
+        tx = WalletTransaction.objects.create(
             reference=generate_reference('DR'),
             user=user,
             ride=ride,
@@ -80,6 +94,20 @@ class WalletService:
             narration=narration,
             metadata=metadata or {},
         )
+
+        try:
+            from apps.notifications.services import NotificationService
+            NotificationService.notify(
+                user=user,
+                notification_type='payment_debited',
+                title='Wallet Debited',
+                body=f'Your wallet has been debited for NGN {amount:,.2f}.',
+                data={'transaction_id': str(tx.id), 'reference': tx.reference}
+            )
+        except Exception as e:
+            logger.error('failed_to_notify_wallet_debit user=%s error=%s', str(user.id), str(e))
+
+        return tx
 
 
 class PaystackService:

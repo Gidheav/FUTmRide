@@ -62,9 +62,8 @@ export default function DashboardPage() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap');
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: #f4f6f3; font-family: 'Instrument Sans', sans-serif; }
+        body { background: #f4f6f3; font-family: var(--font-sans); }
         .dash { min-height: 100vh; background: #f4f6f3; }
 
         .nav { background: #fff; border-bottom: 1px solid #e8e8e8; padding: 0 40px; height: 64px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
@@ -83,7 +82,7 @@ export default function DashboardPage() {
         .nav-avatar:hover { border-color: #005c35; }
         .nav-menu { position: absolute; top: 44px; right: 0; background: #fff; border: 1px solid #e8e8e8; border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,0.1); padding: 6px; min-width: 180px; z-index: 200; }
         .nav-menu-divider { height: 1px; background: #f3f4f6; margin: 4px 0; }
-        .nav-menu-item { display: flex; align-items: center; gap: 9px; padding: 9px 12px; font-size: 13.5px; color: #374151; font-weight: 500; cursor: pointer; border-radius: 8px; border: none; background: none; width: 100%; text-align: left; font-family: 'Instrument Sans', sans-serif; transition: background 0.15s; text-decoration: none; }
+        .nav-menu-item { display: flex; align-items: center; gap: 9px; padding: 9px 12px; font-size: 13.5px; color: #374151; font-weight: 500; cursor: pointer; border-radius: 8px; border: none; background: none; width: 100%; text-align: left; font-family: var(--font-sans); transition: background 0.15s; text-decoration: none; }
         .nav-menu-item:hover { background: #f4f6f3; }
         .nav-menu-item.danger { color: #dc2626; }
         .nav-menu-item.danger:hover { background: #fef2f2; }
@@ -94,10 +93,10 @@ export default function DashboardPage() {
         .hero-card::before { content: ''; position: absolute; top: -80px; right: -80px; width: 260px; height: 260px; border-radius: 50%; background: rgba(255,255,255,0.05); }
         .hero-card::after { content: ''; position: absolute; bottom: -50px; right: 160px; width: 160px; height: 160px; border-radius: 50%; background: rgba(255,255,255,0.04); }
         .hero-text { position: relative; z-index: 1; }
-        .hero-text h2 { font-family: 'Instrument Serif', serif; font-size: 30px; color: #fff; letter-spacing: -0.8px; line-height: 1.2; margin-bottom: 8px; }
+        .hero-text h2 { font-family: var(--font-serif); font-size: 30px; color: #fff; letter-spacing: -0.8px; line-height: 1.2; margin-bottom: 8px; }
         .hero-text h2 em { font-style: italic; color: rgba(255,255,255,0.62); }
         .hero-text p { color: rgba(255,255,255,0.62); font-size: 14px; line-height: 1.6; }
-        .hero-cta { position: relative; z-index: 1; background: #fff; border: none; border-radius: 12px; padding: 13px 26px; color: #007A47; font-family: 'Instrument Sans', sans-serif; font-size: 14px; font-weight: 700; cursor: pointer; white-space: nowrap; text-decoration: none; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); transition: transform 0.15s, box-shadow 0.15s; }
+        .hero-cta { position: relative; z-index: 1; background: #fff; border: none; border-radius: 12px; padding: 13px 26px; color: #007A47; font-family: var(--font-sans); font-size: 14px; font-weight: 700; cursor: pointer; white-space: nowrap; text-decoration: none; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); transition: transform 0.15s, box-shadow 0.15s; }
         .hero-cta:hover { transform: translateY(-1px); box-shadow: 0 6px 22px rgba(0,0,0,0.18); }
 
         .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
@@ -105,7 +104,7 @@ export default function DashboardPage() {
         .stat-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
         .stat-card-icon { width: 36px; height: 36px; border-radius: 9px; background: #f0fdf4; display: flex; align-items: center; justify-content: center; }
         .stat-card-label { font-size: 12px; font-weight: 600; color: #9ca3af; letter-spacing: 0.5px; text-transform: uppercase; }
-        .stat-card-value { font-family: 'Instrument Serif', serif; font-size: 30px; color: #0a0a0a; letter-spacing: -1px; line-height: 1; }
+        .stat-card-value { font-family: var(--font-serif); font-size: 30px; color: #0a0a0a; letter-spacing: -1px; line-height: 1; }
         .stat-card-sub { font-size: 12px; color: #9ca3af; margin-top: 4px; }
 
         .section { background: #fff; border-radius: 16px; border: 1px solid #eaeaea; overflow: hidden; }

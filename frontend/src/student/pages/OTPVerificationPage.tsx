@@ -121,7 +121,7 @@ export default function OTPVerificationPage() {
           min-height: 100vh;
           display: grid;
           grid-template-columns: 1fr 1fr;
-          font-family: 'Instrument Sans', sans-serif;
+          font-family: system-ui, -apple-system, sans-serif;
         }
 
         /* ── LEFT PANEL ── */
@@ -168,7 +168,7 @@ export default function OTPVerificationPage() {
         }
 
         .headline {
-          font-family: 'Instrument Serif', serif; font-size: 52px;
+          font-family: ui-serif, Georgia, serif; font-size: 52px;
           line-height: 1.05; color: #ffffff; letter-spacing: -1.5px; margin-bottom: 24px;
         }
         .headline em { font-style: italic; color: rgba(255,255,255,0.7); }
@@ -190,7 +190,7 @@ export default function OTPVerificationPage() {
         }
 
         .form-title {
-          font-family: 'Instrument Serif', serif; font-size: 36px; color: #0a0a0a;
+          font-family: ui-serif, Georgia, serif; font-size: 36px; color: #0a0a0a;
           letter-spacing: -1px; line-height: 1.1; margin-bottom: 8px;
         }
 
@@ -204,13 +204,13 @@ export default function OTPVerificationPage() {
         .otp-input {
           width: 50px; height: 56px; border: 1.5px solid #e8e8e8; border-radius: 12px;
           background: #fafafa; text-align: center; font-size: 20px; font-weight: 600;
-          font-family: 'Instrument Sans', sans-serif; transition: all 0.2s; outline: none;
+          font-family: system-ui, -apple-system, sans-serif; transition: all 0.2s; outline: none;
         }
         .otp-input:focus { border-color: #007A47; background: #fff; box-shadow: 0 0 0 4px rgba(0,122,71,0.08); }
 
         .submit-btn {
           width: 100%; height: 52px; background: #007A47; border: none; border-radius: 12px;
-          color: #ffffff; font-family: 'Instrument Sans', sans-serif; font-size: 15px; font-weight: 600;
+          color: #ffffff; font-family: system-ui, -apple-system, sans-serif; font-size: 15px; font-weight: 600;
           letter-spacing: 0.2px; cursor: pointer; margin-top: 8px; transition: all 0.2s;
           box-shadow: 0 4px 20px rgba(0,122,71,0.3);
         }
@@ -220,7 +220,7 @@ export default function OTPVerificationPage() {
         .resend-box { text-align: center; margin-top: 24px; font-size: 13.5px; color: #6b7280; }
         .resend-btn {
           background: none; border: none; color: #007A47; font-weight: 600;
-          font-family: 'Instrument Sans', sans-serif; font-size: 13.5px; cursor: pointer;
+          font-family: system-ui, -apple-system, sans-serif; font-size: 13.5px; cursor: pointer;
         }
         .resend-btn:hover { text-decoration: underline; }
         .resend-btn:disabled { color: #9ca3af; cursor: not-allowed; text-decoration: none; }

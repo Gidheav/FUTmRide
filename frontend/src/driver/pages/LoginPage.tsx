@@ -55,7 +55,7 @@ export default function LoginPage() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap');
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        .page { min-height: 100vh; display: grid; grid-template-columns: 1fr 1fr; font-family: 'Instrument Sans', sans-serif; }
+        .page { min-height: 100vh; display: grid; grid-template-columns: 1fr 1fr; font-family: system-ui, -apple-system, sans-serif; }
 
         .panel-left { background: #0a0a0a; position: relative; display: flex; flex-direction: column; padding: 52px; overflow: hidden; }
         .panel-left-grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px); background-size: 48px 48px; }
@@ -71,7 +71,7 @@ export default function LoginPage() {
         .tag-dot { width: 7px; height: 7px; border-radius: 50%; background: #4ade80; animation: blink 2s ease infinite; }
         @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
         .tag-text { color: #4ade80; font-size: 11px; font-weight: 500; letter-spacing: 1px; text-transform: uppercase; }
-        .headline { font-family: 'Instrument Serif', serif; font-size: 48px; line-height: 1.05; color: #fff; letter-spacing: -1.5px; margin-bottom: 24px; }
+        .headline { font-family: ui-serif, Georgia, serif; font-size: 48px; line-height: 1.05; color: #fff; letter-spacing: -1.5px; margin-bottom: 24px; }
         .headline em { font-style: italic; color: rgba(255,255,255,0.45); }
         .subline { color: rgba(255,255,255,0.45); font-size: 15px; line-height: 1.7; max-width: 300px; }
 
@@ -84,22 +84,22 @@ export default function LoginPage() {
         .panel-right { background: #ffffff; display: flex; align-items: center; justify-content: center; padding: 52px; }
         .form-box { width: 100%; max-width: 360px; }
         .form-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: #007A47; margin-bottom: 12px; }
-        .form-title { font-family: 'Instrument Serif', serif; font-size: 34px; color: #0a0a0a; letter-spacing: -1px; line-height: 1.1; margin-bottom: 6px; }
+        .form-title { font-family: ui-serif, Georgia, serif; font-size: 34px; color: #0a0a0a; letter-spacing: -1px; line-height: 1.1; margin-bottom: 6px; }
         .form-sub { font-size: 14px; color: #9ca3af; margin-bottom: 36px; }
 
         .field { margin-bottom: 20px; }
         .field-label { font-size: 12px; font-weight: 600; color: #374151; letter-spacing: 0.4px; text-transform: uppercase; margin-bottom: 7px; }
         .input-wrap { position: relative; }
-        .field-input { width: 100%; height: 50px; padding: 0 46px 0 14px; background: #fafafa; border: 1.5px solid #e8e8e8; border-radius: 10px; font-family: 'Instrument Sans', sans-serif; font-size: 15px; color: #0a0a0a; outline: none; transition: border-color 0.15s, background 0.15s, box-shadow 0.15s; box-sizing: border-box; }
+        .field-input { width: 100%; height: 50px; padding: 0 46px 0 14px; background: #fafafa; border: 1.5px solid #e8e8e8; border-radius: 10px; font-family: system-ui, -apple-system, sans-serif; font-size: 15px; color: #0a0a0a; outline: none; transition: border-color 0.15s, background 0.15s, box-shadow 0.15s; box-sizing: border-box; }
         .field-input.no-icon { padding-right: 14px; }
         .field-input.focused { border-color: #007A47; background: #fff; box-shadow: 0 0 0 4px rgba(0,122,71,0.08); }
         .field-input.has-error { border-color: #ef4444; }
         .field-input::placeholder { color: #c4c4c4; }
-        .show-btn { position: absolute; right: 0; top: 0; height: 50px; width: 46px; display: flex; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; color: #9ca3af; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; font-family: 'Instrument Sans', sans-serif; transition: color 0.15s; }
+        .show-btn { position: absolute; right: 0; top: 0; height: 50px; width: 46px; display: flex; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; color: #9ca3af; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; font-family: system-ui, -apple-system, sans-serif; transition: color 0.15s; }
         .show-btn:hover { color: #007A47; }
         .field-error { color: #ef4444; font-size: 12px; margin-top: 5px; }
 
-        .submit-btn { width: 100%; height: 52px; background: #007A47; border: none; border-radius: 10px; color: #fff; font-family: 'Instrument Sans', sans-serif; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 8px; transition: background 0.2s, transform 0.1s, box-shadow 0.2s; box-shadow: 0 4px 20px rgba(0,122,71,0.3); }
+        .submit-btn { width: 100%; height: 52px; background: #007A47; border: none; border-radius: 10px; color: #fff; font-family: system-ui, -apple-system, sans-serif; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 8px; transition: background 0.2s, transform 0.1s, box-shadow 0.2s; box-shadow: 0 4px 20px rgba(0,122,71,0.3); }
         .submit-btn:hover:not(:disabled) { background: #006339; box-shadow: 0 6px 24px rgba(0,122,71,0.4); transform: translateY(-1px); }
         .submit-btn:active:not(:disabled) { transform: translateY(0); }
         .submit-btn:disabled { background: #a7d9c0; box-shadow: none; cursor: not-allowed; }

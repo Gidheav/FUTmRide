@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useEffect, useRef, useState } from 'react'
 
 type SidebarProps = {
@@ -27,6 +28,7 @@ export default function StudentSidebar({
   const sidebarWidth = Math.min(width * 0.76, 320)
   const translateX = useRef(new Animated.Value(-sidebarWidth)).current
   const backdropOpacity = useRef(new Animated.Value(0)).current
+  const insets = useSafeAreaInsets()
 
   useEffect(() => {
     if (visible) {
@@ -59,54 +61,67 @@ export default function StudentSidebar({
     }
   }, [backdropOpacity, sidebarWidth, translateX, visible])
 
-  if (!isVisible) {
-    return null
-  }
-
   return (
     <Modal visible={isVisible} animationType="none" transparent onRequestClose={onClose}>
-      <View style={styles.overlayWrap}>
-        <Animated.View style={[styles.sidebar, { width: sidebarWidth, transform: [{ translateX }] }]}>
-          <View style={styles.header}>
-            <Text style={styles.brand}>LR Ride</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton} activeOpacity={0.85}>
-              <MaterialIcons name="close" size={20} color="#5e5e5e" />
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity style={styles.menuItem} onPress={onLogout} activeOpacity={0.85}>
-            <MaterialIcons name="logout" size={20} color="#ba1a1a" />
-            <Text style={styles.logoutText}>Sign Out</Text>
-          </TouchableOpacity>
+      <View style={styles.modalRoot}>
+        {/* Full screen animated backdrop */}
+        <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, { opacity: backdropOpacity }]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         </Animated.View>
 
-        <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
-          <Pressable style={styles.backdropPressable} onPress={onClose} />
-        </Animated.View>
+        {/* Overlay layout containing the side panel */}
+        <View
+          style={[styles.overlayWrap, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
+          pointerEvents="box-none"
+        >
+          <Animated.View style={[
+            styles.sidebar,
+            {
+              width: sidebarWidth,
+              transform: [{ translateX }],
+            }
+          ]}>
+            <View style={styles.sidebarContent}>
+              <View style={styles.header}>
+                <Text style={styles.brand}>LR Ride</Text>
+                <TouchableOpacity onPress={onClose} style={styles.closeButton} activeOpacity={0.85}>
+                  <MaterialIcons name="close" size={20} color="#5e5e5e" />
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity style={styles.menuItem} onPress={onLogout} activeOpacity={0.85}>
+                <MaterialIcons name="logout" size={20} color="#ba1a1a" />
+                <Text style={styles.logoutText}>Sign Out</Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </View>
       </View>
     </Modal>
   )
 }
 
 const styles = StyleSheet.create({
+  modalRoot: {
+    flex: 1,
+  },
   overlayWrap: {
     flex: 1,
     flexDirection: 'row',
   },
   backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.28)',
-  },
-  backdropPressable: {
-    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0)',
   },
   sidebar: {
     backgroundColor: '#ffffff',
-    paddingTop: 28,
-    paddingHorizontal: 18,
-    paddingBottom: 24,
-    borderTopRightRadius: 20,
+    borderTopRightRadius: 0,
     borderBottomRightRadius: 20,
+  },
+  sidebarContent: {
+    flex: 1,
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 24,
   },
   header: {
     flexDirection: 'row',

@@ -5,9 +5,9 @@ import { Users, Car, ShieldCheck, TrendingUp, ArrowRight, LayoutDashboard, UserC
 import api from '../../core/api'
 import { useAuthStore } from '../../core/authStore'
 
-const css = '@import url(https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap);' +
+const css = '' +
   '*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }' +
-  'body { background: #f4f6f3; font-family: Instrument Sans, sans-serif; }' +
+  'body { background: #f4f6f3; font-family: system-ui, -apple-system, sans-serif; }' +
   '.dash { min-height: 100vh; background: #f4f6f3; }' +
   '.nav { background: #0a0a0a; padding: 0 40px; height: 64px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }' +
   '.nav-left { display: flex; align-items: center; gap: 10px; }' +
@@ -21,18 +21,18 @@ const css = '@import url(https://fonts.googleapis.com/css2?family=Instrument+San
   '.nav-right { display: flex; align-items: center; gap: 10px; }' +
   '.nav-user { font-size: 13px; color: rgba(255,255,255,0.5); }' +
   '.nav-user strong { color: #fff; }' +
-  '.logout-btn { display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 7px 12px; font-family: Instrument Sans, sans-serif; font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.6); cursor: pointer; transition: all 0.15s; }' +
+  '.logout-btn { display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 7px 12px; font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.6); cursor: pointer; transition: all 0.15s; }' +
   '.logout-btn:hover { background: rgba(220,38,38,0.1); border-color: rgba(220,38,38,0.3); color: #ef4444; }' +
   '.main { max-width: 1200px; margin: 0 auto; padding: 36px 40px; }' +
   '.page-head { margin-bottom: 28px; }' +
-  '.page-title { font-family: Instrument Serif, serif; font-size: 30px; color: #0a0a0a; letter-spacing: -0.8px; margin-bottom: 4px; }' +
+  '.page-title { font-family: ui-serif, Georgia, serif; font-size: 30px; color: #0a0a0a; letter-spacing: -0.8px; margin-bottom: 4px; }' +
   '.page-sub { font-size: 14px; color: #9ca3af; }' +
   '.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }' +
   '.stat-card { background: #fff; border-radius: 16px; padding: 22px 24px; border: 1px solid #eaeaea; }' +
   '.stat-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }' +
   '.stat-label { font-size: 11px; font-weight: 700; color: #9ca3af; letter-spacing: 0.6px; text-transform: uppercase; }' +
   '.stat-icon { width: 36px; height: 36px; border-radius: 10px; background: #f0fdf4; display: flex; align-items: center; justify-content: center; }' +
-  '.stat-value { font-family: Instrument Serif, serif; font-size: 32px; color: #0a0a0a; letter-spacing: -1px; line-height: 1; margin-bottom: 4px; }' +
+  '.stat-value { font-family: ui-serif, Georgia, serif; font-size: 32px; color: #0a0a0a; letter-spacing: -1px; line-height: 1; margin-bottom: 4px; }' +
   '.stat-sub { font-size: 12px; color: #9ca3af; }' +
   '.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }' +
   '.section { background: #fff; border-radius: 16px; border: 1px solid #eaeaea; overflow: hidden; }' +

@@ -6,9 +6,9 @@ import toast from 'react-hot-toast'
 import api from '../../core/api'
 import { useAuthStore } from '../../core/authStore'
 
-const css = '@import url(https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap);' +
+const css = '' +
   '*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }' +
-  'body { background: #f4f6f3; font-family: Instrument Sans, sans-serif; }' +
+  'body { background: #f4f6f3; font-family: system-ui, -apple-system, sans-serif; }' +
   '.dash { min-height: 100vh; background: #f4f6f3; }' +
   '.nav { background: #fff; border-bottom: 1px solid #e8e8e8; padding: 0 40px; height: 64px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }' +
   '.nav-left { display: flex; align-items: center; gap: 10px; }' +
@@ -27,7 +27,7 @@ const css = '@import url(https://fonts.googleapis.com/css2?family=Instrument+San
   '.nav-avatar:hover { border-color: #007A47; }' +
   '.nav-menu { position: absolute; top: 44px; right: 0; background: #fff; border: 1px solid #e8e8e8; border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,0.1); padding: 6px; min-width: 180px; z-index: 200; }' +
   '.nav-menu-divider { height: 1px; background: #f3f4f6; margin: 4px 0; }' +
-  '.nav-menu-item { display: flex; align-items: center; gap: 9px; padding: 9px 12px; font-size: 13.5px; color: #374151; font-weight: 500; cursor: pointer; border-radius: 8px; border: none; background: none; width: 100%; text-align: left; font-family: Instrument Sans, sans-serif; transition: background 0.15s; text-decoration: none; }' +
+  '.nav-menu-item { display: flex; align-items: center; gap: 9px; padding: 9px 12px; font-size: 13.5px; color: #374151; font-weight: 500; cursor: pointer; border-radius: 8px; border: none; background: none; width: 100%; text-align: left; font-family: system-ui, -apple-system, sans-serif; transition: background 0.15s; text-decoration: none; }' +
   '.nav-menu-item:hover { background: #f4f6f3; }' +
   '.nav-menu-item.danger { color: #dc2626; }' +
   '.nav-menu-item.danger:hover { background: #fef2f2; }' +
@@ -44,9 +44,9 @@ const css = '@import url(https://fonts.googleapis.com/css2?family=Instrument+San
   '.status-badge-text { font-size: 11px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; }' +
   '.status-badge-text.online { color: #4ade80; }' +
   '.status-badge-text.offline { color: rgba(255,255,255,0.4); }' +
-  '.status-title { font-family: Instrument Serif, serif; font-size: 28px; color: #fff; letter-spacing: -0.8px; line-height: 1.2; margin-bottom: 8px; }' +
+  '.status-title { font-family: ui-serif, Georgia, serif; font-size: 28px; color: #fff; letter-spacing: -0.8px; line-height: 1.2; margin-bottom: 8px; }' +
   '.status-sub { font-size: 13px; color: rgba(255,255,255,0.45); margin-bottom: 24px; }' +
-  '.toggle-btn { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 12px 18px; cursor: pointer; transition: all 0.2s; font-family: Instrument Sans, sans-serif; font-size: 14px; font-weight: 600; color: #fff; }' +
+  '.toggle-btn { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 12px 18px; cursor: pointer; transition: all 0.2s; font-family: system-ui, -apple-system, sans-serif; font-size: 14px; font-weight: 600; color: #fff; }' +
   '.toggle-btn:hover { background: rgba(0,122,71,0.3); border-color: rgba(0,122,71,0.5); }' +
   '.toggle-btn:disabled { opacity: 0.5; cursor: not-allowed; }' +
   '.toggle-btn.online { background: rgba(0,122,71,0.2); border-color: rgba(0,122,71,0.4); }' +
@@ -62,7 +62,7 @@ const css = '@import url(https://fonts.googleapis.com/css2?family=Instrument+San
   '.stat-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }' +
   '.stat-icon { width: 34px; height: 34px; border-radius: 9px; background: #f0fdf4; display: flex; align-items: center; justify-content: center; }' +
   '.stat-label { font-size: 11px; font-weight: 600; color: #9ca3af; letter-spacing: 0.5px; text-transform: uppercase; }' +
-  '.stat-value { font-family: Instrument Serif, serif; font-size: 26px; color: #0a0a0a; letter-spacing: -0.8px; line-height: 1; }' +
+  '.stat-value { font-family: ui-serif, Georgia, serif; font-size: 26px; color: #0a0a0a; letter-spacing: -0.8px; line-height: 1; }' +
   '.stat-sub { font-size: 12px; color: #9ca3af; margin-top: 4px; }' +
   '.section { background: #fff; border-radius: 16px; border: 1px solid #eaeaea; overflow: hidden; }' +
   '.section-head { padding: 20px 26px; border-bottom: 1px solid #f3f4f6; display: flex; align-items: center; justify-content: space-between; }' +

@@ -1,0 +1,351 @@
+import { useCallback, useEffect, useState } from 'react'
+import {
+  ActivityIndicator,
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { MaterialIcons } from '@expo/vector-icons'
+import api from '../../core/api'
+
+type NotificationsPageProps = {
+  onClose: () => void
+}
+
+type NotificationItem = {
+  id: string
+  notification_type: string
+  title: string
+  body: string
+  data: Record<string, any>
+  is_read: boolean
+  created_at: string
+}
+
+const TYPE_ICONS: Record<string, { icon: keyof typeof MaterialIcons.glyphMap; color: string; bg: string }> = {
+  ride_requested: { icon: 'local-taxi', color: '#6A1B9A', bg: '#f3e5f5' },
+  driver_assigned: { icon: 'person', color: '#1565C0', bg: '#e3f2fd' },
+  driver_arrived: { icon: 'place', color: '#2e7d32', bg: '#e8f5e9' },
+  trip_started: { icon: 'navigation', color: '#E65100', bg: '#fff3e0' },
+  trip_completed: { icon: 'check-circle', color: '#2e7d32', bg: '#e8f5e9' },
+  ride_cancelled: { icon: 'cancel', color: '#b91c1c', bg: '#fef2f2' },
+  payment_received: { icon: 'account-balance-wallet', color: '#6A1B9A', bg: '#f3e5f5' },
+  payment_debited: { icon: 'payment', color: '#b91c1c', bg: '#fef2f2' },
+  account_approved: { icon: 'verified', color: '#2e7d32', bg: '#e8f5e9' },
+  general: { icon: 'notifications', color: '#6b7280', bg: '#f3f4f6' },
+}
+
+function timeAgo(dateStr: string): string {
+  const now = Date.now()
+  const then = new Date(dateStr).getTime()
+  const diff = Math.max(0, now - then)
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'Just now'
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}d ago`
+  return new Date(dateStr).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })
+}
+
+export default function StudentNotificationsPage({ onClose }: NotificationsPageProps) {
+  const [notifications, setNotifications] = useState<NotificationItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [markingAll, setMarkingAll] = useState(false)
+  const insets = useSafeAreaInsets()
+
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const res = await api.get('notifications/')
+      const data = res.data?.results ?? res.data ?? []
+      setNotifications(Array.isArray(data) ? data : [])
+    } catch {
+      // silent fail
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void fetchNotifications()
+  }, [fetchNotifications])
+
+  const handleRefresh = () => {
+    setRefreshing(true)
+    void fetchNotifications()
+  }
+
+  const handleMarkRead = async (id: string) => {
+    try {
+      await api.patch(`notifications/${id}/read/`)
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)))
+    } catch {
+      // silent
+    }
+  }
+
+  const handleMarkAllRead = async () => {
+    setMarkingAll(true)
+    try {
+      await api.post('notifications/mark-all-read/')
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })))
+    } catch {
+      // silent
+    } finally {
+      setMarkingAll(false)
+    }
+  }
+
+  const unreadCount = notifications.filter((n) => !n.is_read).length
+
+  const renderItem = ({ item }: { item: NotificationItem }) => {
+    const cfg = TYPE_ICONS[item.notification_type] || TYPE_ICONS.general
+    return (
+      <TouchableOpacity
+        style={[styles.notifCard, !item.is_read && styles.notifCardUnread]}
+        activeOpacity={0.85}
+        onPress={() => {
+          if (!item.is_read) void handleMarkRead(item.id)
+        }}
+      >
+        <View style={[styles.notifIconWrap, { backgroundColor: cfg.bg }]}>
+          <MaterialIcons name={cfg.icon} size={20} color={cfg.color} />
+        </View>
+        <View style={styles.notifContent}>
+          <View style={styles.notifTitleRow}>
+            <Text style={styles.notifTitle} numberOfLines={1}>{item.title}</Text>
+            {!item.is_read && <View style={styles.unreadDot} />}
+          </View>
+          <Text style={styles.notifBody} numberOfLines={2}>{item.body}</Text>
+          <Text style={styles.notifTime}>{timeAgo(item.created_at)}</Text>
+        </View>
+      </TouchableOpacity>
+    )
+  }
+
+  const renderEmpty = () => {
+    if (loading) return null
+    return (
+      <View style={styles.emptyWrap}>
+        <View style={styles.emptyIconWrap}>
+          <MaterialIcons name="notifications-off" size={48} color="#d1d5db" />
+        </View>
+        <Text style={styles.emptyTitle}>No notifications yet</Text>
+        <Text style={styles.emptySubtitle}>
+          You'll receive updates about your rides, payments, and account here.
+        </Text>
+      </View>
+    )
+  }
+
+  return (
+    <View style={styles.page}>
+      <View style={[styles.header, { paddingTop: Math.max(14, insets.top + 10) }]}>
+        <TouchableOpacity style={styles.backButton} onPress={onClose}>
+          <MaterialIcons name="arrow-back" size={22} color="#1a1c1c" />
+        </TouchableOpacity>
+        <Text style={styles.title}>Notifications</Text>
+        {unreadCount > 0 ? (
+          <TouchableOpacity
+            style={styles.markAllButton}
+            onPress={handleMarkAllRead}
+            disabled={markingAll}
+            activeOpacity={0.85}
+          >
+            {markingAll ? (
+              <ActivityIndicator size="small" color="#6A1B9A" />
+            ) : (
+              <MaterialIcons name="done-all" size={20} color="#6A1B9A" />
+            )}
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.headerSpacer} />
+        )}
+      </View>
+
+      {unreadCount > 0 && (
+        <View style={styles.unreadBanner}>
+          <MaterialIcons name="mark-email-unread" size={16} color="#6A1B9A" />
+          <Text style={styles.unreadBannerText}>
+            {unreadCount} unread notification{unreadCount !== 1 ? 's' : ''}
+          </Text>
+        </View>
+      )}
+
+      {loading ? (
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="large" color="#6A1B9A" />
+        </View>
+      ) : (
+        <FlatList
+          data={notifications}
+          renderItem={renderItem}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={renderEmpty}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={['#6A1B9A']} />
+          }
+          showsVerticalScrollIndicator={false}
+        />
+      )}
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  page: {
+    flex: 1,
+    backgroundColor: '#f9f9f9',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 12,
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eeeeee',
+  },
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f1f1f1',
+  },
+  title: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1c1c',
+  },
+  headerSpacer: {
+    width: 36,
+  },
+  markAllButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f3e5f5',
+  },
+  unreadBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: '#faf5ff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#ede5f5',
+  },
+  unreadBannerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6A1B9A',
+  },
+  loadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  listContent: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 40,
+  },
+  // Notification card
+  notifCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    padding: 14,
+    marginBottom: 8,
+    borderRadius: 14,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  notifCardUnread: {
+    backgroundColor: '#faf5ff',
+    borderColor: '#ede5f5',
+  },
+  notifIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notifContent: {
+    flex: 1,
+    gap: 3,
+  },
+  notifTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  notifTitle: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1a1c1c',
+  },
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#6A1B9A',
+  },
+  notifBody: {
+    fontSize: 13,
+    color: '#6b7280',
+    lineHeight: 18,
+  },
+  notifTime: {
+    fontSize: 11,
+    color: '#9ca3af',
+    marginTop: 2,
+  },
+  // Empty state
+  emptyWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 80,
+    paddingHorizontal: 40,
+    gap: 12,
+  },
+  emptyIconWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1c1c',
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    color: '#6b7280',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+})

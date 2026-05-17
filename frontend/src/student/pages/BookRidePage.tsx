@@ -43,9 +43,9 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>
 
-const css = "@import url(https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap);" +
+const css = "" +
   "*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }" +
-  "body { background: #f4f6f3; font-family: Instrument Sans, sans-serif; }" +
+  "body { background: #f4f6f3; font-family: system-ui, -apple-system, sans-serif; }" +
   ".page { min-height: 100vh; background: #f4f6f3; }" +
   ".nav { background: #fff; border-bottom: 1px solid #e8e8e8; padding: 0 40px; height: 64px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 100; }" +
   ".nav-back { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; border: 1px solid #e8e8e8; background: #fff; color: #374151; text-decoration: none; transition: background 0.15s; }" +
@@ -53,13 +53,13 @@ const css = "@import url(https://fonts.googleapis.com/css2?family=Instrument+San
   ".nav-badge { width: 34px; height: 34px; background: #007A47; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 13px; }" +
   ".nav-title { font-weight: 700; font-size: 16px; color: #0a0a0a; }" +
   ".main { max-width: 680px; margin: 0 auto; padding: 36px 40px; }" +
-  ".page-title { font-family: Instrument Serif, serif; font-size: 28px; color: #0a0a0a; letter-spacing: -0.8px; margin-bottom: 4px; }" +
+  ".page-title { font-family: ui-serif, Georgia, serif; font-size: 28px; color: #0a0a0a; letter-spacing: -0.8px; margin-bottom: 4px; }" +
   ".page-sub { font-size: 14px; color: #9ca3af; margin-bottom: 28px; }" +
   ".card { background: #fff; border-radius: 16px; border: 1px solid #eaeaea; padding: 26px; margin-bottom: 18px; }" +
   ".card-title { font-size: 12px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 18px; }" +
   ".field { margin-bottom: 16px; position: relative; }" +
   ".field-label { font-size: 11px; font-weight: 700; color: #374151; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 7px; display: flex; align-items: center; gap: 5px; }" +
-  ".field-select { width: 100%; height: 48px; padding: 0 36px 0 14px; background: #fafafa; border: 1.5px solid #e8e8e8; border-radius: 10px; font-family: Instrument Sans, sans-serif; font-size: 14px; color: #0a0a0a; outline: none; cursor: pointer; appearance: none; transition: border-color 0.15s; }" +
+  ".field-select { width: 100%; height: 48px; padding: 0 36px 0 14px; background: #fafafa; border: 1.5px solid #e8e8e8; border-radius: 10px; font-family: system-ui, -apple-system, sans-serif; font-size: 14px; color: #0a0a0a; outline: none; cursor: pointer; appearance: none; transition: border-color 0.15s; }" +
   ".field-select:focus { border-color: #007A47; background: #fff; }" +
   ".field-select.has-error { border-color: #ef4444; }" +
   ".select-arrow { position: absolute; right: 12px; bottom: 14px; pointer-events: none; }" +
@@ -84,7 +84,7 @@ const css = "@import url(https://fonts.googleapis.com/css2?family=Instrument+San
   ".summary-icon { width: 36px; height: 36px; background: #f0fdf4; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }" +
   ".summary-label { font-size: 11px; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 2px; }" +
   ".summary-value { font-size: 14px; font-weight: 600; color: #0a0a0a; }" +
-  ".submit-btn { width: 100%; height: 52px; background: #007A47; border: none; border-radius: 12px; color: #fff; font-family: Instrument Sans, sans-serif; font-size: 15px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background 0.2s; box-shadow: 0 4px 20px rgba(0,122,71,0.25); }" +
+  ".submit-btn { width: 100%; height: 52px; background: #007A47; border: none; border-radius: 12px; color: #fff; font-family: system-ui, -apple-system, sans-serif; font-size: 15px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background 0.2s; box-shadow: 0 4px 20px rgba(0,122,71,0.25); }" +
   ".submit-btn:hover:not(:disabled) { background: #006339; }" +
   ".submit-btn:disabled { background: #a7d9c0; box-shadow: none; cursor: not-allowed; }" +
   ".spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; }" +

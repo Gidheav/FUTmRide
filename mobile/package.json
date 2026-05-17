@@ -7,7 +7,9 @@
     "android": "expo start --go --android --clear",
     "ios": "expo start --go --ios --clear",
     "web": "expo start --web --clear",
-    "test": "jest --watch --clear-cache"
+    "test": "jest --watch --clear-cache",
+    "check:push-config": "node scripts/checkPushConfig.js",
+    "eas-build-pre-install": "node scripts/checkPushConfig.js --ci"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.0",

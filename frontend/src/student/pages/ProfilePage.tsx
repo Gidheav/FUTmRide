@@ -5,9 +5,9 @@ import { ArrowLeft, User, Mail, Phone, Save } from "lucide-react"
 import toast from "react-hot-toast"
 import api from "../../core/api"
 
-const css = "@import url(https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap);" +
+const css = "" +
   "*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }" +
-  "body { background: #f4f6f3; font-family: Instrument Sans, sans-serif; }" +
+  "body { background: #f4f6f3; font-family: system-ui, -apple-system, sans-serif; }" +
   ".page { min-height: 100vh; }" +
   ".nav { background: #fff; border-bottom: 1px solid #e8e8e8; padding: 0 40px; height: 64px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 100; }" +
   ".nav-back { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; border: 1px solid #e8e8e8; background: #fff; color: #374151; text-decoration: none; }" +
@@ -15,17 +15,17 @@ const css = "@import url(https://fonts.googleapis.com/css2?family=Instrument+San
   ".nav-title { font-weight: 700; font-size: 16px; color: #0a0a0a; }" +
   ".main { max-width: 600px; margin: 0 auto; padding: 36px 40px; }" +
   ".avatar-row { display: flex; align-items: center; gap: 20px; margin-bottom: 28px; }" +
-  ".avatar { width: 68px; height: 68px; border-radius: 50%; background: #007A47; display: flex; align-items: center; justify-content: center; font-family: Instrument Serif, serif; font-size: 26px; color: #fff; flex-shrink: 0; }" +
-  ".avatar-name { font-family: Instrument Serif, serif; font-size: 22px; color: #0a0a0a; letter-spacing: -0.5px; }" +
+  ".avatar { width: 68px; height: 68px; border-radius: 50%; background: #007A47; display: flex; align-items: center; justify-content: center; font-family: ui-serif, Georgia, serif; font-size: 26px; color: #fff; flex-shrink: 0; }" +
+  ".avatar-name { font-family: ui-serif, Georgia, serif; font-size: 22px; color: #0a0a0a; letter-spacing: -0.5px; }" +
   ".avatar-role { font-size: 13px; color: #9ca3af; margin-top: 3px; text-transform: capitalize; }" +
   ".card { background: #fff; border-radius: 16px; border: 1px solid #eaeaea; padding: 26px; margin-bottom: 18px; }" +
   ".card-title { font-size: 11px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 20px; }" +
   ".field { margin-bottom: 16px; }" +
   ".field-label { font-size: 11px; font-weight: 700; color: #374151; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 7px; display: flex; align-items: center; gap: 5px; }" +
-  ".field-input { width: 100%; height: 46px; padding: 0 14px; background: #fafafa; border: 1.5px solid #e8e8e8; border-radius: 10px; font-family: Instrument Sans, sans-serif; font-size: 14px; color: #0a0a0a; outline: none; transition: border-color 0.15s; box-sizing: border-box; }" +
+  ".field-input { width: 100%; height: 46px; padding: 0 14px; background: #fafafa; border: 1.5px solid #e8e8e8; border-radius: 10px; font-family: system-ui, -apple-system, sans-serif; font-size: 14px; color: #0a0a0a; outline: none; transition: border-color 0.15s; box-sizing: border-box; }" +
   ".field-input:focus { border-color: #007A47; background: #fff; }" +
   ".field-input:disabled { color: #9ca3af; cursor: not-allowed; background: #f9fafb; }" +
-  ".save-btn { height: 48px; padding: 0 26px; background: #007A47; border: none; border-radius: 10px; font-family: Instrument Sans, sans-serif; font-size: 14px; font-weight: 700; color: #fff; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background 0.15s; }" +
+  ".save-btn { height: 48px; padding: 0 26px; background: #007A47; border: none; border-radius: 10px; font-family: system-ui, -apple-system, sans-serif; font-size: 14px; font-weight: 700; color: #fff; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background 0.15s; }" +
   ".save-btn:hover:not(:disabled) { background: #006339; }" +
   ".save-btn:disabled { opacity: 0.55; cursor: not-allowed; }" +
   ".spinner { width: 13px; height: 13px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; }" +

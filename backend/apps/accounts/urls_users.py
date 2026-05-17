@@ -1,10 +1,11 @@
-﻿from django.urls import path
+from django.urls import path
 from .views import (
     MeView, StudentProfileView, DriverProfileView,
     DriverProfileCreateView, DriverAvailabilityView,
     AdminUserListView, AdminUserDetailView,
     AdminDriverListView, AdminDriverVerifyView,
     AdminToggleUserActiveView,
+    AdminSummaryStatsView,
     CampusListView,
 )
 
@@ -22,4 +23,5 @@ urlpatterns = [
     path('<uuid:pk>/toggle-active/', AdminToggleUserActiveView.as_view(), name='admin-user-toggle-active'),
     path('drivers/', AdminDriverListView.as_view(), name='admin-driver-list'),
     path('drivers/<int:pk>/verify/', AdminDriverVerifyView.as_view(), name='admin-driver-verify'),
+    path('admin/summary-stats/', AdminSummaryStatsView.as_view(), name='admin-summary-stats'),
 ]

@@ -55,6 +55,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     last_name = models.CharField(max_length=100)
     role = models.CharField(max_length=20, choices=UserRole.choices, default=UserRole.STUDENT)
     profile_photo = models.ImageField(upload_to='profiles/%Y/%m/', null=True, blank=True)
+    home_address = models.CharField(max_length=255, null=True, blank=True)
 
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)

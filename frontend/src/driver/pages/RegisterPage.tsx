@@ -30,9 +30,9 @@ const step2Schema = z.object({
 type Step1Data = z.infer<typeof step1Schema>
 type Step2Data = z.infer<typeof step2Schema>
 
-const css = "@import url(https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap);" +
+const css = "" +
   "*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }" +
-  "body { background: #f4f6f3; font-family: Instrument Sans, sans-serif; }" +
+  "body { background: #f4f6f3; font-family: system-ui, -apple-system, sans-serif; }" +
   ".page { min-height: 100vh; display: grid; grid-template-columns: 1fr 1fr; }" +
   ".panel-left { background: #0a0a0a; position: relative; display: flex; flex-direction: column; padding: 52px; overflow: hidden; }" +
   ".panel-left-grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px); background-size: 48px 48px; }" +
@@ -42,7 +42,7 @@ const css = "@import url(https://fonts.googleapis.com/css2?family=Instrument+San
   ".logo-name { color: #fff; font-weight: 600; font-size: 17px; }" +
   ".driver-tag { background: rgba(0,122,71,0.3); border: 1px solid rgba(0,122,71,0.5); border-radius: 6px; padding: 2px 8px; font-size: 10px; font-weight: 700; color: #4ade80; text-transform: uppercase; }" +
   ".left-mid { position: relative; z-index: 2; margin-top: auto; margin-bottom: auto; padding: 60px 0; }" +
-  ".headline { font-family: Instrument Serif, serif; font-size: 44px; color: #fff; letter-spacing: -1.5px; line-height: 1.08; margin-bottom: 20px; }" +
+  ".headline { font-family: ui-serif, Georgia, serif; font-size: 44px; color: #fff; letter-spacing: -1.5px; line-height: 1.08; margin-bottom: 20px; }" +
   ".headline em { font-style: italic; color: rgba(255,255,255,0.4); }" +
   ".subline { color: rgba(255,255,255,0.45); font-size: 15px; line-height: 1.7; }" +
   ".steps { position: relative; z-index: 2; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 28px; display: flex; flex-direction: column; gap: 14px; }" +
@@ -54,23 +54,23 @@ const css = "@import url(https://fonts.googleapis.com/css2?family=Instrument+San
   ".panel-right { background: #fff; display: flex; align-items: center; justify-content: center; padding: 52px; overflow-y: auto; }" +
   ".form-box { width: 100%; max-width: 400px; }" +
   ".form-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: #007A47; margin-bottom: 12px; }" +
-  ".form-title { font-family: Instrument Serif, serif; font-size: 32px; color: #0a0a0a; letter-spacing: -0.8px; margin-bottom: 6px; }" +
+  ".form-title { font-family: ui-serif, Georgia, serif; font-size: 32px; color: #0a0a0a; letter-spacing: -0.8px; margin-bottom: 6px; }" +
   ".form-sub { font-size: 14px; color: #9ca3af; margin-bottom: 28px; }" +
   ".field { margin-bottom: 16px; }" +
   ".field-label { font-size: 11px; font-weight: 700; color: #374151; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 7px; }" +
-  ".field-input { width: 100%; height: 48px; padding: 0 14px; background: #fafafa; border: 1.5px solid #e8e8e8; border-radius: 10px; font-family: Instrument Sans, sans-serif; font-size: 14px; color: #0a0a0a; outline: none; transition: border-color 0.15s; box-sizing: border-box; }" +
+  ".field-input { width: 100%; height: 48px; padding: 0 14px; background: #fafafa; border: 1.5px solid #e8e8e8; border-radius: 10px; font-family: system-ui, -apple-system, sans-serif; font-size: 14px; color: #0a0a0a; outline: none; transition: border-color 0.15s; box-sizing: border-box; }" +
   ".field-input:focus { border-color: #007A47; background: #fff; }" +
   ".field-input.has-error { border-color: #ef4444; }" +
-  ".field-select { width: 100%; height: 48px; padding: 0 14px; background: #fafafa; border: 1.5px solid #e8e8e8; border-radius: 10px; font-family: Instrument Sans, sans-serif; font-size: 14px; color: #0a0a0a; outline: none; cursor: pointer; box-sizing: border-box; }" +
+  ".field-select { width: 100%; height: 48px; padding: 0 14px; background: #fafafa; border: 1.5px solid #e8e8e8; border-radius: 10px; font-family: system-ui, -apple-system, sans-serif; font-size: 14px; color: #0a0a0a; outline: none; cursor: pointer; box-sizing: border-box; }" +
   ".field-select:focus { border-color: #007A47; }" +
   ".field-error { color: #ef4444; font-size: 12px; margin-top: 5px; }" +
   ".input-wrap { position: relative; }" +
-  ".show-btn { position: absolute; right: 0; top: 0; height: 48px; width: 44px; display: flex; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; color: #9ca3af; font-size: 11px; font-weight: 700; text-transform: uppercase; font-family: Instrument Sans, sans-serif; }" +
+  ".show-btn { position: absolute; right: 0; top: 0; height: 48px; width: 44px; display: flex; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; color: #9ca3af; font-size: 11px; font-weight: 700; text-transform: uppercase; font-family: system-ui, -apple-system, sans-serif; }" +
   ".show-btn:hover { color: #007A47; }" +
   ".grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }" +
   ".consent { display: flex; align-items: flex-start; gap: 10px; margin: 16px 0 8px; padding: 12px; background: #f0fdf6; border: 1px solid #bbf7d0; border-radius: 10px; }" +
   ".consent-text { font-size: 12px; color: #374151; line-height: 1.6; }" +
-  ".submit-btn { width: 100%; height: 50px; background: #007A47; border: none; border-radius: 10px; color: #fff; font-family: Instrument Sans, sans-serif; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 16px; transition: background 0.2s; box-shadow: 0 4px 20px rgba(0,122,71,0.25); }" +
+  ".submit-btn { width: 100%; height: 50px; background: #007A47; border: none; border-radius: 10px; color: #fff; font-family: system-ui, -apple-system, sans-serif; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 16px; transition: background 0.2s; box-shadow: 0 4px 20px rgba(0,122,71,0.25); }" +
   ".submit-btn:hover:not(:disabled) { background: #006339; }" +
   ".submit-btn:disabled { background: #a7d9c0; box-shadow: none; cursor: not-allowed; }" +
   ".spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 8px; }" +

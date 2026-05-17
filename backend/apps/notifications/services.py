@@ -34,32 +34,87 @@ class SMSService:
 
 class PushNotificationService:
     FCM_URL = 'https://fcm.googleapis.com/fcm/send'
+    EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send'
+    EXPO_PUSH_PREFIXES = ('ExpoPushToken[', 'ExponentPushToken[')
+    RIDE_STATUS_CHANNEL_ID = 'ride-status-alerts'
 
     @classmethod
-    def send(cls, fcm_token: str, title: str, body: str, data: dict = None) -> bool:
-        if not fcm_token:
+    def _is_expo_push_token(cls, push_token: str) -> bool:
+        return push_token.startswith(cls.EXPO_PUSH_PREFIXES)
+
+    @classmethod
+    def _send_expo(cls, push_token: str, title: str, body: str, data: dict | None = None) -> bool:
+        resp = requests.post(
+            cls.EXPO_PUSH_URL,
+            json={
+                'to': push_token,
+                'title': title,
+                'body': body,
+                'data': data or {},
+                'channelId': cls.RIDE_STATUS_CHANNEL_ID,
+                'priority': 'high',
+                'sound': 'default',
+            },
+            headers={
+                'Accept': 'application/json',
+                'Accept-encoding': 'gzip, deflate',
+                'Content-Type': 'application/json',
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        payload = resp.json() if resp.content else {}
+        tickets = payload.get('data')
+        if isinstance(tickets, dict):
+            tickets = [tickets]
+        if isinstance(tickets, list):
+            for ticket in tickets:
+                if isinstance(ticket, dict) and ticket.get('status') == 'error':
+                    details = ticket.get('details') or {}
+                    logger.error('expo_push_failed token=%s details=%s', push_token[:16], details)
+                    return False
+        if payload.get('errors'):
+            logger.error('expo_push_failed token=%s errors=%s', push_token[:16], payload.get('errors'))
             return False
-        if settings.DEBUG:
+        return True
+
+    @classmethod
+    def _send_fcm_legacy(cls, push_token: str, title: str, body: str, data: dict | None = None) -> bool:
+        resp = requests.post(
+            cls.FCM_URL,
+            json={
+                'to': push_token,
+                'priority': 'high',
+                'notification': {
+                    'title': title,
+                    'body': body,
+                    'android_channel_id': cls.RIDE_STATUS_CHANNEL_ID,
+                    'sound': 'default',
+                },
+                'data': data or {},
+            },
+            headers={
+                'Authorization': f'key={settings.FCM_SERVER_KEY}',
+                'Content-Type': 'application/json',
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return True
+
+    @classmethod
+    def send(cls, push_token: str, title: str, body: str, data: dict = None) -> bool:
+        if not push_token:
+            return False
+        if settings.DEBUG and not getattr(settings, 'ENABLE_PUSH_IN_DEBUG', False):
             logger.info('PUSH [DEV] title=%s body=%s', title, body)
             return True
         try:
-            resp = requests.post(
-                cls.FCM_URL,
-                json={
-                    'to': fcm_token,
-                    'notification': {'title': title, 'body': body},
-                    'data': data or {},
-                },
-                headers={
-                    'Authorization': f'key={settings.FCM_SERVER_KEY}',
-                    'Content-Type': 'application/json',
-                },
-                timeout=10,
-            )
-            resp.raise_for_status()
-            return True
+            if cls._is_expo_push_token(push_token):
+                return cls._send_expo(push_token, title, body, data)
+            return cls._send_fcm_legacy(push_token, title, body, data)
         except Exception as e:
-            logger.error('push_failed token=%s error=%s', fcm_token[:10], str(e))
+            logger.error('push_failed token=%s error=%s', push_token[:16], str(e))
             return False
 
 

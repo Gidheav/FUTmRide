@@ -108,14 +108,13 @@ export default function RegisterPage() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap');
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         .page {
           min-height: 100vh;
           display: grid;
           grid-template-columns: 1fr 1fr;
-          font-family: 'Instrument Sans', sans-serif;
+          font-family: var(--font-sans);
         }
 
         .panel-left {
@@ -167,7 +166,7 @@ export default function RegisterPage() {
         @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.5} }
         .tag-text { color: rgba(255,255,255,0.9); font-size: 11px; font-weight: 500; letter-spacing: 1px; text-transform: uppercase; }
         .headline {
-          font-family: 'Instrument Serif', serif; font-size: 48px;
+          font-family: var(--font-serif); font-size: 48px;
           line-height: 1.05; color: #fff; letter-spacing: -1.5px; margin-bottom: 24px;
         }
         .headline em { font-style: italic; color: rgba(255,255,255,0.65); }
@@ -196,7 +195,7 @@ export default function RegisterPage() {
         }
         .form-box { width: 100%; max-width: 400px; padding: 8px 0; }
         .form-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: #007A47; margin-bottom: 12px; }
-        .form-title { font-family: 'Instrument Serif', serif; font-size: 34px; color: #0a0a0a; letter-spacing: -1px; line-height: 1.1; margin-bottom: 6px; }
+        .form-title { font-family: var(--font-serif); font-size: 34px; color: #0a0a0a; letter-spacing: -1px; line-height: 1.1; margin-bottom: 6px; }
         .form-sub { font-size: 14px; color: #9ca3af; margin-bottom: 36px; }
 
         .role-toggle {
@@ -206,7 +205,7 @@ export default function RegisterPage() {
         }
         .role-btn {
           padding: 10px; border: none; border-radius: 9px; cursor: pointer;
-          font-family: 'Instrument Sans', sans-serif; font-size: 13px; font-weight: 600;
+          font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: 600;
           transition: all 0.18s; background: transparent; color: #9ca3af;
         }
         .role-btn.active { background: #007A47; color: #fff; box-shadow: 0 2px 8px rgba(0,122,71,0.25); }
@@ -218,7 +217,7 @@ export default function RegisterPage() {
         .field-input {
           width: 100%; height: 48px; padding: 0 46px 0 14px;
           background: #fafafa; border: 1.5px solid #e8e8e8; border-radius: 10px;
-          font-family: 'Instrument Sans', sans-serif; font-size: 14px; color: #0a0a0a;
+          font-family: system-ui, -apple-system, sans-serif; font-size: 14px; color: #0a0a0a;
           outline: none; transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
           box-sizing: border-box;
         }
@@ -231,7 +230,7 @@ export default function RegisterPage() {
           display: flex; align-items: center; justify-content: center;
           background: none; border: none; cursor: pointer; color: #9ca3af;
           font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
-          font-family: 'Instrument Sans', sans-serif; transition: color 0.15s;
+          font-family: system-ui, -apple-system, sans-serif; transition: color 0.15s;
         }
         .show-btn:hover { color: #007A47; }
         .field-error { color: #ef4444; font-size: 12px; margin-top: 5px; }
@@ -249,7 +248,7 @@ export default function RegisterPage() {
 
         .submit-btn {
           width: 100%; height: 50px; background: #007A47; border: none; border-radius: 10px;
-          color: #fff; font-family: 'Instrument Sans', sans-serif; font-size: 15px; font-weight: 600;
+          color: #fff; font-family: system-ui, -apple-system, sans-serif; font-size: 15px; font-weight: 600;
           cursor: pointer; margin-top: 16px;
           transition: background 0.2s, transform 0.1s, box-shadow 0.2s;
           box-shadow: 0 4px 20px rgba(0,122,71,0.3);

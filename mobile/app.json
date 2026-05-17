@@ -43,7 +43,14 @@
       }
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "color": "#5B2D8E",
+          "defaultChannel": "ride-status-alerts"
+        }
+      ]
     ],
     "owner": "heavpro"
   }
