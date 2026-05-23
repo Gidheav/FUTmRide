@@ -2,13 +2,15 @@
 from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework import status
-from .models import User, StudentProfile, DriverProfile, OTPVerification, UserRole
+from .models import User, StudentProfile, DriverProfile, OTPVerification, StudentSignupVerificationSession, UserRole
 
 
 class UserRegistrationTestCase(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.url = reverse('auth-register')
+        self.request_otp_url = reverse('auth-register-request-email-otp')
+        self.verify_otp_url = reverse('auth-register-verify-email-otp')
 
     def _payload(self, **overrides):
         data = {
@@ -20,13 +22,32 @@ class UserRegistrationTestCase(TestCase):
         data.update(overrides)
         return data
 
+    def _request_student_signup_code(self, **overrides):
+        return self.client.post(self.request_otp_url, self._payload(**overrides), format='json')
+
+    def _verify_student_signup_code(self, email='aisha.m2302417@st.futminna.edu.ng'):
+        pending = StudentSignupVerificationSession.objects.filter(email__iexact=email).latest('created_at')
+        return self.client.post(self.verify_otp_url, {'email': email, 'code': pending.code}, format='json')
+
     def test_student_registration_succeeds(self):
-        res = self.client.post(self.url, self._payload(), format='json')
+        request_res = self._request_student_signup_code()
+        self.assertEqual(request_res.status_code, status.HTTP_200_OK)
+
+        verify_res = self._verify_student_signup_code()
+        self.assertEqual(verify_res.status_code, status.HTTP_200_OK)
+        verification_token = verify_res.data.get('verification_token')
+
+        res = self.client.post(self.url, self._payload(verification_token=verification_token), format='json')
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
         self.assertIn('user_id', res.data)
         self.assertEqual(res.data['role'], 'student')
         user = User.objects.get(email='aisha.m2302417@st.futminna.edu.ng')
         self.assertTrue(hasattr(user, 'student_profile'))
+        self.assertTrue(user.is_email_verified)
+
+    def test_student_registration_without_verification_rejected(self):
+        res = self.client.post(self.url, self._payload(), format='json')
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_driver_registration_creates_driver_profile_placeholder(self):
         payload = self._payload(
@@ -45,10 +66,12 @@ class UserRegistrationTestCase(TestCase):
         self.client.post(
             self.url,
             self._payload(
+                role='driver',
                 phone_number='+2348011111111',
                 first_name='Aisha',
                 last_name='Bello',
                 data_consent_given=True,
+                email='',
             ),
             format='json',
         )
@@ -96,6 +119,49 @@ class UserRegistrationTestCase(TestCase):
 
     def test_admin_role_not_allowed_via_registration(self):
         res = self.client.post(self.url, self._payload(role='admin'), format='json')
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class StudentSignupVerificationTestCase(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.request_otp_url = reverse('auth-register-request-email-otp')
+        self.verify_otp_url = reverse('auth-register-verify-email-otp')
+
+    def _request_payload(self, **overrides):
+        data = {
+            'email': 'aisha.m2302417@st.futminna.edu.ng',
+            'password': 'SecurePass123!',
+            'confirm_password': 'SecurePass123!',
+            'role': 'student',
+        }
+        data.update(overrides)
+        return data
+
+    def test_request_signup_otp_creates_pending_session(self):
+        res = self.client.post(self.request_otp_url, self._request_payload(), format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        pending_count = StudentSignupVerificationSession.objects.filter(
+            email='aisha.m2302417@st.futminna.edu.ng'
+        ).count()
+        self.assertEqual(pending_count, 1)
+
+    def test_verify_signup_otp_returns_verification_token(self):
+        self.client.post(self.request_otp_url, self._request_payload(), format='json')
+        pending = StudentSignupVerificationSession.objects.latest('created_at')
+        res = self.client.post(self.verify_otp_url, {
+            'email': 'aisha.m2302417@st.futminna.edu.ng',
+            'code': pending.code,
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertTrue(res.data.get('verification_token'))
+
+    def test_verify_signup_otp_wrong_code_rejected(self):
+        self.client.post(self.request_otp_url, self._request_payload(), format='json')
+        res = self.client.post(self.verify_otp_url, {
+            'email': 'aisha.m2302417@st.futminna.edu.ng',
+            'code': '000000',
+        }, format='json')
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
 

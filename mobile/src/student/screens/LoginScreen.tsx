@@ -9,6 +9,7 @@ import {
   Pressable,
   ActivityIndicator,
   Alert,
+  Modal,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -20,6 +21,22 @@ import api, { API_BASE_URL } from '../../core/api'
 
 const ILLUSTRATION_IMAGE = require('../../homeslide3-1-1024x499.png')
 const studentEmailRegex = /^[A-Za-z]+\.[mM]\d+@st\.futminna\.edu\.ng$/
+const verificationCodeRegex = /^\d{6}$/
+
+// Keep a short fallback list so mobile can work across minor backend route name differences.
+const STUDENT_SIGNUP_OTP_REQUEST_ENDPOINTS = [
+  'auth/register/request-email-otp/',
+  'auth/register/request-verification-code/',
+  'auth/register/student/request-verification/',
+  'auth/otp/email/request/',
+]
+
+const STUDENT_SIGNUP_OTP_VERIFY_ENDPOINTS = [
+  'auth/register/verify-email-otp/',
+  'auth/register/verify-verification-code/',
+  'auth/register/student/verify-code/',
+  'auth/otp/email/verify/',
+]
 
 const getApiErrorMessage = (err: any, fallback: string) => {
   const message = err?.response?.data?.error?.message
@@ -45,6 +62,32 @@ const getApiErrorMessage = (err: any, fallback: string) => {
   return fallback
 }
 
+const postToFirstAvailableEndpoint = async (
+  endpoints: string[],
+  payload: Record<string, unknown>,
+) => {
+  let lastError: any = null
+
+  for (const endpoint of endpoints) {
+    try {
+      return await api.post(endpoint, payload)
+    } catch (err: any) {
+      const statusCode = err?.response?.status
+      if (statusCode === 404 || statusCode === 405) {
+        lastError = err
+        continue
+      }
+      throw err
+    }
+  }
+
+  if (lastError) {
+    throw lastError
+  }
+
+  throw new Error('Verification service is unavailable.')
+}
+
 export default function StudentLoginScreen() {
   const [isSignup, setIsSignup] = useState(false)
   const [identifier, setIdentifier] = useState('')
@@ -56,6 +99,13 @@ export default function StudentLoginScreen() {
   const [signupPassword, setSignupPassword] = useState('')
   const [signupLoading, setSignupLoading] = useState(false)
   const [signupError, setSignupError] = useState('')
+  const [verificationCode, setVerificationCode] = useState('')
+  const [verificationModalVisible, setVerificationModalVisible] = useState(false)
+  const [verificationLoading, setVerificationLoading] = useState(false)
+  const [verificationResendLoading, setVerificationResendLoading] = useState(false)
+  const [verificationError, setVerificationError] = useState('')
+  const [verificationStatusMessage, setVerificationStatusMessage] = useState('')
+  const [pendingSignupData, setPendingSignupData] = useState<{ email: string; password: string } | null>(null)
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false)
   const setAuth = useAuthStore((state) => state.setAuth)
 
@@ -120,23 +170,127 @@ export default function StudentLoginScreen() {
 
     setSignupLoading(true)
     setSignupError('')
+    setVerificationError('')
 
     try {
+      const verificationResponse = await postToFirstAvailableEndpoint(
+        STUDENT_SIGNUP_OTP_REQUEST_ENDPOINTS,
+        {
+          email,
+          password: signupPassword,
+          confirm_password: signupPassword,
+          role: 'student',
+          data_consent_given: true,
+        },
+      )
+
+      setPendingSignupData({ email, password: signupPassword })
+      setVerificationCode('')
+      setVerificationStatusMessage(
+        verificationResponse?.data?.message ||
+          `Verification code sent to ${email}. Enter the code to finish creating your account.`,
+      )
+      setVerificationModalVisible(true)
+    } catch (err: any) {
+      setSignupError(getApiErrorMessage(err, 'Unable to send verification code. Please try again.'))
+    } finally {
+      setSignupLoading(false)
+    }
+  }
+
+  const handleCloseVerificationModal = () => {
+    if (verificationLoading || verificationResendLoading) {
+      return
+    }
+    setVerificationModalVisible(false)
+    setVerificationCode('')
+    setVerificationError('')
+    setVerificationStatusMessage('')
+    setPendingSignupData(null)
+  }
+
+  const handleResendVerificationCode = async () => {
+    if (!pendingSignupData?.email) {
+      setVerificationError('Signup session expired. Please try creating your account again.')
+      return
+    }
+
+    setVerificationResendLoading(true)
+    setVerificationError('')
+
+    try {
+      const resendResponse = await postToFirstAvailableEndpoint(
+        STUDENT_SIGNUP_OTP_REQUEST_ENDPOINTS,
+        {
+          email: pendingSignupData.email,
+          password: pendingSignupData.password,
+          confirm_password: pendingSignupData.password,
+          role: 'student',
+          data_consent_given: true,
+        },
+      )
+      setVerificationStatusMessage(
+        resendResponse?.data?.message ||
+          `A new verification code has been sent to ${pendingSignupData.email}.`,
+      )
+    } catch (err: any) {
+      setVerificationError(getApiErrorMessage(err, 'Failed to resend verification code.'))
+    } finally {
+      setVerificationResendLoading(false)
+    }
+  }
+
+  const handleVerifyCodeAndCreateAccount = async () => {
+    if (!pendingSignupData) {
+      setVerificationError('Signup session expired. Please create your account again.')
+      return
+    }
+
+    const code = verificationCode.trim()
+    if (!verificationCodeRegex.test(code)) {
+      setVerificationError('Enter the 6-digit verification code sent to your email.')
+      return
+    }
+
+    setVerificationLoading(true)
+    setVerificationError('')
+
+    try {
+      const verifyResponse = await postToFirstAvailableEndpoint(
+        STUDENT_SIGNUP_OTP_VERIFY_ENDPOINTS,
+        {
+          email: pendingSignupData.email,
+          code,
+        },
+      )
+
+      const verificationToken = verifyResponse?.data?.verification_token
+      if (!verificationToken) {
+        setVerificationError('Verification succeeded but token was missing. Please request a new code.')
+        return
+      }
+
       await api.post('auth/register/', {
-        email,
-        password: signupPassword,
-        confirm_password: signupPassword,
+        email: pendingSignupData.email,
+        password: pendingSignupData.password,
+        confirm_password: pendingSignupData.password,
+        verification_token: verificationToken,
         role: 'student',
         data_consent_given: true,
       })
+
+      setVerificationModalVisible(false)
+      setPendingSignupData(null)
+      setVerificationCode('')
+      setVerificationStatusMessage('')
       setIsSignup(false)
-      setIdentifier(email)
+      setIdentifier(pendingSignupData.email)
       setSignupPassword('')
-      Alert.alert('Create Account', 'Account created. Please log in with your email and password.')
+      Alert.alert('Create Account', 'Account verified and created successfully. Please log in.')
     } catch (err: any) {
-      setSignupError(getApiErrorMessage(err, 'Registration failed. Please try again.'))
+      setVerificationError(getApiErrorMessage(err, 'Verification failed. Please try again.'))
     } finally {
-      setSignupLoading(false)
+      setVerificationLoading(false)
     }
   }
 
@@ -319,6 +473,79 @@ export default function StudentLoginScreen() {
         </View>
 
       </ScrollView>
+
+      <Modal
+        visible={verificationModalVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={handleCloseVerificationModal}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.verificationModalCard}>
+            <Text style={styles.verificationModalTitle}>Verify Email</Text>
+            <Text style={styles.verificationModalSubtitle}>
+              Enter the 6-digit code sent to {pendingSignupData?.email || signupEmail.trim().toLowerCase()}.
+            </Text>
+
+            <TextInput
+              style={styles.verificationInput}
+              placeholder="Enter 6-digit code"
+              placeholderTextColor="#b8b8b8"
+              value={verificationCode}
+              onChangeText={(value) => setVerificationCode(value.replace(/\D/g, '').slice(0, 6))}
+              keyboardType="number-pad"
+              maxLength={6}
+              editable={!verificationLoading && !verificationResendLoading}
+            />
+
+            {verificationError ? (
+              <Text style={[styles.errorText, styles.verificationInlineStatus]}>{verificationError}</Text>
+            ) : verificationStatusMessage ? (
+              <Text style={styles.verificationStatusText}>{verificationStatusMessage}</Text>
+            ) : null}
+
+            <TouchableOpacity
+              style={[styles.primaryButton, verificationLoading && styles.primaryButtonDisabled]}
+              onPress={handleVerifyCodeAndCreateAccount}
+              disabled={verificationLoading || verificationResendLoading}
+              activeOpacity={0.85}
+            >
+              {verificationLoading ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <>
+                  <Text style={styles.primaryButtonText}>Verify and Create Account</Text>
+                  <MaterialIcons name="check-circle" size={18} color="#ffffff" />
+                </>
+              )}
+            </TouchableOpacity>
+
+            <View style={styles.verificationActionsRow}>
+              <TouchableOpacity
+                style={styles.verificationSecondaryAction}
+                onPress={handleResendVerificationCode}
+                disabled={verificationLoading || verificationResendLoading}
+                activeOpacity={0.75}
+              >
+                {verificationResendLoading ? (
+                  <ActivityIndicator size="small" color="#5e5e5e" />
+                ) : (
+                  <Text style={styles.verificationSecondaryActionText}>Resend code</Text>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.verificationSecondaryAction}
+                onPress={handleCloseVerificationModal}
+                disabled={verificationLoading || verificationResendLoading}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.verificationSecondaryActionText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   )
 }
@@ -528,5 +755,70 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  verificationModalCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 20,
+  },
+  verificationModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1a1c1c',
+    marginBottom: 8,
+  },
+  verificationModalSubtitle: {
+    fontSize: 14,
+    color: '#5e5e5e',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  verificationInput: {
+    width: '100%',
+    backgroundColor: '#f3f3f3',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e2e2',
+    paddingHorizontal: 14,
+    fontSize: 18,
+    letterSpacing: 4,
+    color: '#1a1c1c',
+    height: 52,
+    textAlign: 'center',
+  },
+  verificationInlineStatus: {
+    marginTop: 12,
+    marginBottom: 0,
+  },
+  verificationStatusText: {
+    marginTop: 12,
+    fontSize: 13,
+    color: '#3d4a3e',
+    lineHeight: 18,
+  },
+  verificationActionsRow: {
+    marginTop: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  verificationSecondaryAction: {
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  verificationSecondaryActionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#5e5e5e',
   },
 })

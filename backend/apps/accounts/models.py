@@ -258,3 +258,31 @@ class OTPVerification(models.Model):
     @property
     def is_valid(self):
         return not self.is_used and self.expires_at > timezone.now() and self.attempts < 3
+
+
+class StudentSignupVerificationSession(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    email = models.EmailField(db_index=True)
+    code = models.CharField(max_length=6)
+    code_expires_at = models.DateTimeField(db_index=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    is_verified = models.BooleanField(default=False, db_index=True)
+    verification_token = models.CharField(max_length=128, null=True, blank=True, db_index=True)
+    verification_token_expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    consumed_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'student_signup_verification_sessions'
+        indexes = [
+            models.Index(fields=['email', 'is_verified', 'consumed_at']),
+            models.Index(fields=['created_at']),
+        ]
+
+    def __str__(self):
+        return f'StudentSignupSession({self.email}, verified={self.is_verified})'
+
+    @property
+    def is_code_valid(self):
+        return self.code_expires_at > timezone.now() and self.attempts < 3

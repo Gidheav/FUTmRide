@@ -12,6 +12,7 @@ from .models import DriverProfile, StudentProfile, User, UserRole, Campus, Campu
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, validators=[validate_password])
     confirm_password = serializers.CharField(write_only=True)
+    verification_token = serializers.CharField(write_only=True, required=False, allow_blank=True)
     data_consent_given = serializers.BooleanField(required=False)
     phone_number = serializers.CharField(required=False, allow_blank=True)
     first_name = serializers.CharField(required=False, allow_blank=True)
@@ -31,6 +32,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             "role",
             "password",
             "confirm_password",
+            "verification_token",
             "data_consent_given",
         ]
 
@@ -378,6 +380,50 @@ class OTPVerifySerializer(serializers.Serializer):
     phone_number = serializers.CharField()
     code = serializers.CharField(max_length=6)
     purpose = serializers.CharField(default="phone_verification")
+
+
+class StudentSignupOTPRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(validators=[validate_password])
+    confirm_password = serializers.CharField()
+    role = serializers.ChoiceField(choices=UserRole.choices, required=False, default=UserRole.STUDENT)
+    data_consent_given = serializers.BooleanField(required=False, default=True)
+
+    def validate(self, attrs):
+        email = (attrs.get('email') or '').strip().lower()
+        if not email:
+            raise serializers.ValidationError({'email': 'University email is required.'})
+
+        if attrs.get('password') != attrs.get('confirm_password'):
+            raise serializers.ValidationError({'confirm_password': 'Passwords do not match.'})
+
+        if attrs.get('role') != UserRole.STUDENT:
+            raise serializers.ValidationError({'role': 'Only student role is supported for email signup verification.'})
+
+        if not UserRegistrationSerializer.student_email_regex.match(email):
+            raise serializers.ValidationError({
+                'email': 'Use format name.m1234567@st.futminna.edu.ng for student accounts.',
+            })
+
+        if User.objects.filter(email__iexact=email).exists():
+            raise serializers.ValidationError({'email': 'A user with this email already exists.'})
+
+        attrs['email'] = email
+        attrs['data_consent_given'] = True
+        return attrs
+
+
+class StudentSignupOTPVerifySerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    code = serializers.CharField(max_length=6, min_length=6)
+
+    def validate(self, attrs):
+        attrs['email'] = (attrs.get('email') or '').strip().lower()
+        code = (attrs.get('code') or '').strip()
+        if not code.isdigit():
+            raise serializers.ValidationError({'code': 'Code must be a 6-digit number.'})
+        attrs['code'] = code
+        return attrs
 
 
 class ChangePasswordSerializer(serializers.Serializer):

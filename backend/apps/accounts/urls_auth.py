@@ -1,6 +1,7 @@
 from django.urls import path
 from .views import (
     RegisterView, LoginView, LogoutView,
+    StudentSignupRequestEmailOTPView, StudentSignupVerifyEmailOTPView,
     OTPRequestView, OTPVerifyView, ChangePasswordView,
     PasswordResetRequestView, PasswordResetConfirmView,
     SessionTokenRefreshView,
@@ -8,6 +9,8 @@ from .views import (
 )
 
 urlpatterns = [
+    path('register/request-email-otp/', StudentSignupRequestEmailOTPView.as_view(), name='auth-register-request-email-otp'),
+    path('register/verify-email-otp/', StudentSignupVerifyEmailOTPView.as_view(), name='auth-register-verify-email-otp'),
     path('register/', RegisterView.as_view(), name='auth-register'),
     path('login/', LoginView.as_view(), name='auth-login'),
     path('logout/', LogoutView.as_view(), name='auth-logout'),

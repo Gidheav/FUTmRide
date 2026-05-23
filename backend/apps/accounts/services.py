@@ -1,9 +1,11 @@
 import logging
 import random
+import secrets
 import string
 from django.conf import settings
+from django.core.mail import send_mail
 from django.utils import timezone
-from .models import OTPVerification, User
+from .models import OTPVerification, StudentSignupVerificationSession, User
 
 logger = logging.getLogger('apps.accounts')
 
@@ -113,6 +115,115 @@ class OTPService:
         otp.save(update_fields=['is_used'])
         logger.info('otp_verified phone=%s purpose=%s', phone_number, purpose)
         return True, 'Verified successfully.'
+
+
+class StudentSignupVerificationService:
+    @staticmethod
+    def generate_code(length: int = 6) -> str:
+        return ''.join(random.choices(string.digits, k=length))
+
+    @staticmethod
+    def generate_token() -> str:
+        return secrets.token_urlsafe(32)
+
+    @classmethod
+    def request_code(cls, email: str) -> StudentSignupVerificationSession:
+        normalized_email = (email or '').strip().lower()
+        code = cls.generate_code()
+        expiry = timezone.now() + timezone.timedelta(minutes=settings.OTP_EXPIRY_MINUTES)
+
+        session = StudentSignupVerificationSession.objects.create(
+            email=normalized_email,
+            code=code,
+            code_expires_at=expiry,
+        )
+
+        subject, body = cls._compose_email(code)
+        try:
+            send_mail(
+                subject,
+                body,
+                settings.DEFAULT_FROM_EMAIL,
+                [normalized_email],
+                fail_silently=False,
+            )
+            logger.info('student_signup_code_sent email=%s session_id=%s', normalized_email, str(session.id))
+        except Exception as exc:
+            logger.error('student_signup_code_send_failed email=%s error=%s', normalized_email, str(exc))
+
+        return session
+
+    @staticmethod
+    def _compose_email(code: str) -> tuple[str, str]:
+        expiry = settings.OTP_EXPIRY_MINUTES
+        return (
+            'LR-Ride: Complete Your Student Signup',
+            f'Your LR-Ride student signup verification code is: {code}\n\n'
+            f'This code is valid for {expiry} minutes.\n'
+            f'If you did not request this code, please ignore this email.\n\n'
+            f'- LR-Ride Team',
+        )
+
+    @classmethod
+    def verify_code(cls, email: str, code: str) -> tuple[bool, str, StudentSignupVerificationSession | None]:
+        normalized_email = (email or '').strip().lower()
+        try:
+            session = StudentSignupVerificationSession.objects.filter(
+                email__iexact=normalized_email,
+                consumed_at__isnull=True,
+            ).latest('created_at')
+        except StudentSignupVerificationSession.DoesNotExist:
+            return False, 'No pending signup verification found. Please request a new code.', None
+
+        if session.code_expires_at <= timezone.now():
+            return False, 'Code has expired. Please request a new code.', None
+
+        max_attempts = getattr(settings, 'OTP_MAX_ATTEMPTS', 3)
+        if session.attempts >= max_attempts:
+            return False, 'Maximum attempts reached. Please request a new code.', None
+
+        if session.code != code:
+            session.attempts += 1
+            session.save(update_fields=['attempts', 'updated_at'])
+            remaining = max(0, max_attempts - session.attempts)
+            return False, f'Invalid code. {remaining} attempt(s) remaining.', None
+
+        session.is_verified = True
+        session.verification_token = cls.generate_token()
+        session.verification_token_expires_at = timezone.now() + timezone.timedelta(
+            minutes=settings.OTP_EXPIRY_MINUTES
+        )
+        session.save(
+            update_fields=[
+                'is_verified',
+                'verification_token',
+                'verification_token_expires_at',
+                'updated_at',
+            ]
+        )
+        logger.info('student_signup_code_verified email=%s session_id=%s', normalized_email, str(session.id))
+        return True, 'Email verified successfully.', session
+
+    @staticmethod
+    def get_verified_session(email: str, verification_token: str) -> StudentSignupVerificationSession | None:
+        normalized_email = (email or '').strip().lower()
+        now = timezone.now()
+
+        try:
+            return StudentSignupVerificationSession.objects.filter(
+                email__iexact=normalized_email,
+                verification_token=verification_token,
+                is_verified=True,
+                consumed_at__isnull=True,
+                verification_token_expires_at__gt=now,
+            ).latest('created_at')
+        except StudentSignupVerificationSession.DoesNotExist:
+            return None
+
+    @staticmethod
+    def mark_consumed(session: StudentSignupVerificationSession) -> None:
+        session.consumed_at = timezone.now()
+        session.save(update_fields=['consumed_at', 'updated_at'])
 
 
 class EmailOTPService:

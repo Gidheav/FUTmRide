@@ -20,6 +20,8 @@ from .serializers import (
     DriverProfileSerializer,
     FutminnaTokenObtainPairSerializer,
     OTPRequestSerializer,
+    StudentSignupOTPRequestSerializer,
+    StudentSignupOTPVerifySerializer,
     OTPVerifySerializer,
     PasswordResetRequestSerializer,
     PasswordResetConfirmSerializer,
@@ -29,7 +31,7 @@ from .serializers import (
     UserRegistrationSerializer,
     CampusSerializer,
 )
-from .services import OTPService, EmailOTPService
+from .services import OTPService, EmailOTPService, StudentSignupVerificationService
 
 logger = logging.getLogger('apps.accounts')
 
@@ -41,16 +43,97 @@ class RegisterView(generics.CreateAPIView):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
+        role = serializer.validated_data.get('role') or UserRole.STUDENT
+        verified_session = None
+        if role == UserRole.STUDENT:
+            email = serializer.validated_data.get('email')
+            verification_token = (serializer.validated_data.get('verification_token') or '').strip()
+            if not verification_token:
+                return Response(
+                    {
+                        'error': {
+                            'code': 'VERIFICATION_REQUIRED',
+                            'message': 'Please verify your email code before creating a student account.',
+                        }
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            verified_session = StudentSignupVerificationService.get_verified_session(email, verification_token)
+            if not verified_session:
+                return Response(
+                    {
+                        'error': {
+                            'code': 'VERIFICATION_INVALID',
+                            'message': 'Verification session is invalid or expired. Please request a new code.',
+                        }
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         user = serializer.save()
+        if user.role == UserRole.STUDENT:
+            user.is_email_verified = True
+            user.save(update_fields=['is_email_verified'])
+            if verified_session:
+                StudentSignupVerificationService.mark_consumed(verified_session)
         if user.phone_number:
             OTPService.create_and_send(user, OTPVerification.Purpose.PHONE_VERIFICATION)
         return Response(
             {
-                'message': 'Registration successful.' if not user.phone_number else 'Registration successful. A verification code has been sent to your phone.',
+                'message': (
+                    'Registration successful. Your email has been verified.'
+                    if user.role == UserRole.STUDENT
+                    else (
+                        'Registration successful.'
+                        if not user.phone_number
+                        else 'Registration successful. A verification code has been sent to your phone.'
+                    )
+                ),
                 'user_id': str(user.id),
                 'role': user.role,
             },
             status=status.HTTP_201_CREATED,
+        )
+
+
+class StudentSignupRequestEmailOTPView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = StudentSignupOTPRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data['email']
+        StudentSignupVerificationService.request_code(email)
+
+        return Response({'message': f'Verification code sent to {email}.'}, status=status.HTTP_200_OK)
+
+
+class StudentSignupVerifyEmailOTPView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = StudentSignupOTPVerifySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data['email']
+        code = serializer.validated_data['code']
+        success, message, session = StudentSignupVerificationService.verify_code(email, code)
+        if not success or not session:
+            return Response(
+                {'error': {'code': 'OTP_INVALID', 'message': message}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                'message': message,
+                'verified': True,
+                'verification_token': session.verification_token,
+            },
+            status=status.HTTP_200_OK,
         )
 
 

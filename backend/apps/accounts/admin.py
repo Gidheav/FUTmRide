@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import DriverProfile, OTPVerification, StudentProfile, User
+from .models import DriverProfile, OTPVerification, StudentProfile, StudentSignupVerificationSession, User
 
 
 @admin.register(User)
@@ -70,3 +70,11 @@ class OTPVerificationAdmin(admin.ModelAdmin):
     list_filter = ['purpose', 'is_used']
     search_fields = ['phone_number']
     readonly_fields = ['id', 'created_at']
+
+
+@admin.register(StudentSignupVerificationSession)
+class StudentSignupVerificationSessionAdmin(admin.ModelAdmin):
+    list_display = ['email', 'is_verified', 'attempts', 'code_expires_at', 'consumed_at', 'created_at']
+    list_filter = ['is_verified']
+    search_fields = ['email', 'verification_token']
+    readonly_fields = ['id', 'created_at', 'updated_at']
