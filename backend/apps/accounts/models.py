@@ -231,10 +231,13 @@ class OTPVerification(models.Model):
         LOGIN = 'login', 'Login'
         PASSWORD_RESET = 'password_reset', 'Password Reset'
         TRANSACTION_PIN = 'transaction_pin', 'Transaction PIN'
+        EMAIL_CHANGE = 'email_change', 'Email Change'
+        PASSWORD_CHANGE = 'password_change', 'Password Change'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='otp_verifications')
-    phone_number = PhoneNumberField()
+    phone_number = PhoneNumberField(null=True, blank=True)
+    email = models.EmailField(null=True, blank=True)
     code = models.CharField(max_length=6)
     purpose = models.CharField(max_length=30, choices=Purpose.choices)
     is_used = models.BooleanField(default=False)

@@ -189,3 +189,18 @@ LOGIN_ATTEMPT_LIMIT = 5
 LOGIN_LOCKOUT_DURATION_MINUTES = 30
 OTP_EXPIRY_MINUTES = 10
 OTP_MAX_ATTEMPTS = 3
+
+# ── Email Configuration ─────────────────────────────────────────────────────────
+EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
+
+if EMAIL_HOST_PASSWORD:
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = 'smtp.gmail.com'
+    EMAIL_PORT = 587
+    EMAIL_USE_TLS = True
+    DEFAULT_FROM_EMAIL = f'LR-Ride <{EMAIL_HOST_USER}>'
+else:
+    # Fallback to console for development
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+    DEFAULT_FROM_EMAIL = 'LR-Ride <noreply@lrride.com>'

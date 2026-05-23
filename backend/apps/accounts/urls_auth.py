@@ -4,6 +4,7 @@ from .views import (
     OTPRequestView, OTPVerifyView, ChangePasswordView,
     PasswordResetRequestView, PasswordResetConfirmView,
     SessionTokenRefreshView,
+    ChangeEmailView, RequestPasswordChangeOTPView, ConfirmPasswordChangeView,
 )
 
 urlpatterns = [
@@ -16,4 +17,8 @@ urlpatterns = [
     path('change-password/', ChangePasswordView.as_view(), name='auth-change-password'),
     path('password-reset/request/', PasswordResetRequestView.as_view(), name='auth-password-reset-request'),
     path('password-reset/confirm/', PasswordResetConfirmView.as_view(), name='auth-password-reset-confirm'),
+    # Account settings
+    path('settings/change-email/', ChangeEmailView.as_view(), name='auth-change-email'),
+    path('settings/password-change/request-otp/', RequestPasswordChangeOTPView.as_view(), name='auth-password-change-otp'),
+    path('settings/password-change/confirm/', ConfirmPasswordChangeView.as_view(), name='auth-password-change-confirm'),
 ]

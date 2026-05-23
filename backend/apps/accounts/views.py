@@ -12,6 +12,9 @@ from .models import Campus, DriverProfile, OTPVerification, StudentProfile, User
 from .permissions import IsAdminUser, IsAdminOrCampusAdmin
 from .serializers import (
     ChangePasswordSerializer,
+    ChangeEmailSerializer,
+    RequestPasswordChangeOTPSerializer,
+    ConfirmPasswordChangeSerializer,
     DriverAvailabilitySerializer,
     DriverProfileCreateSerializer,
     DriverProfileSerializer,
@@ -26,7 +29,7 @@ from .serializers import (
     UserRegistrationSerializer,
     CampusSerializer,
 )
-from .services import OTPService
+from .services import OTPService, EmailOTPService
 
 logger = logging.getLogger('apps.accounts')
 
@@ -421,3 +424,97 @@ class AdminSummaryStatsView(APIView):
             'drivers': drivers,
             'verified_drivers': verified_drivers,
         })
+
+
+# ── Account Settings Views ─────────────────────────────────────────────────────
+
+class ChangeEmailView(APIView):
+    """Change email address. Requires current password for verification."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = ChangeEmailSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        new_email = serializer.validated_data['new_email']
+
+        # Check if email is already taken by another user
+        if User.objects.filter(email__iexact=new_email).exclude(id=request.user.id).exists():
+            return Response(
+                {'error': {'code': 'EMAIL_TAKEN', 'message': 'This email is already in use.'}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        request.user.email = new_email
+        request.user.is_email_verified = True  # Verified by password
+        request.user.save(update_fields=['email', 'is_email_verified'])
+        logger.info('email_changed user_id=%s new_email=%s', str(request.user.id), new_email)
+        return Response({
+            'message': 'Email updated successfully.',
+            'email': new_email,
+        })
+
+
+class RequestPasswordChangeOTPView(APIView):
+    """Send an OTP to the user's email to authorize a password change."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = RequestPasswordChangeOTPSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+
+        user = request.user
+        if not user.email:
+            return Response(
+                {'error': {'code': 'NO_EMAIL', 'message': 'You must set an email address before changing your password.'}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        EmailOTPService.create_and_send(user, OTPVerification.Purpose.PASSWORD_CHANGE)
+        masked = user.email[:3] + '***' + user.email[user.email.index('@'):]
+        return Response({
+            'message': f'Verification code sent to {masked}.',
+            'email_hint': masked,
+        })
+
+
+class ConfirmPasswordChangeView(APIView):
+    """Confirm password change with email OTP + new password."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = ConfirmPasswordChangeSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+
+        otp_code = serializer.validated_data['otp_code']
+        new_password = serializer.validated_data['new_password']
+
+        user = request.user
+        if not user.email:
+            return Response(
+                {'error': {'code': 'NO_EMAIL', 'message': 'No email on file for OTP verification.'}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        success, message = EmailOTPService.verify(user.email, otp_code, OTPVerification.Purpose.PASSWORD_CHANGE)
+        if not success:
+            return Response(
+                {'error': {'code': 'OTP_INVALID', 'message': message}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.set_password(new_password)
+        user.save(update_fields=['password'])
+
+        # Blacklist all existing tokens to force re-login
+        try:
+            from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
+            for token in OutstandingToken.objects.filter(user=user):
+                try:
+                    RefreshToken(token.token).blacklist()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        logger.info('password_changed_via_otp user_id=%s', str(user.id))
+        return Response({'message': 'Password changed successfully. Please log in again.'})

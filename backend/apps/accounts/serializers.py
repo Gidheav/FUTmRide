@@ -404,3 +404,42 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         if attrs['new_password'] != attrs.pop('confirm_password'):
             raise serializers.ValidationError({'confirm_password': 'Passwords do not match.'})
         return attrs
+
+
+class ChangeEmailSerializer(serializers.Serializer):
+    """Requires current password to authorize email change."""
+    current_password = serializers.CharField()
+    new_email = serializers.EmailField()
+
+    def validate_current_password(self, value):
+        if not self.context['request'].user.check_password(value):
+            raise serializers.ValidationError('Current password is incorrect.')
+        return value
+
+    def validate_new_email(self, value):
+        value = value.strip().lower()
+        if not value:
+            raise serializers.ValidationError('Email is required.')
+        return value
+
+
+class RequestPasswordChangeOTPSerializer(serializers.Serializer):
+    """Requires current password to trigger OTP email for password change."""
+    current_password = serializers.CharField()
+
+    def validate_current_password(self, value):
+        if not self.context['request'].user.check_password(value):
+            raise serializers.ValidationError('Current password is incorrect.')
+        return value
+
+
+class ConfirmPasswordChangeSerializer(serializers.Serializer):
+    """Verifies OTP + sets new password."""
+    otp_code = serializers.CharField(max_length=6, min_length=6)
+    new_password = serializers.CharField(validators=[validate_password])
+    confirm_password = serializers.CharField()
+
+    def validate(self, attrs):
+        if attrs['new_password'] != attrs.pop('confirm_password'):
+            raise serializers.ValidationError({'confirm_password': 'Passwords do not match.'})
+        return attrs
