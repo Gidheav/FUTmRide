@@ -3,6 +3,8 @@ import os
 import sys
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
+
 # Add the parent directory to path
 sys.path.append(str(Path(__file__).parent.parent))
 
@@ -23,12 +25,13 @@ DEBUG = False
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['.onrender.com', 'localhost', '127.0.0.1'])
 
 # Database Configuration
-# Prefer DATABASE_URL (Render Postgres). Fallback keeps bootstrapping possible.
+# Require DATABASE_URL in production to avoid accidental SQLite fallback.
+DATABASE_URL = env('DATABASE_URL', default=None)
+if not DATABASE_URL:
+    raise ImproperlyConfigured('DATABASE_URL is required in production')
+
 DATABASES = {
-    'default': env.db(
-        'DATABASE_URL',
-        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
-    )
+    'default': env.db('DATABASE_URL'),
 }
 
 # Redis Configuration
