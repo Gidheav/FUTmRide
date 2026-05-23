@@ -5,8 +5,8 @@ import {
   Layers, Pencil, MousePointer2, Ruler, Square, Circle,
   ZoomIn, ZoomOut, Crosshair, Maximize2,
 } from 'lucide-react'
-import { GoogleMap, useJsApiLoader, DrawingManager, Polyline } from '@react-google-maps/api'
-import { T } from '../theme'
+import { GoogleMap, useJsApiLoader, DrawingManager, Polyline, Marker, InfoWindow } from '@react-google-maps/api'
+import { T, useCampusThemeStore } from '../theme'
 
 const GMAP_LIBS: ('drawing' | 'geometry' | 'places')[] = ['drawing', 'geometry', 'places']
 
@@ -118,6 +118,7 @@ const MAP_CENTER = { lat: 9.5323, lng: 6.4526 } // FUT Minna Main Campus
 const DEFAULT_ZOOM = 15
 
 export default function DashboardPage() {
+  const { mode } = useCampusThemeStore()
   const feedRef = useRef<HTMLDivElement>(null)
 
   // Toggles for traffic layers
@@ -128,9 +129,9 @@ export default function DashboardPage() {
   const [activeLayers, setActiveLayers] = useState({
     realMatch: true, demanCluster: false, congestion: false, coordinates: false,
   })
-  const [trafficOpen, setTrafficOpen] = useState(true)
-  const [activeLayersOpen, setActiveLayersOpen] = useState(true)
-  const [dataControlsOpen, setDataControlsOpen] = useState(true)
+  const [trafficOpen, setTrafficOpen] = useState(false)
+  const [activeLayersOpen, setActiveLayersOpen] = useState(false)
+  const [dataControlsOpen, setDataControlsOpen] = useState(false)
 
   // Route creation
   const [waypoints, setWaypoints] = useState(['', ''])
@@ -145,6 +146,7 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [measurePoints, setMeasurePoints] = useState<google.maps.LatLngLiteral[]>([])
   const [measureDist, setMeasureDist] = useState<string | null>(null)
+  const [selectedLocation, setSelectedLocation] = useState<{ lat: number, lng: number, address: string, placeName?: string } | null>(null)
   const mapRef = useRef<google.maps.Map | null>(null)
   const drawnOverlays = useRef<google.maps.MVCObject[]>([])
   const measureListenerRef = useRef<google.maps.MapsEventListener | null>(null)
@@ -172,6 +174,25 @@ export default function DashboardPage() {
     }
   }
   const handleFullscreen = () => setIsFullscreen(f => !f)
+
+  const handleMapClick = useCallback((e: google.maps.MapMouseEvent) => {
+    if (activeTool !== 'select' || !e.latLng) return
+    const lat = e.latLng.lat()
+    const lng = e.latLng.lng()
+
+    const geocoder = new google.maps.Geocoder()
+    geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+      if (status === 'OK' && results?.[0]) {
+        setSelectedLocation({
+          lat, lng,
+          address: results[0].formatted_address,
+          placeName: 'Selected Location'
+        })
+      } else {
+        setSelectedLocation({ lat, lng, address: `Coordinates: ${lat.toFixed(5)}, ${lng.toFixed(5)}` })
+      }
+    })
+  }, [activeTool])
 
   // Clean up measure listener when switching tools
   const clearMeasure = useCallback(() => {
@@ -397,10 +418,11 @@ export default function DashboardPage() {
                     center={MAP_CENTER}
                     onLoad={onMapLoad}
                     zoom={DEFAULT_ZOOM}
+                    onClick={handleMapClick}
                     options={{
                       disableDefaultUI: true,
                       draggable: activeTool === 'select' || activeTool === 'search',
-                      clickableIcons: activeTool === 'select',
+                      clickableIcons: false,
                       gestureHandling: 'greedy',
                       minZoom: 14,
                       maxZoom: 18,
@@ -413,7 +435,7 @@ export default function DashboardPage() {
                         },
                         strictBounds: true,
                       },
-                      styles: [
+                      styles: mode === 'dark' ? [
                         { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
                         { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
                         { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
@@ -430,7 +452,7 @@ export default function DashboardPage() {
                         { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] },
                         { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#515c6d" }] },
                         { featureType: "water", elementType: "labels.text.stroke", stylers: [{ color: "#17263c" }] },
-                      ],
+                      ] : [],
                     }}
                   >
                     {/* Drawing Manager for draw/rectangle/circle tools */}
@@ -452,6 +474,31 @@ export default function DashboardPage() {
                         path={measurePoints}
                         options={{ strokeColor: '#f59e0b', strokeWeight: 3, strokeOpacity: 0.9, icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 }, offset: '0', repeat: '16px' }] }}
                       />
+                    )}
+
+                    {/* Custom POI / Location InfoWindow */}
+                    {selectedLocation && (
+                      <Marker 
+                        position={{ lat: selectedLocation.lat, lng: selectedLocation.lng }}
+                        onClick={() => {}} 
+                      >
+                        <InfoWindow
+                          position={{ lat: selectedLocation.lat, lng: selectedLocation.lng }}
+                          onCloseClick={() => setSelectedLocation(null)}
+                        >
+                          <div style={{ padding: '2px 4px', maxWidth: 220, color: '#111827', fontFamily: 'system-ui, sans-serif' }}>
+                            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4, color: '#111827' }}>
+                              {selectedLocation.placeName || 'Location Details'}
+                            </div>
+                            <div style={{ fontSize: 11, color: '#4b5563', lineHeight: 1.4 }}>
+                              {selectedLocation.address}
+                            </div>
+                            <div style={{ fontSize: 10, marginTop: 6, color: '#6b7280' }}>
+                              Coordinates: {selectedLocation.lat.toFixed(5)}, {selectedLocation.lng.toFixed(5)}
+                            </div>
+                          </div>
+                        </InfoWindow>
+                      </Marker>
                     )}
                   </GoogleMap>
                 ) : (

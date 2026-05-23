@@ -12,6 +12,7 @@ export interface AuthUser {
   full_name: string
   email: string
   home_address?: string
+  campus?: { id: string; name: string } | null
   role: UserRole
   is_verified?: boolean
   is_phone_verified?: boolean

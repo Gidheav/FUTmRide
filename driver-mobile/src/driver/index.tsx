@@ -13,12 +13,13 @@ import VehicleVerificationScreen from './screens/VehicleVerificationScreen'
 import DriverRidesPage from './pages/RidesPage'
 import DriverWalletPage from './pages/WalletPage'
 import DriverProfilePage from './pages/ProfilePage'
+import EditProfilePage from './pages/EditProfilePage'
 import AccountSettingsPage from './pages/AccountSettingsPage'
 import CreateGarageRideScreen from './screens/CreateGarageRideScreen'
 import DriverLayout from './layout/DriverLayout'
 import type { DriverTab } from './types'
 
-type SubPage = null | 'settings' | 'account-verification' | 'vehicle-verification' | 'verification-success' | 'garage-ride'
+type SubPage = null | 'settings' | 'edit-profile' | 'account-verification' | 'vehicle-verification' | 'verification-success' | 'garage-ride'
 
 export default function DriverApp() {
   const { isAuthenticated, user } = useAuthStore()
@@ -87,6 +88,14 @@ export default function DriverApp() {
     return (
       <SafeAreaProvider>
         <AccountSettingsPage onBack={() => setSubPage(null)} />
+      </SafeAreaProvider>
+    )
+  }
+
+  if (subPage === 'edit-profile') {
+    return (
+      <SafeAreaProvider>
+        <EditProfilePage onBack={() => setSubPage(null)} />
       </SafeAreaProvider>
     )
   }
@@ -190,6 +199,7 @@ export default function DriverApp() {
         return (
           <DriverProfilePage
             onNavigateToSettings={() => setSubPage('settings')}
+            onEditProfile={() => setSubPage('edit-profile')}
           />
         )
       default: return <DriverDashboardScreen />

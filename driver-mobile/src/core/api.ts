@@ -45,6 +45,7 @@ export const authApi = {
 
 export const driverApi = {
   getProfile: () => api.get('users/me/driver-profile/'),
+  createProfile: (data: any) => api.post('users/me/driver-profile/create/', data),
   updateProfile: (data: any) => api.patch('users/me/driver-profile/', data),
   getActiveRide: () => api.get('rides/driver/active/'),
   advanceRide: (rideId: string) => api.post(`rides/${rideId}/advance/`),

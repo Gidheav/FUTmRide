@@ -27,6 +27,15 @@ const FILTERS = [
 
 const SEAT_OPTIONS = [2, 3, 4, 5, 6, 8, 10, 12];
 
+const DEFAULT_DRIVER_PROFILE = {
+  vehicle_type: 'sedan',
+  vehicle_color: 'Unknown',
+  vehicle_make: 'Unknown',
+  vehicle_model: 'Unknown',
+  vehicle_year: 2020,
+  plate_number: 'PENDING',
+};
+
 type DriverMode = 'garage' | 'ondemand';
 
 type RideStudent = {
@@ -195,10 +204,9 @@ export default function DriverRidesPage() {
     let isMounted = true;
     const fetchDriverStatus = async () => {
       try {
-        const response = await driverApi.getProfile();
-        const status = response?.data?.is_online;
+        const profile = await ensureDriverProfile();
         if (isMounted) {
-          setIsOnline(Boolean(status));
+          setIsOnline(Boolean(profile?.is_online));
         }
       } catch (error: any) {
         if (isMounted) {
@@ -334,17 +342,38 @@ export default function DriverRidesPage() {
       setIsOnline(nextStatus);
       setRequestsError(null);
     } catch (error: any) {
-      const data = error?.response?.data;
-      const message =
-        data?.error?.message ||
-        data?.detail ||
-        (typeof data === 'string' ? data : null) ||
-        (data ? JSON.stringify(data) : null) ||
-        'Unable to update status.';
-      const status = error?.response?.status;
-      const statusLabel = status ? `(${status}) ` : '';
-      setRequestsError(`${statusLabel}${message}`.trim());
-      errorHoldUntil.current = Date.now() + 12000;
+      if (error?.response?.status === 404) {
+        try {
+          await ensureDriverProfile();
+          await driverApi.updateProfile({ is_online: nextStatus });
+          setIsOnline(nextStatus);
+          setRequestsError(null);
+        } catch (retryError: any) {
+          const data = retryError?.response?.data;
+          const message =
+            data?.error?.message ||
+            data?.detail ||
+            (typeof data === 'string' ? data : null) ||
+            (data ? JSON.stringify(data) : null) ||
+            'Unable to update status.';
+          const status = retryError?.response?.status;
+          const statusLabel = status ? `(${status}) ` : '';
+          setRequestsError(`${statusLabel}${message}`.trim());
+          errorHoldUntil.current = Date.now() + 12000;
+        }
+      } else {
+        const data = error?.response?.data;
+        const message =
+          data?.error?.message ||
+          data?.detail ||
+          (typeof data === 'string' ? data : null) ||
+          (data ? JSON.stringify(data) : null) ||
+          'Unable to update status.';
+        const status = error?.response?.status;
+        const statusLabel = status ? `(${status}) ` : '';
+        setRequestsError(`${statusLabel}${message}`.trim());
+        errorHoldUntil.current = Date.now() + 12000;
+      }
     } finally {
       setIsUpdatingOnline(false);
     }
@@ -387,20 +416,21 @@ export default function DriverRidesPage() {
 
   const ensureDriverProfile = async () => {
     try {
-      await driverApi.getProfile();
+      const response = await driverApi.getProfile();
+      return response?.data;
     } catch (err: any) {
       if (err?.response?.status === 404) {
-        // Auto-create a minimal driver profile
-        const profileApi = await import('../../core/api');
-        await profileApi.default.post('users/me/driver-profile/create/', {
-          vehicle_type: 'sedan',
-          vehicle_color: 'Unknown',
-          vehicle_make: 'Unknown',
-          vehicle_model: 'Unknown',
-          vehicle_year: 2020,
-          plate_number: 'PENDING',
-        });
+        try {
+          await driverApi.createProfile(DEFAULT_DRIVER_PROFILE);
+          const retry = await driverApi.getProfile();
+          console.log('[LR-Ride] Auto-created driver profile successfully.');
+          return retry?.data;
+        } catch (createErr: any) {
+          console.error('[LR-Ride] Failed to auto-create profile:', createErr?.response?.data || createErr.message);
+          throw createErr;
+        }
       }
+      throw err;
     }
   };
 
@@ -418,7 +448,6 @@ export default function DriverRidesPage() {
     setGarageError(null);
 
     try {
-      // Ensure driver profile exists before creating garage ride
       await ensureDriverProfile();
 
       const payload: any = {
@@ -521,7 +550,7 @@ export default function DriverRidesPage() {
         <Switch
           value={Boolean(isOnline)}
           onValueChange={handleToggleOnline}
-          disabled={Boolean(isUpdatingOnline || isOnline === null || modeLocked)}
+          disabled={Boolean(isUpdatingOnline || isOnline === null)}
           trackColor={{ false: COLORS.surfaceContainerLow, true: COLORS.primaryContainer }}
           thumbColor={COLORS.surface}
         />

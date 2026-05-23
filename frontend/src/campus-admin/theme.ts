@@ -8,9 +8,9 @@ export const T = {
   bgInput: 'var(--theme-bgInput, #0f1525)',
   border: 'var(--theme-border, #1e293b)',
   borderLight: 'var(--theme-borderLight, #263045)',
-  accent: 'var(--theme-accent, #10b981)',
-  accentDim: 'var(--theme-accentDim, #059669)',
-  accentBg: 'var(--theme-accentBg, rgba(16,185,129,0.12))',
+  accent: 'var(--theme-accent, #7e22ce)',
+  accentDim: 'var(--theme-accentDim, #6b21a8)',
+  accentBg: 'var(--theme-accentBg, rgba(126,34,206,0.12))',
   textPrimary: 'var(--theme-textPrimary, #e2e8f0)',
   textSecondary: 'var(--theme-textSecondary, #94a3b8)',
   textMuted: 'var(--theme-textMuted, #64748b)',
@@ -30,7 +30,7 @@ export const T = {
   mapGridLines3: 'var(--theme-mapGridLines3, #1a3040)',
   heatGreen: 'var(--theme-heatGreen, rgba(16,185,129,0.35))',
   heatTeal: 'var(--theme-heatTeal, rgba(20,184,166,0.30))',
-  fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+  fontFamily: 'var(--font-sans)',
 }
 
 interface ThemeStore {
@@ -39,7 +39,7 @@ interface ThemeStore {
 }
 
 export const useCampusThemeStore = create<ThemeStore>((set) => ({
-  mode: 'dark',
+  mode: 'light',
   toggleMode: () => set((state) => ({ mode: state.mode === 'dark' ? 'light' : 'dark' })),
 }))
 
@@ -52,9 +52,9 @@ export const themeCss = `
     --theme-bgInput: #0f1525;
     --theme-border: #1e293b;
     --theme-borderLight: #263045;
-    --theme-accent: #10b981;
-    --theme-accentDim: #059669;
-    --theme-accentBg: rgba(16,185,129,0.12);
+    --theme-accent: #a855f7;
+    --theme-accentDim: #9333ea;
+    --theme-accentBg: rgba(168,85,247,0.12);
     --theme-textPrimary: #e2e8f0;
     --theme-textSecondary: #94a3b8;
     --theme-textMuted: #64748b;
@@ -72,8 +72,8 @@ export const themeCss = `
     --theme-mapGridLines: #1a2a3a;
     --theme-mapGridLines2: #1e3a4a;
     --theme-mapGridLines3: #1a3040;
-    --theme-heatGreen: rgba(16,185,129,0.35);
-    --theme-heatTeal: rgba(20,184,166,0.30);
+    --theme-heatGreen: rgba(147,51,234,0.35);
+    --theme-heatTeal: rgba(99,102,241,0.30);
   }
 
   .campus-theme-light {
@@ -84,9 +84,9 @@ export const themeCss = `
     --theme-bgInput: #ffffff;
     --theme-border: #e2e8f0;
     --theme-borderLight: #cbd5e1;
-    --theme-accent: #059669;
-    --theme-accentDim: #10b981;
-    --theme-accentBg: rgba(16,185,129,0.12);
+    --theme-accent: #7e22ce;
+    --theme-accentDim: #6b21a8;
+    --theme-accentBg: rgba(126,34,206,0.12);
     --theme-textPrimary: #0f172a;
     --theme-textSecondary: #475569;
     --theme-textMuted: #94a3b8;
@@ -104,7 +104,7 @@ export const themeCss = `
     --theme-mapGridLines: #cbd5e1;
     --theme-mapGridLines2: #94a3b8;
     --theme-mapGridLines3: #64748b;
-    --theme-heatGreen: rgba(16,185,129,0.35);
-    --theme-heatTeal: rgba(20,184,166,0.30);
+    --theme-heatGreen: rgba(126,34,206,0.35);
+    --theme-heatTeal: rgba(79,70,229,0.30);
   }
 `

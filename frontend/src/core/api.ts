@@ -1,6 +1,7 @@
 import axios from 'axios'
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8002/api/v1'
+const rawBase = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8002/api/v1'
+const BASE_URL = rawBase.endsWith('/') ? rawBase : `${rawBase}/`
 
 export const api = axios.create({
   baseURL: BASE_URL,
@@ -10,6 +11,11 @@ export const api = axios.create({
 
 api.interceptors.request.use(
   (config) => {
+    // Strip leading slash from URL so it appends correctly to baseURL
+    if (config.url && config.url.startsWith('/')) {
+      config.url = config.url.slice(1)
+    }
+    
     const token = localStorage.getItem('access_token')
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`

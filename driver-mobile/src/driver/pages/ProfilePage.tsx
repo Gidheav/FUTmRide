@@ -1,155 +1,198 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
+  ActivityIndicator,
   Image,
+  ScrollView,
+  StyleSheet,
+  Text,
   TouchableOpacity,
-  Dimensions,
+  View,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
 import { useAuthStore } from '../../core/authStore';
-
-const { width } = Dimensions.get('window');
-
-const PLACEHOLDER_AVATAR = 
-  "https://lh3.googleusercontent.com/aida-public/AB6AXuAEPLb-0VXvJX3a4y_p5Bo9qBWqmVdk7DJmrEtCiDHFQSslab5sGSUpzuhbRBDuSDMbx2DzntjHd-6mJvLgviVL2J-XQsvk5egP7wfVa5zdZ1Xl-7W1dXZ4OA1bxXUbFnhVTVRvAtWBh9ECwU2Pz86jM6GjzrvX9ZwzvasJ3HD_LvG95E52BYauB7OP_BdrcPi6N-VIYLRFfgTEYvyM_vJFkGir3sjQghnVsB78BOGtnXiR9d854c3wMTGGgObpBkXxV2eu8SfY6lY";
+import { driverApi } from '../../core/api';
 
 type ProfileProps = {
   onNavigateToSettings?: () => void;
+  onEditProfile?: () => void;
 };
 
-export default function DriverProfilePage({ onNavigateToSettings }: ProfileProps) {
+const DEFAULT_DRIVER_PROFILE = {
+  vehicle_type: 'sedan',
+  vehicle_make: 'Unknown',
+  vehicle_model: 'Unknown',
+  vehicle_year: 2020,
+  vehicle_color: 'Unknown',
+  plate_number: 'PENDING',
+};
+
+const formatPercent = (value?: string | number | null) => {
+  if (value === null || value === undefined) return '-';
+  const num = Number(value);
+  if (Number.isNaN(num)) return '-';
+  return `${num.toFixed(0)}%`;
+};
+
+const formatCurrency = (value?: string | number | null) => {
+  if (value === null || value === undefined) return 'NGN -';
+  const num = Number(value);
+  if (Number.isNaN(num)) return 'NGN -';
+  return `NGN ${num.toFixed(0)}`;
+};
+
+export default function DriverProfilePage({ onNavigateToSettings, onEditProfile }: ProfileProps) {
   const { user } = useAuthStore();
-  
+  const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadProfile = async () => {
+      setLoading(true);
+      try {
+        const response = await driverApi.getProfile();
+        if (!isMounted) return;
+        setProfile(response?.data ?? null);
+      } catch (error: any) {
+        if (error?.response?.status === 404) {
+          try {
+            await driverApi.createProfile(DEFAULT_DRIVER_PROFILE);
+            const retry = await driverApi.getProfile();
+            if (!isMounted) return;
+            setProfile(retry?.data ?? null);
+          } catch (createErr: any) {
+            console.warn('[Profile] driver profile fetch failed:', createErr?.response?.data ?? createErr.message);
+          }
+        } else {
+          console.warn('[Profile] driver profile fetch failed:', error?.response?.data ?? error.message);
+        }
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    loadProfile();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const initials = useMemo(() => {
+    const first = (user?.first_name ?? '').trim()[0] ?? '';
+    const last = (user?.last_name ?? '').trim()[0] ?? '';
+    return `${first}${last}`.toUpperCase() || 'DR';
+  }, [user?.first_name, user?.last_name]);
+
+  const vehicleModel = [profile?.vehicle_make, profile?.vehicle_model, profile?.vehicle_year]
+    .filter(Boolean)
+    .join(' ');
+
+  const badges = [
+    profile?.average_rating && Number(profile.average_rating) >= 4.5 ? 'Top rated' : null,
+    profile?.acceptance_rate && Number(profile.acceptance_rate) >= 90 ? 'High acceptance' : null,
+    profile?.cancellation_rate && Number(profile.cancellation_rate) <= 5 ? 'Reliable' : null,
+  ].filter(Boolean) as string[];
+
+  if (loading) {
+    return (
+      <View style={styles.loadingWrap}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, marginTop: 12 }]}>Loading profile...</Text>
+      </View>
+    );
+  }
+
   return (
-    <ScrollView 
-      style={styles.container} 
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* Profile Header Section */}
+    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       <View style={styles.profileHeader}>
-        <View style={styles.imageContainer}>
-          <Image 
-            source={{ uri: PLACEHOLDER_AVATAR }} 
-            style={styles.profileImage} 
-          />
-          <View style={styles.verifiedBadge}>
-            <MaterialIcons name="verified" size={16} color={COLORS.onPrimary} />
+        {user?.profile_photo ? (
+          <Image source={{ uri: user.profile_photo }} style={styles.profileImage} />
+        ) : (
+          <View style={styles.initialsAvatar}>
+            <Text style={styles.initialsText}>{initials}</Text>
           </View>
-        </View>
+        )}
         <View style={styles.nameContainer}>
-          <Text style={[FONTS.headlineXl, styles.nameText]}>
-            {user?.full_name || 'Adebayo Samuel'}
-          </Text>
-          <View style={styles.ratingRow}>
-            <MaterialIcons name="star" size={18} color={COLORS.primaryContainer} />
-            <Text style={[FONTS.labelLg, { color: COLORS.onSurfaceVariant }]}>4.8</Text>
-            <View style={styles.dot} />
-            <Text style={[FONTS.labelLg, { color: COLORS.onSurfaceVariant }]}>Verified Driver</Text>
+          <Text style={[FONTS.headlineXl, styles.nameText]}>{user?.full_name || 'Driver'}</Text>
+          <View style={styles.subRow}>
+            <MaterialIcons name={user?.is_verified ? 'verified' : 'info'} size={16} color={COLORS.primary} />
+            <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>
+              {user?.is_verified ? 'Verified driver' : 'Pending verification'}
+            </Text>
           </View>
+          {user?.campus?.name ? (
+            <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant }]}>{user.campus.name}</Text>
+          ) : null}
         </View>
       </View>
 
-      {/* Bento Grid Layout for Details */}
       <View style={styles.statsContainer}>
         <View style={[styles.statBox, AMBIENT_SHADOW]}>
-          <Text style={[FONTS.headlineMd, styles.statValue]}>3</Text>
-          <Text style={[FONTS.labelMd, styles.statLabel]}>Years Exp.</Text>
+          <Text style={[FONTS.headlineMd, styles.statValue]}>{profile?.total_trips ?? '-'}</Text>
+          <Text style={[FONTS.labelMd, styles.statLabel]}>Total trips</Text>
         </View>
         <View style={[styles.statBox, AMBIENT_SHADOW]}>
-          <Text style={[FONTS.headlineMd, styles.statValue]}>1.2k</Text>
-          <Text style={[FONTS.labelMd, styles.statLabel]}>Total Rides</Text>
+          <Text style={[FONTS.headlineMd, styles.statValue]}>{formatCurrency(profile?.total_earnings)}</Text>
+          <Text style={[FONTS.labelMd, styles.statLabel]}>Total earnings</Text>
         </View>
         <View style={[styles.statBox, AMBIENT_SHADOW]}>
-          <Text style={[FONTS.headlineMd, styles.statValue]}>EN, HA</Text>
-          <Text style={[FONTS.labelMd, styles.statLabel]}>Languages</Text>
+          <Text style={[FONTS.headlineMd, styles.statValue]}>{formatPercent(profile?.acceptance_rate)}</Text>
+          <Text style={[FONTS.labelMd, styles.statLabel]}>Acceptance</Text>
+        </View>
+        <View style={[styles.statBox, AMBIENT_SHADOW]}>
+          <Text style={[FONTS.headlineMd, styles.statValue]}>{formatPercent(profile?.cancellation_rate)}</Text>
+          <Text style={[FONTS.labelMd, styles.statLabel]}>Cancellation</Text>
         </View>
       </View>
 
-      {/* Vehicle Details Card */}
       <View style={[styles.card, AMBIENT_SHADOW]}>
         <View style={styles.cardHeader}>
-          <View style={styles.cardIconBg}>
-            <MaterialIcons name="directions-car" size={20} color={COLORS.primaryContainer} />
-          </View>
-          <Text style={[FONTS.headlineMd, styles.cardTitle]}>Vehicle Details</Text>
+          <MaterialIcons name="directions-car" size={20} color={COLORS.primary} />
+          <Text style={[FONTS.labelLg, styles.sectionTitle]}>Vehicle</Text>
         </View>
-        
-        <View style={styles.cardBody}>
-          <View style={styles.detailRow}>
-            <Text style={[FONTS.bodyMd, styles.detailLabel]}>Model</Text>
-            <Text style={[FONTS.labelLg, styles.detailValue]}>Toyota Corolla 2018</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={[FONTS.bodyMd, styles.detailLabel]}>Plate Number</Text>
-            <View style={styles.plateBadge}>
-              <Text style={[FONTS.labelLg, styles.plateText]}>ABC-123-XY</Text>
-            </View>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={[FONTS.bodyMd, styles.detailLabel]}>Color</Text>
-            <View style={styles.colorValue}>
-              <View style={[styles.colorDot, { backgroundColor: '#C0C0C0' }]} />
-              <Text style={[FONTS.labelLg, styles.detailValue]}>Silver</Text>
-            </View>
-          </View>
+        <View style={styles.detailRow}>
+          <Text style={[FONTS.bodyMd, styles.detailLabel]}>Model</Text>
+          <Text style={[FONTS.labelLg, styles.detailValue]}>{vehicleModel || '-'}</Text>
+        </View>
+        <View style={styles.detailRow}>
+          <Text style={[FONTS.bodyMd, styles.detailLabel]}>Plate number</Text>
+          <Text style={[FONTS.labelLg, styles.detailValue]}>{profile?.plate_number || '-'}</Text>
+        </View>
+        <View style={styles.detailRow}>
+          <Text style={[FONTS.bodyMd, styles.detailLabel]}>Color</Text>
+          <Text style={[FONTS.labelLg, styles.detailValue]}>{profile?.vehicle_color || '-'}</Text>
         </View>
       </View>
 
-      {/* Performance Badges */}
       <View style={[styles.card, AMBIENT_SHADOW]}>
-        <Text style={[FONTS.labelLg, styles.sectionSubTitle]}>Performance Badges</Text>
-        <View style={styles.badgeWrap}>
-          <View style={[styles.badge, styles.badgePrimary]}>
-            <MaterialIcons name="workspace-premium" size={16} color={COLORS.onPrimaryContainer} />
-            <Text style={[FONTS.labelMd, { color: COLORS.onPrimaryContainer }]}>Top Rated</Text>
-          </View>
-          <View style={[styles.badge, styles.badgeSecondary]}>
-            <MaterialIcons name="explore" size={16} color={COLORS.onSecondaryContainer} />
-            <Text style={[FONTS.labelMd, { color: COLORS.onSecondaryContainer }]}>Expert Navigator</Text>
-          </View>
-          <View style={[styles.badge, styles.badgePrimary]}>
-            <MaterialIcons name="health-and-safety" size={16} color={COLORS.onPrimaryContainer} />
-            <Text style={[FONTS.labelMd, { color: COLORS.onPrimaryContainer }]}>Safety First</Text>
-          </View>
+        <View style={styles.cardHeader}>
+          <MaterialIcons name="badge" size={20} color={COLORS.primary} />
+          <Text style={[FONTS.labelLg, styles.sectionTitle]}>Badges</Text>
         </View>
+        {badges.length === 0 ? (
+          <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant }]}>No badges yet.</Text>
+        ) : (
+          <View style={styles.badgeWrap}>
+            {badges.map((label) => (
+              <View key={label} style={styles.badgeChip}>
+                <MaterialIcons name="verified" size={14} color={COLORS.onPrimary} />
+                <Text style={[FONTS.labelMd, { color: COLORS.onPrimary }]}>{label}</Text>
+              </View>
+            ))}
+          </View>
+        )}
       </View>
 
-      {/* Documentation Status */}
-      <View style={[styles.card, AMBIENT_SHADOW]}>
-        <Text style={[FONTS.labelLg, styles.sectionSubTitle]}>Documentation</Text>
-        <View style={styles.docList}>
-          <View style={styles.docItem}>
-            <View style={styles.docInfo}>
-              <MaterialIcons name="badge" size={20} color={COLORS.onBackground} />
-              <Text style={[FONTS.bodyMd, styles.docName]}>Driver's License</Text>
-            </View>
-            <MaterialIcons name="check-circle" size={22} color={COLORS.primaryContainer} />
-          </View>
-          <View style={styles.docItem}>
-            <View style={styles.docInfo}>
-              <MaterialIcons name="description" size={20} color={COLORS.onBackground} />
-              <Text style={[FONTS.bodyMd, styles.docName]}>Vehicle Insurance</Text>
-            </View>
-            <MaterialIcons name="check-circle" size={22} color={COLORS.primaryContainer} />
-          </View>
-        </View>
-      </View>
-
-      {/* Action Buttons */}
       <View style={styles.actionArea}>
-        <TouchableOpacity style={styles.primaryButton} activeOpacity={0.9}>
+        <TouchableOpacity style={styles.primaryButton} onPress={onEditProfile}>
           <MaterialIcons name="edit" size={20} color={COLORS.onPrimary} />
-          <Text style={[FONTS.labelLg, styles.primaryButtonText]}>Edit Profile</Text>
+          <Text style={[FONTS.labelLg, styles.primaryButtonText]}>Edit profile</Text>
         </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.9} onPress={onNavigateToSettings}>
+        <TouchableOpacity style={styles.secondaryButton} onPress={onNavigateToSettings}>
           <MaterialIcons name="settings" size={20} color={COLORS.onBackground} />
-          <Text style={[FONTS.labelLg, styles.secondaryButtonText]}>Account Settings</Text>
+          <Text style={[FONTS.labelLg, styles.secondaryButtonText]}>App settings</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -164,15 +207,19 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 24,
-    paddingBottom: 112, // Space for bottom nav
+    paddingBottom: 120,
+    gap: 16,
+  },
+  loadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.background,
   },
   profileHeader: {
     alignItems: 'center',
-    marginBottom: 32,
-  },
-  imageContainer: {
-    position: 'relative',
-    marginBottom: 16,
+    marginBottom: 8,
+    gap: 10,
   },
   profileImage: {
     width: 128,
@@ -181,46 +228,41 @@ const styles = StyleSheet.create({
     borderWidth: 4,
     borderColor: COLORS.surfaceContainerLowest,
   },
-  verifiedBadge: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    backgroundColor: COLORS.primaryContainer,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: COLORS.surfaceContainerLowest,
+  initialsAvatar: {
+    width: 128,
+    height: 128,
+    borderRadius: 64,
+    backgroundColor: COLORS.surfaceContainerHigh,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 4,
+    borderColor: COLORS.surfaceContainerLowest,
+  },
+  initialsText: {
+    ...FONTS.headlineXl,
+    color: COLORS.primary,
   },
   nameContainer: {
     alignItems: 'center',
+    gap: 4,
   },
   nameText: {
     color: COLORS.onBackground,
     textAlign: 'center',
   },
-  ratingRow: {
+  subRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
-    gap: 4,
-  },
-  dot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: COLORS.surfaceContainerHighest,
-    marginHorizontal: 4,
+    gap: 6,
   },
   statsContainer: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 12,
-    marginBottom: 24,
   },
   statBox: {
-    flex: 1,
+    width: '48%',
+    flexGrow: 1,
     backgroundColor: COLORS.surfaceContainerLowest,
     borderRadius: 16,
     paddingVertical: 16,
@@ -228,42 +270,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: COLORS.surfaceContainerLow,
+    gap: 4,
   },
   statValue: {
     color: COLORS.onBackground,
   },
   statLabel: {
     color: COLORS.onSurfaceVariant,
-    marginTop: 4,
   },
   card: {
     backgroundColor: COLORS.surfaceContainerLowest,
     borderRadius: 16,
     padding: 16,
-    marginBottom: 16,
     borderWidth: 1,
     borderColor: COLORS.surfaceContainerLow,
+    gap: 12,
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginBottom: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.surfaceContainer,
+    gap: 8,
   },
-  cardIconBg: {
-    backgroundColor: COLORS.surfaceContainerLow,
-    padding: 8,
-    borderRadius: 8,
-  },
-  cardTitle: {
-    color: COLORS.onBackground,
-    fontSize: 20,
-  },
-  cardBody: {
-    gap: 16,
+  sectionTitle: {
+    color: COLORS.onSurface,
   },
   detailRow: {
     flexDirection: 'row',
@@ -274,97 +303,47 @@ const styles = StyleSheet.create({
     color: COLORS.onSurfaceVariant,
   },
   detailValue: {
-    color: COLORS.onBackground,
-  },
-  plateBadge: {
-    backgroundColor: COLORS.surfaceContainerLow,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  plateText: {
-    color: COLORS.onBackground,
-  },
-  colorValue: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  colorDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.outlineVariant,
-  },
-  sectionSubTitle: {
-    color: COLORS.onSurfaceVariant,
-    marginBottom: 12,
+    color: COLORS.onSurface,
   },
   badgeWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
-  badge: {
+  badgeChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
+    gap: 6,
     paddingVertical: 6,
-    borderRadius: 9999,
-    borderWidth: 1,
-    gap: 4,
-  },
-  badgePrimary: {
-    backgroundColor: COLORS.primaryContainer + '1A', // 10% opacity
-    borderColor: COLORS.primaryContainer,
-  },
-  badgeSecondary: {
-    backgroundColor: COLORS.secondaryContainer + '33', // 20% opacity
-    borderColor: COLORS.secondary,
-  },
-  docList: {
-    gap: 12,
-  },
-  docItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  docInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  docName: {
-    color: COLORS.onBackground,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+    backgroundColor: COLORS.primary,
   },
   actionArea: {
     gap: 12,
-    marginTop: 8,
   },
   primaryButton: {
-    backgroundColor: COLORS.primaryContainer,
-    borderRadius: 16,
-    paddingVertical: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 14,
+    borderRadius: 14,
   },
   primaryButtonText: {
     color: COLORS.onPrimary,
   },
   secondaryButton: {
-    backgroundColor: COLORS.surfaceContainerLow,
-    borderRadius: 16,
-    paddingVertical: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    backgroundColor: COLORS.surfaceContainerLowest,
+    paddingVertical: 14,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: COLORS.surfaceContainer,
+    borderColor: COLORS.surfaceContainerLow,
   },
   secondaryButtonText: {
     color: COLORS.onBackground,
