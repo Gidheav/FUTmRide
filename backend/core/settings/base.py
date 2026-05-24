@@ -27,6 +27,7 @@ THIRD_PARTY_APPS = [
     "channels",
     "django_celery_beat",
     "django_celery_results",
+    "anymail",
 ]
 LOCAL_APPS = [
     "apps.accounts",
@@ -192,6 +193,7 @@ OTP_MAX_ATTEMPTS = 3
 
 # ── Email Configuration ─────────────────────────────────────────────────────────
 BREVO_API_KEY = env('BREVO_API_KEY', default='')
+BREVO_SENDER_EMAIL = env('BREVO_SENDER_EMAIL', default='heavprograms@gmail.com')
 EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
 
@@ -201,7 +203,7 @@ if BREVO_API_KEY:
     ANYMAIL = {
         'BREVO_API_KEY': BREVO_API_KEY,
     }
-    DEFAULT_FROM_EMAIL = f'LR-Ride <{EMAIL_HOST_USER}>' if EMAIL_HOST_USER else 'LR-Ride <gideonatpublic@gmail.com>'
+    DEFAULT_FROM_EMAIL = f'LR-Ride <{BREVO_SENDER_EMAIL}>'
 elif EMAIL_HOST_PASSWORD:
     # Fallback: Gmail SMTP (works locally, blocked on Render free tier)
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
