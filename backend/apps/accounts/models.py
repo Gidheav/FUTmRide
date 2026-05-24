@@ -156,6 +156,12 @@ class DriverProfile(models.Model):
         SUV = 'suv', 'SUV'
         MINIVAN = 'minivan', 'Minivan / Shuttle'
 
+    class MaintenanceStatus(models.TextChoices):
+        ACTIVE = 'active', 'Active'
+        IN_SERVICE = 'in_service', 'In-Service'
+        GROUNDED = 'grounded', 'Grounded'
+        IN_SHOP = 'in_shop', 'In Shop'
+
     class VerificationStatus(models.TextChoices):
         PENDING = 'pending', 'Pending'
         UNDER_REVIEW = 'under_review', 'Under Review'
@@ -172,6 +178,16 @@ class DriverProfile(models.Model):
     plate_number = models.CharField(max_length=20, unique=True)
     vehicle_seats = models.PositiveSmallIntegerField(default=4)
     campus = models.ForeignKey(Campus, on_delete=models.SET_NULL, null=True, related_name='drivers')
+
+    maintenance_status = models.CharField(
+        max_length=20,
+        choices=MaintenanceStatus.choices,
+        default=MaintenanceStatus.ACTIVE,
+        db_index=True,
+    )
+    last_service_date = models.DateField(null=True, blank=True)
+    service_due_date = models.DateField(null=True, blank=True)
+    odometer_km = models.PositiveIntegerField(default=0)
 
     verification_status = models.CharField(
         max_length=20,

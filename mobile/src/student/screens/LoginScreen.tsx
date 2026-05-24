@@ -56,7 +56,16 @@ const getApiErrorMessage = (err: any, fallback: string) => {
   }
 
   if (!err?.response) {
-    return `Cannot reach server. Ensure backend is running and reachable at ${API_BASE_URL}.`
+    const code = String(err?.code || '').toUpperCase()
+    const rawMessage = String(err?.message || '')
+    const timeoutLike = code === 'ECONNABORTED' || rawMessage.toLowerCase().includes('timeout')
+
+    if (timeoutLike) {
+      return 'Request timed out while waiting for the server response. This can happen when sending verification email; please try again.'
+    }
+
+    const msg = rawMessage ? ` (${rawMessage})` : ''
+    return `Cannot reach server${msg}. Ensure backend is reachable at ${API_BASE_URL}.`
   }
 
   return fallback
@@ -65,12 +74,13 @@ const getApiErrorMessage = (err: any, fallback: string) => {
 const postToFirstAvailableEndpoint = async (
   endpoints: string[],
   payload: Record<string, unknown>,
+  timeoutMs = 10000,
 ) => {
   let lastError: any = null
 
   for (const endpoint of endpoints) {
     try {
-      return await api.post(endpoint, payload)
+      return await api.post(endpoint, payload, { timeout: timeoutMs })
     } catch (err: any) {
       const statusCode = err?.response?.status
       if (statusCode === 404 || statusCode === 405) {
@@ -182,6 +192,7 @@ export default function StudentLoginScreen() {
           role: 'student',
           data_consent_given: true,
         },
+        30000,
       )
 
       setPendingSignupData({ email, password: signupPassword })
@@ -228,6 +239,7 @@ export default function StudentLoginScreen() {
           role: 'student',
           data_consent_given: true,
         },
+        30000,
       )
       setVerificationStatusMessage(
         resendResponse?.data?.message ||
@@ -262,6 +274,7 @@ export default function StudentLoginScreen() {
           email: pendingSignupData.email,
           code,
         },
+        30000,
       )
 
       const verificationToken = verifyResponse?.data?.verification_token
@@ -277,7 +290,7 @@ export default function StudentLoginScreen() {
         verification_token: verificationToken,
         role: 'student',
         data_consent_given: true,
-      })
+      }, { timeout: 30000 })
 
       setVerificationModalVisible(false)
       setPendingSignupData(null)

@@ -150,6 +150,8 @@ class StudentSignupVerificationService:
             logger.info('student_signup_code_sent email=%s session_id=%s', normalized_email, str(session.id))
         except Exception as exc:
             logger.error('student_signup_code_send_failed email=%s error=%s', normalized_email, str(exc))
+            session.delete()
+            raise RuntimeError('Unable to send verification code email at the moment.') from exc
 
         return session
 
@@ -278,13 +280,21 @@ class EmailOTPService:
     @staticmethod
     def _compose_email(code: str, purpose: str) -> tuple:
         expiry = settings.OTP_EXPIRY_MINUTES
+        if purpose == OTPVerification.Purpose.PASSWORD_RESET:
+            return (
+                'LR-Ride: Password Reset Verification',
+                f'Your password reset verification code is: {code}\n\n'
+                f'This code is valid for {expiry} minutes.\n'
+                f'If you did not request this reset, secure your account immediately.\n\n'
+                f'- LR-Ride Team',
+            )
         if purpose == OTPVerification.Purpose.PASSWORD_CHANGE:
             return (
                 'LR-Ride: Password Change Verification',
                 f'Your password change verification code is: {code}\n\n'
                 f'This code is valid for {expiry} minutes.\n'
                 f'If you did not request this change, please ignore this email and secure your account.\n\n'
-                f'— LR-Ride Team',
+                f'- LR-Ride Team',
             )
         # EMAIL_CHANGE or fallback
         return (
@@ -292,8 +302,9 @@ class EmailOTPService:
             f'Your email change verification code is: {code}\n\n'
             f'This code is valid for {expiry} minutes.\n'
             f'If you did not request this change, please ignore this email.\n\n'
-            f'— LR-Ride Team',
+            f'- LR-Ride Team',
         )
+
 
     @staticmethod
     def verify(email: str, code: str, purpose: str) -> tuple:

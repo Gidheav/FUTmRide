@@ -2,8 +2,8 @@ import { type CSSProperties, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  UserCheck, CarFront, Filter, ZoomOut, ZoomIn, Download,
-  X, Check, ChevronRight, Clock, CheckCircle2, AlertCircle,
+  UserCheck, Filter, ZoomOut, ZoomIn, Download,
+  X, Check, Clock, CheckCircle2, AlertCircle,
 } from 'lucide-react'
 import api from '../../core/api'
 import { T } from '../theme'
@@ -45,9 +45,7 @@ function StatusBadge({ status }: { status: string }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function AccountVerificationPage() {
-  const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [searchParams] = useSearchParams()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [adminNotes, setAdminNotes] = useState('')
   const [zoom, setZoom] = useState(100)
@@ -69,7 +67,7 @@ export default function AccountVerificationPage() {
     queryFn: () => api.get('/verification/admin/account/').then(r => r.data),
     staleTime: 20000,
   })
-  const accountList: AccountVerification[] = accountListData?.results ?? accountListData ?? []
+
 
   // Active account detail
   const activeAccountItem = pendingList.find(p => p.id === activeId)
@@ -255,7 +253,7 @@ export default function AccountVerificationPage() {
                         Reason: {detail?.rejection_reason || reviewMutation.variables?.reason}
                       </p>
                     )}
-                    {detail.reviewed_by_name && (
+                    {detail?.reviewed_by_name && (
                       <p style={{ fontSize: 11, color: T.textMuted, margin: 0 }}>
                         Reviewed by {detail.reviewed_by_name}
                       </p>

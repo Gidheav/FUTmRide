@@ -343,12 +343,14 @@ class DriverProfileSerializer(serializers.ModelSerializer):
         fields = [
             "id", "user", "vehicle_type", "vehicle_make", "vehicle_model",
             "vehicle_year", "vehicle_color", "plate_number", "verification_status",
+            "maintenance_status", "last_service_date", "service_due_date", "odometer_km",
             "is_online", "is_on_trip", "wallet_balance", "total_trips",
             "total_earnings", "average_rating", "acceptance_rate",
             "cancellation_rate", "verified_at", "created_at",
         ]
         read_only_fields = [
-            "id", "verification_status", "is_on_trip", "wallet_balance",
+            "id", "verification_status", "maintenance_status", "last_service_date",
+            "service_due_date", "odometer_km", "is_on_trip", "wallet_balance",
             "total_trips", "total_earnings", "average_rating",
             "acceptance_rate", "cancellation_rate", "verified_at", "created_at",
         ]
@@ -437,18 +439,44 @@ class ChangePasswordSerializer(serializers.Serializer):
 
 
 class PasswordResetRequestSerializer(serializers.Serializer):
-    phone_number = serializers.CharField()
+    phone_number = serializers.CharField(required=False, allow_blank=True)
+    email = serializers.EmailField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        phone_number = (attrs.get('phone_number') or '').strip()
+        email = (attrs.get('email') or '').strip().lower()
+
+        if not phone_number and not email:
+            raise serializers.ValidationError({'non_field_errors': 'Provide phone number or email.'})
+
+        attrs['phone_number'] = phone_number or None
+        attrs['email'] = email or None
+        return attrs
 
 
 class PasswordResetConfirmSerializer(serializers.Serializer):
-    phone_number = serializers.CharField()
-    code = serializers.CharField(max_length=6)
+    phone_number = serializers.CharField(required=False, allow_blank=True)
+    email = serializers.EmailField(required=False, allow_blank=True)
+    code = serializers.CharField(max_length=6, min_length=6)
     new_password = serializers.CharField(validators=[validate_password])
     confirm_password = serializers.CharField()
 
     def validate(self, attrs):
         if attrs['new_password'] != attrs.pop('confirm_password'):
             raise serializers.ValidationError({'confirm_password': 'Passwords do not match.'})
+
+        phone_number = (attrs.get('phone_number') or '').strip()
+        email = (attrs.get('email') or '').strip().lower()
+        if not phone_number and not email:
+            raise serializers.ValidationError({'non_field_errors': 'Provide phone number or email.'})
+
+        code = (attrs.get('code') or '').strip()
+        if not code.isdigit():
+            raise serializers.ValidationError({'code': 'Code must be a 6-digit number.'})
+
+        attrs['phone_number'] = phone_number or None
+        attrs['email'] = email or None
+        attrs['code'] = code
         return attrs
 
 

@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react'
 import {
   CalendarClock,
-  ChevronDown, ChevronUp, Plus, X, Search,
+  ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Plus, X, Search,
   Layers, Pencil, MousePointer2, Ruler, Square, Circle,
-  ZoomIn, ZoomOut, Crosshair, Maximize2,
+  ZoomIn, ZoomOut, Crosshair, Maximize2, Undo2, Redo2, Trash2,
 } from 'lucide-react'
 import { GoogleMap, useJsApiLoader, DrawingManager, Polyline, Marker, InfoWindow } from '@react-google-maps/api'
 import { T, useCampusThemeStore } from '../theme'
@@ -11,6 +11,20 @@ import { T, useCampusThemeStore } from '../theme'
 const GMAP_LIBS: ('drawing' | 'geometry' | 'places')[] = ['drawing', 'geometry', 'places']
 
 type MapTool = 'select' | 'draw' | 'rectangle' | 'circle' | 'measure' | 'search'
+
+interface MeasuredRoadRoute {
+  id: string
+  path: google.maps.LatLngLiteral[]
+  distanceText: string
+  durationText: string
+  distanceMeters: number
+  durationSeconds: number
+  summary: string
+  roadSteps: { name: string; distanceText: string; durationText: string }[]
+  color: string
+}
+
+const ROUTE_COLORS = ['#f59e0b', '#3b82f6', '#10b981', '#a855f7', '#ef4444', '#06b6d4']
 
 /* ──────────────────────────────────────────────────────────────────────────────
    Colour & Design Tokens
@@ -121,6 +135,11 @@ export default function DashboardPage() {
   const { mode } = useCampusThemeStore()
   const feedRef = useRef<HTMLDivElement>(null)
 
+  // Panel collapsed states (collapsed by default)
+  const [isLeftPanelOpen, setIsLeftPanelOpen] = useState(false)
+  const [isRightPanelOpen, setIsRightPanelOpen] = useState(false)
+  const [isDataFeedOpen, setIsDataFeedOpen] = useState(false)
+
   // Toggles for traffic layers
   const [layers, setLayers] = useState({
     realMatch: true, congestionLine: false, congestion: false,
@@ -142,14 +161,34 @@ export default function DashboardPage() {
 
   // Map controls state
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [activeTool, setActiveTool] = useState<MapTool>('select')
+  const [activeTool, setActiveTool] = useState<MapTool | null>(null) // null = pan/select
   const [searchQuery, setSearchQuery] = useState('')
   const [measurePoints, setMeasurePoints] = useState<google.maps.LatLngLiteral[]>([])
   const [measureDist, setMeasureDist] = useState<string | null>(null)
+  const [measureRoutes, setMeasureRoutes] = useState<MeasuredRoadRoute[]>([])
+  const [selectedMeasureRouteIndex, setSelectedMeasureRouteIndex] = useState(0)
+  const [isMeasureLoading, setIsMeasureLoading] = useState(false)
+  const [measureError, setMeasureError] = useState<string | null>(null)
   const [selectedLocation, setSelectedLocation] = useState<{ lat: number, lng: number, address: string, placeName?: string } | null>(null)
+
+  // Tool visibility: each tool's work shown/hidden independently
+  const [toolVisibility, setToolVisibility] = useState<Record<string, boolean>>({
+    measure: true, draw: true, rectangle: true, circle: true,
+  })
+
+  // Undo / Redo stacks
+  interface UndoAction {
+    type: 'measure' | 'drawing' | 'clear-measure' | 'clear-drawings'
+    measureSnapshot?: { points: google.maps.LatLngLiteral[]; routes: MeasuredRoadRoute[]; dist: string | null; selectedIdx: number }
+    overlays?: google.maps.MVCObject[]
+  }
+  const [undoStack, setUndoStack] = useState<UndoAction[]>([])
+  const [redoStack, setRedoStack] = useState<UndoAction[]>([])
+
   const mapRef = useRef<google.maps.Map | null>(null)
   const drawnOverlays = useRef<google.maps.MVCObject[]>([])
   const measureListenerRef = useRef<google.maps.MapsEventListener | null>(null)
+  const measureRequestIdRef = useRef(0)
 
   const onMapLoad = useCallback((map: google.maps.Map) => {
     mapRef.current = map
@@ -194,51 +233,320 @@ export default function DashboardPage() {
     })
   }, [activeTool])
 
-  // Clean up measure listener when switching tools
-  const clearMeasure = useCallback(() => {
+  const formatRouteStatus = useCallback((route: MeasuredRoadRoute, routeIndex: number, routeCount: number) => {
+    return `${route.distanceText} | ${route.durationText} (Route ${routeIndex + 1}/${routeCount})`
+  }, [])
+
+  /* ── OSRM-based routing (free, no API key needed) ─────────────────────── */
+
+  const formatDistance = useCallback((meters: number): string => {
+    if (meters < 1000) return `${Math.round(meters)} m`
+    return `${(meters / 1000).toFixed(1)} km`
+  }, [])
+
+  const formatDuration = useCallback((seconds: number): string => {
+    if (seconds < 60) return `${Math.round(seconds)} sec`
+    const mins = Math.round(seconds / 60)
+    if (mins < 60) return `${mins} min`
+    const hrs = Math.floor(mins / 60)
+    const rem = mins % 60
+    return rem > 0 ? `${hrs} hr ${rem} min` : `${hrs} hr`
+  }, [])
+
+  const fetchOSRMRoutes = useCallback(async (
+    origin: google.maps.LatLngLiteral,
+    destination: google.maps.LatLngLiteral,
+    requestId: number
+  ): Promise<MeasuredRoadRoute[] | null> => {
+    try {
+      // 1) Snap both points to nearest road for accuracy
+      const snapPoint = async (pt: google.maps.LatLngLiteral) => {
+        try {
+          const r = await fetch(`https://router.project-osrm.org/nearest/v1/driving/${pt.lng},${pt.lat}?number=1`)
+          if (!r.ok) return pt
+          const d = await r.json()
+          if (d.code === 'Ok' && d.waypoints?.[0]?.location) {
+            const [sLng, sLat] = d.waypoints[0].location
+            return { lat: sLat, lng: sLng }
+          }
+        } catch { /* use original */ }
+        return pt
+      }
+
+      const [snappedOrigin, snappedDest] = await Promise.all([
+        snapPoint(origin), snapPoint(destination),
+      ])
+
+      if (requestId !== measureRequestIdRef.current) return null
+
+      // 2) Route with full precision
+      const url = `https://router.project-osrm.org/route/v1/driving/` +
+        `${snappedOrigin.lng},${snappedOrigin.lat};${snappedDest.lng},${snappedDest.lat}` +
+        `?overview=full&geometries=geojson&alternatives=true&steps=true&annotations=distance,duration`
+
+      const resp = await fetch(url)
+      if (!resp.ok) throw new Error(`OSRM HTTP ${resp.status}`)
+      const data = await resp.json()
+
+      if (requestId !== measureRequestIdRef.current) return null
+      if (data.code !== 'Ok' || !data.routes?.length) return null
+
+      return data.routes.map((route: any, routeIndex: number) => {
+        const path: google.maps.LatLngLiteral[] = route.geometry.coordinates.map(
+          (coord: [number, number]) => ({ lat: coord[1], lng: coord[0] })
+        )
+        const distMeters: number = route.distance ?? 0
+        const durSeconds: number = route.duration ?? 0
+
+        // Extract step-by-step road details
+        const roadSteps: { name: string; distanceText: string; durationText: string }[] = []
+        const seenNames = new Set<string>()
+        if (route.legs) {
+          for (const leg of route.legs) {
+            for (const step of (leg.steps || [])) {
+              const name = step.name || step.ref || ''
+              if (name && !seenNames.has(name)) {
+                seenNames.add(name)
+                roadSteps.push({
+                  name,
+                  distanceText: formatDistance(step.distance ?? 0),
+                  durationText: formatDuration(step.duration ?? 0),
+                })
+              }
+            }
+          }
+        }
+
+        const summaryNames = roadSteps.slice(0, 3).map(s => s.name)
+
+        return {
+          id: `measure-route-${routeIndex}`,
+          path,
+          distanceText: formatDistance(distMeters),
+          durationText: formatDuration(durSeconds),
+          distanceMeters: distMeters,
+          durationSeconds: durSeconds,
+          summary: summaryNames.length > 0 ? `via ${summaryNames.join(', ')}` : `Route ${routeIndex + 1}`,
+          roadSteps,
+          color: ROUTE_COLORS[routeIndex % ROUTE_COLORS.length],
+        }
+      })
+    } catch (err) {
+      console.warn('OSRM routing failed, will try Google Directions fallback', err)
+      return null
+    }
+  }, [formatDistance, formatDuration])
+
+  const fetchGoogleDirectionsFallback = useCallback((
+    origin: google.maps.LatLngLiteral,
+    destination: google.maps.LatLngLiteral,
+    requestId: number
+  ): Promise<MeasuredRoadRoute[] | null> => {
+    return new Promise((resolve) => {
+      try {
+        const service = new google.maps.DirectionsService()
+        service.route(
+          {
+            origin,
+            destination,
+            travelMode: google.maps.TravelMode.DRIVING,
+            provideRouteAlternatives: true,
+            unitSystem: google.maps.UnitSystem.METRIC,
+          },
+          (result, status) => {
+            if (requestId !== measureRequestIdRef.current) { resolve(null); return }
+            if (status !== 'OK' || !result?.routes?.length) {
+              console.warn('Google Directions fallback also failed', { status })
+              resolve(null)
+              return
+            }
+            const routes: MeasuredRoadRoute[] = result.routes.map((route, idx) => {
+              const detailedPath = route.legs.flatMap((leg) =>
+                leg.steps.flatMap((step) => step.path.map((p) => ({ lat: p.lat(), lng: p.lng() })))
+              )
+              const fallbackPath = route.overview_path.map((p) => ({ lat: p.lat(), lng: p.lng() }))
+              const firstLeg = route.legs[0]
+              const distM = firstLeg?.distance?.value ?? 0
+              const durS = firstLeg?.duration?.value ?? 0
+              const steps = firstLeg?.steps?.map(st => ({
+                name: st.instructions?.replace(/<[^>]*>/g, '') || 'Road',
+                distanceText: st.distance?.text ?? '',
+                durationText: st.duration?.text ?? '',
+              })) ?? []
+              return {
+                id: `measure-route-${idx}`,
+                path: detailedPath.length > 0 ? detailedPath : fallbackPath,
+                distanceText: firstLeg?.distance?.text ?? 'N/A',
+                durationText: firstLeg?.duration?.text ?? 'N/A',
+                distanceMeters: distM,
+                durationSeconds: durS,
+                summary: route.summary || `Route ${idx + 1}`,
+                roadSteps: steps,
+                color: ROUTE_COLORS[idx % ROUTE_COLORS.length],
+              }
+            })
+            resolve(routes)
+          }
+        )
+      } catch {
+        resolve(null)
+      }
+    })
+  }, [])
+
+  const fetchMeasureRoutes = useCallback(async (origin: google.maps.LatLngLiteral, destination: google.maps.LatLngLiteral) => {
+    const requestId = measureRequestIdRef.current + 1
+    measureRequestIdRef.current = requestId
+
+    setIsMeasureLoading(true)
+    setMeasureError(null)
+    setMeasureDist(null)
+    setMeasureRoutes([])
+    setSelectedMeasureRouteIndex(0)
+
+    // 1) Try OSRM first (free, no API key)
+    let routes = await fetchOSRMRoutes(origin, destination, requestId)
+
+    // 2) If OSRM failed, try Google Directions as fallback
+    if (!routes || routes.length === 0) {
+      routes = await fetchGoogleDirectionsFallback(origin, destination, requestId)
+    }
+
+    if (requestId !== measureRequestIdRef.current) return
+    setIsMeasureLoading(false)
+
+    if (!routes || routes.length === 0) {
+      setMeasureRoutes([])
+      setMeasureDist(null)
+      setMeasureError('No drivable road route found. Try clicking closer to visible roads.')
+      return
+    }
+
+    setMeasureRoutes(routes)
+    const primary = routes[0]
+    setSelectedMeasureRouteIndex(0)
+    setMeasureDist(formatRouteStatus(primary, 0, routes.length))
+
+    const bounds = new google.maps.LatLngBounds()
+    routes.forEach((route) => {
+      route.path.forEach((point) => bounds.extend(point))
+    })
+    if (!bounds.isEmpty()) {
+      mapRef.current?.fitBounds(bounds, 56)
+    }
+  }, [formatRouteStatus, fetchOSRMRoutes, fetchGoogleDirectionsFallback])
+
+  /* ── Measure listener management ─────────────────────────────────────── */
+  const removeMeasureListener = useCallback(() => {
     if (measureListenerRef.current) {
       google.maps.event.removeListener(measureListenerRef.current)
       measureListenerRef.current = null
     }
-    setMeasurePoints([])
-    setMeasureDist(null)
   }, [])
 
-  // Set active tool
-  const selectTool = useCallback((tool: MapTool) => {
-    clearMeasure()
-    setActiveTool(tool)
+  const attachMeasureListener = useCallback(() => {
+    removeMeasureListener()
+    if (!mapRef.current) return
 
-    if (tool === 'measure' && mapRef.current) {
-      const pts: google.maps.LatLngLiteral[] = []
-      measureListenerRef.current = mapRef.current.addListener('click', (e: google.maps.MapMouseEvent) => {
-        if (!e.latLng) return
-        const p = { lat: e.latLng.lat(), lng: e.latLng.lng() }
+    const pts: google.maps.LatLngLiteral[] = []
+    measureListenerRef.current = mapRef.current.addListener('click', (e: google.maps.MapMouseEvent) => {
+      if (!e.latLng) return
+      const p = { lat: e.latLng.lat(), lng: e.latLng.lng() }
+
+      if (pts.length === 0) {
         pts.push(p)
         setMeasurePoints([...pts])
-        if (pts.length >= 2) {
-          let total = 0
-          for (let i = 1; i < pts.length; i++) {
-            total += google.maps.geometry.spherical.computeDistanceBetween(
-              new google.maps.LatLng(pts[i - 1]),
-              new google.maps.LatLng(pts[i])
-            )
-          }
-          setMeasureDist(total >= 1000 ? `${(total / 1000).toFixed(2)} km` : `${Math.round(total)} m`)
-        }
-      })
-    }
+        setMeasureDist('Start point set. Click destination point.')
+        setMeasureRoutes([])
+        setSelectedMeasureRouteIndex(0)
+        setMeasureError(null)
+        return
+      }
 
-    if (tool === 'search') {
-      setSearchQuery('')
+      if (pts.length === 1) {
+        pts.push(p)
+        setMeasurePoints([...pts])
+        // Push undo snapshot BEFORE fetching (captures previous state)
+        setUndoStack(prev => [...prev, { type: 'measure', measureSnapshot: { points: [], routes: [], dist: null, selectedIdx: 0 } }])
+        setRedoStack([])
+        fetchMeasureRoutes(pts[0], pts[1])
+        return
+      }
+
+      // 3rd+ click: save current work as undo, start new measurement
+      setUndoStack(prev => [...prev, {
+        type: 'measure',
+        measureSnapshot: {
+          points: [...pts.slice(0, 2)],
+          routes: [], // routes are async, snapshot is best-effort
+          dist: null,
+          selectedIdx: 0,
+        },
+      }])
+      setRedoStack([])
+      measureRequestIdRef.current += 1
+      
+      // Destroy old polylines manually
+      measurePolylinesRef.current.forEach(polyline => {
+        try { polyline.setMap(null) } catch (e) {}
+      })
+      measurePolylinesRef.current = []
+
+      pts.splice(0, pts.length, p)
+      setMeasurePoints([...pts])
+      setMeasureDist('Start point set. Click destination point.')
+      setMeasureRoutes([])
+      setSelectedMeasureRouteIndex(0)
+      setMeasureError(null)
+      setIsMeasureLoading(false)
+    })
+  }, [removeMeasureListener, fetchMeasureRoutes])
+
+  /* ── Tool selection (toggle-based, work persists) ───────────────────── */
+  const selectTool = useCallback((tool: MapTool) => {
+    setActiveTool(prev => {
+      const isSameTool = prev === tool
+
+      // Toggle OFF: clicking same tool → deactivate, hide its work
+      if (isSameTool) {
+        if (tool === 'measure') {
+          removeMeasureListener()
+          setToolVisibility(v => ({ ...v, measure: false }))
+        } else if (tool === 'draw' || tool === 'rectangle' || tool === 'circle') {
+          setToolVisibility(v => ({ ...v, [tool]: false }))
+        }
+        return null // go to pan/select
+      }
+
+      // Switch to new tool: keep previous tool's work visible
+      // Detach measure listener if leaving measure mode
+      if (prev === 'measure') removeMeasureListener()
+
+      // Ensure the new tool's visibility is ON
+      if (tool === 'measure') {
+        setToolVisibility(v => ({ ...v, measure: true }))
+      } else if (tool === 'draw' || tool === 'rectangle' || tool === 'circle') {
+        setToolVisibility(v => ({ ...v, [tool]: true }))
+      }
+
+      return tool
+    })
+
+    // Attach measure listener if activating measure
+    // (uses setTimeout so setActiveTool completes first)
+    if (tool !== activeTool) {
+      if (tool === 'measure') setTimeout(() => attachMeasureListener(), 0)
+      if (tool === 'search') setSearchQuery('')
     }
-  }, [clearMeasure])
+  }, [activeTool, removeMeasureListener, attachMeasureListener])
 
   // Handle overlay completion from DrawingManager
   const onOverlayComplete = useCallback((e: google.maps.drawing.OverlayCompleteEvent) => {
-    drawnOverlays.current.push(e.overlay!)
-    // Reset drawing mode back to null after placing one shape
-    setActiveTool('select')
+    const overlay = e.overlay!
+    drawnOverlays.current.push(overlay)
+    setUndoStack(prev => [...prev, { type: 'drawing', overlays: [overlay] }])
+    setRedoStack([])
+    // Stay in drawing mode (don't reset to select)
   }, [])
 
   // Search handler
@@ -260,15 +568,143 @@ export default function DashboardPage() {
         alert('Location not found. Try a more specific query.')
       }
     })
-    setActiveTool('select')
   }, [searchQuery])
 
-  // Clear all drawings
-  const clearDrawings = useCallback(() => {
-    drawnOverlays.current.forEach(o => (o as any).setMap?.(null))
-    drawnOverlays.current = []
-    clearMeasure()
-  }, [clearMeasure])
+  const measurePolylinesRef = useRef<google.maps.Polyline[]>([])
+
+  /* ── Clear: only active tool ────────────────────────────────────────── */
+  const clearMeasureState = useCallback(() => {
+    measureRequestIdRef.current += 1
+    
+    // Explicitly destroy Google Maps Polyline instances to avoid ghosting
+    measurePolylinesRef.current.forEach(p => {
+      try { p.setMap(null) } catch (e) {}
+    })
+    measurePolylinesRef.current = []
+
+    setMeasurePoints([])
+    setMeasureDist(null)
+    setMeasureRoutes([])
+    setSelectedMeasureRouteIndex(0)
+    setIsMeasureLoading(false)
+    setMeasureError(null)
+  }, [])
+
+  const handleClear = useCallback((specificTarget?: string | React.MouseEvent) => {
+    // Determine what to clear based on argument (if it's a string) or the active tool
+    const target = typeof specificTarget === 'string' ? specificTarget : activeTool
+
+    if (target === 'measure') {
+      // Save snapshot for undo
+      setUndoStack(prev => [...prev, {
+        type: 'clear-measure',
+        measureSnapshot: { points: [...measurePoints], routes: [...measureRoutes], dist: measureDist, selectedIdx: selectedMeasureRouteIndex },
+      }])
+      setRedoStack([])
+      clearMeasureState()
+      // Re-attach listener if we are currently in measure mode
+      if (activeTool === 'measure') {
+        setTimeout(() => attachMeasureListener(), 0)
+      }
+    } else if (target === 'draw' || target === 'rectangle' || target === 'circle') {
+      const removed = [...drawnOverlays.current]
+      setUndoStack(prev => [...prev, { type: 'clear-drawings', overlays: removed }])
+      setRedoStack([])
+      drawnOverlays.current.forEach(o => (o as any).setMap?.(null))
+      drawnOverlays.current = []
+    } else {
+      // Clear everything
+      const removed = [...drawnOverlays.current]
+      setUndoStack(prev => [...prev, { type: 'clear-drawings', overlays: removed }])
+      setRedoStack([])
+      drawnOverlays.current.forEach(o => (o as any).setMap?.(null))
+      drawnOverlays.current = []
+      clearMeasureState()
+      if (activeTool === 'measure') {
+        setTimeout(() => attachMeasureListener(), 0)
+      } else {
+        removeMeasureListener()
+        setToolVisibility(v => ({ ...v, measure: true }))
+      }
+    }
+  }, [activeTool, measurePoints, measureRoutes, measureDist, selectedMeasureRouteIndex, clearMeasureState, attachMeasureListener, removeMeasureListener])
+
+  /* ── Undo / Redo ────────────────────────────────────────────────────── */
+  const handleUndo = useCallback(() => {
+    if (undoStack.length === 0) return
+    const action = undoStack[undoStack.length - 1]
+    setUndoStack(prev => prev.slice(0, -1))
+
+    if (action.type === 'measure' && action.measureSnapshot) {
+      // Save current state to redo
+      setRedoStack(prev => [...prev, {
+        type: 'measure',
+        measureSnapshot: { points: [...measurePoints], routes: [...measureRoutes], dist: measureDist, selectedIdx: selectedMeasureRouteIndex },
+      }])
+      setMeasurePoints(action.measureSnapshot.points)
+      setMeasureRoutes(action.measureSnapshot.routes)
+      setMeasureDist(action.measureSnapshot.dist)
+      setSelectedMeasureRouteIndex(action.measureSnapshot.selectedIdx)
+    } else if (action.type === 'clear-measure' && action.measureSnapshot) {
+      setRedoStack(prev => [...prev, {
+        type: 'clear-measure',
+        measureSnapshot: { points: [...measurePoints], routes: [...measureRoutes], dist: measureDist, selectedIdx: selectedMeasureRouteIndex },
+      }])
+      setMeasurePoints(action.measureSnapshot.points)
+      setMeasureRoutes(action.measureSnapshot.routes)
+      setMeasureDist(action.measureSnapshot.dist)
+      setSelectedMeasureRouteIndex(action.measureSnapshot.selectedIdx)
+      setToolVisibility(v => ({ ...v, measure: true }))
+    } else if (action.type === 'drawing' && action.overlays) {
+      setRedoStack(prev => [...prev, { type: 'drawing', overlays: action.overlays }])
+      action.overlays.forEach(o => {
+        (o as any).setMap?.(null)
+        const idx = drawnOverlays.current.indexOf(o)
+        if (idx >= 0) drawnOverlays.current.splice(idx, 1)
+      })
+    } else if (action.type === 'clear-drawings' && action.overlays) {
+      setRedoStack(prev => [...prev, { type: 'clear-drawings', overlays: action.overlays }])
+      action.overlays.forEach(o => (o as any).setMap?.(mapRef.current))
+      drawnOverlays.current.push(...action.overlays)
+    }
+  }, [undoStack, measurePoints, measureRoutes, measureDist, selectedMeasureRouteIndex])
+
+  const handleRedo = useCallback(() => {
+    if (redoStack.length === 0) return
+    const action = redoStack[redoStack.length - 1]
+    setRedoStack(prev => prev.slice(0, -1))
+
+    if (action.type === 'measure' && action.measureSnapshot) {
+      setUndoStack(prev => [...prev, {
+        type: 'measure',
+        measureSnapshot: { points: [...measurePoints], routes: [...measureRoutes], dist: measureDist, selectedIdx: selectedMeasureRouteIndex },
+      }])
+      setMeasurePoints(action.measureSnapshot.points)
+      setMeasureRoutes(action.measureSnapshot.routes)
+      setMeasureDist(action.measureSnapshot.dist)
+      setSelectedMeasureRouteIndex(action.measureSnapshot.selectedIdx)
+    } else if (action.type === 'clear-measure' && action.measureSnapshot) {
+      setUndoStack(prev => [...prev, {
+        type: 'clear-measure',
+        measureSnapshot: { points: [...measurePoints], routes: [...measureRoutes], dist: measureDist, selectedIdx: selectedMeasureRouteIndex },
+      }])
+      setMeasurePoints(action.measureSnapshot.points)
+      setMeasureRoutes(action.measureSnapshot.routes)
+      setMeasureDist(action.measureSnapshot.dist)
+      setSelectedMeasureRouteIndex(action.measureSnapshot.selectedIdx)
+    } else if (action.type === 'drawing' && action.overlays) {
+      setUndoStack(prev => [...prev, { type: 'drawing', overlays: action.overlays }])
+      action.overlays.forEach(o => (o as any).setMap?.(mapRef.current))
+      drawnOverlays.current.push(...action.overlays)
+    } else if (action.type === 'clear-drawings' && action.overlays) {
+      setUndoStack(prev => [...prev, { type: 'clear-drawings', overlays: action.overlays }])
+      action.overlays.forEach(o => {
+        (o as any).setMap?.(null)
+        const idx = drawnOverlays.current.indexOf(o)
+        if (idx >= 0) drawnOverlays.current.splice(idx, 1)
+      })
+    }
+  }, [redoStack, measurePoints, measureRoutes, measureDist, selectedMeasureRouteIndex])
 
   // Determine DrawingManager mode
   const drawingMode = activeTool === 'draw' ? google.maps?.drawing?.OverlayType?.POLYLINE
@@ -299,11 +735,14 @@ export default function DashboardPage() {
 
           {/* ────────────────── LEFT: Open Requests ─────────────────────── */}
           {!isFullscreen && (
-          <div style={s.leftPanel}>
-            <div style={s.panelHeader}>
-              <span style={s.panelTitle}>Open Requests</span>
-              <button style={s.moreBtn}>...</button>
-            </div>
+            isLeftPanelOpen ? (
+              <div style={s.leftPanel}>
+                <div style={s.panelHeader}>
+                  <span style={s.panelTitle}>Open Requests</span>
+                  <button style={s.moreBtn} onClick={() => setIsLeftPanelOpen(false)}>
+                    <ChevronLeft size={16} />
+                  </button>
+                </div>
             <div style={s.requestList}>
               {MOCK_REQUESTS.map((req) => (
                 <div key={req.id} style={s.reqCard}>
@@ -344,6 +783,16 @@ export default function DashboardPage() {
               ))}
             </div>
           </div>
+            ) : (
+              <div style={{ ...s.leftPanel, width: 36, alignItems: 'center', cursor: 'pointer' }} onClick={() => setIsLeftPanelOpen(true)}>
+                <div style={{ padding: '10px 0', borderBottom: `1px solid ${T.border}`, width: '100%', display: 'flex', justifyContent: 'center' }}>
+                  <ChevronRight size={16} color={T.textMuted} />
+                </div>
+                <div style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', padding: '16px 0', fontSize: 11, fontWeight: 600, color: T.textSecondary, letterSpacing: 1 }}>
+                  Open Requests
+                </div>
+              </div>
+            )
           )}
 
           {/* ────────────────── CENTER: Map + Data Feed ─────────────────── */}
@@ -351,10 +800,21 @@ export default function DashboardPage() {
             {/* Map toolbar */}
             <div style={s.mapToolbar}>
               <div style={s.toolbarLeft}>
-                {measureDist && (
+                {measureDist && toolVisibility.measure && (
                   <span style={{ ...s.searchPill, background: T.accent, color: '#fff', borderColor: T.accent }}>
                     📏 {measureDist}
-                    <X size={11} style={{ cursor: 'pointer', marginLeft: 4 }} onClick={clearMeasure} />
+                    <X size={11} style={{ cursor: 'pointer', marginLeft: 4 }} onClick={() => handleClear('measure')} />
+                  </span>
+                )}
+                {isMeasureLoading && (
+                  <span style={s.searchPill}>
+                    Finding road routes...
+                  </span>
+                )}
+                {measureError && (
+                  <span style={{ ...s.searchPill, background: '#7f1d1d', color: '#fff', borderColor: '#ef4444' }}>
+                    {measureError}
+                    <X size={11} style={{ cursor: 'pointer', marginLeft: 4 }} onClick={() => handleClear('measure')} />
                   </span>
                 )}
                 {activeTool === 'search' ? (
@@ -373,17 +833,35 @@ export default function DashboardPage() {
                   </div>
                 ) : (
                   <span style={s.toolSep}>
-                    {activeTool === 'select' ? 'Pan & Select' :
-                     activeTool === 'draw' ? 'Draw Polyline' :
-                     activeTool === 'rectangle' ? 'Draw Rectangle' :
-                     activeTool === 'circle' ? 'Draw Circle' :
-                     activeTool === 'measure' ? 'Click map to measure' : ''}
+                    {!activeTool ? 'Pan & Select' :
+                     activeTool === 'draw' ? 'Draw Polyline (click to place points)' :
+                     activeTool === 'rectangle' ? 'Draw Rectangle (click and drag)' :
+                     activeTool === 'circle' ? 'Draw Circle (click center, drag radius)' :
+                     activeTool === 'measure' ? 'Click start, then destination to map all road routes' : ''}
                   </span>
                 )}
               </div>
               <div style={s.toolbarRight}>
+                {/* Undo / Redo */}
+                <button
+                  style={{ ...s.toolBtn, opacity: undoStack.length === 0 ? 0.35 : 1 }}
+                  onClick={handleUndo}
+                  disabled={undoStack.length === 0}
+                  title={`Undo (${undoStack.length})`}
+                >
+                  <Undo2 size={14} strokeWidth={1.6} />
+                </button>
+                <button
+                  style={{ ...s.toolBtn, opacity: redoStack.length === 0 ? 0.35 : 1 }}
+                  onClick={handleRedo}
+                  disabled={redoStack.length === 0}
+                  title={`Redo (${redoStack.length})`}
+                >
+                  <Redo2 size={14} strokeWidth={1.6} />
+                </button>
+                <div style={s.toolDivider} />
+                {/* Tool buttons (toggle on/off) */}
                 {[
-                  { icon: MousePointer2, tool: 'select' as MapTool, title: 'Select / Pan' },
                   { icon: Pencil, tool: 'draw' as MapTool, title: 'Draw Polyline' },
                   { icon: Square, tool: 'rectangle' as MapTool, title: 'Draw Rectangle' },
                   { icon: Circle, tool: 'circle' as MapTool, title: 'Draw Circle' },
@@ -392,19 +870,16 @@ export default function DashboardPage() {
                 ].map(({ icon: Icon, tool, title }) => (
                   <button
                     key={tool}
-                    style={{ ...s.toolBtn, ...(activeTool === tool ? { background: T.accent, color: '#fff', borderColor: T.accent } : {}) }}
+                    style={{ ...s.toolBtn, ...(activeTool === tool ? { background: T.accent, color: '#fff', borderColor: T.accent, boxShadow: `0 0 6px ${T.accent}44` } : {}) }}
                     onClick={() => selectTool(tool)}
-                    title={title}
+                    title={activeTool === tool ? `${title} (Active — click to deactivate)` : title}
                   >
                     <Icon size={14} strokeWidth={1.6} />
                   </button>
                 ))}
                 <div style={s.toolDivider} />
-                <button style={s.filterBtn} onClick={clearDrawings} title="Clear all drawings">
-                  <Layers size={13} /> Clear
-                </button>
-                <button style={s.filterBtn}>
-                  Filter all <ChevronDown size={12} />
+                <button style={s.filterBtn} onClick={handleClear} title={activeTool ? `Clear ${activeTool} work` : 'Clear all'}>
+                  <Trash2 size={13} /> Clear{activeTool ? ` ${activeTool}` : ''}
                 </button>
               </div>
             </div>
@@ -421,7 +896,9 @@ export default function DashboardPage() {
                     onClick={handleMapClick}
                     options={{
                       disableDefaultUI: true,
-                      draggable: activeTool === 'select' || activeTool === 'search',
+                      draggable: !activeTool || activeTool === 'search' || activeTool === 'measure',
+                      draggableCursor: activeTool === 'measure' ? 'crosshair' : undefined,
+                      draggingCursor: activeTool === 'measure' ? 'crosshair' : undefined,
                       clickableIcons: false,
                       gestureHandling: 'greedy',
                       minZoom: 14,
@@ -468,11 +945,62 @@ export default function DashboardPage() {
                         }}
                       />
                     )}
-                    {/* Measure polyline */}
-                    {activeTool === 'measure' && measurePoints.length >= 2 && (
-                      <Polyline
-                        path={measurePoints}
-                        options={{ strokeColor: '#f59e0b', strokeWeight: 3, strokeOpacity: 0.9, icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 }, offset: '0', repeat: '16px' }] }}
+                    {/* Measure routes + endpoints (visible when toolVisibility.measure is on) */}
+                    {toolVisibility.measure && measurePoints.length >= 2 && (
+                      <>
+                        {measureRoutes.map((route, routeIndex) => {
+                          const isSelected = routeIndex === selectedMeasureRouteIndex
+                          return (
+                            <Polyline
+                              key={route.id}
+                              path={route.path}
+                              options={{
+                                strokeColor: route.color,
+                                strokeWeight: isSelected ? 6 : 3,
+                                strokeOpacity: isSelected ? 1 : 0.5,
+                                zIndex: isSelected ? 120 : 90 - routeIndex,
+                              }}
+                              onClick={() => {
+                                setSelectedMeasureRouteIndex(routeIndex)
+                                setMeasureDist(formatRouteStatus(route, routeIndex, measureRoutes.length))
+                              }}
+                              onLoad={(polyline) => {
+                                measurePolylinesRef.current.push(polyline)
+                              }}
+                              onUnmount={(polyline) => {
+                                polyline.setMap(null)
+                              }}
+                            />
+                          )
+                        })}
+                      </>
+                    )}
+                    {toolVisibility.measure && measurePoints.length >= 1 && (
+                      <Marker
+                        position={measurePoints[0]}
+                        label={{ text: 'A', color: '#ffffff', fontWeight: '700' }}
+                        icon={{
+                          path: google.maps.SymbolPath.CIRCLE,
+                          fillColor: '#16a34a',
+                          fillOpacity: 1,
+                          strokeColor: '#ffffff',
+                          strokeWeight: 2,
+                          scale: 9,
+                        }}
+                      />
+                    )}
+                    {toolVisibility.measure && measurePoints.length >= 2 && (
+                      <Marker
+                        position={measurePoints[1]}
+                        label={{ text: 'B', color: '#ffffff', fontWeight: '700' }}
+                        icon={{
+                          path: google.maps.SymbolPath.CIRCLE,
+                          fillColor: '#ef4444',
+                          fillOpacity: 1,
+                          strokeColor: '#ffffff',
+                          strokeWeight: 2,
+                          scale: 9,
+                        }}
                       />
                     )}
 
@@ -507,6 +1035,70 @@ export default function DashboardPage() {
                   </div>
                 )}
               </div>
+
+              {toolVisibility.measure && measureRoutes.length > 0 && (
+                <div style={s.measureRoutesPanel}>
+                  <div style={s.measureRoutesPanelTitle}>
+                    📍 Route Analysis — {measureRoutes.length} route{measureRoutes.length > 1 ? 's' : ''} found
+                  </div>
+                  {/* Coordinates readout */}
+                  {measurePoints.length >= 2 && (
+                    <div style={{ fontSize: 9, color: T.textMuted, marginBottom: 8, padding: '4px 6px', background: 'rgba(0,0,0,0.2)', borderRadius: 4, lineHeight: 1.6 }}>
+                      <div><strong style={{ color: '#16a34a' }}>A:</strong> {measurePoints[0].lat.toFixed(6)}, {measurePoints[0].lng.toFixed(6)}</div>
+                      <div><strong style={{ color: '#ef4444' }}>B:</strong> {measurePoints[1].lat.toFixed(6)}, {measurePoints[1].lng.toFixed(6)}</div>
+                    </div>
+                  )}
+                  {measureRoutes.map((route, routeIndex) => {
+                    const selected = routeIndex === selectedMeasureRouteIndex
+                    return (
+                      <div key={route.id} style={{ marginBottom: 6 }}>
+                        <button
+                          style={{
+                            ...s.measureRouteBtn,
+                            ...(selected ? { borderColor: route.color, background: 'rgba(255,255,255,0.06)' } : {}),
+                          }}
+                          onClick={() => {
+                            setSelectedMeasureRouteIndex(routeIndex)
+                            setMeasureDist(formatRouteStatus(route, routeIndex, measureRoutes.length))
+                          }}
+                        >
+                          <div style={s.measureRouteTopRow}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <div style={{ width: 10, height: 10, borderRadius: 5, background: route.color, flexShrink: 0, border: selected ? '2px solid #fff' : 'none' }} />
+                              <span style={{ ...s.measureRouteName, color: selected ? route.color : T.textWhite }}>
+                                Route {routeIndex + 1}
+                              </span>
+                              {routeIndex === 0 && <span style={{ fontSize: 8, background: '#16a34a', color: '#fff', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>Shortest</span>}
+                            </div>
+                            <span style={{ ...s.measureRouteMeta, fontWeight: 700, color: selected ? '#fff' : T.textSecondary }}>
+                              {route.distanceText}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
+                            <span style={s.measureRouteSummary}>{route.summary}</span>
+                            <span style={{ fontSize: 9, color: T.textMuted }}>⏱ {route.durationText}</span>
+                          </div>
+                          <div style={{ fontSize: 8, color: T.textMuted, marginTop: 3, fontFamily: 'monospace' }}>
+                            {route.distanceMeters.toFixed(0)} m exact
+                          </div>
+                        </button>
+                        {/* Step-by-step breakdown for selected route */}
+                        {selected && route.roadSteps.length > 0 && (
+                          <div style={{ padding: '4px 8px 6px', background: 'rgba(0,0,0,0.15)', borderRadius: '0 0 6px 6px', marginTop: -4, borderLeft: `2px solid ${route.color}` }}>
+                            <div style={{ fontSize: 9, fontWeight: 700, color: T.textSecondary, marginBottom: 4 }}>Road Segments:</div>
+                            {route.roadSteps.map((step, si) => (
+                              <div key={si} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: T.textMuted, padding: '2px 0', borderBottom: si < route.roadSteps.length - 1 ? `1px solid rgba(255,255,255,0.05)` : 'none' }}>
+                                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{step.name}</span>
+                                <span style={{ flexShrink: 0, marginLeft: 8, fontFamily: 'monospace', color: T.textSecondary }}>{step.distanceText}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
 
               {/* Map overlay panel: Traffic Layers */}
               <div style={s.mapOverlayPanel}>
@@ -631,26 +1223,33 @@ export default function DashboardPage() {
 
             {/* Data feed */}
             {!isFullscreen && (
-            <div style={s.dataFeed}>
-              <div style={s.dataFeedHeader}>
-                Live Demand Insights &amp; Logistics Data
-              </div>
-              <div ref={feedRef} style={s.dataFeedBody}>
-                {DEMAND_LINES.map((line, i) => (
-                  <div key={i} style={s.dataLine}>{line}</div>
-                ))}
-              </div>
+            <div style={{ ...s.dataFeed, height: isDataFeedOpen ? 110 : 33 }}>
+              <button 
+                style={{ ...s.dataFeedHeader, background: 'none', border: 'none', width: '100%', textAlign: 'left', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} 
+                onClick={() => setIsDataFeedOpen(!isDataFeedOpen)}
+              >
+                <span>Live Demand Insights &amp; Logistics Data</span>
+                {isDataFeedOpen ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+              </button>
+              {isDataFeedOpen && (
+                <div ref={feedRef} style={s.dataFeedBody}>
+                  {DEMAND_LINES.map((line, i) => (
+                    <div key={i} style={s.dataLine}>{line}</div>
+                  ))}
+                </div>
+              )}
             </div>
             )}
           </div>
 
           {/* ────────────────── RIGHT: Quick Route Creation ──────────────── */}
           {!isFullscreen && (
-          <div style={s.rightPanel}>
-            <div style={s.rpHeader}>
-              <span style={s.panelTitle}>Quick Route Creation</span>
-              <button style={{ ...s.moreBtn, fontSize: 16 }}><X size={14} /></button>
-            </div>
+            isRightPanelOpen ? (
+              <div style={s.rightPanel}>
+                <div style={s.rpHeader}>
+                  <span style={s.panelTitle}>Quick Route Creation</span>
+                  <button style={{ ...s.moreBtn, fontSize: 16 }} onClick={() => setIsRightPanelOpen(false)}><ChevronRight size={16} /></button>
+                </div>
 
             {/* Departure Window */}
             <div style={s.rpSection}>
@@ -744,6 +1343,16 @@ export default function DashboardPage() {
               Schedule Route
             </button>
           </div>
+            ) : (
+              <div style={{ ...s.rightPanel, width: 36, alignItems: 'center', cursor: 'pointer' }} onClick={() => setIsRightPanelOpen(true)}>
+                <div style={{ padding: '10px 0', borderBottom: `1px solid ${T.border}`, width: '100%', display: 'flex', justifyContent: 'center' }}>
+                  <ChevronLeft size={16} color={T.textMuted} />
+                </div>
+                <div style={{ writingMode: 'vertical-rl', padding: '16px 0', fontSize: 11, fontWeight: 600, color: T.textSecondary, letterSpacing: 1 }}>
+                  Quick Route Creation
+                </div>
+              </div>
+            )
           )}
         </div>
     </>
@@ -860,6 +1469,39 @@ const s: Record<string, CSSProperties> = {
   },
   overlayLabel: { flex: 1, color: T.textSecondary, fontSize: 10 },
 
+  /* Measure routes list */
+  measureRoutesPanel: {
+    position: 'absolute', top: 10, right: 10, width: 310, maxHeight: 420,
+    background: T.mapOverlayBg, borderRadius: 8,
+    border: `1px solid ${T.border}`, backdropFilter: 'blur(12px)',
+    zIndex: 10, overflowY: 'auto', padding: 10,
+  },
+  measureRoutesPanelTitle: {
+    fontSize: 10, fontWeight: 700, color: T.textWhite, marginBottom: 6,
+  },
+  measureRouteBtn: {
+    width: '100%', borderRadius: 6, border: `1px solid ${T.border}`,
+    background: T.bgCard, padding: '7px 8px', marginBottom: 6,
+    cursor: 'pointer', textAlign: 'left', color: T.textSecondary, fontFamily: T.fontFamily,
+  },
+  measureRouteBtnActive: {
+    borderColor: T.accent, background: T.accentBg,
+  },
+  measureRouteTopRow: {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+    marginBottom: 3,
+  },
+  measureRouteName: {
+    fontSize: 10, fontWeight: 700, color: T.textWhite,
+  },
+  measureRouteMeta: {
+    fontSize: 9, color: T.textSecondary,
+  },
+  measureRouteSummary: {
+    fontSize: 9, color: T.textMuted,
+    whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis',
+  },
+
   /* Map tooltips */
   mapTooltip: {
     position: 'absolute', background: T.mapTooltipBg,
@@ -896,12 +1538,14 @@ const s: Record<string, CSSProperties> = {
 
   /* Data feed */
   dataFeed: {
-    height: 110, background: T.bgPanel, borderTop: `1px solid ${T.border}`,
+    background: T.bgPanel, borderTop: `1px solid ${T.border}`,
     display: 'flex', flexDirection: 'column', flexShrink: 0,
+    transition: 'height 0.2s', overflow: 'hidden',
   },
   dataFeedHeader: {
     padding: '6px 12px', fontSize: 11, fontWeight: 700,
     color: T.textWhite, borderBottom: `1px solid ${T.border}`,
+    fontFamily: T.fontFamily,
   },
   dataFeedBody: {
     flex: 1, overflowY: 'auto', padding: '4px 12px',

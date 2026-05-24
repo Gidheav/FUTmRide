@@ -1,4 +1,4 @@
-import { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { Link } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeft, Car, Save, Phone, Mail, User } from "lucide-react"
@@ -39,19 +39,30 @@ export default function ProfilePage() {
   const [vform, setVform] = useState({ vehicle_make: "", vehicle_model: "", vehicle_year: "", vehicle_color: "", plate_number: "" })
   const [ready, setReady] = useState(false)
 
-  const { data: me } = useQuery({
+  const { data: me } = useQuery<any>({
     queryKey: ["driver-me"],
     queryFn: async () => { const r = await api.get("/users/me/"); return r.data },
-    onSuccess: (d: any) => { if (!ready) { setForm({ first_name: d.first_name, last_name: d.last_name, email: d.email||"" }); setReady(true) } },
   })
 
-  const { data: dp } = useQuery({
+  const { data: dp } = useQuery<any>({
     queryKey: ["driver-profile-detail"],
     queryFn: async () => { const r = await api.get("/users/me/driver-profile/"); return r.data },
-    onSuccess: (d: any) => {
-      setVform({ vehicle_make: d.vehicle_make||"", vehicle_model: d.vehicle_model||"", vehicle_year: String(d.vehicle_year||""), vehicle_color: d.vehicle_color||"", plate_number: d.plate_number||"" })
-    },
   })
+
+
+  
+  React.useEffect(() => {
+    if (me && !ready) {
+      setForm({ first_name: me.first_name, last_name: me.last_name, email: me.email || "" })
+      setReady(true)
+    }
+  }, [me, ready])
+
+  React.useEffect(() => {
+    if (dp) {
+      setVform({ vehicle_make: dp.vehicle_make||"", vehicle_model: dp.vehicle_model||"", vehicle_year: String(dp.vehicle_year||""), vehicle_color: dp.vehicle_color||"", plate_number: dp.plate_number||"" })
+    }
+  }, [dp])
 
   const profileMutation = useMutation({
     mutationFn: () => api.patch("/users/me/", form).then(r => r.data),

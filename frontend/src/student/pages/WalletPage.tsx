@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Wallet, TrendingUp, TrendingDown, CreditCard, Plus } from 'lucide-react'
+import { ArrowLeft, TrendingUp, TrendingDown, CreditCard, Plus } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../../core/api'
 
@@ -122,9 +122,10 @@ export default function WalletPage() {
       return res.data
     },
     enabled: Boolean(callbackReference),
-    refetchInterval: (data) => {
-      if (!data) return 5000
-      return ['initiated', 'pending'].includes(data.status) ? 5000 : false
+    refetchInterval: (query: any) => {
+      const d = query?.state?.data;
+      if (!d) return 5000
+      return ['initiated', 'pending'].includes(d.status) ? 5000 : false
     },
   })
 

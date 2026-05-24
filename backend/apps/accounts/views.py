@@ -8,7 +8,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import Campus, DriverProfile, OTPVerification, StudentProfile, User, UserRole
+from .models import Campus, CampusAdminProfile, DriverProfile, OTPVerification, StudentProfile, User, UserRole
 from .permissions import IsAdminUser, IsAdminOrCampusAdmin
 from .serializers import (
     ChangePasswordSerializer,
@@ -106,7 +106,13 @@ class StudentSignupRequestEmailOTPView(APIView):
         serializer.is_valid(raise_exception=True)
 
         email = serializer.validated_data['email']
-        StudentSignupVerificationService.request_code(email)
+        try:
+            StudentSignupVerificationService.request_code(email)
+        except RuntimeError as exc:
+            return Response(
+                {'error': {'code': 'EMAIL_DELIVERY_FAILED', 'message': str(exc)}},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
         return Response({'message': f'Verification code sent to {email}.'}, status=status.HTTP_200_OK)
 
@@ -268,14 +274,24 @@ class PasswordResetRequestView(APIView):
     def post(self, request):
         serializer = PasswordResetRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        phone_number = serializer.validated_data['phone_number']
-        try:
-            user = User.objects.get(phone_number=phone_number)
-        except User.DoesNotExist:
-            # Return success anyway to prevent phone enumeration
-            return Response({'message': f'If an account exists for {phone_number}, a reset code has been sent.'})
-        OTPService.create_and_send(user, 'password_reset')
-        return Response({'message': f'If an account exists for {phone_number}, a reset code has been sent.'})
+        email = serializer.validated_data.get('email')
+        phone_number = serializer.validated_data.get('phone_number')
+
+        target = email or phone_number
+        if email:
+            user = User.objects.filter(email__iexact=email).first()
+            if user:
+                EmailOTPService.create_and_send(
+                    user,
+                    OTPVerification.Purpose.PASSWORD_RESET,
+                    email=user.email,
+                )
+            return Response({'message': f'If an account exists for {target}, a reset code has been sent.'})
+
+        user = User.objects.filter(phone_number=phone_number).first()
+        if user:
+            OTPService.create_and_send(user, OTPVerification.Purpose.PASSWORD_RESET)
+        return Response({'message': f'If an account exists for {target}, a reset code has been sent.'})
 
 
 class PasswordResetConfirmView(APIView):
@@ -284,17 +300,26 @@ class PasswordResetConfirmView(APIView):
     def post(self, request):
         serializer = PasswordResetConfirmSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        phone_number = serializer.validated_data['phone_number']
+        email = serializer.validated_data.get('email')
+        phone_number = serializer.validated_data.get('phone_number')
         code = serializer.validated_data['code']
         new_password = serializer.validated_data['new_password']
-        success, message = OTPService.verify(phone_number, code, 'password_reset')
+
+        if email:
+            success, message = EmailOTPService.verify(email, code, OTPVerification.Purpose.PASSWORD_RESET)
+        else:
+            success, message = OTPService.verify(phone_number, code, OTPVerification.Purpose.PASSWORD_RESET)
+
         if not success:
             return Response(
                 {'error': {'code': 'OTP_INVALID', 'message': message}},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:
-            user = User.objects.get(phone_number=phone_number)
+            if email:
+                user = User.objects.get(email__iexact=email)
+            else:
+                user = User.objects.get(phone_number=phone_number)
             user.set_password(new_password)
             user.save(update_fields=['password'])
             # Invalidate all existing refresh tokens
@@ -437,6 +462,26 @@ class AdminDriverListView(generics.ListAPIView):
 
     def get_queryset(self):
         return DriverProfile.objects.all().select_related('user')
+
+
+class CampusAdminFleetListView(generics.ListAPIView):
+    serializer_class = DriverProfileSerializer
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['maintenance_status', 'verification_status', 'vehicle_type']
+    search_fields = ['user__first_name', 'user__last_name', 'plate_number', 'vehicle_make', 'vehicle_model']
+    ordering_fields = ['last_service_date', 'odometer_km', 'vehicle_year', 'created_at']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        queryset = DriverProfile.objects.select_related('user', 'campus')
+        if self.request.user.role == UserRole.CAMPUS_ADMIN:
+            try:
+                campus = self.request.user.campus_admin_profile.campus
+            except CampusAdminProfile.DoesNotExist:
+                return DriverProfile.objects.none()
+            return queryset.filter(campus=campus)
+        return queryset
 
 
 class AdminDriverVerifyView(APIView):

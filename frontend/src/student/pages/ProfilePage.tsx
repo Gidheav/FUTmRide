@@ -1,4 +1,4 @@
-import { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { Link } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeft, User, Mail, Phone, Save } from "lucide-react"
@@ -37,11 +37,17 @@ export default function ProfilePage() {
   const [form, setForm] = useState({ first_name: "", last_name: "", email: "" })
   const [ready, setReady] = useState(false)
 
-  const { data: me } = useQuery({
+  const { data: me } = useQuery<any>({
     queryKey: ["me"],
     queryFn: async () => { const r = await api.get("/users/me/"); return r.data },
-    onSuccess: (d: any) => { if (!ready) { setForm({ first_name: d.first_name, last_name: d.last_name, email: d.email||"" }); setReady(true) } },
   })
+
+  useEffect(() => {
+    if (me && !ready) {
+      setForm({ first_name: me.first_name, last_name: me.last_name, email: me.email || "" })
+      setReady(true)
+    }
+  }, [me, ready])
 
   const mutation = useMutation({
     mutationFn: () => api.patch("/users/me/", form).then(r => r.data),

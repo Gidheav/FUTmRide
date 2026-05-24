@@ -7,6 +7,7 @@ from .views import (
     AdminToggleUserActiveView,
     AdminSummaryStatsView,
     CampusListView,
+    CampusAdminFleetListView,
 )
 
 urlpatterns = [
@@ -24,4 +25,5 @@ urlpatterns = [
     path('drivers/', AdminDriverListView.as_view(), name='admin-driver-list'),
     path('drivers/<int:pk>/verify/', AdminDriverVerifyView.as_view(), name='admin-driver-verify'),
     path('admin/summary-stats/', AdminSummaryStatsView.as_view(), name='admin-summary-stats'),
+    path('fleet/', CampusAdminFleetListView.as_view(), name='campus-admin-fleet'),
 ]

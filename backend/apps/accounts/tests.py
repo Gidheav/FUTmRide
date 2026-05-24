@@ -274,3 +274,77 @@ class OTPTestCase(TestCase):
             'purpose': 'phone_verification',
         }, format='json')
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class PasswordResetTestCase(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            phone_number='+2348011111111',
+            email='aisha.m2302417@st.futminna.edu.ng',
+            password='SecurePass123!',
+            first_name='Aisha',
+            last_name='Bello',
+            role=UserRole.STUDENT,
+            data_consent_given=True,
+        )
+        StudentProfile.objects.create(user=self.user)
+        self.request_url = reverse('auth-password-reset-request')
+        self.confirm_url = reverse('auth-password-reset-confirm')
+
+    def test_password_reset_request_accepts_email(self):
+        res = self.client.post(self.request_url, {
+            'email': 'aisha.m2302417@st.futminna.edu.ng',
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        otp = OTPVerification.objects.filter(
+            user=self.user,
+            email__iexact='aisha.m2302417@st.futminna.edu.ng',
+            purpose=OTPVerification.Purpose.PASSWORD_RESET,
+            is_used=False,
+        ).first()
+        self.assertIsNotNone(otp)
+
+    def test_password_reset_confirm_with_email_updates_password(self):
+        self.client.post(self.request_url, {
+            'email': 'aisha.m2302417@st.futminna.edu.ng',
+        }, format='json')
+        otp = OTPVerification.objects.filter(
+            user=self.user,
+            email__iexact='aisha.m2302417@st.futminna.edu.ng',
+            purpose=OTPVerification.Purpose.PASSWORD_RESET,
+            is_used=False,
+        ).latest('created_at')
+
+        res = self.client.post(self.confirm_url, {
+            'email': 'aisha.m2302417@st.futminna.edu.ng',
+            'code': otp.code,
+            'new_password': 'NewSecurePass123!',
+            'confirm_password': 'NewSecurePass123!',
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('NewSecurePass123!'))
+
+    def test_password_reset_request_requires_identifier(self):
+        res = self.client.post(self.request_url, {}, format='json')
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_password_reset_confirm_with_phone_still_supported(self):
+        self.client.post(self.request_url, {'phone_number': '+2348011111111'}, format='json')
+        otp = OTPVerification.objects.filter(
+            user=self.user,
+            phone_number='+2348011111111',
+            purpose=OTPVerification.Purpose.PASSWORD_RESET,
+            is_used=False,
+        ).latest('created_at')
+
+        res = self.client.post(self.confirm_url, {
+            'phone_number': '+2348011111111',
+            'code': otp.code,
+            'new_password': 'AnotherSecurePass123!',
+            'confirm_password': 'AnotherSecurePass123!',
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('AnotherSecurePass123!'))
