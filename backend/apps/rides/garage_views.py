@@ -18,8 +18,37 @@ from .garage_serializers import (
     GarageRideBoardSerializer,
     GarageRidePassengerSerializer,
 )
+from .consumers import CAMPUS_ADMIN_GROUP
 
 logger = logging.getLogger('apps.rides')
+
+
+def broadcast_ride_event(event_type: str, ride=None, ride_id=None):
+    """
+    Push a real-time event to all connected campus admin dashboards.
+    Uses async_to_sync because Django views are synchronous.
+    Fails silently if channel layer is unavailable (graceful degradation).
+    """
+    try:
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+
+        channel_layer = get_channel_layer()
+        if channel_layer is None:
+            return
+
+        message = {'type': event_type}
+
+        if ride is not None:
+            # Serialize the ride data (no request context needed for WS)
+            message['ride'] = GarageRideDetailSerializer(ride).data
+        if ride_id is not None:
+            message['ride_id'] = str(ride_id)
+
+        async_to_sync(channel_layer.group_send)(CAMPUS_ADMIN_GROUP, message)
+    except Exception as e:
+        # Never let a broadcast failure break the actual API response
+        logger.warning('broadcast_ride_event failed: %s', str(e))
 
 
 # ─── Driver endpoints ────────────────────────────────────────────────────────
@@ -81,10 +110,12 @@ class GarageRideCreateView(generics.CreateAPIView):
             str(request.user.id),
             str(garage_ride.qr_token),
         )
-        return Response(
-            GarageRideDetailSerializer(garage_ride, context={'request': request}).data,
-            status=status.HTTP_201_CREATED,
-        )
+        response_data = GarageRideDetailSerializer(garage_ride, context={'request': request}).data
+
+        # Broadcast to campus admin dashboards
+        broadcast_ride_event('ride_created', ride=garage_ride)
+
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
 
 class DriverGarageRideListView(generics.ListAPIView):
@@ -131,6 +162,10 @@ class GarageRideDepartView(APIView):
         ride.departed_at = timezone.now()
         ride.save(update_fields=['status', 'departed_at'])
         logger.info('garage_ride_departed ref=%s driver=%s', ride.reference, str(request.user.id))
+
+        # Broadcast to campus admin dashboards
+        broadcast_ride_event('ride_departed', ride=ride)
+
         return Response(GarageRideDetailSerializer(ride, context={'request': request}).data)
 
 
@@ -187,6 +222,10 @@ class GarageRideCancelView(APIView):
             ride.save(update_fields=['status'])
 
         logger.info('garage_ride_cancelled ref=%s driver=%s', ride.reference, str(request.user.id))
+
+        # Broadcast to campus admin dashboards
+        broadcast_ride_event('ride_cancelled', ride_id=ride.id)
+
         return Response(GarageRideDetailSerializer(ride, context={'request': request}).data)
 
 
@@ -340,6 +379,9 @@ class GarageRideBoardView(APIView):
             str(total_amount),
         )
 
+        # Broadcast updated ride to campus admin dashboards (seat count changed)
+        broadcast_ride_event('ride_updated', ride=ride)
+
         return Response(
             {
                 'message': f'Successfully boarded! {seats_requested} seat(s) reserved.',
@@ -368,3 +410,26 @@ class GarageRidePassengersView(generics.ListAPIView):
         except GarageRide.DoesNotExist:
             raise NotFound('Garage ride not found.')
         return ride.passengers.select_related('student')
+
+
+# ─── Campus Admin: active garage rides (REST fallback / initial load) ────────
+
+class CampusAdminActiveGarageRidesView(generics.ListAPIView):
+    """
+    GET /rides/garage/active/
+    Campus admin fetches all active (open/full) garage rides.
+    Used for initial dashboard load before WebSocket takes over.
+    """
+    serializer_class = GarageRideDetailSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        role = getattr(self.request.user, 'role', None)
+        if role not in ('admin', 'campus_admin'):
+            raise PermissionDenied('Only campus admins can access this endpoint.')
+        return GarageRide.objects.filter(
+            status__in=[GarageRideStatus.OPEN, GarageRideStatus.FULL]
+        ).select_related(
+            'driver', 'driver__driver_profile'
+        ).prefetch_related('passengers').order_by('-created_at')
+

@@ -21,6 +21,7 @@ from .garage_views import (
     GarageRideScanView,
     GarageRideBoardView,
     GarageRidePassengersView,
+    CampusAdminActiveGarageRidesView,
 )
 
 urlpatterns = [
@@ -45,6 +46,9 @@ urlpatterns = [
     # Student scan endpoints — keyed by qr_token (UUID), not ride id
     path('garage/scan/<uuid:qr_token>/', GarageRideScanView.as_view(), name='garage-ride-scan'),
     path('garage/scan/<uuid:qr_token>/board/', GarageRideBoardView.as_view(), name='garage-ride-board'),
+
+    # Campus Admin: active garage rides
+    path('garage/active/', CampusAdminActiveGarageRidesView.as_view(), name='garage-ride-active'),
 
     # Admin
     path('', AdminRideListView.as_view(), name='admin-ride-list'),

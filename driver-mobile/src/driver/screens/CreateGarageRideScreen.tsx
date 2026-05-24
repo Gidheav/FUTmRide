@@ -14,6 +14,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import QRCode from 'react-native-qrcode-svg'
 import api from '../../core/api'
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme'
+import { useGarageRideStore } from '../../core/garageRideStore'
+import { useDriverRidesStore } from '../../core/driverRidesStore'
 
 type CreateGarageRideScreenProps = {
   onBack: () => void
@@ -21,6 +23,12 @@ type CreateGarageRideScreenProps = {
 
 export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScreenProps) {
   const insets = useSafeAreaInsets()
+  const {
+    garageRide: cachedGarageRide,
+    garagePassengers: cachedGaragePassengers,
+    setGarageRide: setCachedGarageRide,
+    setGaragePassengers: setCachedGaragePassengers,
+  } = useDriverRidesStore()
 
   // Form state
   const [origin, setOrigin] = useState('')
@@ -28,16 +36,46 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
   const [seats, setSeats] = useState('4')
   const [fare, setFare] = useState('500')
   const [loading, setLoading] = useState(false)
+  const [hydrating, setHydrating] = useState(!cachedGarageRide)
   
   // Created ride state
-  const [ride, setRide] = useState<any>(null)
-  const [passengers, setPassengers] = useState<any[]>([])
+  const [ride, setRide] = useState<any>(cachedGarageRide)
+  const [passengers, setPassengers] = useState<any[]>(cachedGaragePassengers)
+  const { setStatus } = useGarageRideStore()
   
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
+
+  const ACTIVE_STATUSES = new Set(['open', 'full', 'departed'])
 
   useEffect(() => {
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
+    }
+  }, [])
+
+  useEffect(() => {
+    let isMounted = true
+    const loadActiveRide = async () => {
+      try {
+        const res = await api.get('rides/garage/mine/')
+        const list = Array.isArray(res.data) ? res.data : res.data?.results || []
+        const active = list.find((item: any) => ACTIVE_STATUSES.has(item.status)) || null
+        if (!isMounted) return
+        if (active) {
+          setRide(active)
+          setCachedGarageRide(active)
+          startPolling(active.id)
+          setStatus('active')
+        }
+      } catch {
+        // ignore
+      } finally {
+        if (isMounted) setHydrating(false)
+      }
+    }
+    loadActiveRide()
+    return () => {
+      isMounted = false
     }
   }, [])
 
@@ -63,7 +101,10 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
       
       const res = await api.post('rides/garage/create/', payload)
       setRide(res.data)
+      setCachedGarageRide(res.data)
+      setCachedGaragePassengers([])
       startPolling(res.data.id)
+      setStatus('active')
     } catch (err: any) {
       const msg = err?.response?.data?.error?.message || 'Could not create garage ride.'
       Alert.alert('Error', msg)
@@ -73,16 +114,28 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
   }
 
   const startPolling = (rideId: string) => {
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
     const fetchPassengers = async () => {
       try {
         const res = await api.get(`rides/garage/${rideId}/passengers/`)
-        setPassengers(res.data?.results || res.data || [])
+        const list = res.data?.results || res.data || []
+        setPassengers(list)
+        setCachedGaragePassengers(list)
       } catch (err) {
         // ignore
       }
     }
     fetchPassengers()
     pollIntervalRef.current = setInterval(fetchPassengers, 5000)
+  }
+
+  if (hydrating && !ride) {
+    return (
+      <View style={[styles.page, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}> 
+        <ActivityIndicator color={COLORS.primary} />
+        <Text style={styles.loadingText}>Loading garage ride...</Text>
+      </View>
+    )
   }
 
   const handleDepart = async () => {
@@ -93,7 +146,10 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
         text: 'Depart',
         onPress: async () => {
           try {
-            await api.post(`rides/garage/${ride.id}/depart/`)
+            const res = await api.post(`rides/garage/${ride.id}/depart/`)
+            const nextRide = res?.data || ride
+            setRide(nextRide)
+            setCachedGarageRide(nextRide)
             Alert.alert('Departed', 'Have a safe trip!')
             onBack()
           } catch (err: any) {
@@ -115,6 +171,11 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
           try {
             await api.post(`rides/garage/${ride.id}/cancel/`)
             Alert.alert('Cancelled', 'Ride cancelled and passengers refunded.')
+            setRide(null)
+            setPassengers([])
+            setCachedGarageRide(null)
+            setCachedGaragePassengers([])
+            setStatus('inactive')
             onBack()
           } catch (err: any) {
             Alert.alert('Error', err?.response?.data?.error?.message || 'Failed to cancel.')
@@ -144,7 +205,7 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
             <View style={styles.qrWrapper}>
               <QRCode
                 value={ride.qr_token}
-                size={220}
+                size={300}
                 color="#000"
                 backgroundColor="#FFF"
               />
@@ -307,8 +368,8 @@ const styles = StyleSheet.create({
   qrContainer: {
     alignItems: 'center',
     backgroundColor: COLORS.surfaceContainerLowest,
-    padding: 24,
-    borderRadius: 24,
+    padding: 4,
+    borderRadius: 12,
     ...AMBIENT_SHADOW,
     marginBottom: 24,
   },
@@ -316,13 +377,13 @@ const styles = StyleSheet.create({
     ...FONTS.bodyMd,
     color: COLORS.onSurfaceVariant,
     textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: 8,
   },
   qrWrapper: {
-    padding: 16,
+    padding: 6,
     backgroundColor: '#FFF',
     borderRadius: 16,
-    elevation: 2,
+    elevation: 0,
   },
   rideRef: {
     ...FONTS.labelLg,
@@ -383,6 +444,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontStyle: 'italic',
     marginTop: 20,
+  },
+  loadingText: {
+    ...FONTS.bodyMd,
+    color: COLORS.onSurfaceVariant,
+    marginTop: 12,
   },
 
   footer: {

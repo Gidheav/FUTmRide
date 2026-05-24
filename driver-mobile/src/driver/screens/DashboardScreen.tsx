@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,8 +8,38 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
+import { driverApi } from '../../core/api';
+import { useGarageRideStore } from '../../core/garageRideStore';
+
+const ACTIVE_GARAGE_STATUSES = new Set(['open', 'full', 'departed']);
 
 const DashboardScreen = ({ onCreateGarageRide }: { onCreateGarageRide?: () => void }) => {
+  const { status, setStatus } = useGarageRideStore();
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchGarageRide = async () => {
+      try {
+        const response = await driverApi.getGarageRides();
+        const list = Array.isArray(response?.data) ? response.data : response?.data?.results || [];
+        const active = list.find((ride: any) => ACTIVE_GARAGE_STATUSES.has(ride.status));
+        if (isMounted) setStatus(active ? 'active' : 'inactive');
+      } catch {
+        if (isMounted) setStatus('inactive');
+      }
+    };
+
+    fetchGarageRide();
+    const interval = setInterval(fetchGarageRide, 12000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const actionLabel = status === 'active' ? 'Resume garage ride' : 'Create garage ride';
+
   return (
     <ScrollView
       style={styles.container}
@@ -65,12 +95,16 @@ const DashboardScreen = ({ onCreateGarageRide }: { onCreateGarageRide?: () => vo
         </View>
       </View>
 
-      <View style={styles.sectionWrap}>
+        <View style={styles.sectionWrap}>
         <Text style={styles.sectionTitle}>Quick actions</Text>
         <View style={styles.actionRow}>
-          <TouchableOpacity style={styles.actionButton} onPress={onCreateGarageRide} activeOpacity={0.85}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={onCreateGarageRide}
+            activeOpacity={0.85}
+          >
             <MaterialIcons name="qr-code-scanner" size={20} color={COLORS.onPrimary} />
-            <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>Create garage ride</Text>
+            <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>{actionLabel}</Text>
           </TouchableOpacity>
         </View>
         <View style={styles.actionRow}>

@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
 import { useAuthStore } from '../../core/authStore';
 import { authApi, driverApi } from '../../core/api';
+import { useDriverProfileStore } from '../../core/driverProfileStore';
 
 type Props = { onBack: () => void };
 
@@ -58,6 +59,7 @@ const InputField = ({
 export default function EditProfilePage({ onBack }: Props) {
   const insets = useSafeAreaInsets();
   const { user, setUser } = useAuthStore();
+  const { profile: cachedProfile, setProfile: setCachedProfile } = useDriverProfileStore();
   const [loading, setLoading] = useState(true);
   const [savingPersonal, setSavingPersonal] = useState(false);
   const [savingVehicle, setSavingVehicle] = useState(false);
@@ -68,11 +70,11 @@ export default function EditProfilePage({ onBack }: Props) {
   const [email, setEmail] = useState(user?.email ?? '');
   const [homeAddress, setHomeAddress] = useState(user?.home_address ?? '');
 
-  const [vehicleMake, setVehicleMake] = useState('');
-  const [vehicleModel, setVehicleModel] = useState('');
-  const [vehicleYear, setVehicleYear] = useState('');
-  const [vehicleColor, setVehicleColor] = useState('');
-  const [plateNumber, setPlateNumber] = useState('');
+  const [vehicleMake, setVehicleMake] = useState(cachedProfile?.vehicle_make ?? '');
+  const [vehicleModel, setVehicleModel] = useState(cachedProfile?.vehicle_model ?? '');
+  const [vehicleYear, setVehicleYear] = useState(String(cachedProfile?.vehicle_year ?? ''));
+  const [vehicleColor, setVehicleColor] = useState(cachedProfile?.vehicle_color ?? '');
+  const [plateNumber, setPlateNumber] = useState(cachedProfile?.plate_number ?? '');
 
   useEffect(() => {
     setFirstName(user?.first_name ?? '');
@@ -85,7 +87,7 @@ export default function EditProfilePage({ onBack }: Props) {
   useEffect(() => {
     let isMounted = true;
     const loadProfile = async () => {
-      setLoading(true);
+      if (!cachedProfile) setLoading(true);
       try {
         const response = await driverApi.getProfile();
         if (!isMounted) return;
@@ -94,6 +96,7 @@ export default function EditProfilePage({ onBack }: Props) {
         setVehicleYear(String(response?.data?.vehicle_year ?? ''));
         setVehicleColor(response?.data?.vehicle_color ?? '');
         setPlateNumber(response?.data?.plate_number ?? '');
+        setCachedProfile(response?.data ?? null);
       } catch (error: any) {
         if (error?.response?.status === 404) {
           try {
@@ -105,6 +108,7 @@ export default function EditProfilePage({ onBack }: Props) {
             setVehicleYear(String(retry?.data?.vehicle_year ?? ''));
             setVehicleColor(retry?.data?.vehicle_color ?? '');
             setPlateNumber(retry?.data?.plate_number ?? '');
+            setCachedProfile(retry?.data ?? null);
           } catch (createErr: any) {
             console.warn('[EditProfile] driver profile fetch failed:', createErr?.response?.data ?? createErr.message);
           }
@@ -120,7 +124,7 @@ export default function EditProfilePage({ onBack }: Props) {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [cachedProfile, setCachedProfile]);
 
   const savePersonalDetails = async () => {
     if (!firstName.trim() || !lastName.trim() || !phone.trim()) {
@@ -165,18 +169,21 @@ export default function EditProfilePage({ onBack }: Props) {
         plate_number: plateNumber.trim().toUpperCase(),
       };
       await driverApi.updateProfile(payload);
+      setCachedProfile({ ...(cachedProfile ?? {}), ...payload });
       Alert.alert('Saved', 'Vehicle details updated.');
     } catch (error: any) {
       if (error?.response?.status === 404) {
         try {
-          await driverApi.createProfile({
+          const createPayload = {
             ...DEFAULT_DRIVER_PROFILE,
             vehicle_make: vehicleMake.trim(),
             vehicle_model: vehicleModel.trim(),
             vehicle_color: vehicleColor.trim(),
             vehicle_year: vehicleYear ? Number(vehicleYear) : DEFAULT_DRIVER_PROFILE.vehicle_year,
             plate_number: plateNumber.trim().toUpperCase(),
-          });
+          };
+          await driverApi.createProfile(createPayload);
+          setCachedProfile({ ...(cachedProfile ?? {}), ...createPayload });
           Alert.alert('Saved', 'Vehicle details updated.');
         } catch (createErr: any) {
           const msg =

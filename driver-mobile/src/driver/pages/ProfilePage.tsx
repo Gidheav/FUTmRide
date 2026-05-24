@@ -12,6 +12,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
 import { useAuthStore } from '../../core/authStore';
 import { driverApi } from '../../core/api';
+import { useDriverProfileStore } from '../../core/driverProfileStore';
 
 type ProfileProps = {
   onNavigateToSettings?: () => void;
@@ -43,18 +44,20 @@ const formatCurrency = (value?: string | number | null) => {
 
 export default function DriverProfilePage({ onNavigateToSettings, onEditProfile }: ProfileProps) {
   const { user } = useAuthStore();
-  const [profile, setProfile] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const { profile: cachedProfile, setProfile: setCachedProfile } = useDriverProfileStore();
+  const [profile, setProfile] = useState<any>(cachedProfile);
+  const [loading, setLoading] = useState(!cachedProfile);
 
   useEffect(() => {
     let isMounted = true;
 
     const loadProfile = async () => {
-      setLoading(true);
+      if (!cachedProfile) setLoading(true);
       try {
         const response = await driverApi.getProfile();
         if (!isMounted) return;
         setProfile(response?.data ?? null);
+        setCachedProfile(response?.data ?? null);
       } catch (error: any) {
         if (error?.response?.status === 404) {
           try {
@@ -62,6 +65,7 @@ export default function DriverProfilePage({ onNavigateToSettings, onEditProfile 
             const retry = await driverApi.getProfile();
             if (!isMounted) return;
             setProfile(retry?.data ?? null);
+            setCachedProfile(retry?.data ?? null);
           } catch (createErr: any) {
             console.warn('[Profile] driver profile fetch failed:', createErr?.response?.data ?? createErr.message);
           }
@@ -77,7 +81,7 @@ export default function DriverProfilePage({ onNavigateToSettings, onEditProfile 
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [cachedProfile, setCachedProfile]);
 
   const initials = useMemo(() => {
     const first = (user?.first_name ?? '').trim()[0] ?? '';

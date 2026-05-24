@@ -14,6 +14,8 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
 import { driverApi } from '../../core/api';
 import { startDriverLocationTracking, stopDriverLocationTracking } from '../../core/locationSocket';
+import { useGarageRideStore } from '../../core/garageRideStore';
+import { useDriverRidesStore } from '../../core/driverRidesStore';
 import * as Location from 'expo-location';
 import QRCode from 'react-native-qrcode-svg';
 import locationData from '../locations.json';
@@ -142,19 +144,33 @@ const formatDistance = (value: string | number | null | undefined) => {
 
 export default function DriverRidesPage() {
   const [driverMode, setDriverMode] = useState<DriverMode>('garage');
-  const [isOnline, setIsOnline] = useState<boolean | null>(null);
+  const {
+    isOnline: cachedIsOnline,
+    marketplaceRequests: cachedRequests,
+    driverHasActiveRide: cachedHasActiveRide,
+    garageRide: cachedGarageRide,
+    garagePassengers: cachedGaragePassengers,
+    setIsOnline: setCachedIsOnline,
+    setMarketplaceRequests: setCachedRequests,
+    setDriverHasActiveRide: setCachedHasActiveRide,
+    setGarageRide: setCachedGarageRide,
+    setGaragePassengers: setCachedGaragePassengers,
+  } = useDriverRidesStore();
+
+  const [isOnline, setIsOnline] = useState<boolean | null>(cachedIsOnline);
   const [isUpdatingOnline, setIsUpdatingOnline] = useState(false);
-  const [marketplaceRequests, setMarketplaceRequests] = useState<RideListItem[]>([]);
-  const [loadingRequests, setLoadingRequests] = useState(true);
+  const [marketplaceRequests, setMarketplaceRequests] = useState<RideListItem[]>(cachedRequests);
+  const [loadingRequests, setLoadingRequests] = useState(cachedRequests.length === 0);
   const [requestsError, setRequestsError] = useState<string | null>(null);
   const [acceptingRideId, setAcceptingRideId] = useState<string | null>(null);
-  const [driverHasActiveRide, setDriverHasActiveRide] = useState(false);
+  const [driverHasActiveRide, setDriverHasActiveRide] = useState(cachedHasActiveRide);
   const [activeFilter, setActiveFilter] = useState('High Fare');
 
-  const [garageRide, setGarageRide] = useState<GarageRide | null>(null);
-  const [garagePassengers, setGaragePassengers] = useState<GaragePassenger[]>([]);
+  const [garageRide, setGarageRide] = useState<GarageRide | null>(cachedGarageRide);
+  const [garagePassengers, setGaragePassengers] = useState<GaragePassenger[]>(cachedGaragePassengers);
   const [loadingGarage, setLoadingGarage] = useState(false);
   const [garageError, setGarageError] = useState<string | null>(null);
+  const { setStatus } = useGarageRideStore();
 
   const [origin, setOrigin] = useState<LocationOption | null>(null);
   const [destination, setDestination] = useState<LocationOption | null>(null);
@@ -167,12 +183,13 @@ export default function DriverRidesPage() {
   const [isCreatingRide, setIsCreatingRide] = useState(false);
 
   const errorHoldUntil = useRef<number>(0);
-  const initialFetchDone = useRef(false);
+  const initialFetchDone = useRef(cachedRequests.length > 0);
   const isFetchingRequests = useRef(false);
 
   const filteredLocations = useMemo(() => filterLocations(locationQuery), [locationQuery]);
 
   const garageIsActive = garageRide && ['open', 'full', 'departed'].includes(garageRide.status);
+  const isOfflineBlocked = Boolean(driverHasActiveRide || garageIsActive);
 
   useEffect(() => {
     const shouldTrack = Boolean(isOnline) || Boolean(driverHasActiveRide) || Boolean(garageIsActive);
@@ -206,12 +223,15 @@ export default function DriverRidesPage() {
       try {
         const profile = await ensureDriverProfile();
         if (isMounted) {
-          setIsOnline(Boolean(profile?.is_online));
+          const nextStatus = Boolean(profile?.is_online);
+          setIsOnline(nextStatus);
+          setCachedIsOnline(nextStatus);
         }
       } catch (error: any) {
         if (isMounted) {
           // Profile may not exist yet — default to offline so toggle works
           setIsOnline(false);
+          setCachedIsOnline(false);
         }
       }
     };
@@ -227,7 +247,7 @@ export default function DriverRidesPage() {
     let isFirstFetch = true;
     const fetchGarageRide = async () => {
       // Only show loading spinner on the very first fetch
-      if (isFirstFetch) setLoadingGarage(true);
+      if (isFirstFetch && !cachedGarageRide) setLoadingGarage(true);
       try {
         const response = await driverApi.getGarageRides();
         const list = Array.isArray(response?.data) ? response.data : response?.data?.results || [];
@@ -235,15 +255,19 @@ export default function DriverRidesPage() {
         if (isMounted) {
           setGarageRide(active || null);
           setGarageError(null);
+          setStatus(active ? 'active' : 'inactive');
+          setCachedGarageRide(active || null);
         }
         if (active) {
           const passengers = await driverApi.getGaragePassengers(active.id);
           if (isMounted) {
             const pList = Array.isArray(passengers?.data) ? passengers.data : passengers?.data?.results || [];
             setGaragePassengers(pList);
+            setCachedGaragePassengers(pList);
           }
         } else if (isMounted) {
           setGaragePassengers([]);
+          setCachedGaragePassengers([]);
         }
       } catch (error: any) {
         if (isMounted && isFirstFetch) {
@@ -278,10 +302,13 @@ export default function DriverRidesPage() {
         if (isMounted) {
           if (!Array.isArray(data) && typeof data?.driver_has_active_ride === 'boolean') {
             setDriverHasActiveRide(data.driver_has_active_ride);
+            setCachedHasActiveRide(data.driver_has_active_ride);
           } else {
             setDriverHasActiveRide(false);
+            setCachedHasActiveRide(false);
           }
           setMarketplaceRequests(list as RideListItem[]);
+          setCachedRequests(list as RideListItem[]);
           if (requestsError && Date.now() > errorHoldUntil.current) {
             setRequestsError(null);
           }
@@ -314,8 +341,13 @@ export default function DriverRidesPage() {
     try {
       await driverApi.acceptRideRequest(rideId);
       setRequestsError(null);
-      setMarketplaceRequests((prev) => prev.filter((ride) => ride.id !== rideId));
+      setMarketplaceRequests((prev) => {
+        const next = prev.filter((ride) => ride.id !== rideId);
+        setCachedRequests(next);
+        return next;
+      });
       setDriverHasActiveRide(true);
+      setCachedHasActiveRide(true);
     } catch (error: any) {
       const data = error?.response?.data;
       const message =
@@ -335,11 +367,17 @@ export default function DriverRidesPage() {
 
   const handleToggleOnline = async () => {
     if (isUpdatingOnline || isOnline === null) return;
+    if (isOnline && isOfflineBlocked) {
+      setRequestsError('You cannot go offline while a ride is active.');
+      errorHoldUntil.current = Date.now() + 8000;
+      return;
+    }
     const nextStatus = !isOnline;
     setIsUpdatingOnline(true);
     try {
       await driverApi.updateProfile({ is_online: nextStatus });
       setIsOnline(nextStatus);
+      setCachedIsOnline(nextStatus);
       setRequestsError(null);
     } catch (error: any) {
       if (error?.response?.status === 404) {
@@ -347,6 +385,7 @@ export default function DriverRidesPage() {
           await ensureDriverProfile();
           await driverApi.updateProfile({ is_online: nextStatus });
           setIsOnline(nextStatus);
+          setCachedIsOnline(nextStatus);
           setRequestsError(null);
         } catch (retryError: any) {
           const data = retryError?.response?.data;
@@ -475,6 +514,9 @@ export default function DriverRidesPage() {
       setGarageRide(response?.data || null);
       setGaragePassengers([]);
       setDriverMode('garage');
+      setStatus('active');
+      setCachedGarageRide(response?.data || null);
+      setCachedGaragePassengers([]);
     } catch (error: any) {
       const data = error?.response?.data;
       const message = data?.error?.message || data?.detail || 'Unable to create garage ride.';
@@ -489,6 +531,7 @@ export default function DriverRidesPage() {
     try {
       const response = await driverApi.departGarageRide(garageRide.id);
       setGarageRide(response?.data || null);
+      setCachedGarageRide(response?.data || null);
     } catch (error: any) {
       const message = error?.response?.data?.error?.message || 'Unable to depart ride.';
       setGarageError(message);
@@ -501,6 +544,9 @@ export default function DriverRidesPage() {
       const response = await driverApi.cancelGarageRide(garageRide.id);
       setGarageRide(response?.data || null);
       setGaragePassengers([]);
+      setStatus('inactive');
+      setCachedGarageRide(response?.data || null);
+      setCachedGaragePassengers([]);
     } catch (error: any) {
       const message = error?.response?.data?.error?.message || 'Unable to cancel ride.';
       setGarageError(message);
@@ -550,11 +596,14 @@ export default function DriverRidesPage() {
         <Switch
           value={Boolean(isOnline)}
           onValueChange={handleToggleOnline}
-          disabled={Boolean(isUpdatingOnline || isOnline === null)}
+          disabled={Boolean(isUpdatingOnline || isOnline === null || (isOnline && isOfflineBlocked))}
           trackColor={{ false: COLORS.surfaceContainerLow, true: COLORS.primaryContainer }}
           thumbColor={COLORS.surface}
         />
       </View>
+      {isOnline && isOfflineBlocked ? (
+        <Text style={styles.modeHint}>You cannot go offline while a ride is active.</Text>
+      ) : null}
 
       {driverMode === 'garage' && (
         <View style={styles.sectionWrap}>

@@ -143,6 +143,10 @@ export default function DashboardPage() {
 
   const toggleOnline = async () => {
     if (!profile) return
+    if (profile.is_online && activeRide) {
+      toast.error('You cannot go offline while a ride is active.')
+      return
+    }
     if (profile.verification_status !== 'approved') {
       toast.error('Your account must be approved before going online.')
       return
@@ -225,7 +229,7 @@ export default function DashboardPage() {
             <button
               className={`toggle-btn ${isOnline ? 'online' : ''}`}
               onClick={toggleOnline}
-              disabled={togglingOnline || !isApproved}
+              disabled={togglingOnline || !isApproved || (isOnline && Boolean(activeRide))}
             >
               {isOnline
                 ? <><ToggleRight size={20} color="#4ade80" /> Go Offline</>

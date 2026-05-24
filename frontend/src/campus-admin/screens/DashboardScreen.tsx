@@ -35,31 +35,44 @@ const ROUTE_COLORS = ['#f59e0b', '#3b82f6', '#10b981', '#a855f7', '#ef4444', '#0
    Static mock request data (matching screenshot exactly)
    ────────────────────────────────────────────────────────────────────────────── */
 
-interface RideRequest {
+export interface GarageRide {
   id: string
-  route: string
-  fare: string
-  passengerCount: number
-  reputation: string
-  cargo: string
-  cargoDimensions: string
-  time: string
-  routeMatch: string
-  coordinates: string
+  reference: string
+  qr_token: string
+  driver: {
+    id: string
+    full_name: string
+    average_rating: string | null
+    vehicle_type: string | null
+  }
+  origin_address: string
+  origin_latitude: number
+  origin_longitude: number
+  destination_address: string
+  destination_latitude: number
+  destination_longitude: number
+  vehicle_type: string
+  total_seats: number
+  booked_seats: number
+  available_seats: number
+  fare_per_seat: string
+  status: string
+  driver_note: string
+  created_at: string
 }
 
-const MOCK_REQUESTS: RideRequest[] = Array.from({ length: 8 }, (_, i) => ({
-  id: `REQ-${1000 + i}`,
-  route: 'SFO Airport to Financial District',
-  fare: '$85.00',
-  passengerCount: 2,
-  reputation: '4.9',
-  cargo: '4 Luggages, 2 Boxes',
-  cargoDimensions: '(Dimensions: 2x2x3ft, 150kg)',
-  time: '25 min',
-  routeMatch: '92%',
-  coordinates: `+97.${377 + i * 40}, 25.${5865 + i * 23}`,
-}))
+// Distance helper since we compute distance/time locally for admin overlay
+function getHaversineDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371 // Radius of the earth in km
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLon = (lon2 - lon1) * Math.PI / 180
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)) 
+  return R * c // Distance in km
+}
 
 /* ──────────────────────────────────────────────────────────────────────────────
    Mock demand data lines (terminal-style feed)
@@ -170,6 +183,38 @@ export default function DashboardPage() {
   const [isMeasureLoading, setIsMeasureLoading] = useState(false)
   const [measureError, setMeasureError] = useState<string | null>(null)
   const [selectedLocation, setSelectedLocation] = useState<{ lat: number, lng: number, address: string, placeName?: string } | null>(null)
+
+  // Real-time Garage Rides feed
+  const [activeGarageRides, setActiveGarageRides] = useState<GarageRide[]>([])
+
+  useEffect(() => {
+    const token = localStorage.getItem('access_token')
+    if (!token) return
+
+    const wsUrl = (import.meta.env.VITE_WS_BASE_URL || 'ws://127.0.0.1:8002') + `/ws/campus-admin/rides/?token=${token}`
+    const ws = new WebSocket(wsUrl)
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        if (data.type === 'initial_rides') {
+          setActiveGarageRides(data.rides)
+        } else if (data.type === 'ride_created') {
+          setActiveGarageRides(prev => [data.ride, ...prev])
+        } else if (data.type === 'ride_updated') {
+          setActiveGarageRides(prev => prev.map(r => r.id === data.ride.id ? data.ride : r))
+        } else if (data.type === 'ride_departed' || data.type === 'ride_cancelled') {
+          setActiveGarageRides(prev => prev.filter(r => r.id !== (data.ride?.id || data.ride_id)))
+        }
+      } catch (e) {
+        console.error('WS parse error:', e)
+      }
+    }
+
+    return () => {
+      ws.close()
+    }
+  }, [])
 
   // Tool visibility: each tool's work shown/hidden independently
   const [toolVisibility, setToolVisibility] = useState<Record<string, boolean>>({
@@ -780,43 +825,57 @@ export default function DashboardPage() {
                   </button>
                 </div>
             <div style={s.requestList}>
-              {MOCK_REQUESTS.map((req) => (
-                <div key={req.id} style={s.reqCard}>
-                  <div style={s.reqRow}>
-                    <span style={s.reqLabel}>Route:</span>
-                    <span style={s.reqRoute}>{req.route}</span>
+              {activeGarageRides.map((req) => {
+                const distanceKm = getHaversineDistance(
+                  Number(req.origin_latitude), Number(req.origin_longitude),
+                  Number(req.destination_latitude), Number(req.destination_longitude)
+                )
+                const estTimeMin = Math.max(1, Math.round((distanceKm / 40) * 60)) // Assuming 40km/h avg speed
+                const matchPct = Math.min(99, Math.max(75, 100 - Math.round(distanceKm))) // Visual mock for route match
+
+                return (
+                  <div key={req.id} style={s.reqCard}>
+                    <div style={s.reqRow}>
+                      <span style={s.reqLabel}>Route:</span>
+                      <span style={s.reqRoute}>{req.origin_address.split(',')[0]} to {req.destination_address.split(',')[0]}</span>
+                    </div>
+                    <div style={s.reqRow}>
+                      <span style={s.reqLabel}>Est. Fare:</span>
+                      <span style={{ ...s.reqValue, color: T.accent }}>₦{req.fare_per_seat}</span>
+                    </div>
+                    <div style={s.reqRow}>
+                      <span style={s.reqLabel}>Passenger:</span>
+                      <span style={s.reqValue}>
+                        {req.booked_seats}/{req.total_seats} (Reputation: {req.driver.average_rating || 'New'}
+                        <span style={{ color: T.warn }}>*</span>)
+                      </span>
+                    </div>
+                    <div style={s.reqRow}>
+                      <span style={s.reqLabel}>Vehicle:</span>
+                      <span style={s.reqValue}>{req.vehicle_type}</span>
+                    </div>
+                    <div style={{ ...s.reqRow, paddingLeft: 52 }}>
+                      <span style={{ ...s.reqValue, color: T.textMuted, fontSize: 10 }}>
+                        {req.driver.full_name} • {req.driver_note || 'No notes'}
+                      </span>
+                    </div>
+                    <div style={s.reqRow}>
+                      <span style={s.reqLabel}>Time:</span>
+                      <span style={s.reqValue}>{estTimeMin} min</span>
+                    </div>
+                    <div style={s.reqMatchRow}>
+                      <span style={s.reqLabel}>Route Match:</span>
+                      <span style={s.matchBadge}>{matchPct}%</span>
+                      <span style={s.reqCoord}>{Number(req.origin_latitude).toFixed(4)}, {Number(req.origin_longitude).toFixed(4)}</span>
+                    </div>
                   </div>
-                  <div style={s.reqRow}>
-                    <span style={s.reqLabel}>Est. Fare:</span>
-                    <span style={{ ...s.reqValue, color: T.accent }}>{req.fare}</span>
-                  </div>
-                  <div style={s.reqRow}>
-                    <span style={s.reqLabel}>Passenger:</span>
-                    <span style={s.reqValue}>
-                      {req.passengerCount} (Reputation: {req.reputation}
-                      <span style={{ color: T.warn }}>*</span>)
-                    </span>
-                  </div>
-                  <div style={s.reqRow}>
-                    <span style={s.reqLabel}>Cargo:</span>
-                    <span style={s.reqValue}>{req.cargo}</span>
-                  </div>
-                  <div style={{ ...s.reqRow, paddingLeft: 52 }}>
-                    <span style={{ ...s.reqValue, color: T.textMuted, fontSize: 10 }}>
-                      {req.cargoDimensions}
-                    </span>
-                  </div>
-                  <div style={s.reqRow}>
-                    <span style={s.reqLabel}>Time:</span>
-                    <span style={s.reqValue}>{req.time}</span>
-                  </div>
-                  <div style={s.reqMatchRow}>
-                    <span style={s.reqLabel}>Route Match:</span>
-                    <span style={s.matchBadge}>{req.routeMatch}</span>
-                    <span style={s.reqCoord}>{req.coordinates}</span>
-                  </div>
+                )
+              })}
+              {activeGarageRides.length === 0 && (
+                <div style={{ padding: 20, textAlign: 'center', color: T.textMuted, fontSize: 12 }}>
+                  No active requests. Waiting for drivers...
                 </div>
-              ))}
+              )}
             </div>
           </div>
             ) : (
