@@ -26,36 +26,47 @@ logger = logging.getLogger('apps.rides')
 def broadcast_ride_event(event_type: str, ride=None, ride_id=None):
     """
     Push a real-time event to all connected campus admin dashboards.
-    Uses async_to_sync because Django views are synchronous.
-    Fails silently if channel layer is unavailable (graceful degradation).
+    Runs in a fire-and-forget daemon thread so it NEVER blocks the
+    Daphne worker — even if Redis is sleeping or unreachable.
     """
+    import threading
+
+    # Serialize ride data NOW while DB context is still available.
+    message = {'type': event_type}
     try:
-        from asgiref.sync import async_to_sync
-        from channels.layers import get_channel_layer
-
-        channel_layer = get_channel_layer()
-        if channel_layer is None:
-            return
-
-        message = {'type': event_type}
-
         if ride is not None:
-            # Serialize the ride data (no request context needed for WS)
             message['ride'] = GarageRideDetailSerializer(ride).data
         if ride_id is not None:
             message['ride_id'] = str(ride_id)
-
-        import asyncio
-        async def _send():
-            await asyncio.wait_for(
-                channel_layer.group_send(CAMPUS_ADMIN_GROUP, message),
-                timeout=2.0
-            )
-            
-        async_to_sync(_send)()
     except Exception as e:
-        # Never let a broadcast failure break the actual API response
-        logger.warning('broadcast_ride_event failed: %s', str(e))
+        logger.warning('broadcast_ride_event serialization failed: %s', str(e))
+        return
+
+    def _do_broadcast():
+        try:
+            import asyncio
+            from channels.layers import get_channel_layer
+
+            channel_layer = get_channel_layer()
+            if channel_layer is None:
+                return
+
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(
+                    asyncio.wait_for(
+                        channel_layer.group_send(CAMPUS_ADMIN_GROUP, message),
+                        timeout=5.0,
+                    )
+                )
+            finally:
+                loop.close()
+        except Exception as e:
+            logger.warning('broadcast_ride_event failed: %s', str(e))
+
+    t = threading.Thread(target=_do_broadcast, daemon=True)
+    t.start()
 
 
 # ─── Driver endpoints ────────────────────────────────────────────────────────
