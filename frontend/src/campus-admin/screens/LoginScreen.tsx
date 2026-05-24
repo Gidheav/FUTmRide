@@ -52,7 +52,9 @@ export default function LoginPage() {
 
   const mutation = useMutation({
     mutationFn: async (data: FormData) => {
-      const res = await api.post('/auth/login/', data)
+      let phone = data.phone_number.trim()
+      if (phone.startsWith('0') && phone.length === 11) phone = '+234' + phone.slice(1)
+      const res = await api.post('/auth/login/', { ...data, phone_number: phone })
       return res.data
     },
     onSuccess: async (data) => {
@@ -66,7 +68,13 @@ export default function LoginPage() {
       setAuth(userRes.data, data.access, data.refresh)
       navigate('/campus-admin')
     },
-    onError: () => toast.error('Invalid credentials.'),
+    onError: (error: any) => {
+      const apiError = error?.response?.data?.error
+      const message = typeof apiError === 'string'
+        ? apiError
+        : apiError?.message || 'Invalid credentials.'
+      toast.error(message)
+    },
   })
 
   return (

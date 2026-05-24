@@ -726,6 +726,42 @@ export default function DashboardPage() {
     libraries: GMAP_LIBS,
   })
 
+  /* ── Custom Polyline Manager for Measure Routes ─────────────────────── */
+  useEffect(() => {
+    if (!mapRef.current || !window.google) return
+
+    // Create polyline instances for current routes
+    const polylines: google.maps.Polyline[] = []
+
+    if (toolVisibility.measure && measurePoints.length >= 2 && measureRoutes.length > 0) {
+      measureRoutes.forEach((route, idx) => {
+        const isSelected = idx === selectedMeasureRouteIndex
+        const p = new google.maps.Polyline({
+          path: route.path,
+          strokeColor: route.color,
+          strokeWeight: isSelected ? 6 : 3,
+          strokeOpacity: isSelected ? 1 : 0.5,
+          zIndex: isSelected ? 120 : 90 - idx,
+          map: mapRef.current,
+        })
+        
+        p.addListener('click', () => {
+          setSelectedMeasureRouteIndex(idx)
+          setMeasureDist(formatRouteStatus(route, idx, measureRoutes.length))
+        })
+
+        polylines.push(p)
+      })
+    }
+
+    // Cleanup: remove all drawn measure polylines from the map on unmount or re-render
+    return () => {
+      polylines.forEach(p => {
+        try { p.setMap(null) } catch (e) {}
+      })
+    }
+  }, [measureRoutes, selectedMeasureRouteIndex, toolVisibility.measure, measurePoints.length, formatRouteStatus])
+
   /* ────────────────────────────────────────────────────────────────────────── */
 
   return (
@@ -948,31 +984,7 @@ export default function DashboardPage() {
                     {/* Measure routes + endpoints (visible when toolVisibility.measure is on) */}
                     {toolVisibility.measure && measurePoints.length >= 2 && (
                       <>
-                        {measureRoutes.map((route, routeIndex) => {
-                          const isSelected = routeIndex === selectedMeasureRouteIndex
-                          return (
-                            <Polyline
-                              key={route.id}
-                              path={route.path}
-                              options={{
-                                strokeColor: route.color,
-                                strokeWeight: isSelected ? 6 : 3,
-                                strokeOpacity: isSelected ? 1 : 0.5,
-                                zIndex: isSelected ? 120 : 90 - routeIndex,
-                              }}
-                              onClick={() => {
-                                setSelectedMeasureRouteIndex(routeIndex)
-                                setMeasureDist(formatRouteStatus(route, routeIndex, measureRoutes.length))
-                              }}
-                              onLoad={(polyline) => {
-                                measurePolylinesRef.current.push(polyline)
-                              }}
-                              onUnmount={(polyline) => {
-                                polyline.setMap(null)
-                              }}
-                            />
-                          )
-                        })}
+                        {/* Polylines are now rendered via useEffect to bypass @react-google-maps/api unmount bugs */}
                       </>
                     )}
                     {toolVisibility.measure && measurePoints.length >= 1 && (

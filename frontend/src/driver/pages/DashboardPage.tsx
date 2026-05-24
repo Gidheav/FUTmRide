@@ -106,6 +106,10 @@ export default function DashboardPage() {
       const res = await api.get('/users/me/driver-profile/')
       return res.data
     },
+    staleTime: 30000,
+    refetchInterval: (data) => (data?.verification_status === 'approved' ? false : 60000),
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   })
 
   const { data: activeRide } = useQuery({

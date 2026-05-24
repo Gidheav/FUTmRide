@@ -50,8 +50,16 @@ class RateLimitMiddleware:
         return fwd.split(",")[0].strip() if fwd else request.META.get("REMOTE_ADDR", "0.0.0.0")
 
     def _check(self, key, limit, window):
-        count = cache.get(key, 0)
+        try:
+            count = cache.get(key, 0)
+        except Exception:
+            logger.error("rate_limit_cache_get_failed key=%s", key, exc_info=True)
+            return {"allowed": True}
         if count >= limit:
             return {"allowed": False}
-        cache.set(key, count + 1, timeout=window)
+        try:
+            cache.set(key, count + 1, timeout=window)
+        except Exception:
+            logger.error("rate_limit_cache_set_failed key=%s", key, exc_info=True)
+            return {"allowed": True}
         return {"allowed": True}

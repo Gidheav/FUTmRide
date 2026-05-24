@@ -36,6 +36,9 @@ DATABASES = {
 
 # Redis Configuration
 REDIS_URL = env('REDIS_URL', default='redis://red-d84s0m4vikkc739cn740:6379')
+REDIS_MAX_CONNECTIONS = env.int('REDIS_MAX_CONNECTIONS', default=30)
+REDIS_SOCKET_CONNECT_TIMEOUT = env.float('REDIS_SOCKET_CONNECT_TIMEOUT', default=2.0)
+REDIS_SOCKET_TIMEOUT = env.float('REDIS_SOCKET_TIMEOUT', default=2.0)
 
 CHANNEL_LAYERS = {
     'default': {
@@ -56,6 +59,12 @@ CACHES = {
         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
         'LOCATION': REDIS_URL,
         'TIMEOUT': 300,
+        'OPTIONS': {
+            'max_connections': REDIS_MAX_CONNECTIONS,
+            'socket_connect_timeout': REDIS_SOCKET_CONNECT_TIMEOUT,
+            'socket_timeout': REDIS_SOCKET_TIMEOUT,
+            'retry_on_timeout': True,
+        },
     }
 }
 
