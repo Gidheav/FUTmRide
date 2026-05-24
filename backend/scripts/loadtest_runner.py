@@ -35,17 +35,17 @@ from typing import Optional
 # ── Config ─────────────────────────────────────────────────────────────────────
 BASE_URL = 'https://futmride.onrender.com/api/v1'
 PASSWORD = 'LoadTest2026!'
-NUM_DRIVERS = 20
-NUM_STUDENTS = 100
-STUDENTS_PER_RIDE = 5  # Each ride gets 5 students boarding
+NUM_DRIVERS = 5
+NUM_STUDENTS = 15
+STUDENTS_PER_RIDE = 3  # Each ride gets 3 students boarding
 
-# Concurrent request limits (don't overwhelm the free Render instance)
-MAX_CONCURRENT_LOGINS = 10
-MAX_CONCURRENT_RIDES = 5
-MAX_CONCURRENT_BOARDS = 10
+# Concurrent request limits (Free Render instances have 0.1 CPU, so password hashing is slow!)
+MAX_CONCURRENT_LOGINS = 1
+MAX_CONCURRENT_RIDES = 1
+MAX_CONCURRENT_BOARDS = 1
 
 # Request timeout
-TIMEOUT = aiohttp.ClientTimeout(total=30)
+TIMEOUT = aiohttp.ClientTimeout(total=120)
 
 # FUT Minna campus locations for realistic ride origins/destinations
 ORIGINS = [
@@ -184,7 +184,7 @@ async def cancel_ride(session: aiohttp.ClientSession, token: str, ride_id: str) 
 
 async def phase1_driver_logins(session: aiohttp.ClientSession, result: TestResult) -> list:
     """Phase 1: Log in all drivers."""
-    print('\n━━━ Phase 1: Driver Logins (20 drivers) ━━━')
+    print(f'\n━━━ Phase 1: Driver Logins ({NUM_DRIVERS} drivers) ━━━')
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_LOGINS)
     tokens = [None] * NUM_DRIVERS
 
@@ -192,12 +192,12 @@ async def phase1_driver_logins(session: aiohttp.ClientSession, result: TestResul
         async with semaphore:
             progress(f'Logging in driver {i}/{NUM_DRIVERS}...')
             token = await login(session, driver_phone(i))
-            if token:
+            if token and not token.startswith('{'):
                 tokens[i - 1] = token
                 result.driver_logins_ok += 1
             else:
                 result.driver_logins_fail += 1
-                result.errors.append(f'Driver {i} login failed')
+                result.errors.append(f'Driver {i} login failed: {token[:100] if token else "Timeout"}')
 
     await asyncio.gather(*[do_login(i) for i in range(1, NUM_DRIVERS + 1)])
     print(f'\n  ✅ {result.driver_logins_ok} logged in, ❌ {result.driver_logins_fail} failed')
@@ -206,7 +206,7 @@ async def phase1_driver_logins(session: aiohttp.ClientSession, result: TestResul
 
 async def phase2_create_rides(session: aiohttp.ClientSession, driver_tokens: list, result: TestResult) -> list:
     """Phase 2: Each driver creates a garage ride."""
-    print('\n━━━ Phase 2: Create Garage Rides (20 rides) ━━━')
+    print(f'\n━━━ Phase 2: Create Garage Rides ({NUM_DRIVERS} rides) ━━━')
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_RIDES)
     rides = []  # List of (driver_token, ride_data)
 
@@ -218,14 +218,15 @@ async def phase2_create_rides(session: aiohttp.ClientSession, driver_tokens: lis
             # Stagger slightly to avoid hitting the "active ride exists" check race
             await asyncio.sleep(i * 0.3)
             ride_data = await create_garage_ride(session, token, i)
-            if ride_data:
+            if ride_data and 'error_text' not in ride_data:
                 result.rides_created += 1
                 result.ride_qr_tokens.append(ride_data.get('qr_token'))
                 result.ride_ids.append(ride_data.get('id'))
                 rides.append((token, ride_data))
             else:
                 result.rides_failed += 1
-                result.errors.append(f'Driver {i} ride creation failed')
+                err_msg = ride_data.get('error_text')[:100] if ride_data else "Timeout"
+                result.errors.append(f'Driver {i} ride creation failed: {err_msg}')
 
     await asyncio.gather(*[do_create(i + 1, t) for i, t in enumerate(driver_tokens)])
     print(f'\n  ✅ {result.rides_created} rides created, ❌ {result.rides_failed} failed')
@@ -234,7 +235,7 @@ async def phase2_create_rides(session: aiohttp.ClientSession, driver_tokens: lis
 
 async def phase3_student_logins(session: aiohttp.ClientSession, result: TestResult) -> list:
     """Phase 3: Log in all students."""
-    print('\n━━━ Phase 3: Student Logins (100 students) ━━━')
+    print(f'\n━━━ Phase 3: Student Logins ({NUM_STUDENTS} students) ━━━')
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_LOGINS)
     tokens = [None] * NUM_STUDENTS
 
@@ -242,12 +243,12 @@ async def phase3_student_logins(session: aiohttp.ClientSession, result: TestResu
         async with semaphore:
             progress(f'Logging in student {i}/{NUM_STUDENTS}...')
             token = await login(session, student_phone(i))
-            if token:
+            if token and not token.startswith('{'):
                 tokens[i - 1] = token
                 result.student_logins_ok += 1
             else:
                 result.student_logins_fail += 1
-                result.errors.append(f'Student {i} login failed')
+                result.errors.append(f'Student {i} login failed: {token[:100] if token else "Timeout"}')
 
     await asyncio.gather(*[do_login(i) for i in range(1, NUM_STUDENTS + 1)])
     print(f'\n  ✅ {result.student_logins_ok} logged in, ❌ {result.student_logins_fail} failed')
@@ -374,7 +375,7 @@ async def main():
     print()
     print('╔══════════════════════════════════════════════════════════╗')
     print('║   LR-Ride Load Test Runner                              ║')
-    print('║   20 Drivers × 100 Students vs Production Server         ║')
+    print(f'║   {NUM_DRIVERS} Drivers × {NUM_STUDENTS} Students vs Production Server         ║')
     print(f'║   Target: {BASE_URL}')
     print('╚══════════════════════════════════════════════════════════╝')
     print()

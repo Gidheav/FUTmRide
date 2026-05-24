@@ -45,7 +45,14 @@ def broadcast_ride_event(event_type: str, ride=None, ride_id=None):
         if ride_id is not None:
             message['ride_id'] = str(ride_id)
 
-        async_to_sync(channel_layer.group_send)(CAMPUS_ADMIN_GROUP, message)
+        import asyncio
+        async def _send():
+            await asyncio.wait_for(
+                channel_layer.group_send(CAMPUS_ADMIN_GROUP, message),
+                timeout=2.0
+            )
+            
+        async_to_sync(_send)()
     except Exception as e:
         # Never let a broadcast failure break the actual API response
         logger.warning('broadcast_ride_event failed: %s', str(e))
