@@ -19,7 +19,7 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings.production')
 import django
 django.setup()
 
-from django.db import transaction
+from django.db import models, transaction
 from apps.accounts.models import User
 from apps.rides.garage_models import GarageRide
 
@@ -30,9 +30,12 @@ def main():
     print('╚══════════════════════════════════════════════╝')
     print()
 
-    # Find all load test users (drivers: +234801000..., students: +234802000...)
+    # Find all load test users (drivers: +234801000..., students by email or phone)
     test_drivers = User.objects.filter(phone_number__startswith='+23480100')
-    test_students = User.objects.filter(phone_number__startswith='+23480200')
+    test_students = User.objects.filter(
+        models.Q(phone_number__startswith='+23480200') |
+        models.Q(email__startswith='loadtest.student')
+    )
 
     # Find garage rides created by test drivers
     test_rides = GarageRide.objects.filter(driver__in=test_drivers)
