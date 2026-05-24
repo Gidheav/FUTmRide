@@ -51,8 +51,20 @@ def create_drivers(campus):
 
     for i in range(1, NUM_DRIVERS + 1):
         phone = f'+23480100{i:05d}'
-        if User.objects.filter(phone_number=phone).exists():
+        
+        # Check if driver already exists
+        driver = User.objects.filter(phone_number=phone).first()
+        if driver:
             skipped_count += 1
+            # Cancel any stuck active rides from previous failed tests
+            from apps.rides.garage_models import GarageRide, GarageRideStatus
+            active_rides = GarageRide.objects.filter(
+                driver=driver,
+                status__in=[GarageRideStatus.OPEN, GarageRideStatus.FULL, GarageRideStatus.DEPARTED]
+            )
+            for ride in active_rides:
+                ride.status = GarageRideStatus.CANCELLED
+                ride.save(update_fields=['status'])
             continue
 
         with transaction.atomic():
@@ -97,11 +109,10 @@ def create_students(campus):
             student = User.objects.filter(models.Q(phone_number=phone) | models.Q(email=email)).first()
             
             if student:
-                # Update existing student with email
-                if not student.email:
-                    student.email = email
-                    student.is_email_verified = True
-                    student.save(update_fields=['email', 'is_email_verified'])
+                # Forcefully update to the correct regex-compliant email format
+                student.email = email
+                student.is_email_verified = True
+                student.save(update_fields=['email', 'is_email_verified'])
                 skipped_count += 1
                 continue
 
