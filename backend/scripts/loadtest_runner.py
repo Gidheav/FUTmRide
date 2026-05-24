@@ -52,7 +52,7 @@ def driver_phone(i: int) -> str:
     return f'+23480100{i:05d}'
 
 def student_email(i: int) -> str:
-    return f'loadtest.student{i:03d}@st.futminna.edu.ng'
+    return f'loadtest.m{i:07d}@st.futminna.edu.ng'
 
 def log(msg: str):
     sys.stdout.write(f'  {msg}\n')

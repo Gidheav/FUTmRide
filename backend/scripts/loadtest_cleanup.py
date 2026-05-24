@@ -34,7 +34,7 @@ def main():
     test_drivers = User.objects.filter(phone_number__startswith='+23480100')
     test_students = User.objects.filter(
         models.Q(phone_number__startswith='+23480200') |
-        models.Q(email__startswith='loadtest.student')
+        models.Q(email__startswith='loadtest.m')
     )
 
     # Find garage rides created by test drivers

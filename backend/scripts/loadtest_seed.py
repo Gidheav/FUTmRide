@@ -89,7 +89,7 @@ def create_students(campus):
     skipped_count = 0
 
     for i in range(1, NUM_STUDENTS + 1):
-        email = f'loadtest.student{i:03d}@st.futminna.edu.ng'
+        email = f'loadtest.m{i:07d}@st.futminna.edu.ng'
         phone = f'+23480200{i:05d}'
 
         with transaction.atomic():
@@ -141,7 +141,7 @@ def main():
     print()
     print('=== CREDENTIALS ===')
     print(f'  Drivers:  phone +2348010000001 to +23480100{NUM_DRIVERS:05d}  pwd: {PASSWORD}')
-    print(f'  Students: email loadtest.student001@st.futminna.edu.ng to loadtest.student{NUM_STUDENTS:03d}@st.futminna.edu.ng  pwd: {PASSWORD}')
+    print(f'  Students: email loadtest.m0000001@st.futminna.edu.ng to loadtest.m{NUM_STUDENTS:07d}@st.futminna.edu.ng  pwd: {PASSWORD}')
     print()
     print('Seed complete!')
 

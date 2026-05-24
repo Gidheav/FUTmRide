@@ -6,7 +6,7 @@ from django.http import JsonResponse
 logger = logging.getLogger("apps.security")
 
 RATE_LIMIT_RULES = {
-    "/api/v1/auth/login/": (10, 300),
+    "/api/v1/auth/login/": (100, 300),
     "/api/v1/auth/register/": (5, 300),
     "/api/v1/auth/otp/": (5, 300),
     "/api/v1/rides/request/": (20, 60),
