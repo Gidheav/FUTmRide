@@ -41,6 +41,7 @@ import CampusAdminAnalytics from "../campus-admin/pages/AnalyticsPage"
 import CampusAdminProfile from "../campus-admin/pages/ProfilePage"
 import CampusAdminSettings from "../campus-admin/pages/SettingsPage"
 import CampusAdminNotifications from "../campus-admin/pages/NotificationsPage"
+import CampusAdminEngine from "../campus-admin/pages/EngineCalculationPage"
 import CampusAdminLayout from "../campus-admin/layout/CampusAdminLayout"
 
 function RequireAuth({ children, role }: { children: React.ReactNode; role?: string }) {
@@ -128,6 +129,7 @@ export default function AppRouter() {
         <Route path="/campus-admin/fleet" element={<CampusAdminFleet />} />
         <Route path="/campus-admin/schedule" element={<CampusAdminSchedule />} />
         <Route path="/campus-admin/analytics" element={<CampusAdminAnalytics />} />
+        <Route path="/campus-admin/engine" element={<CampusAdminEngine />} />
         <Route path="/campus-admin/profile" element={<CampusAdminProfile />} />
         <Route path="/campus-admin/settings" element={<CampusAdminSettings />} />
         <Route path="/campus-admin/notifications" element={<CampusAdminNotifications />} />
