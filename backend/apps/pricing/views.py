@@ -1,7 +1,7 @@
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from apps.accounts.permissions import IsAdminUser
+from apps.accounts.permissions import IsAdminOrCampusAdmin
 from apps.rides.services import FareCalculator
 from .models import FareConfiguration, PlatformSettings
 from .serializers import FareConfigSerializer, FareEstimateSerializer, PlatformSettingsSerializer
@@ -9,7 +9,7 @@ from .serializers import FareConfigSerializer, FareEstimateSerializer, PlatformS
 
 class FareConfigListView(generics.ListCreateAPIView):
     serializer_class = FareConfigSerializer
-    permission_classes = [permissions.IsAuthenticated, IsAdminUser]
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
 
     def get_queryset(self):
         qs = FareConfiguration.objects.all().order_by('-effective_from')
@@ -24,7 +24,7 @@ class FareConfigListView(generics.ListCreateAPIView):
 
 class FareConfigDetailView(generics.RetrieveUpdateAPIView):
     serializer_class = FareConfigSerializer
-    permission_classes = [permissions.IsAuthenticated, IsAdminUser]
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
     queryset = FareConfiguration.objects.all()
 
 
@@ -48,7 +48,7 @@ class PlatformSettingsView(APIView):
     GET  — retrieve the singleton platform settings.
     PATCH — update platform settings fields.
     """
-    permission_classes = [permissions.IsAuthenticated, IsAdminUser]
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
 
     def get(self, request):
         settings = PlatformSettings.load()
@@ -65,7 +65,7 @@ class PlatformSettingsView(APIView):
 
 class FareConfigDeactivateView(APIView):
     """Deactivate (soft-delete) a fare configuration."""
-    permission_classes = [permissions.IsAuthenticated, IsAdminUser]
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
 
     def post(self, request, pk):
         try:

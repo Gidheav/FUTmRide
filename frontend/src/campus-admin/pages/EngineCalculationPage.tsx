@@ -527,7 +527,9 @@ export default function EngineCalculationPage() {
       // Fetch configs
       const configsRes = await api.get('/pricing/config/')
       const configMap: Record<string, FareConfig> = {}
-      configsRes.data.forEach((c: FareConfig) => {
+      const configList = Array.isArray(configsRes.data) ? configsRes.data : (configsRes.data.results || [])
+      
+      configList.forEach((c: FareConfig) => {
         // Just take the first one since API returns ordered by effective_from descending
         if (!configMap[c.vehicle_type]) {
           // Format date for datetime-local input
