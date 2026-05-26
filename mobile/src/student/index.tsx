@@ -21,7 +21,7 @@ import StudentSidebar from './components/StudentSidebar'
 import type { StudentTab } from './types'
 import { clearStoredPinHash } from '../core/security'
 import api from '../core/api'
-import { registerStudentPushToken, addNotificationResponseListener } from '../core/pushNotifications'
+import { registerStudentPushToken, addNotificationResponseListener, addNotificationReceivedListener } from '../core/pushNotifications'
 import useWalletStore from '../core/walletStore'
 
 // Statuses where we show the matching (searching) screen
@@ -56,6 +56,9 @@ export default function StudentApp() {
   const [unreadCount, setUnreadCount] = useState(0)
   const syncInFlight = useRef(false)
   const lastBackPressAt = useRef(0)
+  const lastWalletSyncAt = useRef(0)
+  const setWalletBalance = useWalletStore((state) => state.setWalletBalance)
+  const syncWalletBalance = useWalletStore((state) => state.syncBalance)
 
   // ─── Ride flow state (single source of truth) ───────────────────────────────
   // Which ride-related screen is currently shown
@@ -163,10 +166,31 @@ export default function StudentApp() {
     }
   }, [isAuthenticated, user?.id, user?.role, user?.fcm_token, setUser])
 
+  const handleWalletNotification = useCallback((data: Record<string, any>) => {
+    if (!data) return
+    const balance = data.wallet_balance
+    if (balance !== undefined && balance !== null) {
+      setWalletBalance(balance)
+      return
+    }
+    const shouldSync = Boolean(
+      data.transfer_reference ||
+      data.transaction_reference ||
+      data.transaction_id ||
+      data.reference,
+    )
+    if (!shouldSync) return
+    const now = Date.now()
+    if (now - lastWalletSyncAt.current < 2000) return
+    lastWalletSyncAt.current = now
+    void syncWalletBalance()
+  }, [setWalletBalance, syncWalletBalance])
+
   // ─── Notification tap → navigate to ride screen ────────────────────────────
   useEffect(() => {
     if (!isAuthenticated || locked) return
     const cleanup = addNotificationResponseListener((data) => {
+      handleWalletNotification(data)
       const rideId = data?.ride_id as string | undefined
       const rideStatus = data?.ride_status as string | undefined
       if (rideId) {
@@ -179,7 +203,15 @@ export default function StudentApp() {
       }
     })
     return cleanup
-  }, [isAuthenticated, locked])
+  }, [isAuthenticated, locked, handleWalletNotification])
+
+  useEffect(() => {
+    if (!isAuthenticated || locked) return
+    const cleanup = addNotificationReceivedListener((data) => {
+      handleWalletNotification(data)
+    })
+    return cleanup
+  }, [isAuthenticated, locked, handleWalletNotification])
 
   // ─── Poll unread notification count ─────────────────────────────────────────
   useEffect(() => {

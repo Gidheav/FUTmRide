@@ -324,6 +324,7 @@ class WalletTransferView(APIView):
                     'transfer_reference': transfer_reference,
                     'transaction_reference': sender_tx.reference,
                     'recipient_user_id': str(recipient_user.id),
+                    'wallet_balance': str(sender_profile.wallet_balance),
                 },
             )
             NotificationService.notify(
@@ -335,6 +336,7 @@ class WalletTransferView(APIView):
                     'transfer_reference': transfer_reference,
                     'transaction_reference': recipient_tx.reference,
                     'sender_user_id': str(sender_user.id),
+                    'wallet_balance': str(recipient_locked_profile.wallet_balance),
                 },
             )
         except Exception as exc:

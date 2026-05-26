@@ -365,6 +365,10 @@ export default function StudentWalletPage() {
         recipient_code: recipient.user_id,
         amount: amountValue,
       })
+      const nextBalance = res.data?.sender_balance_after
+      if (nextBalance !== undefined && nextBalance !== null) {
+        setWalletBalance(nextBalance)
+      }
       const recipientName = recipient.full_name || 'student'
       const transferRef = res.data?.transfer_reference
       setTransferSuccess(
@@ -373,7 +377,13 @@ export default function StudentWalletPage() {
           : `Transfer successful to ${recipientName}.`,
       )
       setTransferAmount('')
-      await loadWallet()
+      try {
+        const txRes = await api.get('payments/wallet/transactions/?page=1&page_size=10')
+        const list = Array.isArray(txRes.data?.results) ? txRes.data.results : txRes.data || []
+        setTransactions(Array.isArray(list) ? list : [])
+      } catch {
+        // Ignore transaction refresh errors; balance already updated.
+      }
     } catch (err: any) {
       const message =
         err?.response?.data?.error?.message ||
@@ -383,7 +393,7 @@ export default function StudentWalletPage() {
     } finally {
       setTransferLoading(false)
     }
-  }, [formatAmount, loadWallet, recipient, transferAmount, walletBalance])
+  }, [formatAmount, recipient, transferAmount, walletBalance, setWalletBalance])
 
   return (
     <ScrollView style={styles.page} contentContainerStyle={styles.pageContent}>

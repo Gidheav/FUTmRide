@@ -55,7 +55,11 @@ class WalletService:
                 notification_type='payment_received',
                 title='Wallet Credited',
                 body=f'Your wallet has been credited with NGN {amount:,.2f}.',
-                data={'transaction_id': str(tx.id), 'reference': tx.reference}
+                data={
+                    'transaction_id': str(tx.id),
+                    'reference': tx.reference,
+                    'wallet_balance': str(balance_after),
+                }
             )
         except Exception as e:
             logger.error('failed_to_notify_wallet_credit user=%s error=%s', str(user.id), str(e))
@@ -102,7 +106,11 @@ class WalletService:
                 notification_type='payment_debited',
                 title='Wallet Debited',
                 body=f'Your wallet has been debited for NGN {amount:,.2f}.',
-                data={'transaction_id': str(tx.id), 'reference': tx.reference}
+                data={
+                    'transaction_id': str(tx.id),
+                    'reference': tx.reference,
+                    'wallet_balance': str(balance_after),
+                }
             )
         except Exception as e:
             logger.error('failed_to_notify_wallet_debit user=%s error=%s', str(user.id), str(e))

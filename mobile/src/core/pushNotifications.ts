@@ -149,3 +149,17 @@ export const addNotificationResponseListener = (
   })
   return () => sub.remove()
 }
+
+/**
+ * Listen for notifications received while the app is in the foreground.
+ */
+export const addNotificationReceivedListener = (
+  callback: (data: Record<string, any>) => void,
+) => {
+  ensureNotificationHandler()
+  const sub = Notifications.addNotificationReceivedListener((notification) => {
+    const payload = notification.request.content.data ?? {}
+    callback(payload as Record<string, any>)
+  })
+  return () => sub.remove()
+}
