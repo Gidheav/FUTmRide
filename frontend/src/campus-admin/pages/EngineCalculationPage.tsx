@@ -64,6 +64,8 @@ const s: Record<string, CSSProperties> = {
   // Panel shared
   panel: {
     background: T.bgPanel,
+    border: `1px solid ${T.border}`,
+    borderRadius: 8,
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
@@ -482,6 +484,7 @@ export default function EngineCalculationPage() {
   const [activeTab, setActiveTab] = useState<string>('sedan')
   const [configs, setConfigs] = useState<Record<string, FareConfig>>({})
   const [currentConfig, setCurrentConfig] = useState<FareConfig | null>(null)
+  const [effectiveDelay, setEffectiveDelay] = useState<string>('now')
   
   // Simulation State
   const [simDistance, setSimDistance] = useState(12.5)
@@ -498,6 +501,7 @@ export default function EngineCalculationPage() {
   useEffect(() => {
     if (configs[activeTab]) {
       setCurrentConfig({ ...configs[activeTab] })
+      setEffectiveDelay('existing')
     } else {
       // Default empty config if none exists
       const now = new Date()
@@ -512,8 +516,9 @@ export default function EngineCalculationPage() {
         booking_fee: 50,
         surge_enabled: true,
         max_surge_multiplier: 2.5,
-        effective_from: now.toISOString().slice(0, 16),
+        effective_from: nigeriaNow.toISOString().slice(0, 16),
       })
+      setEffectiveDelay('now')
     }
   }, [activeTab, configs])
 
@@ -569,10 +574,25 @@ export default function EngineCalculationPage() {
     try {
       // Format back to ISO
       const payload = { ...currentConfig }
-      // The input is in Nigeria time (UTC+1). Parse as UTC, then subtract 1 hour to get true UTC epoch.
-      const localDate = new Date(payload.effective_from + 'Z')
-      const utcDate = new Date(localDate.getTime() - 3600000)
-      payload.effective_from = utcDate.toISOString()
+      
+      if (effectiveDelay !== 'existing' && effectiveDelay !== 'custom') {
+        let addMs = 0
+        if (effectiveDelay === '5m') addMs = 5 * 60000
+        else if (effectiveDelay === '15m') addMs = 15 * 60000
+        else if (effectiveDelay === '30m') addMs = 30 * 60000
+        else if (effectiveDelay === '1h') addMs = 3600000
+        else if (effectiveDelay === '3h') addMs = 3 * 3600000
+        else if (effectiveDelay === '6h') addMs = 6 * 3600000
+        else if (effectiveDelay === '12h') addMs = 12 * 3600000
+        else if (effectiveDelay === '24h') addMs = 24 * 3600000
+        
+        payload.effective_from = new Date(Date.now() + addMs).toISOString()
+      } else {
+        // The input is in Nigeria time (UTC+1). Parse as UTC, then subtract 1 hour to get true UTC epoch.
+        const localDate = new Date(payload.effective_from + 'Z')
+        const utcDate = new Date(localDate.getTime() - 3600000)
+        payload.effective_from = utcDate.toISOString()
+      }
       
       if (payload.id) {
         await api.patch(`/pricing/config/${payload.id}/`, payload)
@@ -626,11 +646,19 @@ export default function EngineCalculationPage() {
         .engine-page-grid-main {
           display: grid;
           grid-template-columns: 1fr;
-          gap: 1px;
-          background: var(--theme-border);
+          gap: 16px;
         }
         @media (min-width: 1100px) {
-          .engine-page-grid-main { grid-template-columns: 2fr 1fr; }
+          .engine-page-grid-main { grid-template-columns: 1.2fr 1fr; }
+        }
+        .engine-left-col {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+        .engine-right-col {
+          display: flex;
+          flex-direction: column;
         }
         .engine-sim-grid {
           display: grid;
@@ -697,8 +725,10 @@ export default function EngineCalculationPage() {
         {/* ── Main Grid ────────────────────────────────────────────────── */}
         <div className="engine-page-grid-main">
 
-          {/* Vehicle Class Tariffs */}
-          <div style={s.panel}>
+          {/* ── LEFT COLUMN ─────────────────────────────────────────────── */}
+          <div className="engine-left-col">
+            {/* Vehicle Class Tariffs */}
+            <div style={s.panel}>
             <div style={s.panelHeader}>
               <h2 style={s.panelTitle}>
                 <Calculator size={16} color={T.accent} />
@@ -723,7 +753,7 @@ export default function EngineCalculationPage() {
                   <div style={s.field}>
                     <label style={s.fieldLabel}>Base Fare (₦)</label>
                     <input 
-                      style={s.input} type="number" 
+                      style={s.input} type="number" min={0}
                       value={currentConfig.base_fare} 
                       onChange={e => setCurrentConfig({ ...currentConfig, base_fare: Number(e.target.value) })}
                     />
@@ -731,7 +761,7 @@ export default function EngineCalculationPage() {
                   <div style={s.field}>
                     <label style={s.fieldLabel}>Per-KM Rate (₦)</label>
                     <input 
-                      style={s.input} type="number" 
+                      style={s.input} type="number" min={0}
                       value={currentConfig.per_km_rate}
                       onChange={e => setCurrentConfig({ ...currentConfig, per_km_rate: Number(e.target.value) })}
                     />
@@ -739,7 +769,7 @@ export default function EngineCalculationPage() {
                   <div style={s.field}>
                     <label style={s.fieldLabel}>Minimum Fare (₦)</label>
                     <input 
-                      style={s.input} type="number" 
+                      style={s.input} type="number" min={0}
                       value={currentConfig.minimum_fare}
                       onChange={e => setCurrentConfig({ ...currentConfig, minimum_fare: Number(e.target.value) })}
                     />
@@ -747,7 +777,7 @@ export default function EngineCalculationPage() {
                   <div style={s.field}>
                     <label style={s.fieldLabel}>Booking Fee (₦)</label>
                     <input 
-                      style={s.input} type="number" 
+                      style={s.input} type="number" min={0}
                       value={currentConfig.booking_fee}
                       onChange={e => setCurrentConfig({ ...currentConfig, booking_fee: Number(e.target.value) })}
                     />
@@ -771,12 +801,39 @@ export default function EngineCalculationPage() {
                   </div>
                   <div style={s.field}>
                     <label style={s.fieldLabel}>Effective Date (Starts At)</label>
-                    <input 
-                      style={s.input} type="datetime-local" 
-                      value={currentConfig.effective_from}
-                      min={new Date(Date.now() + 3600000 - 5 * 60000).toISOString().slice(0, 16)}
-                      onChange={e => setCurrentConfig({ ...currentConfig, effective_from: e.target.value })}
-                    />
+                    <div style={{ position: 'relative' }}>
+                      <select 
+                        style={s.select}
+                        value={effectiveDelay}
+                        onChange={e => setEffectiveDelay(e.target.value)}
+                      >
+                        {currentConfig.id && <option value="existing">Keep Current Active Date</option>}
+                        <option value="now">Immediately (Now)</option>
+                        <option value="5m">In 5 minutes</option>
+                        <option value="15m">In 15 minutes</option>
+                        <option value="30m">In 30 minutes</option>
+                        <option value="1h">In 1 hour</option>
+                        <option value="3h">In 3 hours</option>
+                        <option value="6h">In 6 hours</option>
+                        <option value="12h">In 12 hours</option>
+                        <option value="24h">In 24 hours</option>
+                        <option value="custom">Custom Date (Beyond 24h)...</option>
+                      </select>
+                      <ChevronDown size={12} color={T.textMuted} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                    </div>
+                    {effectiveDelay === 'existing' && (
+                      <div style={{ fontSize: 11, color: T.textMuted, marginTop: 4, fontFamily: 'monospace' }}>
+                        Current DB Value: {currentConfig.effective_from.replace('T', ' ')}
+                      </div>
+                    )}
+                    {effectiveDelay === 'custom' && (
+                      <input 
+                        style={{ ...s.input, marginTop: 8 }} type="datetime-local" 
+                        value={currentConfig.effective_from}
+                        min={new Date(Date.now() + 3600000 + 24 * 3600000).toISOString().slice(0, 16)}
+                        onChange={e => setCurrentConfig({ ...currentConfig, effective_from: e.target.value })}
+                      />
+                    )}
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
@@ -905,11 +962,13 @@ export default function EngineCalculationPage() {
               </div>
             </div>
           </div>
-        </div>
+          </div>{/* END LEFT COLUMN */}
 
-        {/* ── Simulation Console ───────────────────────────────────────── */}
-        <div style={s.panel}>
-          <div style={s.panelHeader}>
+          {/* ── RIGHT COLUMN ────────────────────────────────────────────── */}
+          <div className="engine-right-col">
+            {/* ── Simulation Console ───────────────────────────────────────── */}
+            <div style={s.panel}>
+              <div style={s.panelHeader}>
             <h2 style={s.panelTitle}>
               <Terminal size={16} color={T.purple} />
               Simulation Console
@@ -1031,6 +1090,9 @@ export default function EngineCalculationPage() {
               )}
             </div>
           </div>
+          </div>{/* END panel */}
+          </div>{/* END RIGHT COLUMN */}
+
         </div>
 
       </div>

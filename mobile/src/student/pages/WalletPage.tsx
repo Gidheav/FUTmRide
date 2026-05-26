@@ -1,11 +1,28 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, Alert, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
+import { CameraView, useCameraPermissions } from 'expo-camera'
 import { WebView } from 'react-native-webview'
 import api from '../../core/api'
 import { PAYMENT_CALLBACK_URL } from '../../../config/apiConfig'
 import useWalletStore from '../../core/walletStore'
+import { useAuthStore } from '../../core/authStore'
+
+type TransferRecipient = {
+  user_id: string
+  full_name: string
+  first_name: string
+  last_name: string
+  matric_number: string | null
+  department: string
+  level: number | null
+  campus: { id: string; name: string } | null
+  profile_photo: string | null
+}
+
+const TRANSFER_QR_PREFIX = 'lrride://wallet/student/'
+const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
 
 export default function StudentWalletPage() {
   const [profile, setProfile] = useState<any>(null)
@@ -23,8 +40,18 @@ export default function StudentWalletPage() {
   const [receiveModalVisible, setReceiveModalVisible] = useState(false)
   const [transferIdModalVisible, setTransferIdModalVisible] = useState(false)
   const [transferStudentId, setTransferStudentId] = useState('')
+  const [scannerVisible, setScannerVisible] = useState(false)
+  const [scannerLocked, setScannerLocked] = useState(false)
+  const [recipientLookupLoading, setRecipientLookupLoading] = useState(false)
+  const [transferLoading, setTransferLoading] = useState(false)
+  const [transferError, setTransferError] = useState<string | null>(null)
+  const [transferSuccess, setTransferSuccess] = useState<string | null>(null)
+  const [transferAmount, setTransferAmount] = useState('')
+  const [recipient, setRecipient] = useState<TransferRecipient | null>(null)
   // Store reference during WebView session without triggering polls
   const [webviewReference, setWebviewReference] = useState<string | null>(null)
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions()
+  const authUser = useAuthStore((state) => state.user)
   const { walletBalance, setWalletBalance } = useWalletStore()
 
   const callbackUrl = PAYMENT_CALLBACK_URL
@@ -44,6 +71,22 @@ export default function StudentWalletPage() {
       minute: '2-digit',
     })
   }, [])
+
+  const getTransferCode = useCallback(() => {
+    const userId = authUser?.id
+    if (!userId) return ''
+    return JSON.stringify({
+      type: 'wallet_transfer',
+      recipient_id: userId,
+      matric_number: profile?.matric_number || null,
+    })
+  }, [authUser?.id, profile?.matric_number])
+
+  const transferCode = getTransferCode()
+  const transferQrUrl = useMemo(() => {
+    if (!transferCode) return ''
+    return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(transferCode)}`
+  }, [transferCode])
 
   const loadWallet = useCallback(async () => {
     setLoading(true)
@@ -189,6 +232,159 @@ export default function StudentWalletPage() {
     return narration.replace(/(PS-|FW-|TX-|CR-|DR-)([A-Z0-9]{4})[A-Z0-9]+([A-Z0-9]{2,4})/, '$1$2...$3')
   }, [])
 
+  const getTransactionIcon = useCallback((tx: any): keyof typeof MaterialIcons.glyphMap => {
+    const source = String(tx?.source || '')
+    const isTransfer = source.startsWith('student_transfer')
+    if (isTransfer) {
+      return tx?.transaction_type === 'credit' ? 'call-received' : 'call-made'
+    }
+    return tx?.transaction_type === 'credit' ? 'add-circle' : 'directions-car'
+  }, [])
+
+  const resetTransferState = useCallback(() => {
+    setTransferAmount('')
+    setTransferError(null)
+    setTransferSuccess(null)
+    setRecipient(null)
+  }, [])
+
+  const parseRecipientCodeFromScan = useCallback((rawData: string) => {
+    const data = (rawData || '').trim()
+    if (!data) return ''
+
+    if (data.startsWith('{')) {
+      try {
+        const payload = JSON.parse(data)
+        const fromPayload = payload?.recipient_id || payload?.user_id || payload?.matric_number || payload?.recipient_code
+        if (fromPayload) return String(fromPayload).trim()
+      } catch {
+        // Fall through to other parsing strategies.
+      }
+    }
+
+    if (data.toLowerCase().startsWith(TRANSFER_QR_PREFIX)) {
+      const trailing = data.slice(TRANSFER_QR_PREFIX.length).trim()
+      if (trailing) return trailing
+    }
+
+    const uuidMatch = data.match(UUID_PATTERN)
+    if (uuidMatch?.[0]) return uuidMatch[0]
+
+    return data
+  }, [])
+
+  const lookupRecipient = useCallback(async (recipientCode: string) => {
+    const code = recipientCode.trim()
+    if (!code) {
+      setTransferError('Recipient code is required.')
+      return
+    }
+
+    setRecipientLookupLoading(true)
+    setTransferError(null)
+    setTransferSuccess(null)
+    try {
+      const res = await api.post('payments/wallet/transfer/lookup/', { recipient_code: code })
+      const nextRecipient = res.data?.recipient as TransferRecipient | undefined
+      if (!nextRecipient) {
+        setTransferError('Recipient was not found.')
+        return
+      }
+      setRecipient(nextRecipient)
+    } catch (err: any) {
+      const message =
+        err?.response?.data?.error?.message ||
+        err?.response?.data?.message ||
+        'Unable to fetch recipient details.'
+      setTransferError(String(message))
+    } finally {
+      setRecipientLookupLoading(false)
+    }
+  }, [])
+
+  const handleLookupFromStudentId = useCallback(async () => {
+    const candidate = transferStudentId.trim()
+    if (!candidate) {
+      setTransferError('Enter a valid student ID.')
+      return
+    }
+    await lookupRecipient(candidate)
+    setTransferIdModalVisible(false)
+  }, [lookupRecipient, transferStudentId])
+
+  const openRecipientScanner = useCallback(async () => {
+    if (!cameraPermission?.granted) {
+      const permission = await requestCameraPermission()
+      if (!permission.granted) {
+        setTransferError('Camera permission is required to scan recipient barcode.')
+        return
+      }
+    }
+    setScannerLocked(false)
+    setScannerVisible(true)
+  }, [cameraPermission?.granted, requestCameraPermission])
+
+  const handleRecipientScan = useCallback(async ({ data }: { data: string }) => {
+    if (scannerLocked) return
+    setScannerLocked(true)
+    setScannerVisible(false)
+
+    const recipientCode = parseRecipientCodeFromScan(data)
+    if (!recipientCode) {
+      Alert.alert('Invalid Barcode', 'This barcode is not a valid transfer barcode.')
+      setScannerLocked(false)
+      return
+    }
+
+    await lookupRecipient(recipientCode)
+    setScannerLocked(false)
+  }, [lookupRecipient, parseRecipientCodeFromScan, scannerLocked])
+
+  const sendTransfer = useCallback(async () => {
+    if (!recipient?.user_id) {
+      setTransferError('Choose a valid recipient first.')
+      return
+    }
+
+    const amountValue = Number(transferAmount)
+    if (!amountValue || amountValue < 50) {
+      setTransferError('Minimum transfer amount is NGN 50.')
+      return
+    }
+
+    if (walletBalance !== null && Number(walletBalance) < amountValue) {
+      setTransferError(`Insufficient wallet balance. You have ${formatAmount(walletBalance)}.`)
+      return
+    }
+
+    setTransferLoading(true)
+    setTransferError(null)
+    setTransferSuccess(null)
+    try {
+      const res = await api.post('payments/wallet/transfer/', {
+        recipient_code: recipient.user_id,
+        amount: amountValue,
+      })
+      const recipientName = recipient.full_name || 'student'
+      const transferRef = res.data?.transfer_reference
+      setTransferSuccess(
+        transferRef
+          ? `Transfer successful to ${recipientName}. Ref: ${transferRef}`
+          : `Transfer successful to ${recipientName}.`,
+      )
+      setTransferAmount('')
+      await loadWallet()
+    } catch (err: any) {
+      const message =
+        err?.response?.data?.error?.message ||
+        err?.response?.data?.message ||
+        'Transfer failed. Please try again.'
+      setTransferError(String(message))
+    } finally {
+      setTransferLoading(false)
+    }
+  }, [formatAmount, loadWallet, recipient, transferAmount, walletBalance])
+
   return (
     <ScrollView style={styles.page} contentContainerStyle={styles.pageContent}>
       <Modal
@@ -202,14 +398,14 @@ export default function StudentWalletPage() {
             <Text style={styles.modalTitle}>Receive via barcode</Text>
             <Text style={styles.modalSubtitle}>Show this barcode to the sender.</Text>
             <View style={styles.barcodeWrap}>
-              <View style={styles.barcodeLines}>
-                <View style={styles.barcodeLine} />
-                <View style={styles.barcodeLineShort} />
-                <View style={styles.barcodeLine} />
-                <View style={styles.barcodeLineShort} />
-                <View style={styles.barcodeLine} />
-              </View>
-              <Text style={styles.barcodeValue}>LR-REC-2406-AB12</Text>
+              {transferQrUrl ? (
+                <Image source={{ uri: transferQrUrl }} style={styles.qrImage} />
+              ) : (
+                <View style={styles.barcodeFallback}>
+                  <Text style={styles.barcodeFallbackText}>Unable to load barcode.</Text>
+                </View>
+              )}
+              <Text style={styles.barcodeValue}>{profile?.matric_number || 'Student barcode'}</Text>
             </View>
             <TouchableOpacity
               style={styles.modalCancel}
@@ -232,13 +428,22 @@ export default function StudentWalletPage() {
             <Text style={styles.modalSubtitle}>Enter the recipient student ID to continue.</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="Student ID"
+              placeholder="Student ID / Matric"
               value={transferStudentId}
               onChangeText={setTransferStudentId}
               autoCapitalize="characters"
             />
-            <TouchableOpacity style={styles.primaryAction} activeOpacity={0.9}>
-              <MaterialIcons name="send" size={18} color="#ffffff" />
+            <TouchableOpacity
+              style={[styles.primaryAction, recipientLookupLoading && styles.primaryActionDisabled]}
+              activeOpacity={0.9}
+              onPress={handleLookupFromStudentId}
+              disabled={recipientLookupLoading}
+            >
+              {recipientLookupLoading ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <MaterialIcons name="send" size={18} color="#ffffff" />
+              )}
               <Text style={styles.primaryActionText}>Continue</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -247,6 +452,32 @@ export default function StudentWalletPage() {
             >
               <Text style={styles.modalCancelText}>Cancel</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        visible={scannerVisible}
+        animationType="fade"
+        onRequestClose={() => setScannerVisible(false)}
+      >
+        <View style={styles.scannerFull}>
+          <CameraView
+            onBarcodeScanned={scannerLocked ? undefined : handleRecipientScan}
+            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+            style={StyleSheet.absoluteFillObject}
+          />
+          <View style={styles.scannerOverlay}>
+            <View style={styles.scannerFrameBox} />
+          </View>
+          <View style={styles.scannerTopBar}>
+            <TouchableOpacity style={styles.scannerClose} onPress={() => setScannerVisible(false)}>
+              <MaterialIcons name="close" size={20} color="#ffffff" />
+            </TouchableOpacity>
+            <Text style={styles.scannerTitle}>Scan Recipient</Text>
+            <View style={styles.scannerSpacer} />
+          </View>
+          <View style={styles.scannerHintWrap}>
+            <Text style={styles.scannerHint}>Align recipient barcode inside the frame</Text>
           </View>
         </View>
       </Modal>
@@ -425,7 +656,18 @@ export default function StudentWalletPage() {
             <View style={styles.tabContent}>
               <View style={styles.transferCard}>
                 <Text style={styles.transferTitle}>Send to another student</Text>
-                <Text style={styles.transferSubtitle}>Use student ID or scan their barcode.</Text>
+                <Text style={styles.transferSubtitle}>Scan recipient barcode to fetch live details.</Text>
+                {recipient ? (
+                  <View style={styles.recipientCard}>
+                    <Text style={styles.recipientName}>{recipient.full_name}</Text>
+                    <Text style={styles.recipientMeta}>
+                      {recipient.matric_number || 'No matric'} {recipient.campus ? `• ${recipient.campus.name}` : ''}
+                    </Text>
+                    <TouchableOpacity onPress={resetTransferState} style={styles.recipientReset}>
+                      <Text style={styles.recipientResetText}>Change recipient</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
               </View>
               <View style={styles.walletActions}>
                 <TouchableOpacity
@@ -436,11 +678,47 @@ export default function StudentWalletPage() {
                   <MaterialIcons name="badge" size={18} color="#1a1c1c" />
                   <Text style={styles.secondaryActionText}>Enter Student ID</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.secondaryAction} activeOpacity={0.9}>
+                <TouchableOpacity
+                  style={[styles.secondaryAction, recipientLookupLoading && styles.primaryActionDisabled]}
+                  activeOpacity={0.9}
+                  onPress={openRecipientScanner}
+                  disabled={recipientLookupLoading}
+                >
                   <MaterialIcons name="qr-code-scanner" size={18} color="#1a1c1c" />
                   <Text style={styles.secondaryActionText}>Scan Recipient</Text>
                 </TouchableOpacity>
               </View>
+
+              {recipient ? (
+                <View style={styles.transferForm}>
+                  <TextInput
+                    style={styles.amountInput}
+                    placeholder="Amount (NGN)"
+                    keyboardType="numeric"
+                    value={transferAmount}
+                    onChangeText={setTransferAmount}
+                  />
+                  <TouchableOpacity
+                    style={[
+                      styles.primaryAction,
+                      (transferLoading || Number(transferAmount) < 50) && styles.primaryActionDisabled,
+                    ]}
+                    onPress={sendTransfer}
+                    disabled={transferLoading || Number(transferAmount) < 50}
+                  >
+                    {transferLoading ? (
+                      <ActivityIndicator size="small" color="#ffffff" />
+                    ) : (
+                      <MaterialIcons name="send" size={18} color="#ffffff" />
+                    )}
+                    <Text style={styles.primaryActionText}>Send</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+
+              {recipientLookupLoading ? <Text style={styles.pendingText}>Fetching recipient details...</Text> : null}
+              {transferError ? <Text style={styles.errorText}>{transferError}</Text> : null}
+              {transferSuccess ? <Text style={styles.successText}>{transferSuccess}</Text> : null}
             </View>
           )}
         </View>
@@ -487,7 +765,7 @@ export default function StudentWalletPage() {
               <View style={[styles.activityLeft, { flex: 1 }]}>
                 <View style={tx.transaction_type === 'credit' ? styles.activityIconAccent : styles.activityIconMuted}>
                   <MaterialIcons
-                    name={tx.transaction_type === 'credit' ? 'add-circle' : 'directions-car'}
+                    name={getTransactionIcon(tx)}
                     size={20}
                     color={tx.transaction_type === 'credit' ? '#6A1B9A' : '#3d4a3e'}
                   />
@@ -707,6 +985,24 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     gap: 10,
   },
+  qrImage: {
+    width: 220,
+    height: 220,
+    borderRadius: 12,
+    backgroundColor: '#f3f3f3',
+  },
+  barcodeFallback: {
+    width: 220,
+    height: 220,
+    borderRadius: 12,
+    backgroundColor: '#f3f3f3',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  barcodeFallbackText: {
+    fontSize: 12,
+    color: '#5e5e5e',
+  },
   barcodeLines: {
     width: '100%',
     height: 120,
@@ -743,6 +1039,10 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 12,
     color: '#b91c1c',
+  },
+  successText: {
+    fontSize: 12,
+    color: '#2e7d32',
   },
   walletHeader: {
     flexDirection: 'row',
@@ -783,6 +1083,36 @@ const styles = StyleSheet.create({
   transferSubtitle: {
     fontSize: 12,
     color: '#5e5e5e',
+  },
+  recipientCard: {
+    marginTop: 8,
+    backgroundColor: '#ffffff',
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#e6d6f2',
+  },
+  recipientName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1a1c1c',
+  },
+  recipientMeta: {
+    marginTop: 2,
+    fontSize: 12,
+    color: '#5e5e5e',
+  },
+  recipientReset: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+  },
+  recipientResetText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6A1B9A',
+  },
+  transferForm: {
+    gap: 12,
   },
   webviewHeader: {
     paddingHorizontal: 16,
@@ -843,6 +1173,63 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginLeft: 6,
+  },
+  scannerFull: {
+    flex: 1,
+    backgroundColor: '#000000',
+  },
+  scannerTopBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 64,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  scannerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  scannerClose: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scannerSpacer: {
+    width: 36,
+  },
+  scannerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scannerFrameBox: {
+    width: 320,
+    height: 320,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.65)',
+    borderRadius: 20,
+  },
+  scannerHintWrap: {
+    position: 'absolute',
+    bottom: 40,
+    left: 20,
+    right: 20,
+    alignItems: 'center',
+  },
+  scannerHint: {
+    textAlign: 'center',
+    fontSize: 13,
+    color: '#ffffff',
   },
   bonusBanner: {
     backgroundColor: '#6A1B9A',

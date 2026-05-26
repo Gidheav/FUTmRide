@@ -1,7 +1,9 @@
 import json
 import logging
-from decimal import Decimal
+import re
 from datetime import timedelta
+from decimal import Decimal
+from uuid import UUID
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
@@ -13,16 +15,20 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import IsAdminUser
+from apps.accounts.models import StudentProfile, UserRole
 from .models import GatewayTransaction, WalletTransaction, WebhookEvent
 from .serializers import (
-    WalletTransactionSerializer,
-    GatewayTransactionSerializer,
     InitiateTopUpSerializer,
+    WalletTransactionSerializer,
+    WalletTransferLookupSerializer,
+    WalletTransferSerializer,
 )
-from .services import PaystackService, FlutterwaveService, WalletService
+from .services import FlutterwaveService, PaystackService, WalletService, generate_reference
 
 logger = logging.getLogger('apps.payments')
+UUID_PATTERN = re.compile(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', re.IGNORECASE)
+TRANSFER_QR_PREFIX = 'lrride://wallet/student/'
+QR_CODE_PAYLOAD_KEYS = ('recipient_id', 'user_id', 'matric_number', 'recipient_code')
 
 
 def _get_client_ip(request):
@@ -51,12 +57,302 @@ def _is_timestamp_valid(timestamp_value, replay_window_minutes, max_skew_minutes
     return True
 
 
+def _extract_recipient_identifier(raw_code: str):
+    code = (raw_code or '').strip()
+    if not code:
+        raise ValueError('Recipient code is required.')
+
+    if code.startswith('{'):
+        try:
+            payload = json.loads(code)
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, dict):
+            for key in QR_CODE_PAYLOAD_KEYS:
+                value = payload.get(key)
+                if value:
+                    code = str(value).strip()
+                    break
+
+    lowered = code.lower()
+    if lowered.startswith(TRANSFER_QR_PREFIX):
+        code = code[len(TRANSFER_QR_PREFIX):].strip()
+
+    if '://' in code:
+        uuid_match = UUID_PATTERN.search(code)
+        if uuid_match:
+            code = uuid_match.group(0)
+        else:
+            parts = [part for part in re.split(r'[/?&#]', code) if part]
+            if parts:
+                code = parts[-1]
+
+    prefix_split = code.split(':', 1)
+    if len(prefix_split) == 2 and prefix_split[0].strip().lower() in {'matric', 'student', 'student_id'}:
+        code = prefix_split[1].strip()
+
+    code = code.strip().strip('/')
+    if not code:
+        raise ValueError('Invalid recipient code.')
+
+    try:
+        return 'user_id', str(UUID(code))
+    except (ValueError, TypeError):
+        return 'matric_number', code
+
+
+def _resolve_student_recipient(raw_code: str):
+    identifier_type, value = _extract_recipient_identifier(raw_code)
+    if identifier_type == 'user_id':
+        profile = StudentProfile.objects.select_related('user', 'campus').filter(
+            user_id=value,
+            user__role=UserRole.STUDENT,
+            user__is_active=True,
+        ).first()
+    else:
+        profile = StudentProfile.objects.select_related('user', 'campus').filter(
+            matric_number__iexact=value,
+            user__role=UserRole.STUDENT,
+            user__is_active=True,
+        ).first()
+
+    if not profile:
+        raise ValueError('Recipient not found. Ask the student to show a valid barcode.')
+    return profile
+
+
+def _serialize_student_recipient(profile):
+    campus = profile.campus
+    return {
+        'user_id': str(profile.user.id),
+        'full_name': profile.user.full_name,
+        'first_name': profile.user.first_name,
+        'last_name': profile.user.last_name,
+        'matric_number': profile.matric_number,
+        'department': profile.department,
+        'level': profile.level,
+        'campus': {
+            'id': str(campus.id),
+            'name': campus.name,
+        } if campus else None,
+        'profile_photo': profile.user.profile_photo.url if profile.user.profile_photo else None,
+    }
+
+
+def _format_naira(amount: Decimal):
+    return f'NGN {amount:,.2f}'
+
+
 class WalletTransactionListView(generics.ListAPIView):
     serializer_class = WalletTransactionSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         return WalletTransaction.objects.filter(user=self.request.user).order_by('-created_at')
+
+
+class WalletTransferRecipientLookupView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role != UserRole.STUDENT:
+            return Response(
+                {'error': {'code': 'FORBIDDEN', 'message': 'Only students can use student transfer.'}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = WalletTransferLookupSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            recipient_profile = _resolve_student_recipient(serializer.validated_data['recipient_code'])
+        except ValueError as exc:
+            return Response(
+                {'error': {'code': 'RECIPIENT_INVALID', 'message': str(exc)}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if recipient_profile.user_id == request.user.id:
+            return Response(
+                {'error': {'code': 'SELF_TRANSFER', 'message': 'You cannot transfer to your own wallet.'}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response({'recipient': _serialize_student_recipient(recipient_profile)})
+
+
+class WalletTransferView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role != UserRole.STUDENT:
+            return Response(
+                {'error': {'code': 'FORBIDDEN', 'message': 'Only students can transfer to students.'}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = WalletTransferSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        amount = serializer.validated_data['amount']
+        narration = (serializer.validated_data.get('narration') or '').strip()
+
+        try:
+            recipient_profile = _resolve_student_recipient(serializer.validated_data['recipient_code'])
+        except ValueError as exc:
+            return Response(
+                {'error': {'code': 'RECIPIENT_INVALID', 'message': str(exc)}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if recipient_profile.user_id == request.user.id:
+            return Response(
+                {'error': {'code': 'SELF_TRANSFER', 'message': 'You cannot transfer to your own wallet.'}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            transfer_result = self._perform_transfer(
+                sender_user=request.user,
+                recipient_profile=recipient_profile,
+                amount=amount,
+                narration=narration,
+            )
+        except ValueError as exc:
+            return Response(
+                {'error': {'code': 'TRANSFER_FAILED', 'message': str(exc)}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception as exc:
+            logger.error('wallet_transfer_failed sender=%s recipient=%s error=%s', request.user.id, recipient_profile.user_id, exc)
+            return Response(
+                {'error': {'code': 'TRANSFER_FAILED', 'message': 'Transfer failed. Please try again.'}},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        sender_tx = transfer_result['sender_tx']
+        sender_balance = transfer_result['sender_balance']
+        transfer_reference = transfer_result['transfer_reference']
+
+        return Response(
+            {
+                'message': 'Transfer successful.',
+                'transfer_reference': transfer_reference,
+                'amount': str(amount),
+                'sender_transaction_reference': sender_tx.reference,
+                'sender_balance_after': str(sender_balance),
+                'recipient': _serialize_student_recipient(recipient_profile),
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    @staticmethod
+    def _perform_transfer(sender_user, recipient_profile, amount: Decimal, narration: str):
+        transfer_reference = generate_reference('ST')
+        recipient_user = recipient_profile.user
+
+        with transaction.atomic():
+            locked_profiles = list(
+                StudentProfile.objects.select_for_update()
+                .select_related('user')
+                .filter(user_id__in=[sender_user.id, recipient_user.id])
+                .order_by('user_id')
+            )
+            profiles_by_user = {profile.user_id: profile for profile in locked_profiles}
+            sender_profile = profiles_by_user.get(sender_user.id)
+            recipient_locked_profile = profiles_by_user.get(recipient_user.id)
+
+            if not sender_profile or not recipient_locked_profile:
+                raise ValueError('Student wallet profile not found.')
+            if sender_profile.wallet_balance < amount:
+                raise ValueError('Insufficient wallet balance.')
+
+            sender_before = sender_profile.wallet_balance
+            recipient_before = recipient_locked_profile.wallet_balance
+
+            sender_profile.wallet_balance -= amount
+            recipient_locked_profile.wallet_balance += amount
+
+            sender_profile.save(update_fields=['wallet_balance'])
+            recipient_locked_profile.save(update_fields=['wallet_balance'])
+
+            sender_narration = f'Transfer to {recipient_user.full_name}'
+            recipient_narration = f'Transfer from {sender_user.full_name}'
+            if narration:
+                sender_narration = f'{sender_narration} - {narration}'
+                recipient_narration = f'{recipient_narration} - {narration}'
+
+            sender_tx = WalletTransaction.objects.create(
+                reference=generate_reference('DR'),
+                user=sender_user,
+                transaction_type=WalletTransaction.TransactionType.DEBIT,
+                source=WalletTransaction.Source.STUDENT_TRANSFER_SENT,
+                amount=amount,
+                balance_before=sender_before,
+                balance_after=sender_profile.wallet_balance,
+                narration=sender_narration,
+                metadata={
+                    'transfer_reference': transfer_reference,
+                    'counterparty_user_id': str(recipient_user.id),
+                    'counterparty_matric_number': recipient_locked_profile.matric_number,
+                },
+            )
+
+            recipient_tx = WalletTransaction.objects.create(
+                reference=generate_reference('CR'),
+                user=recipient_user,
+                transaction_type=WalletTransaction.TransactionType.CREDIT,
+                source=WalletTransaction.Source.STUDENT_TRANSFER_RECEIVED,
+                amount=amount,
+                balance_before=recipient_before,
+                balance_after=recipient_locked_profile.wallet_balance,
+                narration=recipient_narration,
+                metadata={
+                    'transfer_reference': transfer_reference,
+                    'counterparty_user_id': str(sender_user.id),
+                    'counterparty_matric_number': sender_profile.matric_number,
+                },
+            )
+
+        try:
+            from apps.notifications.services import NotificationService
+            NotificationService.notify(
+                user=sender_user,
+                notification_type='payment_received',
+                title='Transfer Sent',
+                body=f'You sent {_format_naira(amount)} to {recipient_user.full_name}.',
+                data={
+                    'transfer_reference': transfer_reference,
+                    'transaction_reference': sender_tx.reference,
+                    'recipient_user_id': str(recipient_user.id),
+                },
+            )
+            NotificationService.notify(
+                user=recipient_user,
+                notification_type='payment_received',
+                title='Transfer Received',
+                body=f'You received {_format_naira(amount)} from {sender_user.full_name}.',
+                data={
+                    'transfer_reference': transfer_reference,
+                    'transaction_reference': recipient_tx.reference,
+                    'sender_user_id': str(sender_user.id),
+                },
+            )
+        except Exception as exc:
+            logger.error(
+                'wallet_transfer_notification_failed sender=%s recipient=%s ref=%s error=%s',
+                sender_user.id,
+                recipient_user.id,
+                transfer_reference,
+                exc,
+            )
+
+        return {
+            'transfer_reference': transfer_reference,
+            'sender_tx': sender_tx,
+            'recipient_tx': recipient_tx,
+            'sender_balance': sender_profile.wallet_balance,
+            'recipient_balance': recipient_locked_profile.wallet_balance,
+        }
 
 
 class InitiateTopUpView(APIView):

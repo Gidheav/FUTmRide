@@ -33,3 +33,32 @@ class InitiateTopUpSerializer(serializers.Serializer):
         if value < 100:
             raise serializers.ValidationError('Minimum top-up amount is NGN 100.')
         return value
+
+
+class WalletTransferLookupSerializer(serializers.Serializer):
+    recipient_code = serializers.CharField(max_length=255)
+
+    def validate_recipient_code(self, value):
+        cleaned = (value or '').strip()
+        if not cleaned:
+            raise serializers.ValidationError('Recipient code is required.')
+        return cleaned
+
+
+class WalletTransferSerializer(serializers.Serializer):
+    recipient_code = serializers.CharField(max_length=255)
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    narration = serializers.CharField(max_length=120, required=False, allow_blank=True)
+
+    def validate_recipient_code(self, value):
+        cleaned = (value or '').strip()
+        if not cleaned:
+            raise serializers.ValidationError('Recipient code is required.')
+        return cleaned
+
+    def validate_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError('Amount must be greater than zero.')
+        if value < 50:
+            raise serializers.ValidationError('Minimum transfer amount is NGN 50.')
+        return value

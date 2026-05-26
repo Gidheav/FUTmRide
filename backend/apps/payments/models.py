@@ -14,6 +14,8 @@ class WalletTransaction(models.Model):
         RIDE_REFUND = 'ride_refund', 'Ride Refund'
         TOPUP_PAYSTACK = 'topup_paystack', 'Top-Up via Paystack'
         TOPUP_FLUTTERWAVE = 'topup_flutterwave', 'Top-Up via Flutterwave'
+        STUDENT_TRANSFER_SENT = 'student_transfer_sent', 'Student Transfer Sent'
+        STUDENT_TRANSFER_RECEIVED = 'student_transfer_received', 'Student Transfer Received'
         DRIVER_EARNING = 'driver_earning', 'Driver Earning'
         DRIVER_WITHDRAWAL = 'driver_withdrawal', 'Driver Withdrawal'
         PLATFORM_COMMISSION = 'platform_commission', 'Platform Commission'
