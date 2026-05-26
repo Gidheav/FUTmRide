@@ -49,6 +49,20 @@ class FareConfigSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Max surge multiplier cannot exceed 5.0.')
         return value
 
+    def validate_effective_from(self, value):
+        from django.utils import timezone
+        now = timezone.now()
+        
+        # If updating an existing config, and the date hasn't changed, allow it.
+        if self.instance and self.instance.effective_from == value:
+            return value
+            
+        # For new configs or changed dates, ensure it's not backdated.
+        # Allow a 5-minute buffer for form filling/network delay.
+        if value < now - timezone.timedelta(minutes=5):
+            raise serializers.ValidationError('Effective date cannot be set in the past.')
+        return value
+
     def create(self, validated_data):
         validated_data['created_by'] = self.context['request'].user
         return super().create(validated_data)

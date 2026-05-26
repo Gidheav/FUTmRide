@@ -28,3 +28,6 @@ The following credentials will be used to test the different roles and access le
 - **Phone Number:** `+2348000000000`
 - **Password:** `AdminPass123!`
 - **Expected Setup:** `is_staff=True`, `is_superuser=True`. Has access to manage all other accounts, verify drivers, and view analytics.
+
+
+python scripts/loadtest_seed.py && 

@@ -12,7 +12,7 @@ class FareConfigListView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
 
     def get_queryset(self):
-        qs = FareConfiguration.objects.all().order_by('-effective_from')
+        qs = FareConfiguration.objects.all().order_by('-created_at')
         vehicle_type = self.request.query_params.get('vehicle_type')
         active_only = self.request.query_params.get('active_only', 'true').lower()
         if vehicle_type:

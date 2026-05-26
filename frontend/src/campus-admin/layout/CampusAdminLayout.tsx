@@ -29,7 +29,7 @@ export default function CampusAdminLayout() {
           <div style={{ display: isDashboard ? 'flex' : 'none', flex: 1, overflow: 'hidden' }}>
             <CampusAdminDashboard />
           </div>
-          <div style={{ display: isDashboard ? 'none' : 'flex', flex: 1, overflow: 'hidden', flexDirection: 'column' }}>
+          <div style={{ display: isDashboard ? 'none' : 'block', flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
             <Outlet />
           </div>
         </div>

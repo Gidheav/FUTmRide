@@ -48,7 +48,7 @@ class FareConfiguration(models.Model):
             effective_from__lte=now,
         ).filter(
             models.Q(effective_to__isnull=True) | models.Q(effective_to__gte=now)
-        ).order_by('-effective_from').first()
+        ).order_by('-effective_from', '-created_at').first()
 
 
 class PlatformSettings(models.Model):

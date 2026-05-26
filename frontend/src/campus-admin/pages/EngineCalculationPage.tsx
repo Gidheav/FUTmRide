@@ -501,8 +501,8 @@ export default function EngineCalculationPage() {
     } else {
       // Default empty config if none exists
       const now = new Date()
-      // adjust to local time string for datetime-local input
-      now.setMinutes(now.getMinutes() - now.getTimezoneOffset())
+      // Nigeria is UTC+1. Shift epoch by 1 hour to make UTC string match Nigeria time
+      const nigeriaNow = new Date(now.getTime() + 3600000)
       setCurrentConfig({
         vehicle_type: activeTab,
         is_active: true,
@@ -532,12 +532,12 @@ export default function EngineCalculationPage() {
       configList.forEach((c: FareConfig) => {
         // Just take the first one since API returns ordered by effective_from descending
         if (!configMap[c.vehicle_type]) {
-          // Format date for datetime-local input
+          // Format date for datetime-local input (Force Nigeria Time UTC+1)
           const date = new Date(c.effective_from)
-          date.setMinutes(date.getMinutes() - date.getTimezoneOffset())
+          const nigeriaDate = new Date(date.getTime() + 3600000)
           configMap[c.vehicle_type] = {
             ...c,
-            effective_from: date.toISOString().slice(0, 16)
+            effective_from: nigeriaDate.toISOString().slice(0, 16)
           }
         }
       })
@@ -569,15 +569,23 @@ export default function EngineCalculationPage() {
     try {
       // Format back to ISO
       const payload = { ...currentConfig }
-      const date = new Date(payload.effective_from)
-      payload.effective_from = date.toISOString()
+      // The input is in Nigeria time (UTC+1). Parse as UTC, then subtract 1 hour to get true UTC epoch.
+      const localDate = new Date(payload.effective_from + 'Z')
+      const utcDate = new Date(localDate.getTime() - 3600000)
+      payload.effective_from = utcDate.toISOString()
       
-      await api.post('/pricing/config/', payload)
+      if (payload.id) {
+        await api.patch(`/pricing/config/${payload.id}/`, payload)
+      } else {
+        await api.post('/pricing/config/', payload)
+      }
+      
       alert('Pricing configuration deployed successfully.')
       await fetchData() // Refresh all to get the newly created config
-    } catch (err) {
+    } catch (err: any) {
       console.error(err)
-      alert('Failed to save configuration.')
+      const msg = err.response?.data?.effective_from?.[0] || err.response?.data?.error?.message || 'Failed to save configuration.'
+      alert(`Error: ${msg}`)
     } finally {
       setSavingConfig(false)
     }
@@ -766,6 +774,7 @@ export default function EngineCalculationPage() {
                     <input 
                       style={s.input} type="datetime-local" 
                       value={currentConfig.effective_from}
+                      min={new Date(Date.now() + 3600000 - 5 * 60000).toISOString().slice(0, 16)}
                       onChange={e => setCurrentConfig({ ...currentConfig, effective_from: e.target.value })}
                     />
                   </div>
