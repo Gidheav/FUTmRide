@@ -59,6 +59,8 @@ export default function StudentApp() {
   const lastWalletSyncAt = useRef(0)
   const setWalletBalance = useWalletStore((state) => state.setWalletBalance)
   const syncWalletBalance = useWalletStore((state) => state.syncBalance)
+  const bumpWalletActivityRefresh = useWalletStore((state) => state.bumpWalletActivityRefresh)
+  const triggerWalletFlash = useWalletStore((state) => state.triggerWalletFlash)
 
   // ─── Ride flow state (single source of truth) ───────────────────────────────
   // Which ride-related screen is currently shown
@@ -168,6 +170,17 @@ export default function StudentApp() {
 
   const handleWalletNotification = useCallback((data: Record<string, any>) => {
     if (!data) return
+    const isWalletEvent = Boolean(
+      data.wallet_balance !== undefined ||
+      data.transfer_reference ||
+      data.transaction_reference ||
+      data.transaction_id ||
+      data.reference,
+    )
+    if (isWalletEvent) {
+      triggerWalletFlash()
+      bumpWalletActivityRefresh()
+    }
     const balance = data.wallet_balance
     if (balance !== undefined && balance !== null) {
       setWalletBalance(balance)
@@ -184,7 +197,7 @@ export default function StudentApp() {
     if (now - lastWalletSyncAt.current < 2000) return
     lastWalletSyncAt.current = now
     void syncWalletBalance()
-  }, [setWalletBalance, syncWalletBalance])
+  }, [bumpWalletActivityRefresh, setWalletBalance, syncWalletBalance, triggerWalletFlash])
 
   // ─── Notification tap → navigate to ride screen ────────────────────────────
   useEffect(() => {

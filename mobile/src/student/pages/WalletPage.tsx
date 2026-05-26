@@ -4,10 +4,13 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import { WebView } from 'react-native-webview'
+import * as LocalAuthentication from 'expo-local-authentication'
 import api from '../../core/api'
 import { PAYMENT_CALLBACK_URL } from '../../../config/apiConfig'
 import useWalletStore from '../../core/walletStore'
 import { useAuthStore } from '../../core/authStore'
+import { getStoredPinHash, hashPin } from '../../core/security'
+import { useSecurityStore } from '../../core/securityStore'
 
 type TransferRecipient = {
   user_id: string
@@ -48,11 +51,19 @@ export default function StudentWalletPage() {
   const [transferSuccess, setTransferSuccess] = useState<string | null>(null)
   const [transferAmount, setTransferAmount] = useState('')
   const [recipient, setRecipient] = useState<TransferRecipient | null>(null)
+  const [walletFlashVisible, setWalletFlashVisible] = useState(false)
+  const [transferConfirmVisible, setTransferConfirmVisible] = useState(false)
+  const [transferPinInput, setTransferPinInput] = useState('')
+  const [transferPinError, setTransferPinError] = useState('')
   // Store reference during WebView session without triggering polls
   const [webviewReference, setWebviewReference] = useState<string | null>(null)
   const [cameraPermission, requestCameraPermission] = useCameraPermissions()
   const authUser = useAuthStore((state) => state.user)
   const { walletBalance, setWalletBalance } = useWalletStore()
+  const walletActivityRefreshKey = useWalletStore((state) => state.walletActivityRefreshKey)
+  const walletFlashAt = useWalletStore((state) => state.walletFlashAt)
+  const biometricEnabled = useSecurityStore((state) => state.biometricEnabled)
+  const hasPin = useSecurityStore((state) => state.hasPin)
 
   const callbackUrl = PAYMENT_CALLBACK_URL
 
@@ -88,6 +99,13 @@ export default function StudentWalletPage() {
     return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(transferCode)}`
   }, [transferCode])
 
+  const transferPinRows = useMemo(() => ([
+    ['1', '2', '3'],
+    ['4', '5', '6'],
+    ['7', '8', '9'],
+    ['', '0', 'back'],
+  ]), [])
+
   const loadWallet = useCallback(async () => {
     setLoading(true)
     try {
@@ -104,6 +122,12 @@ export default function StudentWalletPage() {
     } finally {
       setLoading(false)
     }
+  }, [])
+
+  const refreshTransactions = useCallback(async () => {
+    const txRes = await api.get('payments/wallet/transactions/?page=1&page_size=10')
+    const list = Array.isArray(txRes.data?.results) ? txRes.data.results : txRes.data || []
+    setTransactions(Array.isArray(list) ? list : [])
   }, [])
 
   const parseReferenceFromUrl = useCallback((url: string) => {
@@ -140,6 +164,20 @@ export default function StudentWalletPage() {
   useEffect(() => {
     loadWallet()
   }, [loadWallet])
+
+  useEffect(() => {
+    if (!walletActivityRefreshKey) return
+    refreshTransactions().catch(() => {
+      // Ignore refresh errors for background updates.
+    })
+  }, [walletActivityRefreshKey, refreshTransactions])
+
+  useEffect(() => {
+    if (!walletFlashAt) return
+    setWalletFlashVisible(true)
+    const timer = setTimeout(() => setWalletFlashVisible(false), 1500)
+    return () => clearTimeout(timer)
+  }, [walletFlashAt])
 
   useEffect(() => {
     if (!pendingReference || webviewVisible) return
@@ -340,7 +378,7 @@ export default function StudentWalletPage() {
     setScannerLocked(false)
   }, [lookupRecipient, parseRecipientCodeFromScan, scannerLocked])
 
-  const sendTransfer = useCallback(async () => {
+  const sendTransferRequest = useCallback(async () => {
     if (!recipient?.user_id) {
       setTransferError('Choose a valid recipient first.')
       return
@@ -378,9 +416,7 @@ export default function StudentWalletPage() {
       )
       setTransferAmount('')
       try {
-        const txRes = await api.get('payments/wallet/transactions/?page=1&page_size=10')
-        const list = Array.isArray(txRes.data?.results) ? txRes.data.results : txRes.data || []
-        setTransactions(Array.isArray(list) ? list : [])
+        await refreshTransactions()
       } catch {
         // Ignore transaction refresh errors; balance already updated.
       }
@@ -393,7 +429,77 @@ export default function StudentWalletPage() {
     } finally {
       setTransferLoading(false)
     }
-  }, [formatAmount, recipient, transferAmount, walletBalance, setWalletBalance])
+  }, [formatAmount, recipient, refreshTransactions, transferAmount, walletBalance, setWalletBalance])
+
+  const handleTransferPinDigit = useCallback(async (digit: string) => {
+    if (!digit) return
+    if (digit === 'back') {
+      setTransferPinInput((prev) => prev.slice(0, -1))
+      return
+    }
+    setTransferPinError('')
+    setTransferPinInput((prev) => {
+      if (prev.length >= 4) return prev
+      const next = `${prev}${digit}`
+      if (next.length === 4) {
+        void (async () => {
+          try {
+            const storedHash = await getStoredPinHash()
+            if (!storedHash) {
+              setTransferPinError('No PIN is set. Enable PIN or biometrics in Security settings.')
+              setTransferPinInput('')
+              return
+            }
+            const currentHash = await hashPin(next)
+            if (currentHash !== storedHash) {
+              setTransferPinError('Incorrect PIN.')
+              setTransferPinInput('')
+              return
+            }
+            setTransferConfirmVisible(false)
+            setTransferPinInput('')
+            await sendTransferRequest()
+          } catch {
+            setTransferPinError('Unable to verify PIN.')
+            setTransferPinInput('')
+          }
+        })()
+      }
+      return next
+    })
+  }, [sendTransferRequest])
+
+  const handleTransferConfirm = useCallback(async () => {
+    if (transferLoading) return
+    if (biometricEnabled) {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Confirm transfer',
+        cancelLabel: 'Cancel',
+        fallbackLabel: hasPin ? 'Use PIN' : undefined,
+      })
+      if (result.success) {
+        await sendTransferRequest()
+        return
+      }
+      if (!hasPin) {
+        setTransferError('Biometric verification failed. Enable PIN in Security settings to continue.')
+        return
+      }
+      setTransferPinInput('')
+      setTransferPinError('')
+      setTransferConfirmVisible(true)
+      return
+    }
+
+    if (hasPin) {
+      setTransferPinInput('')
+      setTransferPinError('')
+      setTransferConfirmVisible(true)
+      return
+    }
+
+    setTransferError('Set up a PIN or biometrics in Security settings to confirm transfers.')
+  }, [biometricEnabled, hasPin, sendTransferRequest, transferLoading])
 
   return (
     <ScrollView style={styles.page} contentContainerStyle={styles.pageContent}>
@@ -488,6 +594,59 @@ export default function StudentWalletPage() {
           </View>
           <View style={styles.scannerHintWrap}>
             <Text style={styles.scannerHint}>Align recipient barcode inside the frame</Text>
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        visible={transferConfirmVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setTransferConfirmVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Confirm transfer</Text>
+            <Text style={styles.modalSubtitle}>Enter your 4-digit PIN to continue.</Text>
+            <View style={styles.pinDotsRow}>
+              {[0, 1, 2, 3].map((idx) => (
+                <View
+                  key={`pin-dot-${idx}`}
+                  style={[styles.pinDot, transferPinInput.length > idx && styles.pinDotFilled]}
+                />
+              ))}
+            </View>
+            {transferPinError ? <Text style={styles.errorText}>{transferPinError}</Text> : null}
+            <View style={styles.pinPad}>
+              {transferPinRows.map((row, rowIndex) => (
+                <View key={`pin-row-${rowIndex}`} style={styles.pinRow}>
+                  {row.map((digit, colIndex) => (
+                    <TouchableOpacity
+                      key={`pin-${rowIndex}-${colIndex}`}
+                      style={[styles.pinKey, !digit && styles.pinKeyDisabled]}
+                      activeOpacity={0.85}
+                      onPress={() => handleTransferPinDigit(digit)}
+                      disabled={!digit}
+                    >
+                      {digit === 'back' ? (
+                        <MaterialIcons name="backspace" size={20} color="#1a1c1c" />
+                      ) : (
+                        <Text style={styles.pinKeyText}>{digit}</Text>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ))}
+            </View>
+            <TouchableOpacity
+              style={styles.modalCancel}
+              onPress={() => {
+                setTransferConfirmVisible(false)
+                setTransferPinInput('')
+                setTransferPinError('')
+              }}
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -604,6 +763,7 @@ export default function StudentWalletPage() {
             </View>
             <View style={styles.walletIconWrap}>
               <MaterialIcons name="account-balance-wallet" size={22} color="#6A1B9A" />
+              {walletFlashVisible ? <View style={styles.walletFlashBadge} /> : null}
             </View>
           </View>
           <View style={styles.tabRow}>
@@ -713,7 +873,7 @@ export default function StudentWalletPage() {
                       styles.primaryAction,
                       (transferLoading || Number(transferAmount) < 50) && styles.primaryActionDisabled,
                     ]}
-                    onPress={sendTransfer}
+                    onPress={handleTransferConfirm}
                     disabled={transferLoading || Number(transferAmount) < 50}
                   >
                     {transferLoading ? (
@@ -990,6 +1150,51 @@ const styles = StyleSheet.create({
     fontSize: 14,
     backgroundColor: '#ffffff',
   },
+  pinDotsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 8,
+  },
+  pinDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    backgroundColor: '#ffffff',
+  },
+  pinDotFilled: {
+    backgroundColor: '#1a1c1c',
+    borderColor: '#1a1c1c',
+  },
+  pinPad: {
+    gap: 10,
+    paddingTop: 4,
+  },
+  pinRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  pinKey: {
+    width: 70,
+    height: 52,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e5e5e5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+  },
+  pinKeyDisabled: {
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+  },
+  pinKeyText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1c1c',
+  },
   barcodeWrap: {
     alignItems: 'center',
     paddingVertical: 12,
@@ -1074,6 +1279,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#f3e5f5',
     padding: 8,
     borderRadius: 10,
+    position: 'relative',
+  },
+  walletFlashBadge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#ef4444',
+    borderWidth: 2,
+    borderColor: '#ffffff',
   },
   walletActions: {
     flexDirection: 'row',

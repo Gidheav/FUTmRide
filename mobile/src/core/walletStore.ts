@@ -6,12 +6,22 @@ export interface WalletStore {
   setWalletBalance: (balance: number | string | null) => void
   clearWalletBalance: () => void
   syncBalance: () => Promise<void>
+  walletActivityRefreshKey: number
+  bumpWalletActivityRefresh: () => void
+  walletFlashAt: number
+  triggerWalletFlash: () => void
 }
 
 const useWalletStore = create<WalletStore>((set) => ({
   walletBalance: null,
   setWalletBalance: (balance) => set({ walletBalance: balance }),
   clearWalletBalance: () => set({ walletBalance: null }),
+  walletActivityRefreshKey: 0,
+  bumpWalletActivityRefresh: () => set((state) => ({
+    walletActivityRefreshKey: state.walletActivityRefreshKey + 1,
+  })),
+  walletFlashAt: 0,
+  triggerWalletFlash: () => set({ walletFlashAt: Date.now() }),
   syncBalance: async () => {
     try {
       const res = await api.get('users/me/')
