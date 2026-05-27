@@ -170,7 +170,7 @@ class GarageRideDepartView(APIView):
         except GarageRide.DoesNotExist:
             raise NotFound('Garage ride not found.')
 
-        if ride.status != GarageRideStatus.OPEN:
+        if ride.status not in [GarageRideStatus.OPEN, GarageRideStatus.FULL]:
             return Response(
                 {'error': {'code': 'INVALID_STATUS', 'message': f'Cannot depart a ride with status: {ride.status}'}},
                 status=status.HTTP_400_BAD_REQUEST,
