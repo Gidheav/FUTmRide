@@ -538,6 +538,21 @@ export default function DriverRidesPage() {
     }
   };
 
+  const handleCompleteGarageRide = async () => {
+    if (!garageRide) return;
+    try {
+      await driverApi.completeGarageRide(garageRide.id);
+      setGarageRide(null);
+      setGaragePassengers([]);
+      setStatus('inactive');
+      setCachedGarageRide(null);
+      setCachedGaragePassengers([]);
+    } catch (error: any) {
+      const message = error?.response?.data?.error?.message || 'Unable to complete ride.';
+      setGarageError(message);
+    }
+  };
+
   const handleCancelGarageRide = async () => {
     if (!garageRide) return;
     try {
@@ -653,9 +668,15 @@ export default function DriverRidesPage() {
                 <TouchableOpacity style={styles.cancelBtn} onPress={handleCancelGarageRide}>
                   <Text style={[FONTS.labelLg, { color: COLORS.error }]}>Cancel Ride</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.primaryBtn} onPress={handleDepartGarageRide}>
-                  <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>Depart</Text>
-                </TouchableOpacity>
+                {garageRide.status === 'departed' ? (
+                  <TouchableOpacity style={styles.primaryBtn} onPress={handleCompleteGarageRide}>
+                    <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>Complete</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity style={styles.primaryBtn} onPress={handleDepartGarageRide}>
+                    <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>Depart</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           ) : (

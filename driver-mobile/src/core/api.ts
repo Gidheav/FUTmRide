@@ -54,6 +54,7 @@ export const driverApi = {
   getGarageRides: () => api.get('rides/garage/mine/'),
   createGarageRide: (data: any) => api.post('rides/garage/create/', data),
   departGarageRide: (rideId: string) => api.post(`rides/garage/${rideId}/depart/`),
+  completeGarageRide: (rideId: string) => api.post(`rides/garage/${rideId}/complete/`),
   cancelGarageRide: (rideId: string) => api.post(`rides/garage/${rideId}/cancel/`),
   getGaragePassengers: (rideId: string) => api.get(`rides/garage/${rideId}/passengers/`),
 }

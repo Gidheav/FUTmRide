@@ -9,6 +9,7 @@ class GarageRideStatus(models.TextChoices):
     OPEN = 'open', 'Open (Accepting Passengers)'
     FULL = 'full', 'Full'
     DEPARTED = 'departed', 'Departed'
+    COMPLETED = 'completed', 'Completed'
     CANCELLED = 'cancelled', 'Cancelled'
 
 
@@ -64,6 +65,7 @@ class GarageRide(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     departed_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField(
         null=True,
         blank=True,

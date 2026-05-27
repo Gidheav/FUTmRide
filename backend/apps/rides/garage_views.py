@@ -247,6 +247,41 @@ class GarageRideCancelView(APIView):
         return Response(GarageRideDetailSerializer(ride, context={'request': request}).data)
 
 
+class GarageRideCompleteView(APIView):
+    """
+    POST /rides/garage/<id>/complete/
+    Driver marks the ride as completed after departure.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, ride_id):
+        if request.user.role != UserRole.DRIVER:
+            return Response(
+                {'error': {'code': 'FORBIDDEN', 'message': 'Only drivers can update garage rides.'}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            ride = GarageRide.objects.get(id=ride_id, driver=request.user)
+        except GarageRide.DoesNotExist:
+            raise NotFound('Garage ride not found.')
+
+        if ride.status != GarageRideStatus.DEPARTED:
+            return Response(
+                {'error': {'code': 'INVALID_STATUS', 'message': f'Cannot complete a ride with status: {ride.status}'}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from django.utils import timezone
+        ride.status = GarageRideStatus.COMPLETED
+        ride.completed_at = timezone.now()
+        ride.save(update_fields=['status', 'completed_at'])
+        logger.info('garage_ride_completed ref=%s driver=%s', ride.reference, str(request.user.id))
+
+        broadcast_ride_event('ride_completed', ride=ride)
+
+        return Response(GarageRideDetailSerializer(ride, context={'request': request}).data)
+
+
 # ─── Public scan endpoint (requires auth so we know who is scanning) ─────────
 
 class GarageRideScanView(APIView):

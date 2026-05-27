@@ -131,6 +131,7 @@ class GarageRideDetailSerializer(serializers.ModelSerializer):
             'is_expired',
             'created_at',
             'departed_at',
+            'completed_at',
             'expires_at',
         ]
         read_only_fields = fields
