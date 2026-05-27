@@ -86,7 +86,15 @@ class RideRequestView(generics.CreateAPIView):
                     )
                     ride.is_paid = True
                     ride.save(update_fields=['is_paid'])
-                except ValueError:
+                except ValueError as exc:
+                    if 'wallet profile' in str(exc).lower():
+                        ride.transition_to(RideStatus.CANCELLED_BY_STUDENT)
+                        ride.cancellation_reason = 'Wallet profile not found.'
+                        ride.save(update_fields=['status', 'cancellation_reason', 'cancelled_at'])
+                        return Response(
+                            {'error': {'code': 'NO_PROFILE', 'message': 'Wallet profile not found.'}},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
                     ride.transition_to(RideStatus.CANCELLED_BY_STUDENT)
                     ride.cancellation_reason = 'Insufficient wallet balance.'
                     ride.save(update_fields=['status', 'cancellation_reason', 'cancelled_at'])

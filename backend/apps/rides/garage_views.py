@@ -368,7 +368,13 @@ class GarageRideBoardView(APIView):
                         'seats': seats_requested,
                     },
                 )
-            except ValueError:
+            except ValueError as exc:
+                message = str(exc)
+                if 'wallet profile' in message.lower():
+                    return Response(
+                        {'error': {'code': 'NO_PROFILE', 'message': 'Wallet profile not found.'}},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
                 return Response(
                     {'error': {'code': 'INSUFFICIENT_WALLET', 'message': 'Insufficient wallet balance.'}},
                     status=status.HTTP_400_BAD_REQUEST,

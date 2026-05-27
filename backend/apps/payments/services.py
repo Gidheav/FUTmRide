@@ -70,7 +70,10 @@ class WalletService:
     @transaction.atomic
     def debit(user, amount: Decimal, source: str, narration: str, ride=None, metadata: dict = None) -> WalletTransaction:
         if user.role == 'student':
-            profile = StudentProfile.objects.select_for_update().get(user=user)
+            try:
+                profile = StudentProfile.objects.select_for_update().get(user=user)
+            except StudentProfile.DoesNotExist:
+                raise ValueError('Wallet profile not found.')
             if profile.wallet_balance < amount:
                 raise ValueError('Insufficient wallet balance.')
             balance_before = profile.wallet_balance
@@ -78,7 +81,10 @@ class WalletService:
             profile.save(update_fields=['wallet_balance'])
             balance_after = profile.wallet_balance
         else:
-            profile = DriverProfile.objects.select_for_update().get(user=user)
+            try:
+                profile = DriverProfile.objects.select_for_update().get(user=user)
+            except DriverProfile.DoesNotExist:
+                raise ValueError('Wallet profile not found.')
             if profile.wallet_balance < amount:
                 raise ValueError('Insufficient wallet balance.')
             balance_before = profile.wallet_balance
