@@ -72,6 +72,8 @@ const formatDistance = (value: number | null) => {
   return `${value.toFixed(2)} km`
 }
 
+const roundCoord = (value: number) => Number(value.toFixed(6))
+
 export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScreenProps) {
   const insets = useSafeAreaInsets()
   const {
@@ -247,15 +249,15 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
       id: route.id || 'saved-origin',
       label: route.origin_address,
       description: 'Saved route origin',
-      latitude: Number(route.origin_latitude),
-      longitude: Number(route.origin_longitude),
+      latitude: roundCoord(Number(route.origin_latitude)),
+      longitude: roundCoord(Number(route.origin_longitude)),
     }
     const nextDestination = {
       id: route.id || 'saved-destination',
       label: route.destination_address,
       description: 'Saved route destination',
-      latitude: Number(route.destination_latitude),
-      longitude: Number(route.destination_longitude),
+      latitude: roundCoord(Number(route.destination_latitude)),
+      longitude: roundCoord(Number(route.destination_longitude)),
     }
     setOrigin(nextOrigin)
     setDestination(nextDestination)
@@ -276,6 +278,31 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
       next.unshift(route)
     }
     setSavedRoutes(next)
+  }
+
+  const getNextPinTarget = () => {
+    if (!origin) return 'origin'
+    if (!destination) return 'destination'
+    return 'destination'
+  }
+
+  const handleMapPress = (event: any) => {
+    const { latitude, longitude } = event?.nativeEvent?.coordinate || {}
+    if (latitude === undefined || longitude === undefined) return
+    const pin: LocationOption = {
+      id: `pin-${Date.now()}`,
+      label: 'Pinned location',
+      description: `Lat ${latitude.toFixed(5)}, Lng ${longitude.toFixed(5)}`,
+      latitude: roundCoord(latitude),
+      longitude: roundCoord(longitude),
+    }
+    if (getNextPinTarget() === 'origin') {
+      setOrigin(pin)
+      void refreshEstimate(pin, destination)
+    } else {
+      setDestination(pin)
+      void refreshEstimate(origin, pin)
+    }
   }
 
   const handleCreate = async () => {
@@ -311,11 +338,11 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
 
       const payload = {
         origin_address: origin.label,
-        origin_latitude: origin.latitude,
-        origin_longitude: origin.longitude,
+        origin_latitude: roundCoord(origin.latitude),
+        origin_longitude: roundCoord(origin.longitude),
         destination_address: destination.label,
-        destination_latitude: destination.latitude,
-        destination_longitude: destination.longitude,
+        destination_latitude: roundCoord(destination.latitude),
+        destination_longitude: roundCoord(destination.longitude),
         vehicle_type: getVehicleType(),
         total_seats: parseInt(seats, 10),
         fare_per_seat: Number(fareValue),
@@ -333,11 +360,11 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
           id: `local-${Date.now()}`,
           name: '',
           origin_address: origin.label,
-          origin_latitude: origin.latitude,
-          origin_longitude: origin.longitude,
+          origin_latitude: roundCoord(origin.latitude),
+          origin_longitude: roundCoord(origin.longitude),
           destination_address: destination.label,
-          destination_latitude: destination.latitude,
-          destination_longitude: destination.longitude,
+          destination_latitude: roundCoord(destination.latitude),
+          destination_longitude: roundCoord(destination.longitude),
           distance_km: distance,
           last_used_at: new Date().toISOString(),
         }
@@ -704,9 +731,11 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
             <Text style={styles.modalTitle}>Route Preview</Text>
             <View style={{ width: 20 }} />
           </View>
+          <Text style={styles.mapHint}>Tap map to set {getNextPinTarget()} location.</Text>
           <View style={styles.mapWrap}>
             <MapView
               style={styles.map}
+              onPress={handleMapPress}
               initialRegion={
                 origin && destination
                   ? {
@@ -1028,6 +1057,12 @@ const styles = StyleSheet.create({
   },
   mapWrap: {
     flex: 1,
+  },
+  mapHint: {
+    ...FONTS.bodySm,
+    color: COLORS.onSurfaceVariant,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
   map: {
     flex: 1,

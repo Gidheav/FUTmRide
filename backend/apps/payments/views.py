@@ -317,7 +317,7 @@ class WalletTransferView(APIView):
             from apps.notifications.services import NotificationService
             NotificationService.notify(
                 user=sender_user,
-                notification_type='payment_received',
+                notification_type='payment_debited',
                 title='Transfer Sent',
                 body=f'You sent {_format_naira(amount)} to {recipient_user.full_name}.',
                 data={
@@ -325,6 +325,9 @@ class WalletTransferView(APIView):
                     'transaction_reference': sender_tx.reference,
                     'recipient_user_id': str(recipient_user.id),
                     'wallet_balance': str(sender_profile.wallet_balance),
+                    'amount': str(amount),
+                    'source': WalletTransaction.Source.STUDENT_TRANSFER_SENT,
+                    'narration': sender_narration,
                 },
             )
             NotificationService.notify(
@@ -337,6 +340,9 @@ class WalletTransferView(APIView):
                     'transaction_reference': recipient_tx.reference,
                     'sender_user_id': str(sender_user.id),
                     'wallet_balance': str(recipient_locked_profile.wallet_balance),
+                    'amount': str(amount),
+                    'source': WalletTransaction.Source.STUDENT_TRANSFER_RECEIVED,
+                    'narration': recipient_narration,
                 },
             )
         except Exception as exc:

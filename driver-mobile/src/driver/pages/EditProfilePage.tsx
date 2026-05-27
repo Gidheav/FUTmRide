@@ -15,6 +15,7 @@ import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
 import { useAuthStore } from '../../core/authStore';
 import { authApi, driverApi } from '../../core/api';
 import { useDriverProfileStore } from '../../core/driverProfileStore';
+import { useDriverRidesStore } from '../../core/driverRidesStore';
 
 type Props = { onBack: () => void };
 
@@ -26,6 +27,14 @@ const DEFAULT_DRIVER_PROFILE = {
   vehicle_color: 'Unknown',
   plate_number: 'PENDING',
 };
+
+const VEHICLE_TYPES = [
+  { value: 'motorcycle', label: 'Motorcycle' },
+  { value: 'tricycle', label: 'Tricycle' },
+  { value: 'sedan', label: 'Sedan' },
+  { value: 'suv', label: 'SUV' },
+  { value: 'minivan', label: 'Minivan' },
+];
 
 const InputField = ({
   label,
@@ -60,6 +69,7 @@ export default function EditProfilePage({ onBack }: Props) {
   const insets = useSafeAreaInsets();
   const { user, setUser } = useAuthStore();
   const { profile: cachedProfile, setProfile: setCachedProfile } = useDriverProfileStore();
+  const { setDriverProfile } = useDriverRidesStore();
   const [loading, setLoading] = useState(true);
   const [savingPersonal, setSavingPersonal] = useState(false);
   const [savingVehicle, setSavingVehicle] = useState(false);
@@ -75,6 +85,7 @@ export default function EditProfilePage({ onBack }: Props) {
   const [vehicleYear, setVehicleYear] = useState(String(cachedProfile?.vehicle_year ?? ''));
   const [vehicleColor, setVehicleColor] = useState(cachedProfile?.vehicle_color ?? '');
   const [plateNumber, setPlateNumber] = useState(cachedProfile?.plate_number ?? '');
+  const [vehicleType, setVehicleType] = useState(cachedProfile?.vehicle_type ?? DEFAULT_DRIVER_PROFILE.vehicle_type);
 
   useEffect(() => {
     setFirstName(user?.first_name ?? '');
@@ -96,7 +107,9 @@ export default function EditProfilePage({ onBack }: Props) {
         setVehicleYear(String(response?.data?.vehicle_year ?? ''));
         setVehicleColor(response?.data?.vehicle_color ?? '');
         setPlateNumber(response?.data?.plate_number ?? '');
+        setVehicleType(response?.data?.vehicle_type ?? DEFAULT_DRIVER_PROFILE.vehicle_type);
         setCachedProfile(response?.data ?? null);
+        setDriverProfile({ vehicle_type: response?.data?.vehicle_type ?? null });
       } catch (error: any) {
         if (error?.response?.status === 404) {
           try {
@@ -108,7 +121,9 @@ export default function EditProfilePage({ onBack }: Props) {
             setVehicleYear(String(retry?.data?.vehicle_year ?? ''));
             setVehicleColor(retry?.data?.vehicle_color ?? '');
             setPlateNumber(retry?.data?.plate_number ?? '');
+            setVehicleType(retry?.data?.vehicle_type ?? DEFAULT_DRIVER_PROFILE.vehicle_type);
             setCachedProfile(retry?.data ?? null);
+            setDriverProfile({ vehicle_type: retry?.data?.vehicle_type ?? null });
           } catch (createErr: any) {
             console.warn('[EditProfile] driver profile fetch failed:', createErr?.response?.data ?? createErr.message);
           }
@@ -162,6 +177,7 @@ export default function EditProfilePage({ onBack }: Props) {
     setSavingVehicle(true);
     try {
       const payload = {
+        vehicle_type: vehicleType,
         vehicle_make: vehicleMake.trim(),
         vehicle_model: vehicleModel.trim(),
         vehicle_color: vehicleColor.trim(),
@@ -170,12 +186,14 @@ export default function EditProfilePage({ onBack }: Props) {
       };
       await driverApi.updateProfile(payload);
       setCachedProfile({ ...(cachedProfile ?? {}), ...payload });
+      setDriverProfile({ vehicle_type: payload.vehicle_type });
       Alert.alert('Saved', 'Vehicle details updated.');
     } catch (error: any) {
       if (error?.response?.status === 404) {
         try {
           const createPayload = {
             ...DEFAULT_DRIVER_PROFILE,
+            vehicle_type: vehicleType,
             vehicle_make: vehicleMake.trim(),
             vehicle_model: vehicleModel.trim(),
             vehicle_color: vehicleColor.trim(),
@@ -184,6 +202,7 @@ export default function EditProfilePage({ onBack }: Props) {
           };
           await driverApi.createProfile(createPayload);
           setCachedProfile({ ...(cachedProfile ?? {}), ...createPayload });
+          setDriverProfile({ vehicle_type: createPayload.vehicle_type });
           Alert.alert('Saved', 'Vehicle details updated.');
         } catch (createErr: any) {
           const msg =
@@ -239,6 +258,25 @@ export default function EditProfilePage({ onBack }: Props) {
 
           <View style={[styles.card, AMBIENT_SHADOW]}>
             <Text style={[FONTS.labelLg, styles.sectionTitle]}>Vehicle details</Text>
+            <View style={styles.vehicleTypeWrap}>
+              <Text style={styles.inputLabel}>Vehicle category</Text>
+              <View style={styles.vehicleTypeRow}>
+                {VEHICLE_TYPES.map((item) => {
+                  const isActive = vehicleType === item.value;
+                  return (
+                    <TouchableOpacity
+                      key={item.value}
+                      style={[styles.vehicleTypeChip, isActive && styles.vehicleTypeChipActive]}
+                      onPress={() => setVehicleType(item.value)}
+                    >
+                      <Text style={isActive ? styles.vehicleTypeTextActive : styles.vehicleTypeText}>
+                        {item.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
             <InputField label="Vehicle make" value={vehicleMake} onChangeText={setVehicleMake} autoCapitalize="words" />
             <InputField label="Vehicle model" value={vehicleModel} onChangeText={setVehicleModel} autoCapitalize="words" />
             <InputField label="Vehicle year" value={vehicleYear} onChangeText={setVehicleYear} keyboardType="numeric" autoCapitalize="none" />
@@ -310,6 +348,36 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: COLORS.onSurfaceVariant,
+  },
+  vehicleTypeWrap: {
+    gap: 8,
+  },
+  vehicleTypeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  vehicleTypeChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.surfaceContainerHigh,
+    backgroundColor: COLORS.surfaceContainerLowest,
+  },
+  vehicleTypeChipActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primaryContainer,
+  },
+  vehicleTypeText: {
+    color: COLORS.onSurfaceVariant,
+    fontWeight: '600',
+    fontSize: 12,
+  },
+  vehicleTypeTextActive: {
+    color: COLORS.onPrimaryContainer,
+    fontWeight: '700',
+    fontSize: 12,
   },
   input: {
     borderWidth: 1,

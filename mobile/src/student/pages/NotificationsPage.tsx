@@ -58,6 +58,7 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [markingAll, setMarkingAll] = useState(false)
+  const [selectedNotification, setSelectedNotification] = useState<NotificationItem | null>(null)
   const insets = useSafeAreaInsets()
 
   const fetchNotifications = useCallback(async () => {
@@ -113,6 +114,7 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
         activeOpacity={0.85}
         onPress={() => {
           if (!item.is_read) void handleMarkRead(item.id)
+          setSelectedNotification(item)
         }}
       >
         <View style={[styles.notifIconWrap, { backgroundColor: cfg.bg }]}>
@@ -141,6 +143,73 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
         <Text style={styles.emptySubtitle}>
           You'll receive updates about your rides, payments, and account here.
         </Text>
+      </View>
+    )
+  }
+
+  if (selectedNotification) {
+    const cfg = TYPE_ICONS[selectedNotification.notification_type] || TYPE_ICONS.general
+    const isCredit = selectedNotification.notification_type === 'payment_received'
+    const isDebit = selectedNotification.notification_type === 'payment_debited'
+    const isTransaction = isCredit || isDebit
+
+    return (
+      <View style={styles.page}>
+        <View style={[styles.header, { paddingTop: Math.max(14, insets.top + 10) }]}>
+          <TouchableOpacity style={styles.backButton} onPress={() => setSelectedNotification(null)}>
+            <MaterialIcons name="arrow-back" size={22} color="#1a1c1c" />
+          </TouchableOpacity>
+          <Text style={styles.title}>Notification Details</Text>
+          <View style={styles.headerSpacer} />
+        </View>
+
+        <View style={styles.detailsContent}>
+          <View style={styles.receiptCard}>
+            <View style={styles.receiptHeader}>
+              <MaterialIcons 
+                name={isTransaction ? (isCredit ? 'check-circle' : 'receipt') : cfg.icon} 
+                size={48} 
+                color={isTransaction ? (isCredit ? '#2e7d32' : '#b91c1c') : cfg.color} 
+              />
+              <Text style={styles.receiptTitle}>{selectedNotification.title}</Text>
+              <Text style={styles.receiptDate}>
+                {new Date(selectedNotification.created_at).toLocaleString('en-NG', {
+                  day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                })}
+              </Text>
+            </View>
+
+            <View style={styles.receiptDivider} />
+
+            <View style={styles.receiptBody}>
+              <View style={styles.receiptRow}>
+                <Text style={styles.receiptLabel}>Message</Text>
+                <Text style={styles.receiptValue}>{selectedNotification.body}</Text>
+              </View>
+
+              {Object.entries(selectedNotification.data || {}).map(([key, value]) => {
+                if (value === null || value === undefined) return null
+                const formattedKey = key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+                return (
+                  <View style={styles.receiptRow} key={key}>
+                    <Text style={styles.receiptLabel}>{formattedKey}</Text>
+                    <Text style={styles.receiptValue}>{String(value)}</Text>
+                  </View>
+                )
+              })}
+            </View>
+
+            <View style={styles.receiptDivider} />
+            
+            <TouchableOpacity 
+              style={styles.receiptCloseButton}
+              onPress={() => setSelectedNotification(null)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.receiptCloseText}>Back to Notifications</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
     )
   }
@@ -347,5 +416,70 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     textAlign: 'center',
     lineHeight: 18,
+  },
+  // Details/Receipt view
+  detailsContent: {
+    padding: 20,
+  },
+  receiptCard: {
+    width: '100%',
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 24,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  receiptHeader: {
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 16,
+  },
+  receiptTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1c1c',
+    textAlign: 'center',
+  },
+  receiptDate: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  receiptDivider: {
+    height: 0,
+    borderTopWidth: 1,
+    borderColor: '#e2e2e2',
+    borderStyle: 'dashed',
+    marginVertical: 16,
+  },
+  receiptBody: {
+    gap: 16,
+  },
+  receiptRow: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 4,
+  },
+  receiptLabel: {
+    fontSize: 13,
+    color: '#6b7280',
+  },
+  receiptValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1a1c1c',
+    lineHeight: 20,
+  },
+  receiptCloseButton: {
+    backgroundColor: '#f5effb',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  receiptCloseText: {
+    color: '#6A1B9A',
+    fontWeight: '700',
+    fontSize: 15,
   },
 })
