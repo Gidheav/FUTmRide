@@ -2,7 +2,7 @@ import uuid
 from django.utils import timezone
 from rest_framework import serializers
 from apps.accounts.serializers import UserPublicSerializer
-from .garage_models import GarageRide, GarageRidePassenger, GarageRideStatus
+from .garage_models import GarageRide, GarageRidePassenger, GarageRideStatus, DriverSavedRoute
 
 
 class GarageRideCreateSerializer(serializers.ModelSerializer):
@@ -164,3 +164,22 @@ class GarageRidePassengerSerializer(serializers.ModelSerializer):
             'boarded_at',
         ]
         read_only_fields = fields
+
+
+class DriverSavedRouteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DriverSavedRoute
+        fields = [
+            'id',
+            'name',
+            'origin_address',
+            'origin_latitude',
+            'origin_longitude',
+            'destination_address',
+            'destination_latitude',
+            'destination_longitude',
+            'distance_km',
+            'last_used_at',
+            'created_at',
+        ]
+        read_only_fields = ['id', 'created_at']

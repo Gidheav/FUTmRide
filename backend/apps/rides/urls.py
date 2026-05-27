@@ -16,6 +16,8 @@ from .views import (
 from .garage_views import (
     GarageRideCreateView,
     DriverGarageRideListView,
+    DriverSavedRouteListCreateView,
+    DriverSavedRouteDetailView,
     GarageRideDepartView,
     GarageRideCancelView,
     GarageRideCompleteView,
@@ -41,6 +43,8 @@ urlpatterns = [
     # ── Garage / Scan-to-Pay ─────────────────────────────────────────────────
     path('garage/create/', GarageRideCreateView.as_view(), name='garage-ride-create'),
     path('garage/mine/', DriverGarageRideListView.as_view(), name='garage-ride-mine'),
+    path('garage/routes/', DriverSavedRouteListCreateView.as_view(), name='garage-ride-routes'),
+    path('garage/routes/<uuid:route_id>/', DriverSavedRouteDetailView.as_view(), name='garage-ride-route-detail'),
     path('garage/<uuid:ride_id>/depart/', GarageRideDepartView.as_view(), name='garage-ride-depart'),
     path('garage/<uuid:ride_id>/cancel/', GarageRideCancelView.as_view(), name='garage-ride-cancel'),
     path('garage/<uuid:ride_id>/complete/', GarageRideCompleteView.as_view(), name='garage-ride-complete'),

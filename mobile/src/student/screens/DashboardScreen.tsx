@@ -101,7 +101,7 @@ type Location = {
 
 const ALL_LOCATIONS: Location[] = locationData as Location[]
 
-const LOCATION_BUFFER_KM = 3
+const LOCATION_BUFFER_KM = 25
 
 const computeBounds = (locations: Location[], bufferKm: number) => {
   const latitudes = locations.map((loc) => loc.latitude)
@@ -395,7 +395,7 @@ export default function StudentDashboardScreen({
           scrollEnabled
           rotateEnabled={false}
           pitchEnabled
-          minZoomLevel={12}
+          minZoomLevel={10}
           maxZoomLevel={18}
           showsCompass
           showsScale

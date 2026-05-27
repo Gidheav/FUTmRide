@@ -80,6 +80,7 @@ type GarageRide = {
   is_expired: boolean;
   created_at: string;
   departed_at?: string | null;
+  completed_at?: string | null;
 };
 
 type GaragePassenger = {
@@ -142,6 +143,18 @@ const formatDistance = (value: string | number | null | undefined) => {
   return `${num.toFixed(1)} km`;
 };
 
+const formatCompletedAt = (value: string | null | undefined) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString('en-NG', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
 export default function DriverRidesPage() {
   const [driverMode, setDriverMode] = useState<DriverMode>('garage');
   const {
@@ -178,6 +191,7 @@ export default function DriverRidesPage() {
   const [totalSeats, setTotalSeats] = useState(4);
   const [driverNote, setDriverNote] = useState('');
   const [expiryMinutes, setExpiryMinutes] = useState('');
+  const [lastCompletedAt, setLastCompletedAt] = useState<string | null>(null);
   const [locationPickerOpen, setLocationPickerOpen] = useState<null | 'origin' | 'destination'>(null);
   const [locationQuery, setLocationQuery] = useState('');
   const [isCreatingRide, setIsCreatingRide] = useState(false);
@@ -541,7 +555,9 @@ export default function DriverRidesPage() {
   const handleCompleteGarageRide = async () => {
     if (!garageRide) return;
     try {
-      await driverApi.completeGarageRide(garageRide.id);
+      const response = await driverApi.completeGarageRide(garageRide.id);
+      const completedAt = response?.data?.completed_at as string | undefined;
+      setLastCompletedAt(completedAt || new Date().toISOString());
       setGarageRide(null);
       setGaragePassengers([]);
       setStatus('inactive');
@@ -681,6 +697,14 @@ export default function DriverRidesPage() {
             </View>
           ) : (
             <View style={[styles.card, AMBIENT_SHADOW]}>
+              {lastCompletedAt ? (
+                <View style={styles.completedBadge}>
+                  <MaterialIcons name="check-circle" size={14} color={COLORS.primary} />
+                  <Text style={styles.completedBadgeText}>
+                    Completed at {formatCompletedAt(lastCompletedAt)}
+                  </Text>
+                </View>
+              ) : null}
               <Text style={[FONTS.headlineMd, { color: COLORS.onSurface }]}>Create Garage Ride</Text>
               <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginTop: 4 }]}>Students scan to pay and board.</Text>
 
@@ -1097,6 +1121,21 @@ const styles = StyleSheet.create({
   errorText: {
     color: COLORS.error,
     fontWeight: '600',
+  },
+  completedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: COLORS.surfaceContainerLow,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  completedBadgeText: {
+    color: COLORS.onSurfaceVariant,
+    fontWeight: '600',
+    fontSize: 12,
   },
   sectionHeader: {
     flexDirection: 'row',

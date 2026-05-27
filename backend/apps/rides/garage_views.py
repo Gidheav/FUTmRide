@@ -11,12 +11,13 @@ from apps.accounts.models import UserRole, DriverProfile
 from apps.payments.models import WalletTransaction
 from apps.payments.services import WalletService
 
-from .garage_models import GarageRide, GarageRidePassenger, GarageRideStatus
+from .garage_models import GarageRide, GarageRidePassenger, GarageRideStatus, DriverSavedRoute
 from .garage_serializers import (
     GarageRideCreateSerializer,
     GarageRideDetailSerializer,
     GarageRideBoardSerializer,
     GarageRidePassengerSerializer,
+    DriverSavedRouteSerializer,
 )
 from .consumers import CAMPUS_ADMIN_GROUP
 
@@ -150,6 +151,80 @@ class DriverGarageRideListView(generics.ListAPIView):
         return GarageRide.objects.filter(
             driver=self.request.user
         ).prefetch_related('passengers').select_related('driver', 'driver__driver_profile')
+
+
+class DriverSavedRouteListCreateView(APIView):
+    """
+    GET /rides/garage/routes/
+    POST /rides/garage/routes/
+    Driver manages saved routes for fast garage ride creation.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != UserRole.DRIVER:
+            return Response(
+                {'error': {'code': 'FORBIDDEN', 'message': 'Only drivers can access saved routes.'}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        routes = DriverSavedRoute.objects.filter(driver=request.user)
+        serializer = DriverSavedRouteSerializer(routes, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        if request.user.role != UserRole.DRIVER:
+            return Response(
+                {'error': {'code': 'FORBIDDEN', 'message': 'Only drivers can create saved routes.'}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        serializer = DriverSavedRouteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        route = serializer.save(driver=request.user)
+        return Response(DriverSavedRouteSerializer(route).data, status=status.HTTP_201_CREATED)
+
+
+class DriverSavedRouteDetailView(APIView):
+    """
+    GET/PATCH/DELETE /rides/garage/routes/<id>/
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self, request, route_id):
+        try:
+            return DriverSavedRoute.objects.get(id=route_id, driver=request.user)
+        except DriverSavedRoute.DoesNotExist:
+            raise NotFound('Saved route not found.')
+
+    def get(self, request, route_id):
+        if request.user.role != UserRole.DRIVER:
+            return Response(
+                {'error': {'code': 'FORBIDDEN', 'message': 'Only drivers can access saved routes.'}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        route = self.get_object(request, route_id)
+        return Response(DriverSavedRouteSerializer(route).data)
+
+    def patch(self, request, route_id):
+        if request.user.role != UserRole.DRIVER:
+            return Response(
+                {'error': {'code': 'FORBIDDEN', 'message': 'Only drivers can update saved routes.'}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        route = self.get_object(request, route_id)
+        serializer = DriverSavedRouteSerializer(route, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def delete(self, request, route_id):
+        if request.user.role != UserRole.DRIVER:
+            return Response(
+                {'error': {'code': 'FORBIDDEN', 'message': 'Only drivers can delete saved routes.'}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        route = self.get_object(request, route_id)
+        route.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class GarageRideDepartView(APIView):

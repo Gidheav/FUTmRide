@@ -1,30 +1,65 @@
 {
   "expo": {
-    "name": "LR Ride Driver",
-    "slug": "lr-ride-driver",
+    "name": "FUTMDrive",
+    "slug": "futmdrive",
     "version": "1.0.1",
     "sdkVersion": "54.0.0",
     "runtimeVersion": "54.0.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/icon2.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#d3c5e3"
+    },
     "updates": {
       "enabled": false,
       "checkAutomatically": "OFF"
     },
     "android": {
-      "package": "com.lrride.driver",
+      "package": "com.futm.drive",
       "permissions": [
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
-      ]
+        "ACCESS_FINE_LOCATION",
+        "CAMERA",
+        "READ_MEDIA_IMAGES",
+        "READ_EXTERNAL_STORAGE",
+        "POST_NOTIFICATIONS"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#5B2D8E"
+      },
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyD5nLbEz_xY6UOHJ1mbjvipD1PY1A14erQ"
+        }
+      }
     },
     "ios": {
       "supportsTabletMode": true,
-      "bundleIdentifier": "com.lrride.driver",
+      "bundleIdentifier": "com.futm.drive",
+      "config": {
+        "googleMapsApiKey": "AIzaSyD5nLbEz_xY6UOHJ1mbjvipD1PY1A14erQ"
+      },
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "We use your location to connect you with nearby students and update ride tracking."
+        "NSLocationWhenInUseUsageDescription": "We use your location to connect you with nearby students and update ride tracking.",
+        "NSCameraUsageDescription": "We need camera access to capture verification documents.",
+        "NSPhotoLibraryUsageDescription": "We need photo library access to upload verification documents.",
+        "NSPhotoLibraryAddUsageDescription": "We need permission to save verification documents.",
+        "NSMicrophoneUsageDescription": "We may use audio for in-app features."
       }
     },
-    "scheme": "lrride-driver"
+    "scheme": "futmdrive",
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "color": "#5B2D8E",
+          "defaultChannel": "ride-status-alerts"
+        }
+      ]
+    ]
   }
 }

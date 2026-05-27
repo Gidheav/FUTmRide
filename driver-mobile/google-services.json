@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "744148577701",
+    "project_id": "futride-student",
+    "storage_bucket": "futride-student.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:744148577701:android:b14e46b458b72f086ccc4c",
+        "android_client_info": {
+          "package_name": "com.futm.drive"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC6Z4CYSByjBejL9IzYzaSWs0Kwqcqx8LE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:744148577701:android:5d86d73f8b01ef896ccc4c",
+        "android_client_info": {
+          "package_name": "com.lrride.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC6Z4CYSByjBejL9IzYzaSWs0Kwqcqx8LE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

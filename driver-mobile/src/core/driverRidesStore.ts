@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import { createJSONStorage, persist } from 'zustand/middleware'
 
 export type GarageRideStatus = 'open' | 'full' | 'departed' | 'completed' | 'cancelled'
 
@@ -54,32 +56,70 @@ export type RideListItem = {
   } | null
 }
 
+export type SavedGarageRoute = {
+  id: string
+  name?: string | null
+  origin_address: string
+  origin_latitude: number
+  origin_longitude: number
+  destination_address: string
+  destination_latitude: number
+  destination_longitude: number
+  distance_km: number
+  last_used_at?: string | null
+  created_at?: string | null
+}
+
+export type DriverProfileCache = {
+  vehicle_type?: string | null
+}
+
 interface DriverRidesStore {
   isOnline: boolean | null
   marketplaceRequests: RideListItem[]
   driverHasActiveRide: boolean
   garageRide: GarageRide | null
   garagePassengers: GaragePassenger[]
+  savedRoutes: SavedGarageRoute[]
+  driverProfile: DriverProfileCache | null
   lastUpdatedAt: number | null
   setIsOnline: (value: boolean | null) => void
   setMarketplaceRequests: (value: RideListItem[]) => void
   setDriverHasActiveRide: (value: boolean) => void
   setGarageRide: (value: GarageRide | null) => void
   setGaragePassengers: (value: GaragePassenger[]) => void
+  setSavedRoutes: (value: SavedGarageRoute[]) => void
+  setDriverProfile: (value: DriverProfileCache | null) => void
   touchUpdatedAt: () => void
 }
 
-export const useDriverRidesStore = create<DriverRidesStore>((set) => ({
-  isOnline: null,
-  marketplaceRequests: [],
-  driverHasActiveRide: false,
-  garageRide: null,
-  garagePassengers: [],
-  lastUpdatedAt: null,
-  setIsOnline: (value) => set({ isOnline: value, lastUpdatedAt: Date.now() }),
-  setMarketplaceRequests: (value) => set({ marketplaceRequests: value, lastUpdatedAt: Date.now() }),
-  setDriverHasActiveRide: (value) => set({ driverHasActiveRide: value, lastUpdatedAt: Date.now() }),
-  setGarageRide: (value) => set({ garageRide: value, lastUpdatedAt: Date.now() }),
-  setGaragePassengers: (value) => set({ garagePassengers: value, lastUpdatedAt: Date.now() }),
-  touchUpdatedAt: () => set({ lastUpdatedAt: Date.now() }),
-}))
+export const useDriverRidesStore = create<DriverRidesStore>()(
+  persist(
+    (set) => ({
+      isOnline: null,
+      marketplaceRequests: [],
+      driverHasActiveRide: false,
+      garageRide: null,
+      garagePassengers: [],
+      savedRoutes: [],
+      driverProfile: null,
+      lastUpdatedAt: null,
+      setIsOnline: (value) => set({ isOnline: value, lastUpdatedAt: Date.now() }),
+      setMarketplaceRequests: (value) => set({ marketplaceRequests: value, lastUpdatedAt: Date.now() }),
+      setDriverHasActiveRide: (value) => set({ driverHasActiveRide: value, lastUpdatedAt: Date.now() }),
+      setGarageRide: (value) => set({ garageRide: value, lastUpdatedAt: Date.now() }),
+      setGaragePassengers: (value) => set({ garagePassengers: value, lastUpdatedAt: Date.now() }),
+      setSavedRoutes: (value) => set({ savedRoutes: value, lastUpdatedAt: Date.now() }),
+      setDriverProfile: (value) => set({ driverProfile: value, lastUpdatedAt: Date.now() }),
+      touchUpdatedAt: () => set({ lastUpdatedAt: Date.now() }),
+    }),
+    {
+      name: 'driver-rides-store',
+      storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({
+        savedRoutes: state.savedRoutes,
+        driverProfile: state.driverProfile,
+      }),
+    }
+  )
+)

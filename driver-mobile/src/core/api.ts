@@ -57,6 +57,11 @@ export const driverApi = {
   completeGarageRide: (rideId: string) => api.post(`rides/garage/${rideId}/complete/`),
   cancelGarageRide: (rideId: string) => api.post(`rides/garage/${rideId}/cancel/`),
   getGaragePassengers: (rideId: string) => api.get(`rides/garage/${rideId}/passengers/`),
+  getSavedRoutes: () => api.get('rides/garage/routes/'),
+  createSavedRoute: (data: any) => api.post('rides/garage/routes/', data),
+  updateSavedRoute: (routeId: string, data: any) => api.patch(`rides/garage/routes/${routeId}/`, data),
+  deleteSavedRoute: (routeId: string) => api.delete(`rides/garage/routes/${routeId}/`),
+  pricingEstimate: (data: any) => api.post('pricing/estimate/', data),
 }
 
 export const verificationApi = {

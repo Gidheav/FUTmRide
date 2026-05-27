@@ -57,6 +57,7 @@ export default function StudentWalletPage() {
   const [transferPinError, setTransferPinError] = useState('')
   // Store reference during WebView session without triggering polls
   const [webviewReference, setWebviewReference] = useState<string | null>(null)
+  const [selectedTransaction, setSelectedTransaction] = useState<any>(null)
   const [cameraPermission, requestCameraPermission] = useCameraPermissions()
   const authUser = useAuthStore((state) => state.user)
   const { walletBalance, setWalletBalance } = useWalletStore()
@@ -751,6 +752,69 @@ export default function StudentWalletPage() {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={!!selectedTransaction}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setSelectedTransaction(null)}
+      >
+        <View style={styles.modalBackdropReceipt}>
+          <View style={styles.receiptCard}>
+            <View style={styles.receiptHeader}>
+              <MaterialIcons 
+                name={selectedTransaction?.transaction_type === 'credit' ? 'check-circle' : 'receipt'} 
+                size={40} 
+                color={selectedTransaction?.transaction_type === 'credit' ? '#2e7d32' : '#6A1B9A'} 
+              />
+              <Text style={styles.receiptTitle}>Transaction Receipt</Text>
+              <Text style={styles.receiptDate}>{selectedTransaction ? formatDate(selectedTransaction.created_at) : ''}</Text>
+            </View>
+
+            <View style={styles.receiptDivider} />
+
+            <View style={styles.receiptBody}>
+              <View style={styles.receiptRow}>
+                <Text style={styles.receiptLabel}>Amount</Text>
+                <Text style={[styles.receiptValue, selectedTransaction?.transaction_type === 'credit' ? styles.receiptAmountPositive : undefined]}>
+                  {selectedTransaction?.transaction_type === 'credit' ? '+' : '-'}
+                  {selectedTransaction ? formatAmount(selectedTransaction.amount) : ''}
+                </Text>
+              </View>
+              <View style={styles.receiptRow}>
+                <Text style={styles.receiptLabel}>Type</Text>
+                <Text style={styles.receiptValue}>
+                  {selectedTransaction?.transaction_type === 'credit' ? 'Credit' : 'Debit'}
+                  {selectedTransaction?.source ? ` • ${selectedTransaction.source.replace(/_/g, ' ')}` : ''}
+                </Text>
+              </View>
+              <View style={styles.receiptRow}>
+                <Text style={styles.receiptLabel}>Description</Text>
+                <Text style={styles.receiptValue}>{selectedTransaction?.narration}</Text>
+              </View>
+              <View style={styles.receiptRow}>
+                <Text style={styles.receiptLabel}>Reference</Text>
+                <Text style={styles.receiptValue}>{selectedTransaction?.reference || 'N/A'}</Text>
+              </View>
+              <View style={styles.receiptRow}>
+                <Text style={styles.receiptLabel}>Status</Text>
+                <Text style={[styles.receiptValue, { color: '#2e7d32' }]}>Successful</Text>
+              </View>
+            </View>
+
+            <View style={styles.receiptDivider} />
+            
+            <TouchableOpacity 
+              style={styles.receiptCloseButton}
+              onPress={() => setSelectedTransaction(null)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.receiptCloseText}>Close Receipt</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <View style={styles.walletCard}>
         <View style={styles.walletGlow} />
         <View style={styles.walletBody}>
@@ -931,7 +995,12 @@ export default function StudentWalletPage() {
           </View>
         ) : (
           activityItems.map((tx) => (
-            <View style={styles.activityItem} key={tx.id}>
+            <TouchableOpacity 
+              style={styles.activityItem} 
+              key={tx.id}
+              activeOpacity={0.7}
+              onPress={() => setSelectedTransaction(tx)}
+            >
               <View style={[styles.activityLeft, { flex: 1 }]}>
                 <View style={tx.transaction_type === 'credit' ? styles.activityIconAccent : styles.activityIconMuted}>
                   <MaterialIcons
@@ -950,7 +1019,7 @@ export default function StudentWalletPage() {
               <Text style={tx.transaction_type === 'credit' ? styles.activityAmountPositive : styles.activityAmount}>
                 {tx.transaction_type === 'credit' ? '+' : '-'}{formatAmount(tx.amount)}
               </Text>
-            </View>
+            </TouchableOpacity>
           ))
         )}
       </View>
@@ -1589,5 +1658,77 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#6A1B9A',
+  },
+  modalBackdropReceipt: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    padding: 16,
+    paddingBottom: 40,
+  },
+  receiptCard: {
+    width: '100%',
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 24,
+    elevation: 8,
+  },
+  receiptHeader: {
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 16,
+  },
+  receiptTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1c1c',
+  },
+  receiptDate: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  receiptDivider: {
+    height: 0,
+    borderTopWidth: 1,
+    borderColor: '#e2e2e2',
+    borderStyle: 'dashed',
+    marginVertical: 16,
+  },
+  receiptBody: {
+    gap: 16,
+  },
+  receiptRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  receiptLabel: {
+    fontSize: 13,
+    color: '#6b7280',
+    flex: 1,
+  },
+  receiptValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1a1c1c',
+    flex: 2,
+    textAlign: 'right',
+    textTransform: 'capitalize',
+  },
+  receiptAmountPositive: {
+    color: '#2e7d32',
+  },
+  receiptCloseButton: {
+    backgroundColor: '#f5effb',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  receiptCloseText: {
+    color: '#6A1B9A',
+    fontWeight: '700',
+    fontSize: 15,
   },
 })

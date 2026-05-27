@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useMemo, useRef, useState, useEffect } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -12,13 +14,62 @@ import {
 import { MaterialIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import QRCode from 'react-native-qrcode-svg'
-import api from '../../core/api'
+import MapView, { Marker } from 'react-native-maps'
+import api, { driverApi } from '../../core/api'
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme'
 import { useGarageRideStore } from '../../core/garageRideStore'
 import { useDriverRidesStore } from '../../core/driverRidesStore'
+import locationData from '../locations.json'
 
 type CreateGarageRideScreenProps = {
   onBack: () => void
+}
+
+type LocationOption = {
+  id: string
+  label: string
+  description: string
+  latitude: number
+  longitude: number
+}
+
+const ALL_LOCATIONS: LocationOption[] = (locationData as any[]).map((loc) => ({
+  id: loc.id,
+  label: loc.name,
+  description: loc.description,
+  latitude: Number(loc.latitude),
+  longitude: Number(loc.longitude),
+}))
+
+const filterLocations = (query: string) => {
+  const normalized = query.trim().toLowerCase()
+  if (!normalized) return ALL_LOCATIONS
+  return ALL_LOCATIONS.filter((item) => {
+    const haystack = `${item.label} ${item.description}`.toLowerCase()
+    return haystack.includes(normalized)
+  })
+}
+
+const haversineKm = (lat1: number, lng1: number, lat2: number, lng2: number) => {
+  const radius = 6371
+  const toRad = (value: number) => (value * Math.PI) / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLng = toRad(lng2 - lng1)
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return radius * c
+}
+
+const formatCurrency = (value: number | null) => {
+  if (value === null || Number.isNaN(value)) return '₦—'
+  return `₦${value.toFixed(0)}`
+}
+
+const formatDistance = (value: number | null) => {
+  if (value === null || Number.isNaN(value)) return '— km'
+  return `${value.toFixed(2)} km`
 }
 
 export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScreenProps) {
@@ -28,15 +79,26 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
     garagePassengers: cachedGaragePassengers,
     setGarageRide: setCachedGarageRide,
     setGaragePassengers: setCachedGaragePassengers,
+    savedRoutes,
+    setSavedRoutes,
+    driverProfile,
+    setDriverProfile,
   } = useDriverRidesStore()
 
   // Form state
-  const [origin, setOrigin] = useState('')
-  const [destination, setDestination] = useState('')
+  const [origin, setOrigin] = useState<LocationOption | null>(null)
+  const [destination, setDestination] = useState<LocationOption | null>(null)
   const [seats, setSeats] = useState('4')
-  const [fare, setFare] = useState('500')
+  const [distanceKm, setDistanceKm] = useState<number | null>(null)
+  const [estimatedFare, setEstimatedFare] = useState<number | null>(null)
+  const [isEstimating, setIsEstimating] = useState(false)
+  const [saveRoute, setSaveRoute] = useState(true)
   const [loading, setLoading] = useState(false)
   const [hydrating, setHydrating] = useState(!cachedGarageRide)
+  const [isUpdatingRide, setIsUpdatingRide] = useState(false)
+  const [locationPickerOpen, setLocationPickerOpen] = useState<null | 'origin' | 'destination'>(null)
+  const [locationQuery, setLocationQuery] = useState('')
+  const [isMapPreviewOpen, setIsMapPreviewOpen] = useState(false)
   
   // Created ride state
   const [ride, setRide] = useState<any>(cachedGarageRide)
@@ -44,6 +106,8 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
   const { setStatus } = useGarageRideStore()
   
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const estimateSeqRef = useRef(0)
+  const syncInFlightRef = useRef(false)
 
   const ACTIVE_STATUSES = new Set(['open', 'full', 'departed'])
 
@@ -79,32 +143,235 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
     }
   }, [])
 
+  const filteredLocations = useMemo(() => filterLocations(locationQuery), [locationQuery])
+
+  useEffect(() => {
+    let isMounted = true
+    const loadDriverProfile = async () => {
+      try {
+        const res = await driverApi.getProfile()
+        if (!isMounted) return
+        setDriverProfile({ vehicle_type: res?.data?.vehicle_type || null })
+      } catch {
+        // Keep cached profile if available; fallback handled during fare estimate.
+      }
+    }
+    if (!driverProfile) {
+      void loadDriverProfile()
+    }
+    return () => {
+      isMounted = false
+    }
+  }, [driverProfile, setDriverProfile])
+
+  useEffect(() => {
+    let isMounted = true
+    const loadSavedRoutes = async () => {
+      if (syncInFlightRef.current) return
+      syncInFlightRef.current = true
+      try {
+        const res = await driverApi.getSavedRoutes()
+        const list = Array.isArray(res?.data) ? res.data : res?.data?.results || []
+        if (isMounted) setSavedRoutes(list)
+      } catch {
+        // Keep local cache if offline.
+      } finally {
+        syncInFlightRef.current = false
+      }
+    }
+    if (savedRoutes.length === 0) {
+      void loadSavedRoutes()
+    }
+    return () => {
+      isMounted = false
+    }
+  }, [savedRoutes.length, setSavedRoutes])
+
+  const getVehicleType = () => {
+    const cachedType = driverProfile?.vehicle_type
+    return cachedType ? String(cachedType).toLowerCase() : 'sedan'
+  }
+
+  const refreshEstimate = async (nextOrigin: LocationOption | null, nextDestination: LocationOption | null) => {
+    if (!nextOrigin || !nextDestination) return
+    const nextDistance = haversineKm(
+      nextOrigin.latitude,
+      nextOrigin.longitude,
+      nextDestination.latitude,
+      nextDestination.longitude
+    )
+    setDistanceKm(nextDistance)
+    const currentSeq = ++estimateSeqRef.current
+    setIsEstimating(true)
+    try {
+      const res = await driverApi.pricingEstimate({
+        vehicle_type: getVehicleType(),
+        distance_km: Number(nextDistance.toFixed(2)),
+        surge_multiplier: 1.0,
+      })
+      if (estimateSeqRef.current === currentSeq) {
+        setEstimatedFare(Number(res?.data?.total_fare || 0))
+      }
+    } catch {
+      // Keep last known estimate; create will re-attempt.
+    } finally {
+      if (estimateSeqRef.current === currentSeq) setIsEstimating(false)
+    }
+  }
+
+  const handleSelectLocation = (item: LocationOption) => {
+    if (locationPickerOpen === 'origin') {
+      const nextOrigin = item
+      setOrigin(nextOrigin)
+      void refreshEstimate(nextOrigin, destination)
+    } else if (locationPickerOpen === 'destination') {
+      const nextDestination = item
+      setDestination(nextDestination)
+      void refreshEstimate(origin, nextDestination)
+    }
+    setLocationQuery('')
+    setLocationPickerOpen(null)
+  }
+
+  const handleSwapRoute = () => {
+    if (!origin || !destination) return
+    const nextOrigin = destination
+    const nextDestination = origin
+    setOrigin(nextOrigin)
+    setDestination(nextDestination)
+    void refreshEstimate(nextOrigin, nextDestination)
+  }
+
+  const handleUseSavedRoute = (route: any) => {
+    const nextOrigin = {
+      id: route.id || 'saved-origin',
+      label: route.origin_address,
+      description: 'Saved route origin',
+      latitude: Number(route.origin_latitude),
+      longitude: Number(route.origin_longitude),
+    }
+    const nextDestination = {
+      id: route.id || 'saved-destination',
+      label: route.destination_address,
+      description: 'Saved route destination',
+      latitude: Number(route.destination_latitude),
+      longitude: Number(route.destination_longitude),
+    }
+    setOrigin(nextOrigin)
+    setDestination(nextDestination)
+    void refreshEstimate(nextOrigin, nextDestination)
+    if (route?.id && !String(route.id).startsWith('local-')) {
+      const nextUsedAt = new Date().toISOString()
+      upsertSavedRoute({ ...route, last_used_at: nextUsedAt })
+      driverApi.updateSavedRoute(route.id, { last_used_at: nextUsedAt }).catch(() => {})
+    }
+  }
+
+  const upsertSavedRoute = (route: any) => {
+    const next = [...savedRoutes]
+    const index = next.findIndex((item) => item.id === route.id)
+    if (index >= 0) {
+      next[index] = route
+    } else {
+      next.unshift(route)
+    }
+    setSavedRoutes(next)
+  }
+
   const handleCreate = async () => {
-    if (!origin || !destination || !seats || !fare) {
+    if (!origin || !destination || !seats) {
       Alert.alert('Missing fields', 'Please fill in all fields.')
       return
     }
 
     setLoading(true)
     try {
-      const payload = {
-        origin_address: origin,
-        origin_latitude: 9.6171, // Dummy coordinates for now
-        origin_longitude: 6.5492,
-        destination_address: destination,
-        destination_latitude: 9.6200,
-        destination_longitude: 6.5500,
-        vehicle_type: 'sedan',
-        total_seats: parseInt(seats, 10),
-        fare_per_seat: parseFloat(fare),
+      const rawDistance = distanceKm ?? haversineKm(
+        origin.latitude,
+        origin.longitude,
+        destination.latitude,
+        destination.longitude
+      )
+      const distance = Number(rawDistance.toFixed(2))
+
+      let fareValue = estimatedFare
+      if (!fareValue) {
+        const estimate = await driverApi.pricingEstimate({
+          vehicle_type: getVehicleType(),
+          distance_km: distance,
+          surge_multiplier: 1.0,
+        })
+        fareValue = Number(estimate?.data?.total_fare || 0)
+        setEstimatedFare(fareValue)
       }
-      
+      if (!fareValue || Number.isNaN(fareValue)) {
+        Alert.alert('Pricing unavailable', 'Unable to calculate fare. Please try again.')
+        return
+      }
+
+      const payload = {
+        origin_address: origin.label,
+        origin_latitude: origin.latitude,
+        origin_longitude: origin.longitude,
+        destination_address: destination.label,
+        destination_latitude: destination.latitude,
+        destination_longitude: destination.longitude,
+        vehicle_type: getVehicleType(),
+        total_seats: parseInt(seats, 10),
+        fare_per_seat: Number(fareValue),
+      }
+
       const res = await api.post('rides/garage/create/', payload)
       setRide(res.data)
       setCachedGarageRide(res.data)
       setCachedGaragePassengers([])
       startPolling(res.data.id)
       setStatus('active')
+
+      if (saveRoute) {
+        const tempRoute = {
+          id: `local-${Date.now()}`,
+          name: '',
+          origin_address: origin.label,
+          origin_latitude: origin.latitude,
+          origin_longitude: origin.longitude,
+          destination_address: destination.label,
+          destination_latitude: destination.latitude,
+          destination_longitude: destination.longitude,
+          distance_km: distance,
+          last_used_at: new Date().toISOString(),
+        }
+        upsertSavedRoute(tempRoute)
+        driverApi
+          .createSavedRoute({
+            name: tempRoute.name,
+            origin_address: tempRoute.origin_address,
+            origin_latitude: tempRoute.origin_latitude,
+            origin_longitude: tempRoute.origin_longitude,
+            destination_address: tempRoute.destination_address,
+            destination_latitude: tempRoute.destination_latitude,
+            destination_longitude: tempRoute.destination_longitude,
+            distance_km: tempRoute.distance_km,
+            last_used_at: tempRoute.last_used_at,
+          })
+          .then((resp) => {
+            if (resp?.data?.id) {
+              const next = savedRoutes.filter((item) => {
+                if (!String(item.id).startsWith('local-')) return true
+                return !(
+                  item.origin_address === tempRoute.origin_address &&
+                  item.destination_address === tempRoute.destination_address &&
+                  Number(item.distance_km) === Number(tempRoute.distance_km)
+                )
+              })
+              next.unshift(resp.data)
+              setSavedRoutes(next)
+            }
+          })
+          .catch(() => {
+            // Keep local entry; sync can retry later.
+          })
+      }
     } catch (err: any) {
       const msg = err?.response?.data?.error?.message || 'Could not create garage ride.'
       Alert.alert('Error', msg)
@@ -140,24 +407,47 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
 
   const handleDepart = async () => {
     if (!ride) return
+    if (ride.status === 'departed' || isUpdatingRide) return
     Alert.alert('Depart', 'Are you sure you want to depart and close boarding?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Depart',
         onPress: async () => {
           try {
+            setIsUpdatingRide(true)
             const res = await api.post(`rides/garage/${ride.id}/depart/`)
             const nextRide = res?.data || ride
             setRide(nextRide)
             setCachedGarageRide(nextRide)
             Alert.alert('Departed', 'Have a safe trip!')
-            onBack()
           } catch (err: any) {
             Alert.alert('Error', err?.response?.data?.error?.message || 'Failed to depart.')
+          } finally {
+            setIsUpdatingRide(false)
           }
         },
       },
     ])
+  }
+
+  const handleComplete = async () => {
+    if (!ride || isUpdatingRide) return
+    if (ride.status !== 'departed') return
+    try {
+      setIsUpdatingRide(true)
+      await api.post(`rides/garage/${ride.id}/complete/`)
+      Alert.alert('Completed', 'Ride completed successfully.')
+      setRide(null)
+      setPassengers([])
+      setCachedGarageRide(null)
+      setCachedGaragePassengers([])
+      setStatus('inactive')
+      onBack()
+    } catch (err: any) {
+      Alert.alert('Error', err?.response?.data?.error?.message || 'Failed to complete ride.')
+    } finally {
+      setIsUpdatingRide(false)
+    }
   }
 
   const handleCancel = async () => {
@@ -244,10 +534,29 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
         </ScrollView>
 
         <View style={styles.footer}>
-          <TouchableOpacity style={styles.departBtn} onPress={handleDepart}>
-            <Text style={styles.departBtnText}>Depart Now</Text>
-            <MaterialIcons name="arrow-forward" size={20} color="#FFF" />
-          </TouchableOpacity>
+          {ride.status === 'departed' ? (
+            <TouchableOpacity style={styles.completeBtn} onPress={handleComplete} disabled={isUpdatingRide}>
+              {isUpdatingRide ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <>
+                  <Text style={styles.departBtnText}>Complete Ride</Text>
+                  <MaterialIcons name="check-circle" size={20} color="#FFF" />
+                </>
+              )}
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.departBtn} onPress={handleDepart} disabled={isUpdatingRide}>
+              {isUpdatingRide ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <>
+                  <Text style={styles.departBtnText}>Depart Now</Text>
+                  <MaterialIcons name="arrow-forward" size={20} color="#FFF" />
+                </>
+              )}
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     )
@@ -269,25 +578,59 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
           Set up a ride at the park. You'll get a QR code for students to scan and pay automatically.
         </Text>
 
+        {savedRoutes.length > 0 && (
+          <View style={styles.savedRoutesWrap}>
+            <View style={styles.savedRoutesHeader}>
+              <Text style={styles.sectionTitle}>Saved Routes</Text>
+              <TouchableOpacity onPress={handleSwapRoute} disabled={!origin || !destination}>
+                <Text style={styles.swapText}>Swap</Text>
+              </TouchableOpacity>
+            </View>
+            {savedRoutes.slice(0, 4).map((route) => (
+              <TouchableOpacity
+                key={route.id}
+                style={styles.savedRouteCard}
+                onPress={() => handleUseSavedRoute(route)}
+              >
+                <Text style={styles.savedRouteTitle}>{route.name || `${route.origin_address} → ${route.destination_address}`}</Text>
+                <Text style={styles.savedRouteMeta}>{formatDistance(Number(route.distance_km || 0))}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
         <View style={styles.formGroup}>
           <Text style={styles.label}>Origin (Where are you?)</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g. South Gate Park"
-            value={origin}
-            onChangeText={setOrigin}
-          />
+          <TouchableOpacity style={styles.input} onPress={() => setLocationPickerOpen('origin')}>
+            <Text style={styles.inputText}>{origin?.label || 'Select origin'}</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.formGroup}>
           <Text style={styles.label}>Destination</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g. Main Campus Library"
-            value={destination}
-            onChangeText={setDestination}
-          />
+          <TouchableOpacity style={styles.input} onPress={() => setLocationPickerOpen('destination')}>
+            <Text style={styles.inputText}>{destination?.label || 'Select destination'}</Text>
+          </TouchableOpacity>
         </View>
+
+        <View style={styles.infoRow}>
+          <View>
+            <Text style={styles.infoLabel}>Distance</Text>
+            <Text style={styles.infoValue}>{formatDistance(distanceKm)}</Text>
+          </View>
+          <View>
+            <Text style={styles.infoLabel}>Fare per Seat</Text>
+            <Text style={styles.infoValue}>{formatCurrency(estimatedFare)}</Text>
+            {isEstimating ? <Text style={styles.infoHint}>Estimating…</Text> : null}
+          </View>
+        </View>
+
+        {(origin || destination) && (
+          <TouchableOpacity style={styles.mapPreviewBtn} onPress={() => setIsMapPreviewOpen(true)}>
+            <MaterialIcons name="map" size={18} color={COLORS.primary} />
+            <Text style={styles.mapPreviewText}>Preview Map</Text>
+          </TouchableOpacity>
+        )}
 
         <View style={styles.row}>
           <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
@@ -300,16 +643,11 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
               keyboardType="number-pad"
             />
           </View>
-          <View style={[styles.formGroup, { flex: 1, marginLeft: 8 }]}>
-            <Text style={styles.label}>Fare per Seat (₦)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="500"
-              value={fare}
-              onChangeText={setFare}
-              keyboardType="number-pad"
-            />
-          </View>
+        </View>
+
+        <View style={styles.saveRouteRow}>
+          <Text style={styles.saveRouteLabel}>Save this route for quick reuse</Text>
+          <Switch value={saveRoute} onValueChange={setSaveRoute} />
         </View>
 
         <TouchableOpacity 
@@ -324,6 +662,83 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
           )}
         </TouchableOpacity>
       </ScrollView>
+
+      <Modal visible={Boolean(locationPickerOpen)} animationType="slide" onRequestClose={() => setLocationPickerOpen(null)}>
+        <View style={styles.modalPage}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setLocationPickerOpen(null)} style={styles.modalBack}>
+              <MaterialIcons name="close" size={20} color={COLORS.onSurface} />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Select location</Text>
+            <View style={{ width: 20 }} />
+          </View>
+          <View style={styles.modalSearch}>
+            <MaterialIcons name="search" size={18} color={COLORS.onSurfaceVariant} />
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Search locations"
+              value={locationQuery}
+              onChangeText={setLocationQuery}
+            />
+          </View>
+          <ScrollView contentContainerStyle={styles.modalList}>
+            {filteredLocations.map((item) => (
+              <TouchableOpacity key={item.id} style={styles.modalItem} onPress={() => handleSelectLocation(item)}>
+                <MaterialIcons name="place" size={18} color={COLORS.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.modalItemTitle}>{item.label}</Text>
+                  <Text style={styles.modalItemSubtitle}>{item.description}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </Modal>
+
+      <Modal visible={isMapPreviewOpen} animationType="slide" onRequestClose={() => setIsMapPreviewOpen(false)}>
+        <View style={styles.modalPage}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setIsMapPreviewOpen(false)} style={styles.modalBack}>
+              <MaterialIcons name="close" size={20} color={COLORS.onSurface} />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Route Preview</Text>
+            <View style={{ width: 20 }} />
+          </View>
+          <View style={styles.mapWrap}>
+            <MapView
+              style={styles.map}
+              initialRegion={
+                origin && destination
+                  ? {
+                      latitude: (origin.latitude + destination.latitude) / 2,
+                      longitude: (origin.longitude + destination.longitude) / 2,
+                      latitudeDelta: Math.abs(origin.latitude - destination.latitude) + 0.02,
+                      longitudeDelta: Math.abs(origin.longitude - destination.longitude) + 0.02,
+                    }
+                  : {
+                      latitude: 9.6171,
+                      longitude: 6.5492,
+                      latitudeDelta: 0.03,
+                      longitudeDelta: 0.03,
+                    }
+              }
+            >
+              {origin ? (
+                <Marker
+                  coordinate={{ latitude: origin.latitude, longitude: origin.longitude }}
+                  title={origin.label}
+                />
+              ) : null}
+              {destination ? (
+                <Marker
+                  coordinate={{ latitude: destination.latitude, longitude: destination.longitude }}
+                  title={destination.label}
+                />
+              ) : null}
+            </MapView>
+          </View>
+        </View>
+      </Modal>
     </View>
   )
 }
@@ -353,6 +768,10 @@ const styles = StyleSheet.create({
     padding: 16,
     ...FONTS.bodyLg,
   },
+  inputText: {
+    ...FONTS.bodyLg,
+    color: COLORS.onSurface,
+  },
   row: { flexDirection: 'row' },
   
   submitBtn: {
@@ -363,6 +782,77 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   submitBtnText: { ...FONTS.labelLg, color: COLORS.onPrimary },
+
+  savedRoutesWrap: {
+    marginBottom: 20,
+    gap: 10,
+  },
+  savedRoutesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sectionTitle: {
+    ...FONTS.labelLg,
+    color: COLORS.onSurface,
+  },
+  swapText: {
+    ...FONTS.labelMd,
+    color: COLORS.primary,
+  },
+  savedRouteCard: {
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: COLORS.surfaceContainerLowest,
+    borderWidth: 1,
+    borderColor: COLORS.surfaceContainerLow,
+  },
+  savedRouteTitle: {
+    ...FONTS.bodyMd,
+    color: COLORS.onSurface,
+  },
+  savedRouteMeta: {
+    ...FONTS.bodySm,
+    color: COLORS.onSurfaceVariant,
+    marginTop: 4,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  infoLabel: {
+    ...FONTS.labelMd,
+    color: COLORS.onSurfaceVariant,
+  },
+  infoValue: {
+    ...FONTS.headlineMd,
+    color: COLORS.onSurface,
+  },
+  infoHint: {
+    ...FONTS.bodySm,
+    color: COLORS.onSurfaceVariant,
+  },
+  mapPreviewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 16,
+  },
+  mapPreviewText: {
+    ...FONTS.labelMd,
+    color: COLORS.primary,
+  },
+  saveRouteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  saveRouteLabel: {
+    ...FONTS.bodyMd,
+    color: COLORS.onSurface,
+  },
 
   // QR Screen
   qrContainer: {
@@ -467,5 +957,79 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     gap: 8,
   },
+  completeBtn: {
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 16,
+    gap: 8,
+  },
   departBtnText: { ...FONTS.headlineMd, color: COLORS.onPrimary },
+
+  modalPage: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.surfaceContainerLow,
+  },
+  modalBack: {
+    padding: 4,
+  },
+  modalTitle: {
+    ...FONTS.labelLg,
+    color: COLORS.onSurface,
+  },
+  modalSearch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    margin: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: COLORS.surfaceContainerLow,
+    borderRadius: 12,
+  },
+  modalInput: {
+    flex: 1,
+    ...FONTS.bodyMd,
+    color: COLORS.onSurface,
+  },
+  modalList: {
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+    gap: 10,
+  },
+  modalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.surfaceContainerLow,
+    backgroundColor: COLORS.surfaceContainerLowest,
+  },
+  modalItemTitle: {
+    ...FONTS.bodyMd,
+    color: COLORS.onSurface,
+  },
+  modalItemSubtitle: {
+    ...FONTS.bodySm,
+    color: COLORS.onSurfaceVariant,
+  },
+  mapWrap: {
+    flex: 1,
+  },
+  map: {
+    flex: 1,
+  },
 })

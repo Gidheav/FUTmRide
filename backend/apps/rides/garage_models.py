@@ -135,3 +135,38 @@ class GarageRidePassenger(models.Model):
 
     def __str__(self):
         return f'GaragePassenger(ride={self.garage_ride.reference} student={self.student_id} seats={self.seats_booked})'
+
+
+class DriverSavedRoute(models.Model):
+    """
+    Driver-saved routes for fast garage ride creation.
+    Stored per driver and synced to devices.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    driver = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='saved_routes',
+    )
+    name = models.CharField(max_length=80, blank=True)
+    origin_address = models.CharField(max_length=255)
+    origin_latitude = models.DecimalField(max_digits=9, decimal_places=6)
+    origin_longitude = models.DecimalField(max_digits=9, decimal_places=6)
+    destination_address = models.CharField(max_length=255)
+    destination_latitude = models.DecimalField(max_digits=9, decimal_places=6)
+    destination_longitude = models.DecimalField(max_digits=9, decimal_places=6)
+    distance_km = models.DecimalField(max_digits=8, decimal_places=2)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'driver_saved_routes'
+        ordering = ['-last_used_at', '-created_at']
+        indexes = [
+            models.Index(fields=['driver', 'created_at']),
+            models.Index(fields=['driver', 'last_used_at']),
+        ]
+
+    def __str__(self):
+        label = self.name or f'{self.origin_address} → {self.destination_address}'
+        return f'DriverSavedRoute({label})'
