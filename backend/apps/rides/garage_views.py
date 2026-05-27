@@ -1,7 +1,7 @@
 import logging
 from decimal import Decimal
 
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -387,13 +387,20 @@ class GarageRideBoardView(APIView):
             ride.save(update_fields=['booked_seats', 'status'])
 
             # Create passenger record
-            passenger = GarageRidePassenger.objects.create(
-                garage_ride=ride,
-                student=request.user,
-                seats_booked=seats_requested,
-                amount_paid=total_amount,
-                wallet_transaction_reference=tx.reference,
-            )
+            try:
+                passenger = GarageRidePassenger.objects.create(
+                    garage_ride=ride,
+                    student=request.user,
+                    seats_booked=seats_requested,
+                    amount_paid=total_amount,
+                    wallet_transaction_reference=tx.reference,
+                )
+            except IntegrityError:
+                transaction.set_rollback(True)
+                return Response(
+                    {'error': {'code': 'ALREADY_BOARDED', 'message': 'You have already paid for this ride.'}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         logger.info(
             'garage_ride_boarded ref=%s student=%s seats=%s amount=%s',

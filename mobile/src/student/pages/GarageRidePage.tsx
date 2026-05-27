@@ -6,11 +6,16 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
-} from 'react-native'
-import { MaterialIcons } from '@expo/vector-icons'
+              const status = err?.response?.status
+              const payload = err?.response?.data
+              const apiMessage = payload?.error?.message || payload?.detail
+              const apiCode = payload?.error?.code
+              const msg = apiMessage || 'Unable to board this ride.'
+              const details = apiCode ? `${msg}
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import api from '../../core/api'
+              Alert.alert('Boarding Failed', details)
+              console.warn('garage_board_failed', { status, payload })
 import useWalletStore from '../../core/walletStore'
 
 type GarageRidePageProps = {
