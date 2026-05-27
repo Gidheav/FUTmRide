@@ -6,16 +6,9 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-              const status = err?.response?.status
-              const payload = err?.response?.data
-              const apiMessage = payload?.error?.message || payload?.detail
-              const apiCode = payload?.error?.code
-              const msg = apiMessage || 'Unable to board this ride.'
-              const details = apiCode ? `${msg}
+import { MaterialIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import api from '../../core/api'
-              Alert.alert('Boarding Failed', details)
-              console.warn('garage_board_failed', { status, payload })
 import useWalletStore from '../../core/walletStore'
 
 type GarageRidePageProps = {
@@ -117,9 +110,22 @@ export default function GarageRidePage({ qrToken, onClose, onBoarded }: GarageRi
               // Refresh ride data to show updated seat count
               void fetchRide()
             } catch (err: any) {
-              const msg =
-                err?.response?.data?.error?.message || 'Unable to board this ride.'
-              Alert.alert('Boarding Failed', msg)
+              const status = err?.response?.status
+              const payload = err?.response?.data
+              const apiMessage = payload?.error?.message || payload?.detail
+              const apiCode = payload?.error?.code
+              const errorId = payload?.error?.error_id
+              const exceptionType = payload?.error?.exception_type
+              const exceptionDetail = payload?.error?.exception_detail
+              const msg = apiMessage || 'Unable to board this ride.'
+              const parts = [msg]
+              if (apiCode) parts.push(`Code: ${apiCode}`)
+              if (errorId) parts.push(`Error ID: ${errorId}`)
+              if (exceptionType || exceptionDetail) {
+                parts.push(`Debug: ${[exceptionType, exceptionDetail].filter(Boolean).join(' - ')}`)
+              }
+              Alert.alert('Boarding Failed', parts.join('\n\n'))
+              console.warn('garage_board_failed', { status, payload })
             } finally {
               setBoarding(false)
             }

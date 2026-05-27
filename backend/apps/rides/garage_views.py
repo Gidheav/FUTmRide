@@ -300,6 +300,13 @@ class GarageRideBoardView(APIView):
         serializer.is_valid(raise_exception=True)
         seats_requested = serializer.validated_data['seats']
 
+        logger.info(
+            'garage_ride_board_attempt student=%s qr=%s seats=%s',
+            str(request.user.id),
+            str(qr_token),
+            seats_requested,
+        )
+
         with transaction.atomic():
             # Lock the ride row
             try:
@@ -381,10 +388,20 @@ class GarageRideBoardView(APIView):
                 )
 
             # Reserve seats
-            ride.booked_seats += seats_requested
-            if ride.booked_seats >= ride.total_seats:
-                ride.status = GarageRideStatus.FULL
-            ride.save(update_fields=['booked_seats', 'status'])
+            try:
+                ride.booked_seats += seats_requested
+                if ride.booked_seats >= ride.total_seats:
+                    ride.status = GarageRideStatus.FULL
+                ride.save(update_fields=['booked_seats', 'status'])
+            except Exception as exc:
+                logger.error(
+                    'garage_ride_seat_update_failed ride=%s student=%s error=%s',
+                    str(ride.id),
+                    str(request.user.id),
+                    str(exc),
+                    exc_info=True,
+                )
+                raise
 
             # Create passenger record
             try:
@@ -413,15 +430,24 @@ class GarageRideBoardView(APIView):
         # Broadcast updated ride to campus admin dashboards (seat count changed)
         broadcast_ride_event('ride_updated', ride=ride)
 
-        return Response(
-            {
+        try:
+            response_payload = {
                 'message': f'Successfully boarded! {seats_requested} seat(s) reserved.',
                 'passenger': GarageRidePassengerSerializer(passenger).data,
                 'ride': GarageRideDetailSerializer(ride, context={'request': request}).data,
                 'amount_paid': str(total_amount),
-            },
-            status=status.HTTP_201_CREATED,
-        )
+            }
+        except Exception as exc:
+            logger.error(
+                'garage_ride_serialize_failed ride=%s student=%s error=%s',
+                str(ride.id),
+                str(request.user.id),
+                str(exc),
+                exc_info=True,
+            )
+            raise
+
+        return Response(response_payload, status=status.HTTP_201_CREATED)
 
 
 # ─── Passenger list (driver sees who has boarded) ─────────────────────────
