@@ -310,8 +310,8 @@ class GarageRideBoardView(APIView):
         with transaction.atomic():
             # Lock the ride row
             try:
-                ride = GarageRide.objects.select_for_update().select_related(
-                    'driver', 'driver__driver_profile'
+                ride = GarageRide.objects.select_for_update(of=('self',)).select_related(
+                    'driver'
                 ).get(qr_token=qr_token)
             except GarageRide.DoesNotExist:
                 raise NotFound('Ride not found. Invalid QR code.')
