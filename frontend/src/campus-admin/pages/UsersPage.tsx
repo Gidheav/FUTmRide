@@ -118,12 +118,12 @@ export default function UsersPage() {
                 <VerifyLink
                   icon={UserCheck}
                   label="Account Verification"
-                  onClick={() => navigate('/campus-admin/users/account-verification')}
+                  onClick={() => navigate('/users/account-verification')}
                 />
                 <VerifyLink
                   icon={BadgeCheck}
                   label="Vehicle Verification"
-                  onClick={() => navigate('/campus-admin/users/verification')}
+                  onClick={() => navigate('/users/verification')}
                 />
               </div>
             </div>
@@ -174,7 +174,7 @@ export default function UsersPage() {
                   <div style={s.tableEmpty}>No users found</div>
                 ) : (
                   users.map((u: any) => (
-                    <div key={u.id} className="user-table-row" style={s.tableRow} onClick={() => navigate(`/campus-admin/users/${u.id}/verify`)}>
+                    <div key={u.id} className="user-table-row" style={s.tableRow} onClick={() => navigate(`/users/${u.id}/verify`)}>
                       <div>
                         <div style={{ fontWeight: 600, color: T.textPrimary, fontSize: 13 }}>{u.first_name} {u.last_name}</div>
                         <div style={{ color: T.textMuted, fontSize: 12, marginTop: 2 }}>{u.email || 'No email'}</div>

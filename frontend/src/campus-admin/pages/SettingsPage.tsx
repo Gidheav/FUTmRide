@@ -254,7 +254,7 @@ function PasswordChangeSection() {
       setStatus({ msg: 'Password changed successfully. Redirecting to login…', type: 'success' })
       setTimeout(() => {
         clearAuth()
-        window.location.href = '/campus-admin/login'
+        window.location.href = '/login'
       }, 2000)
     } catch (err: any) {
       const msg = err.response?.data?.error?.message

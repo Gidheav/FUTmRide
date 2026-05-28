@@ -1,6 +1,7 @@
 ﻿from django.urls import path
 from rest_framework import generics, permissions
 from .models import DriverLocation, TripLocationSnapshot
+from .views import FleetPositionsView, FleetIncidentsView
 
 
 class DriverLocationView(generics.RetrieveAPIView):
@@ -59,4 +60,6 @@ class TripSnapshotsView(generics.ListAPIView):
 urlpatterns = [
     path('driver/<uuid:driver_id>/location/', DriverLocationView.as_view(), name='driver-location'),
     path('ride/<uuid:ride_id>/snapshots/', TripSnapshotsView.as_view(), name='trip-snapshots'),
+    path('fleet/positions/', FleetPositionsView.as_view(), name='fleet-positions'),
+    path('fleet/incidents/', FleetIncidentsView.as_view(), name='fleet-incidents'),
 ]

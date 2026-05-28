@@ -4,16 +4,16 @@ import { type CSSProperties } from 'react'
 import { T } from '../theme'
 
 const SIDEBAR_ICONS = [
-  { icon: LayoutDashboard, path: '/campus-admin' },
-  { icon: Navigation, path: '/campus-admin/dispatch' },
-  { icon: Users, path: '/campus-admin/users' },
-  { icon: Truck, path: '/campus-admin/fleet' },
-  { icon: CalendarClock, path: '/campus-admin/schedule' },
-  { icon: BarChart3, path: '/campus-admin/analytics' },
-  { icon: Calculator, path: '/campus-admin/engine' },
-  { icon: Bell, path: '/campus-admin/notifications' },
-  { icon: User, path: '/campus-admin/profile' },
-  { icon: Settings, path: '/campus-admin/settings' },
+  { icon: LayoutDashboard, path: '/' },
+  { icon: Navigation, path: '/dispatch' },
+  { icon: Users, path: '/users' },
+  { icon: Truck, path: '/fleet' },
+  { icon: CalendarClock, path: '/schedule' },
+  { icon: BarChart3, path: '/analytics' },
+  { icon: Calculator, path: '/engine' },
+  { icon: Bell, path: '/notifications' },
+  { icon: User, path: '/profile' },
+  { icon: Settings, path: '/settings' },
 ]
 
 const s: Record<string, CSSProperties> = {

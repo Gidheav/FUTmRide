@@ -3,21 +3,22 @@ import {
   LayoutDashboard, FolderOpen, CalendarClock, BarChart3, Settings,
   LogOut, User as UserIcon, Sun, Moon,
   Download, Megaphone, UserPlus,
-  ArrowLeft, ChevronRight, History, ShieldAlert, UserX
+  ArrowLeft, ChevronRight, History, ShieldAlert, UserX,
+  Radio, Crosshair, Activity, Zap, Route
 } from 'lucide-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { CSSProperties } from 'react'
 import api from '../../core/api'
 import { useAuthStore } from '../../core/authStore'
 import { T, useCampusThemeStore } from '../theme'
-
+import { useDispatchStore } from '../dispatchStore'
 
 const NAV_ITEMS = [
-  { label: 'Dashboard', icon: LayoutDashboard, path: '/campus-admin' },
-  { label: 'Open Requests', icon: FolderOpen, path: '/campus-admin/rides' },
-  { label: 'Scheduled Rides', icon: CalendarClock, path: '/campus-admin/schedule' },
-  { label: 'Analytics', icon: BarChart3, path: '/campus-admin/analytics' },
-  { label: 'Settings', icon: Settings, path: '/campus-admin/settings' },
+  { label: 'Dashboard', icon: LayoutDashboard, path: '/' },
+  { label: 'Open Requests', icon: FolderOpen, path: '/rides' },
+  { label: 'Scheduled Rides', icon: CalendarClock, path: '/schedule' },
+  { label: 'Analytics', icon: BarChart3, path: '/analytics' },
+  { label: 'Settings', icon: Settings, path: '/settings' },
 ]
 
 export default function CampusAdminTopNav() {
@@ -26,7 +27,9 @@ export default function CampusAdminTopNav() {
   const { clearAuth } = useAuthStore()
   const { mode, toggleMode } = useCampusThemeStore()
 
-  const verifyMatch = location.pathname.match(/\/campus-admin\/users\/(.*)\/verify/)
+  const { wsConnected, showTraffic, setShowTraffic, showHeat, setShowHeat, showRoutes, setShowRoutes, triggerRecenter } = useDispatchStore()
+
+  const verifyMatch = location.pathname.match(/\/users\/(.*)\/verify/)
   const verifyDriverId = verifyMatch ? verifyMatch[1] : null
   const activeTab = new URLSearchParams(location.search).get('tab') || 'personal'
 
@@ -52,14 +55,14 @@ export default function CampusAdminTopNav() {
     },
     onSettled: () => {
       clearAuth()
-      navigate('/campus-admin/login')
+      navigate('/login')
     },
   })
 
   return (
     <header style={s.topBar}>
       <div style={s.topLeft}>
-        {location.pathname === '/campus-admin/users' ? (
+        {location.pathname === '/users' ? (
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3 }}>
               User Management
@@ -68,9 +71,9 @@ export default function CampusAdminTopNav() {
               Central hub for all student and driver administration.
             </div>
           </div>
-        ) : location.pathname === '/campus-admin/users/verification' ? (
+        ) : location.pathname === '/users/verification' ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <button onClick={() => navigate('/campus-admin/users')} style={{ ...s.topNavBtn, color: T.textSecondary, background: 'transparent', padding: 0 }}>
+            <button onClick={() => navigate('/users')} style={{ ...s.topNavBtn, color: T.textSecondary, background: 'transparent', padding: 0 }}>
               <ArrowLeft size={16} />
               <span style={{ fontSize: 14 }}>Back</span>
             </button>
@@ -83,9 +86,9 @@ export default function CampusAdminTopNav() {
               <span style={{ color: T.textWhite }}>Vehicle Verification</span>
             </div>
           </div>
-        ) : location.pathname === '/campus-admin/users/account-verification' ? (
+        ) : location.pathname === '/users/account-verification' ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <button onClick={() => navigate('/campus-admin/users')} style={{ ...s.topNavBtn, color: T.textSecondary, background: 'transparent', padding: 0 }}>
+            <button onClick={() => navigate('/users')} style={{ ...s.topNavBtn, color: T.textSecondary, background: 'transparent', padding: 0 }}>
               <ArrowLeft size={16} />
               <span style={{ fontSize: 14 }}>Back</span>
             </button>
@@ -98,9 +101,9 @@ export default function CampusAdminTopNav() {
               <span style={{ color: T.textWhite }}>Account Verification</span>
             </div>
           </div>
-        ) : location.pathname.match(/\/campus-admin\/users\/.*\/verify/) ? (
+        ) : location.pathname.match(/\/users\/.*\/verify/) ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <button onClick={() => navigate('/campus-admin/users')} style={{ ...s.topNavBtn, color: T.textSecondary, background: 'transparent', padding: 0 }}>
+            <button onClick={() => navigate('/users')} style={{ ...s.topNavBtn, color: T.textSecondary, background: 'transparent', padding: 0 }}>
               <ArrowLeft size={16} />
               <span style={{ fontSize: 14 }}>Back</span>
             </button>
@@ -111,6 +114,19 @@ export default function CampusAdminTopNav() {
               <span>Applications</span>
               <ChevronRight size={14} />
               <span style={{ color: T.textWhite }}>Driver Status</span>
+            </div>
+          </div>
+        ) : location.pathname === '/dispatch' ? (
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3, display: 'flex', alignItems: 'center' }}>
+              <Radio size={16} color={wsConnected ? T.heatTeal : T.warn} style={{ marginRight: 8 }} />
+              Dispatch Control Center
+              <span style={{ fontSize: 9, marginLeft: 10, color: wsConnected ? T.heatTeal : T.warn, border: `1px solid ${wsConnected ? 'rgba(20,184,166,0.4)' : 'rgba(245,158,11,0.4)'}`, borderRadius: 999, padding: '2px 8px', fontWeight: 700, textTransform: 'uppercase' }}>
+                {wsConnected ? 'Live' : 'Connecting'}
+              </span>
+            </div>
+            <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
+              Fleet visibility, ride queue, and incident response
             </div>
           </div>
         ) : (
@@ -125,7 +141,7 @@ export default function CampusAdminTopNav() {
         )}
       </div>
 
-      {location.pathname === '/campus-admin/users' ? (
+      {location.pathname === '/users' ? (
         <nav style={s.topNav}>
           <button style={{ ...s.topNavBtn, color: T.textSecondary, background: 'transparent' }}>
             <Download size={13} strokeWidth={1.8} />
@@ -140,7 +156,7 @@ export default function CampusAdminTopNav() {
             <span>Add New User</span>
           </button>
         </nav>
-      ) : location.pathname === '/campus-admin/users/verification' || location.pathname === '/campus-admin/users/account-verification' ? (
+      ) : location.pathname === '/users/verification' || location.pathname === '/users/account-verification' ? (
         <nav style={s.topNav}>
           <button style={{ ...s.topNavBtn, color: T.textSecondary, background: 'transparent' }}>
             <History size={13} strokeWidth={1.8} />
@@ -163,6 +179,26 @@ export default function CampusAdminTopNav() {
               <UserX size={16} />
             </button>
           )}
+        </nav>
+      ) : location.pathname === '/dispatch' ? (
+        <nav style={s.topNav}>
+          <button style={{ ...s.topNavBtn, color: T.textSecondary, background: 'transparent' }} onClick={triggerRecenter} title="Recenter map">
+            <Crosshair size={13} strokeWidth={1.8} />
+            <span>Recenter</span>
+          </button>
+          <div style={{ width: 1, height: 16, background: T.border, margin: '0 8px' }} />
+          <button style={{ ...s.topNavBtn, color: showTraffic ? T.heatTeal : T.textSecondary, background: showTraffic ? `${T.heatTeal}15` : 'transparent' }} onClick={() => setShowTraffic(p => !p)}>
+            <Activity size={13} strokeWidth={1.8} />
+            <span>Traffic</span>
+          </button>
+          <button style={{ ...s.topNavBtn, color: showHeat ? T.accent : T.textSecondary, background: showHeat ? T.accentBg : 'transparent' }} onClick={() => setShowHeat(p => !p)}>
+            <Zap size={13} strokeWidth={1.8} />
+            <span>Heat</span>
+          </button>
+          <button style={{ ...s.topNavBtn, color: showRoutes ? T.warn : T.textSecondary, background: showRoutes ? `${T.warn}15` : 'transparent' }} onClick={() => setShowRoutes(p => !p)}>
+            <Route size={13} strokeWidth={1.8} />
+            <span>Routes</span>
+          </button>
         </nav>
       ) : (
         <nav style={s.topNav}>
@@ -189,7 +225,7 @@ export default function CampusAdminTopNav() {
       )}
 
       <div style={s.topRight}>
-        {location.pathname === '/campus-admin/users/verification' ? (
+        {location.pathname === '/users/verification' ? (
           <button style={{ ...s.topNavBtn, color: T.textPrimary, background: T.bgCard, border: `1px solid ${T.border}` }}>
             <History size={14} />
             <span style={{ fontSize: 13 }}>Audit Log</span>
@@ -199,7 +235,7 @@ export default function CampusAdminTopNav() {
             <button style={s.topIconBtn} onClick={toggleMode}>
               {mode === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
             </button>
-            <Link to="/campus-admin/profile" style={s.topAvatar}>
+            <Link to="/profile" style={s.topAvatar}>
               <UserIcon size={16} color={T.textSecondary} />
             </Link>
             <button style={s.topIconBtn} onClick={() => logoutMutation.mutate()}>

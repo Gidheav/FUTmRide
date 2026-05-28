@@ -66,11 +66,11 @@ function getHaversineDistance(lat1: number, lon1: number, lat2: number, lon2: nu
   const R = 6371 // Radius of the earth in km
   const dLat = (lat2 - lat1) * Math.PI / 180
   const dLon = (lon2 - lon1) * Math.PI / 180
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-    Math.sin(dLon/2) * Math.sin(dLon/2)
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)) 
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
   return R * c // Distance in km
 }
 
@@ -530,10 +530,10 @@ export default function DashboardPage() {
       }])
       setRedoStack([])
       measureRequestIdRef.current += 1
-      
+
       // Destroy old polylines manually
       measurePolylinesRef.current.forEach(polyline => {
-        try { polyline.setMap(null) } catch (e) {}
+        try { polyline.setMap(null) } catch (e) { }
       })
       measurePolylinesRef.current = []
 
@@ -620,10 +620,10 @@ export default function DashboardPage() {
   /* ── Clear: only active tool ────────────────────────────────────────── */
   const clearMeasureState = useCallback(() => {
     measureRequestIdRef.current += 1
-    
+
     // Explicitly destroy Google Maps Polyline instances to avoid ghosting
     measurePolylinesRef.current.forEach(p => {
-      try { p.setMap(null) } catch (e) {}
+      try { p.setMap(null) } catch (e) { }
     })
     measurePolylinesRef.current = []
 
@@ -754,8 +754,8 @@ export default function DashboardPage() {
   // Determine DrawingManager mode
   const drawingMode = activeTool === 'draw' ? google.maps?.drawing?.OverlayType?.POLYLINE
     : activeTool === 'rectangle' ? google.maps?.drawing?.OverlayType?.RECTANGLE
-    : activeTool === 'circle' ? google.maps?.drawing?.OverlayType?.CIRCLE
-    : null
+      : activeTool === 'circle' ? google.maps?.drawing?.OverlayType?.CIRCLE
+        : null
 
   // Animated terminal feed scroll
   useEffect(() => {
@@ -789,7 +789,7 @@ export default function DashboardPage() {
           zIndex: isSelected ? 120 : 90 - idx,
           map: mapRef.current,
         })
-        
+
         p.addListener('click', () => {
           setSelectedMeasureRouteIndex(idx)
           setMeasureDist(formatRouteStatus(route, idx, measureRoutes.length))
@@ -802,7 +802,7 @@ export default function DashboardPage() {
     // Cleanup: remove all drawn measure polylines from the map on unmount or re-render
     return () => {
       polylines.forEach(p => {
-        try { p.setMap(null) } catch (e) {}
+        try { p.setMap(null) } catch (e) { }
       })
     }
   }, [measureRoutes, selectedMeasureRouteIndex, toolVisibility.measure, measurePoints.length, formatRouteStatus])
@@ -811,492 +811,493 @@ export default function DashboardPage() {
 
   return (
     <>
-        {/* ── Content area (three-column layout) ──────────────────────────── */}
-        <div style={s.content}>
+      {/* ── Content area (three-column layout) ──────────────────────────── */}
+      <div style={s.content}>
 
-          {/* ────────────────── LEFT: Open Requests ─────────────────────── */}
-          {!isFullscreen && (
-            isLeftPanelOpen ? (
-              <div style={s.leftPanel}>
-                <div style={s.panelHeader}>
-                  <span style={s.panelTitle}>Open Requests</span>
-                  <button style={s.moreBtn} onClick={() => setIsLeftPanelOpen(false)}>
-                    <ChevronLeft size={16} />
+        {/* ────────────────── LEFT: Open Requests ─────────────────────── */}
+        {!isFullscreen && (
+          isLeftPanelOpen ? (
+            <div style={s.leftPanel}>
+              <div style={s.panelHeader}>
+                <span style={s.panelTitle}>Open Requests</span>
+                <button style={s.moreBtn} onClick={() => setIsLeftPanelOpen(false)}>
+                  <ChevronLeft size={16} />
+                </button>
+              </div>
+              <div style={s.requestList}>
+                {activeGarageRides.map((req) => {
+                  const distanceKm = getHaversineDistance(
+                    Number(req.origin_latitude), Number(req.origin_longitude),
+                    Number(req.destination_latitude), Number(req.destination_longitude)
+                  )
+                  const estTimeMin = Math.max(1, Math.round((distanceKm / 40) * 60)) // Assuming 40km/h avg speed
+                  const matchPct = Math.min(99, Math.max(75, 100 - Math.round(distanceKm))) // Visual mock for route match
+
+                  return (
+                    <div key={req.id} style={s.reqCard}>
+                      <div style={s.reqRow}>
+                        <span style={s.reqLabel}>Route:</span>
+                        <span style={s.reqRoute}>{req.origin_address.split(',')[0]} to {req.destination_address.split(',')[0]}</span>
+                      </div>
+                      <div style={s.reqRow}>
+                        <span style={s.reqLabel}>Est. Fare:</span>
+                        <span style={{ ...s.reqValue, color: T.accent }}>₦{req.fare_per_seat}</span>
+                      </div>
+                      <div style={s.reqRow}>
+                        <span style={s.reqLabel}>Passenger:</span>
+                        <span style={s.reqValue}>
+                          {req.booked_seats}/{req.total_seats} (Reputation: {req.driver.average_rating || 'New'}
+                          <span style={{ color: T.warn }}>*</span>)
+                        </span>
+                      </div>
+                      <div style={s.reqRow}>
+                        <span style={s.reqLabel}>Vehicle:</span>
+                        <span style={s.reqValue}>{req.vehicle_type}</span>
+                      </div>
+                      <div style={{ ...s.reqRow, paddingLeft: 52 }}>
+                        <span style={{ ...s.reqValue, color: T.textMuted, fontSize: 10 }}>
+                          {req.driver.full_name} • {req.driver_note || 'No notes'}
+                        </span>
+                      </div>
+                      <div style={s.reqRow}>
+                        <span style={s.reqLabel}>Time:</span>
+                        <span style={s.reqValue}>{estTimeMin} min</span>
+                      </div>
+                      <div style={s.reqMatchRow}>
+                        <span style={s.reqLabel}>Route Match:</span>
+                        <span style={s.matchBadge}>{matchPct}%</span>
+                        <span style={s.reqCoord}>{Number(req.origin_latitude).toFixed(4)}, {Number(req.origin_longitude).toFixed(4)}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+                {activeGarageRides.length === 0 && (
+                  <div style={{ padding: 20, textAlign: 'center', color: T.textMuted, fontSize: 12 }}>
+                    No active requests. Waiting for drivers...
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div style={{ ...s.leftPanel, width: 36, alignItems: 'center', cursor: 'pointer' }} onClick={() => setIsLeftPanelOpen(true)}>
+              <div style={{ padding: '10px 0', borderBottom: `1px solid ${T.border}`, width: '100%', display: 'flex', justifyContent: 'center' }}>
+                <ChevronRight size={16} color={T.textMuted} />
+              </div>
+              <div style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', padding: '16px 0', fontSize: 11, fontWeight: 600, color: T.textSecondary, letterSpacing: 1 }}>
+                Open Requests
+              </div>
+            </div>
+          )
+        )}
+
+        {/* ────────────────── CENTER: Map + Data Feed ─────────────────── */}
+        <div style={s.centerPanel}>
+          {/* Map toolbar */}
+          <div style={s.mapToolbar}>
+            <div style={s.toolbarLeft}>
+              {measureDist && toolVisibility.measure && (
+                <span style={{ ...s.searchPill, background: T.accent, color: '#fff', borderColor: T.accent }}>
+                  📏 {measureDist}
+                  <X size={11} style={{ cursor: 'pointer', marginLeft: 4 }} onClick={() => handleClear('measure')} />
+                </span>
+              )}
+              {isMeasureLoading && (
+                <span style={s.searchPill}>
+                  Finding road routes...
+                </span>
+              )}
+              {measureError && (
+                <span style={{ ...s.searchPill, background: '#7f1d1d', color: '#fff', borderColor: '#ef4444' }}>
+                  {measureError}
+                  <X size={11} style={{ cursor: 'pointer', marginLeft: 4 }} onClick={() => handleClear('measure')} />
+                </span>
+              )}
+              {activeTool === 'search' ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <input
+                    autoFocus
+                    style={{ ...s.rpInput, width: 200, padding: '4px 8px', fontSize: 11, background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 4, color: T.textWhite }}
+                    placeholder="Search location..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                  />
+                  <button style={{ ...s.toolBtn, width: 26, height: 24 }} onClick={handleSearch}>
+                    <Search size={12} />
                   </button>
                 </div>
-            <div style={s.requestList}>
-              {activeGarageRides.map((req) => {
-                const distanceKm = getHaversineDistance(
-                  Number(req.origin_latitude), Number(req.origin_longitude),
-                  Number(req.destination_latitude), Number(req.destination_longitude)
-                )
-                const estTimeMin = Math.max(1, Math.round((distanceKm / 40) * 60)) // Assuming 40km/h avg speed
-                const matchPct = Math.min(99, Math.max(75, 100 - Math.round(distanceKm))) // Visual mock for route match
-
-                return (
-                  <div key={req.id} style={s.reqCard}>
-                    <div style={s.reqRow}>
-                      <span style={s.reqLabel}>Route:</span>
-                      <span style={s.reqRoute}>{req.origin_address.split(',')[0]} to {req.destination_address.split(',')[0]}</span>
-                    </div>
-                    <div style={s.reqRow}>
-                      <span style={s.reqLabel}>Est. Fare:</span>
-                      <span style={{ ...s.reqValue, color: T.accent }}>₦{req.fare_per_seat}</span>
-                    </div>
-                    <div style={s.reqRow}>
-                      <span style={s.reqLabel}>Passenger:</span>
-                      <span style={s.reqValue}>
-                        {req.booked_seats}/{req.total_seats} (Reputation: {req.driver.average_rating || 'New'}
-                        <span style={{ color: T.warn }}>*</span>)
-                      </span>
-                    </div>
-                    <div style={s.reqRow}>
-                      <span style={s.reqLabel}>Vehicle:</span>
-                      <span style={s.reqValue}>{req.vehicle_type}</span>
-                    </div>
-                    <div style={{ ...s.reqRow, paddingLeft: 52 }}>
-                      <span style={{ ...s.reqValue, color: T.textMuted, fontSize: 10 }}>
-                        {req.driver.full_name} • {req.driver_note || 'No notes'}
-                      </span>
-                    </div>
-                    <div style={s.reqRow}>
-                      <span style={s.reqLabel}>Time:</span>
-                      <span style={s.reqValue}>{estTimeMin} min</span>
-                    </div>
-                    <div style={s.reqMatchRow}>
-                      <span style={s.reqLabel}>Route Match:</span>
-                      <span style={s.matchBadge}>{matchPct}%</span>
-                      <span style={s.reqCoord}>{Number(req.origin_latitude).toFixed(4)}, {Number(req.origin_longitude).toFixed(4)}</span>
-                    </div>
-                  </div>
-                )
-              })}
-              {activeGarageRides.length === 0 && (
-                <div style={{ padding: 20, textAlign: 'center', color: T.textMuted, fontSize: 12 }}>
-                  No active requests. Waiting for drivers...
-                </div>
+              ) : (
+                <span style={s.toolSep}>
+                  {!activeTool ? 'Pan & Select' :
+                    activeTool === 'draw' ? 'Draw Polyline (click to place points)' :
+                      activeTool === 'rectangle' ? 'Draw Rectangle (click and drag)' :
+                        activeTool === 'circle' ? 'Draw Circle (click center, drag radius)' :
+                          activeTool === 'measure' ? 'Click start, then destination to map all road routes' : ''}
+                </span>
               )}
+            </div>
+            <div style={s.toolbarRight}>
+              {/* Undo / Redo */}
+              <button
+                style={{ ...s.toolBtn, opacity: undoStack.length === 0 ? 0.35 : 1 }}
+                onClick={handleUndo}
+                disabled={undoStack.length === 0}
+                title={`Undo (${undoStack.length})`}
+              >
+                <Undo2 size={14} strokeWidth={1.6} />
+              </button>
+              <button
+                style={{ ...s.toolBtn, opacity: redoStack.length === 0 ? 0.35 : 1 }}
+                onClick={handleRedo}
+                disabled={redoStack.length === 0}
+                title={`Redo (${redoStack.length})`}
+              >
+                <Redo2 size={14} strokeWidth={1.6} />
+              </button>
+              <div style={s.toolDivider} />
+              {/* Tool buttons (toggle on/off) */}
+              {[
+                { icon: Pencil, tool: 'draw' as MapTool, title: 'Draw Polyline' },
+                { icon: Square, tool: 'rectangle' as MapTool, title: 'Draw Rectangle' },
+                { icon: Circle, tool: 'circle' as MapTool, title: 'Draw Circle' },
+                { icon: Ruler, tool: 'measure' as MapTool, title: 'Measure Distance' },
+                { icon: Search, tool: 'search' as MapTool, title: 'Search Location' },
+              ].map(({ icon: Icon, tool, title }) => (
+                <button
+                  key={tool}
+                  style={{ ...s.toolBtn, ...(activeTool === tool ? { background: T.accent, color: '#fff', borderColor: T.accent, boxShadow: `0 0 6px ${T.accent}44` } : {}) }}
+                  onClick={() => selectTool(tool)}
+                  title={activeTool === tool ? `${title} (Active — click to deactivate)` : title}
+                >
+                  <Icon size={14} strokeWidth={1.6} />
+                </button>
+              ))}
+              <div style={s.toolDivider} />
+              <button style={s.filterBtn} onClick={handleClear} title={activeTool ? `Clear ${activeTool} work` : 'Clear all'}>
+                <Trash2 size={13} /> Clear{activeTool ? ` ${activeTool}` : ''}
+              </button>
             </div>
           </div>
-            ) : (
-              <div style={{ ...s.leftPanel, width: 36, alignItems: 'center', cursor: 'pointer' }} onClick={() => setIsLeftPanelOpen(true)}>
-                <div style={{ padding: '10px 0', borderBottom: `1px solid ${T.border}`, width: '100%', display: 'flex', justifyContent: 'center' }}>
-                  <ChevronRight size={16} color={T.textMuted} />
-                </div>
-                <div style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', padding: '16px 0', fontSize: 11, fontWeight: 600, color: T.textSecondary, letterSpacing: 1 }}>
-                  Open Requests
-                </div>
-              </div>
-            )
-          )}
 
-          {/* ────────────────── CENTER: Map + Data Feed ─────────────────── */}
-          <div style={s.centerPanel}>
-            {/* Map toolbar */}
-            <div style={s.mapToolbar}>
-              <div style={s.toolbarLeft}>
-                {measureDist && toolVisibility.measure && (
-                  <span style={{ ...s.searchPill, background: T.accent, color: '#fff', borderColor: T.accent }}>
-                    📏 {measureDist}
-                    <X size={11} style={{ cursor: 'pointer', marginLeft: 4 }} onClick={() => handleClear('measure')} />
-                  </span>
-                )}
-                {isMeasureLoading && (
-                  <span style={s.searchPill}>
-                    Finding road routes...
-                  </span>
-                )}
-                {measureError && (
-                  <span style={{ ...s.searchPill, background: '#7f1d1d', color: '#fff', borderColor: '#ef4444' }}>
-                    {measureError}
-                    <X size={11} style={{ cursor: 'pointer', marginLeft: 4 }} onClick={() => handleClear('measure')} />
-                  </span>
-                )}
-                {activeTool === 'search' ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <input
-                      autoFocus
-                      style={{ ...s.rpInput, width: 200, padding: '4px 8px', fontSize: 11, background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 4, color: T.textWhite }}
-                      placeholder="Search location..."
-                      value={searchQuery}
-                      onChange={e => setSearchQuery(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && handleSearch()}
-                    />
-                    <button style={{ ...s.toolBtn, width: 26, height: 24 }} onClick={handleSearch}>
-                      <Search size={12} />
-                    </button>
-                  </div>
-                ) : (
-                  <span style={s.toolSep}>
-                    {!activeTool ? 'Pan & Select' :
-                     activeTool === 'draw' ? 'Draw Polyline (click to place points)' :
-                     activeTool === 'rectangle' ? 'Draw Rectangle (click and drag)' :
-                     activeTool === 'circle' ? 'Draw Circle (click center, drag radius)' :
-                     activeTool === 'measure' ? 'Click start, then destination to map all road routes' : ''}
-                  </span>
-                )}
-              </div>
-              <div style={s.toolbarRight}>
-                {/* Undo / Redo */}
-                <button
-                  style={{ ...s.toolBtn, opacity: undoStack.length === 0 ? 0.35 : 1 }}
-                  onClick={handleUndo}
-                  disabled={undoStack.length === 0}
-                  title={`Undo (${undoStack.length})`}
-                >
-                  <Undo2 size={14} strokeWidth={1.6} />
-                </button>
-                <button
-                  style={{ ...s.toolBtn, opacity: redoStack.length === 0 ? 0.35 : 1 }}
-                  onClick={handleRedo}
-                  disabled={redoStack.length === 0}
-                  title={`Redo (${redoStack.length})`}
-                >
-                  <Redo2 size={14} strokeWidth={1.6} />
-                </button>
-                <div style={s.toolDivider} />
-                {/* Tool buttons (toggle on/off) */}
-                {[
-                  { icon: Pencil, tool: 'draw' as MapTool, title: 'Draw Polyline' },
-                  { icon: Square, tool: 'rectangle' as MapTool, title: 'Draw Rectangle' },
-                  { icon: Circle, tool: 'circle' as MapTool, title: 'Draw Circle' },
-                  { icon: Ruler, tool: 'measure' as MapTool, title: 'Measure Distance' },
-                  { icon: Search, tool: 'search' as MapTool, title: 'Search Location' },
-                ].map(({ icon: Icon, tool, title }) => (
-                  <button
-                    key={tool}
-                    style={{ ...s.toolBtn, ...(activeTool === tool ? { background: T.accent, color: '#fff', borderColor: T.accent, boxShadow: `0 0 6px ${T.accent}44` } : {}) }}
-                    onClick={() => selectTool(tool)}
-                    title={activeTool === tool ? `${title} (Active — click to deactivate)` : title}
-                  >
-                    <Icon size={14} strokeWidth={1.6} />
-                  </button>
-                ))}
-                <div style={s.toolDivider} />
-                <button style={s.filterBtn} onClick={handleClear} title={activeTool ? `Clear ${activeTool} work` : 'Clear all'}>
-                  <Trash2 size={13} /> Clear{activeTool ? ` ${activeTool}` : ''}
-                </button>
-              </div>
-            </div>
-
-            {/* Map area */}
-            <div style={s.mapArea}>
-              <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
-                {isLoaded ? (
-                  <GoogleMap
-                    mapContainerStyle={{ width: '100%', height: '100%' }}
-                    center={MAP_CENTER}
-                    onLoad={onMapLoad}
-                    zoom={DEFAULT_ZOOM}
-                    onClick={handleMapClick}
-                    options={{
-                      disableDefaultUI: true,
-                      draggable: !activeTool || activeTool === 'search' || activeTool === 'measure',
-                      draggableCursor: activeTool === 'measure' ? 'crosshair' : undefined,
-                      draggingCursor: activeTool === 'measure' ? 'crosshair' : undefined,
-                      clickableIcons: false,
-                      gestureHandling: 'greedy',
-                      minZoom: 14,
-                      maxZoom: 18,
-                      restriction: {
-                        latLngBounds: {
-                          north: 9.55,
-                          south: 9.51,
-                          east: 6.47,
-                          west: 6.43,
-                        },
-                        strictBounds: true,
+          {/* Map area */}
+          <div style={s.mapArea}>
+            <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
+              {isLoaded ? (
+                <GoogleMap
+                  mapContainerStyle={{ width: '100%', height: '100%', backgroundColor: mode === 'dark' ? '#0f1117' : '#f9fafb' }}
+                  center={MAP_CENTER}
+                  onLoad={onMapLoad}
+                  zoom={DEFAULT_ZOOM}
+                  onClick={handleMapClick}
+                  options={{
+                    disableDefaultUI: true,
+                    draggable: !activeTool || activeTool === 'search' || activeTool === 'measure',
+                    draggableCursor: activeTool === 'measure' ? 'crosshair' : undefined,
+                    draggingCursor: activeTool === 'measure' ? 'crosshair' : undefined,
+                    clickableIcons: false,
+                    gestureHandling: 'greedy',
+                    backgroundColor: mode === 'dark' ? '#0f1117' : '#ffffff',
+                    minZoom: 14,
+                    maxZoom: 18,
+                    restriction: {
+                      latLngBounds: {
+                        north: 9.55,
+                        south: 9.51,
+                        east: 6.47,
+                        west: 6.43,
                       },
-                      styles: mode === 'dark' ? [
-                        { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
-                        { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
-                        { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
-                        { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
-                        { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
-                        { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#263c3f" }] },
-                        { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#6b9a76" }] },
-                        { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
-                        { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#212a37" }] },
-                        { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#9ca5b3" }] },
-                        { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#746855" }] },
-                        { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#1f2835" }] },
-                        { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#f3d19c" }] },
-                        { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] },
-                        { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#515c6d" }] },
-                        { featureType: "water", elementType: "labels.text.stroke", stylers: [{ color: "#17263c" }] },
-                      ] : [],
-                    }}
-                  >
-                    {/* Drawing Manager for draw/rectangle/circle tools */}
-                    {(activeTool === 'draw' || activeTool === 'rectangle' || activeTool === 'circle') && drawingMode && (
-                      <DrawingManager
-                        drawingMode={drawingMode}
-                        onOverlayComplete={onOverlayComplete}
-                        options={{
-                          drawingControl: false,
-                          polylineOptions: { strokeColor: T.accent, strokeWeight: 3, strokeOpacity: 0.9 },
-                          rectangleOptions: { fillColor: T.accent, fillOpacity: 0.15, strokeColor: T.accent, strokeWeight: 2 },
-                          circleOptions: { fillColor: T.accent, fillOpacity: 0.15, strokeColor: T.accent, strokeWeight: 2 },
-                        }}
-                      />
-                    )}
-                    {/* Measure routes + endpoints (visible when toolVisibility.measure is on) */}
-                    {toolVisibility.measure && measurePoints.length >= 2 && (
-                      <>
-                        {/* Polylines are now rendered via useEffect to bypass @react-google-maps/api unmount bugs */}
-                      </>
-                    )}
-                    {toolVisibility.measure && measurePoints.length >= 1 && (
-                      <Marker
-                        position={measurePoints[0]}
-                        label={{ text: 'A', color: '#ffffff', fontWeight: '700' }}
-                        icon={{
-                          path: google.maps.SymbolPath.CIRCLE,
-                          fillColor: '#16a34a',
-                          fillOpacity: 1,
-                          strokeColor: '#ffffff',
-                          strokeWeight: 2,
-                          scale: 9,
-                        }}
-                      />
-                    )}
-                    {toolVisibility.measure && measurePoints.length >= 2 && (
-                      <Marker
-                        position={measurePoints[1]}
-                        label={{ text: 'B', color: '#ffffff', fontWeight: '700' }}
-                        icon={{
-                          path: google.maps.SymbolPath.CIRCLE,
-                          fillColor: '#ef4444',
-                          fillOpacity: 1,
-                          strokeColor: '#ffffff',
-                          strokeWeight: 2,
-                          scale: 9,
-                        }}
-                      />
-                    )}
-
-                    {/* Custom POI / Location InfoWindow */}
-                    {selectedLocation && (
-                      <Marker 
-                        position={{ lat: selectedLocation.lat, lng: selectedLocation.lng }}
-                        onClick={() => {}} 
-                      >
-                        <InfoWindow
-                          position={{ lat: selectedLocation.lat, lng: selectedLocation.lng }}
-                          onCloseClick={() => setSelectedLocation(null)}
-                        >
-                          <div style={{ padding: '2px 4px', maxWidth: 220, color: '#111827', fontFamily: 'system-ui, sans-serif' }}>
-                            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4, color: '#111827' }}>
-                              {selectedLocation.placeName || 'Location Details'}
-                            </div>
-                            <div style={{ fontSize: 11, color: '#4b5563', lineHeight: 1.4 }}>
-                              {selectedLocation.address}
-                            </div>
-                            <div style={{ fontSize: 10, marginTop: 6, color: '#6b7280' }}>
-                              Coordinates: {selectedLocation.lat.toFixed(5)}, {selectedLocation.lng.toFixed(5)}
-                            </div>
-                          </div>
-                        </InfoWindow>
-                      </Marker>
-                    )}
-                  </GoogleMap>
-                ) : (
-                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.textMuted }}>
-                    Initializing secure map connection...
-                  </div>
-                )}
-              </div>
-
-              {toolVisibility.measure && measureRoutes.length > 0 && (
-                <div style={s.measureRoutesPanel}>
-                  <div style={s.measureRoutesPanelTitle}>
-                    📍 Route Analysis — {measureRoutes.length} route{measureRoutes.length > 1 ? 's' : ''} found
-                  </div>
-                  {/* Coordinates readout */}
-                  {measurePoints.length >= 2 && (
-                    <div style={{ fontSize: 9, color: T.textMuted, marginBottom: 8, padding: '4px 6px', background: 'rgba(0,0,0,0.2)', borderRadius: 4, lineHeight: 1.6 }}>
-                      <div><strong style={{ color: '#16a34a' }}>A:</strong> {measurePoints[0].lat.toFixed(6)}, {measurePoints[0].lng.toFixed(6)}</div>
-                      <div><strong style={{ color: '#ef4444' }}>B:</strong> {measurePoints[1].lat.toFixed(6)}, {measurePoints[1].lng.toFixed(6)}</div>
-                    </div>
+                      strictBounds: true,
+                    },
+                    styles: mode === 'dark' ? [
+                      { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+                      { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
+                      { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+                      { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
+                      { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
+                      { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#263c3f" }] },
+                      { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#6b9a76" }] },
+                      { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
+                      { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#212a37" }] },
+                      { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#9ca5b3" }] },
+                      { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#746855" }] },
+                      { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#1f2835" }] },
+                      { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#f3d19c" }] },
+                      { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] },
+                      { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#515c6d" }] },
+                      { featureType: "water", elementType: "labels.text.stroke", stylers: [{ color: "#17263c" }] },
+                    ] : [],
+                  }}
+                >
+                  {/* Drawing Manager for draw/rectangle/circle tools */}
+                  {(activeTool === 'draw' || activeTool === 'rectangle' || activeTool === 'circle') && drawingMode && (
+                    <DrawingManager
+                      drawingMode={drawingMode}
+                      onOverlayComplete={onOverlayComplete}
+                      options={{
+                        drawingControl: false,
+                        polylineOptions: { strokeColor: T.accent, strokeWeight: 3, strokeOpacity: 0.9 },
+                        rectangleOptions: { fillColor: T.accent, fillOpacity: 0.15, strokeColor: T.accent, strokeWeight: 2 },
+                        circleOptions: { fillColor: T.accent, fillOpacity: 0.15, strokeColor: T.accent, strokeWeight: 2 },
+                      }}
+                    />
                   )}
-                  {measureRoutes.map((route, routeIndex) => {
-                    const selected = routeIndex === selectedMeasureRouteIndex
-                    return (
-                      <div key={route.id} style={{ marginBottom: 6 }}>
-                        <button
-                          style={{
-                            ...s.measureRouteBtn,
-                            ...(selected ? { borderColor: route.color, background: 'rgba(255,255,255,0.06)' } : {}),
-                          }}
-                          onClick={() => {
-                            setSelectedMeasureRouteIndex(routeIndex)
-                            setMeasureDist(formatRouteStatus(route, routeIndex, measureRoutes.length))
-                          }}
-                        >
-                          <div style={s.measureRouteTopRow}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <div style={{ width: 10, height: 10, borderRadius: 5, background: route.color, flexShrink: 0, border: selected ? '2px solid #fff' : 'none' }} />
-                              <span style={{ ...s.measureRouteName, color: selected ? route.color : T.textWhite }}>
-                                Route {routeIndex + 1}
-                              </span>
-                              {routeIndex === 0 && <span style={{ fontSize: 8, background: '#16a34a', color: '#fff', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>Shortest</span>}
-                            </div>
-                            <span style={{ ...s.measureRouteMeta, fontWeight: 700, color: selected ? '#fff' : T.textSecondary }}>
-                              {route.distanceText}
-                            </span>
+                  {/* Measure routes + endpoints (visible when toolVisibility.measure is on) */}
+                  {toolVisibility.measure && measurePoints.length >= 2 && (
+                    <>
+                      {/* Polylines are now rendered via useEffect to bypass @react-google-maps/api unmount bugs */}
+                    </>
+                  )}
+                  {toolVisibility.measure && measurePoints.length >= 1 && (
+                    <Marker
+                      position={measurePoints[0]}
+                      label={{ text: 'A', color: '#ffffff', fontWeight: '700' }}
+                      icon={{
+                        path: google.maps.SymbolPath.CIRCLE,
+                        fillColor: '#16a34a',
+                        fillOpacity: 1,
+                        strokeColor: '#ffffff',
+                        strokeWeight: 2,
+                        scale: 9,
+                      }}
+                    />
+                  )}
+                  {toolVisibility.measure && measurePoints.length >= 2 && (
+                    <Marker
+                      position={measurePoints[1]}
+                      label={{ text: 'B', color: '#ffffff', fontWeight: '700' }}
+                      icon={{
+                        path: google.maps.SymbolPath.CIRCLE,
+                        fillColor: '#ef4444',
+                        fillOpacity: 1,
+                        strokeColor: '#ffffff',
+                        strokeWeight: 2,
+                        scale: 9,
+                      }}
+                    />
+                  )}
+
+                  {/* Custom POI / Location InfoWindow */}
+                  {selectedLocation && (
+                    <Marker
+                      position={{ lat: selectedLocation.lat, lng: selectedLocation.lng }}
+                      onClick={() => { }}
+                    >
+                      <InfoWindow
+                        position={{ lat: selectedLocation.lat, lng: selectedLocation.lng }}
+                        onCloseClick={() => setSelectedLocation(null)}
+                      >
+                        <div style={{ padding: '2px 4px', maxWidth: 220, color: '#111827', fontFamily: 'system-ui, sans-serif' }}>
+                          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4, color: '#111827' }}>
+                            {selectedLocation.placeName || 'Location Details'}
                           </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
-                            <span style={s.measureRouteSummary}>{route.summary}</span>
-                            <span style={{ fontSize: 9, color: T.textMuted }}>⏱ {route.durationText}</span>
+                          <div style={{ fontSize: 11, color: '#4b5563', lineHeight: 1.4 }}>
+                            {selectedLocation.address}
                           </div>
-                          <div style={{ fontSize: 8, color: T.textMuted, marginTop: 3, fontFamily: 'monospace' }}>
-                            {route.distanceMeters.toFixed(0)} m exact
+                          <div style={{ fontSize: 10, marginTop: 6, color: '#6b7280' }}>
+                            Coordinates: {selectedLocation.lat.toFixed(5)}, {selectedLocation.lng.toFixed(5)}
                           </div>
-                        </button>
-                        {/* Step-by-step breakdown for selected route */}
-                        {selected && route.roadSteps.length > 0 && (
-                          <div style={{ padding: '4px 8px 6px', background: 'rgba(0,0,0,0.15)', borderRadius: '0 0 6px 6px', marginTop: -4, borderLeft: `2px solid ${route.color}` }}>
-                            <div style={{ fontSize: 9, fontWeight: 700, color: T.textSecondary, marginBottom: 4 }}>Road Segments:</div>
-                            {route.roadSteps.map((step, si) => (
-                              <div key={si} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: T.textMuted, padding: '2px 0', borderBottom: si < route.roadSteps.length - 1 ? `1px solid rgba(255,255,255,0.05)` : 'none' }}>
-                                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{step.name}</span>
-                                <span style={{ flexShrink: 0, marginLeft: 8, fontFamily: 'monospace', color: T.textSecondary }}>{step.distanceText}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
+                        </div>
+                      </InfoWindow>
+                    </Marker>
+                  )}
+                </GoogleMap>
+              ) : (
+                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.textMuted }}>
+                  Initializing secure map connection...
                 </div>
               )}
+            </div>
 
-              {/* Map overlay panel: Traffic Layers */}
-              <div style={s.mapOverlayPanel}>
-                <div style={s.overlaySection}>
-                  <button style={s.overlaySectionHeader} onClick={() => setTrafficOpen(!trafficOpen)}>
-                    <span>Traffic Layers</span>
-                    {trafficOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                  </button>
-                  {trafficOpen && (
-                    <div style={s.overlayItems}>
-                      {[
-                        { key: 'realMatch' as const, label: 'Real-Match', color: T.accent },
-                        { key: 'congestionLine' as const, label: 'Congestion Line', color: undefined },
-                        { key: 'congestion' as const, label: 'Congestion', color: undefined },
-                        { key: 'congestion2' as const, label: 'Congestion', color: undefined },
-                        { key: 'coordinate' as const, label: 'Coordinate', color: undefined },
-                      ].map((item) => (
-                        <div key={item.key} style={s.overlayRow}>
-                           <div style={{
-                            width: 8, height: 8, borderRadius: 4,
-                            background: item.key === 'realMatch' ? T.accent : T.textMuted,
-                            marginRight: 8,
-                          }} />
-                          <span style={s.overlayLabel}>{item.label}</span>
-                          <Toggle
-                            active={layers[item.key]}
-                            onToggle={() => setLayers(p => ({ ...p, [item.key]: !p[item.key] }))}
-                            color={item.color}
-                          />
+            {toolVisibility.measure && measureRoutes.length > 0 && (
+              <div style={s.measureRoutesPanel}>
+                <div style={s.measureRoutesPanelTitle}>
+                  📍 Route Analysis — {measureRoutes.length} route{measureRoutes.length > 1 ? 's' : ''} found
+                </div>
+                {/* Coordinates readout */}
+                {measurePoints.length >= 2 && (
+                  <div style={{ fontSize: 9, color: T.textMuted, marginBottom: 8, padding: '4px 6px', background: 'rgba(0,0,0,0.2)', borderRadius: 4, lineHeight: 1.6 }}>
+                    <div><strong style={{ color: '#16a34a' }}>A:</strong> {measurePoints[0].lat.toFixed(6)}, {measurePoints[0].lng.toFixed(6)}</div>
+                    <div><strong style={{ color: '#ef4444' }}>B:</strong> {measurePoints[1].lat.toFixed(6)}, {measurePoints[1].lng.toFixed(6)}</div>
+                  </div>
+                )}
+                {measureRoutes.map((route, routeIndex) => {
+                  const selected = routeIndex === selectedMeasureRouteIndex
+                  return (
+                    <div key={route.id} style={{ marginBottom: 6 }}>
+                      <button
+                        style={{
+                          ...s.measureRouteBtn,
+                          ...(selected ? { borderColor: route.color, background: 'rgba(255,255,255,0.06)' } : {}),
+                        }}
+                        onClick={() => {
+                          setSelectedMeasureRouteIndex(routeIndex)
+                          setMeasureDist(formatRouteStatus(route, routeIndex, measureRoutes.length))
+                        }}
+                      >
+                        <div style={s.measureRouteTopRow}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <div style={{ width: 10, height: 10, borderRadius: 5, background: route.color, flexShrink: 0, border: selected ? '2px solid #fff' : 'none' }} />
+                            <span style={{ ...s.measureRouteName, color: selected ? route.color : T.textWhite }}>
+                              Route {routeIndex + 1}
+                            </span>
+                            {routeIndex === 0 && <span style={{ fontSize: 8, background: '#16a34a', color: '#fff', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>Shortest</span>}
+                          </div>
+                          <span style={{ ...s.measureRouteMeta, fontWeight: 700, color: selected ? '#fff' : T.textSecondary }}>
+                            {route.distanceText}
+                          </span>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div style={s.overlaySection}>
-                  <button style={s.overlaySectionHeader} onClick={() => setActiveLayersOpen(!activeLayersOpen)}>
-                    <span>Active Layers</span>
-                    {activeLayersOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                  </button>
-                  {activeLayersOpen && (
-                    <div style={s.overlayItems}>
-                      {[
-                        { key: 'realMatch' as const, label: 'Real-Match' },
-                        { key: 'demanCluster' as const, label: 'Deman Cluster' },
-                        { key: 'congestion' as const, label: 'Congestion' },
-                        { key: 'coordinates' as const, label: 'Coordinates' },
-                      ].map((item) => (
-                        <div key={item.key} style={s.overlayRow}>
-                          <div style={{
-                            width: 8, height: 8, borderRadius: 4,
-                            background: item.key === 'realMatch' ? T.accent : T.textMuted,
-                            marginRight: 8,
-                          }} />
-                          <span style={s.overlayLabel}>{item.label}</span>
-                          <Toggle
-                            active={activeLayers[item.key]}
-                            onToggle={() => setActiveLayers(p => ({ ...p, [item.key]: !p[item.key] }))}
-                          />
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
+                          <span style={s.measureRouteSummary}>{route.summary}</span>
+                          <span style={{ fontSize: 9, color: T.textMuted }}>⏱ {route.durationText}</span>
                         </div>
-                      ))}
+                        <div style={{ fontSize: 8, color: T.textMuted, marginTop: 3, fontFamily: 'monospace' }}>
+                          {route.distanceMeters.toFixed(0)} m exact
+                        </div>
+                      </button>
+                      {/* Step-by-step breakdown for selected route */}
+                      {selected && route.roadSteps.length > 0 && (
+                        <div style={{ padding: '4px 8px 6px', background: 'rgba(0,0,0,0.15)', borderRadius: '0 0 6px 6px', marginTop: -4, borderLeft: `2px solid ${route.color}` }}>
+                          <div style={{ fontSize: 9, fontWeight: 700, color: T.textSecondary, marginBottom: 4 }}>Road Segments:</div>
+                          {route.roadSteps.map((step, si) => (
+                            <div key={si} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: T.textMuted, padding: '2px 0', borderBottom: si < route.roadSteps.length - 1 ? `1px solid rgba(255,255,255,0.05)` : 'none' }}>
+                              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{step.name}</span>
+                              <span style={{ flexShrink: 0, marginLeft: 8, fontFamily: 'monospace', color: T.textSecondary }}>{step.distanceText}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-
-                <div style={s.overlaySection}>
-                  <button style={s.overlaySectionHeader} onClick={() => setDataControlsOpen(!dataControlsOpen)}>
-                    <span>Data Controls</span>
-                    {dataControlsOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                  </button>
-                  {dataControlsOpen && (
-                    <div style={s.overlayItems}>
-                      <div style={s.overlayRow}>
-                        <Layers size={13} style={{ marginRight: 6 }} />
-                        <span style={s.overlayLabel}>Set Filters</span>
-                      </div>
-                      <div style={s.overlayRow}>
-                        <Layers size={13} style={{ marginRight: 6 }} />
-                        <span style={s.overlayLabel}>Set Filters</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                  )
+                })}
               </div>
+            )}
 
-              {/* Floating active request tooltips */}
-              <div style={{ ...s.mapTooltip, top: '18%', right: '30%' }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: T.textWhite, marginBottom: 4 }}>
-                  Active Requests
-                </div>
-                <div style={s.ttRow}><span style={s.ttLabel}>Route Match</span><span style={s.ttVal}>92 %</span></div>
-                <div style={s.ttRow}><span style={s.ttLabel}>Estimated Fare:</span><span style={s.ttVal}>$85.00</span></div>
-                <div style={s.ttRow}><span style={s.ttLabel}>Coordinates:</span><span style={s.ttVal}>-235.35.97</span></div>
-              </div>
-
-              <div style={{ ...s.mapTooltip, bottom: '28%', right: '22%' }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: T.textWhite, marginBottom: 4 }}>
-                  Active Requests
-                </div>
-                <div style={s.ttRow}><span style={s.ttLabel}>Route Match</span><span style={s.ttVal}>92 %</span></div>
-                <div style={s.ttRow}><span style={s.ttLabel}>Estimated Fare:</span><span style={s.ttVal}>$85.00</span></div>
-                <div style={s.ttRow}><span style={s.ttLabel}>Coordinates:</span><span style={s.ttVal}>-233.89.28</span></div>
-              </div>
-
-              {/* Map zoom controls */}
-              <div style={s.mapZoom}>
-                <button style={s.zoomBtn} onClick={handleZoomIn} title="Zoom In"><ZoomIn size={14} /></button>
-                <button style={s.zoomBtn} onClick={handleZoomOut} title="Zoom Out"><ZoomOut size={14} /></button>
-                <button style={s.zoomBtn} onClick={handleRecenter} title="Recenter"><Crosshair size={14} /></button>
-                <button style={{ ...s.zoomBtn, ...(isFullscreen ? { background: T.accent, color: '#fff', borderColor: T.accent } : {}) }} onClick={handleFullscreen} title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}><Maximize2 size={14} /></button>
-              </div>
-
-              {/* Bottom bar inside map */}
-              <div style={s.mapBottomBar}>
-                <button style={s.mapBottomBtn}>Measure</button>
-                <button style={s.mapBottomBtn}>Measure</button>
-                <button style={{ ...s.mapBottomBtn, background: 'transparent', border: `1px solid ${T.border}` }}>
-                  All Filters
+            {/* Map overlay panel: Traffic Layers */}
+            <div style={s.mapOverlayPanel}>
+              <div style={s.overlaySection}>
+                <button style={s.overlaySectionHeader} onClick={() => setTrafficOpen(!trafficOpen)}>
+                  <span>Traffic Layers</span>
+                  {trafficOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                 </button>
+                {trafficOpen && (
+                  <div style={s.overlayItems}>
+                    {[
+                      { key: 'realMatch' as const, label: 'Real-Match', color: T.accent },
+                      { key: 'congestionLine' as const, label: 'Congestion Line', color: undefined },
+                      { key: 'congestion' as const, label: 'Congestion', color: undefined },
+                      { key: 'congestion2' as const, label: 'Congestion', color: undefined },
+                      { key: 'coordinate' as const, label: 'Coordinate', color: undefined },
+                    ].map((item) => (
+                      <div key={item.key} style={s.overlayRow}>
+                        <div style={{
+                          width: 8, height: 8, borderRadius: 4,
+                          background: item.key === 'realMatch' ? T.accent : T.textMuted,
+                          marginRight: 8,
+                        }} />
+                        <span style={s.overlayLabel}>{item.label}</span>
+                        <Toggle
+                          active={layers[item.key]}
+                          onToggle={() => setLayers(p => ({ ...p, [item.key]: !p[item.key] }))}
+                          color={item.color}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div style={s.overlaySection}>
+                <button style={s.overlaySectionHeader} onClick={() => setActiveLayersOpen(!activeLayersOpen)}>
+                  <span>Active Layers</span>
+                  {activeLayersOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+                {activeLayersOpen && (
+                  <div style={s.overlayItems}>
+                    {[
+                      { key: 'realMatch' as const, label: 'Real-Match' },
+                      { key: 'demanCluster' as const, label: 'Deman Cluster' },
+                      { key: 'congestion' as const, label: 'Congestion' },
+                      { key: 'coordinates' as const, label: 'Coordinates' },
+                    ].map((item) => (
+                      <div key={item.key} style={s.overlayRow}>
+                        <div style={{
+                          width: 8, height: 8, borderRadius: 4,
+                          background: item.key === 'realMatch' ? T.accent : T.textMuted,
+                          marginRight: 8,
+                        }} />
+                        <span style={s.overlayLabel}>{item.label}</span>
+                        <Toggle
+                          active={activeLayers[item.key]}
+                          onToggle={() => setActiveLayers(p => ({ ...p, [item.key]: !p[item.key] }))}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div style={s.overlaySection}>
+                <button style={s.overlaySectionHeader} onClick={() => setDataControlsOpen(!dataControlsOpen)}>
+                  <span>Data Controls</span>
+                  {dataControlsOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+                {dataControlsOpen && (
+                  <div style={s.overlayItems}>
+                    <div style={s.overlayRow}>
+                      <Layers size={13} style={{ marginRight: 6 }} />
+                      <span style={s.overlayLabel}>Set Filters</span>
+                    </div>
+                    <div style={s.overlayRow}>
+                      <Layers size={13} style={{ marginRight: 6 }} />
+                      <span style={s.overlayLabel}>Set Filters</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Data feed */}
-            {!isFullscreen && (
+            {/* Floating active request tooltips */}
+            <div style={{ ...s.mapTooltip, top: '18%', right: '30%' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: T.textWhite, marginBottom: 4 }}>
+                Active Requests
+              </div>
+              <div style={s.ttRow}><span style={s.ttLabel}>Route Match</span><span style={s.ttVal}>92 %</span></div>
+              <div style={s.ttRow}><span style={s.ttLabel}>Estimated Fare:</span><span style={s.ttVal}>$85.00</span></div>
+              <div style={s.ttRow}><span style={s.ttLabel}>Coordinates:</span><span style={s.ttVal}>-235.35.97</span></div>
+            </div>
+
+            <div style={{ ...s.mapTooltip, bottom: '28%', right: '22%' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: T.textWhite, marginBottom: 4 }}>
+                Active Requests
+              </div>
+              <div style={s.ttRow}><span style={s.ttLabel}>Route Match</span><span style={s.ttVal}>92 %</span></div>
+              <div style={s.ttRow}><span style={s.ttLabel}>Estimated Fare:</span><span style={s.ttVal}>$85.00</span></div>
+              <div style={s.ttRow}><span style={s.ttLabel}>Coordinates:</span><span style={s.ttVal}>-233.89.28</span></div>
+            </div>
+
+            {/* Map zoom controls */}
+            <div style={s.mapZoom}>
+              <button style={s.zoomBtn} onClick={handleZoomIn} title="Zoom In"><ZoomIn size={14} /></button>
+              <button style={s.zoomBtn} onClick={handleZoomOut} title="Zoom Out"><ZoomOut size={14} /></button>
+              <button style={s.zoomBtn} onClick={handleRecenter} title="Recenter"><Crosshair size={14} /></button>
+              <button style={{ ...s.zoomBtn, ...(isFullscreen ? { background: T.accent, color: '#fff', borderColor: T.accent } : {}) }} onClick={handleFullscreen} title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}><Maximize2 size={14} /></button>
+            </div>
+
+            {/* Bottom bar inside map */}
+            <div style={s.mapBottomBar}>
+              <button style={s.mapBottomBtn}>Measure</button>
+              <button style={s.mapBottomBtn}>Measure</button>
+              <button style={{ ...s.mapBottomBtn, background: 'transparent', border: `1px solid ${T.border}` }}>
+                All Filters
+              </button>
+            </div>
+          </div>
+
+          {/* Data feed */}
+          {!isFullscreen && (
             <div style={{ ...s.dataFeed, height: isDataFeedOpen ? 110 : 33 }}>
-              <button 
-                style={{ ...s.dataFeedHeader, background: 'none', border: 'none', width: '100%', textAlign: 'left', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} 
+              <button
+                style={{ ...s.dataFeedHeader, background: 'none', border: 'none', width: '100%', textAlign: 'left', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                 onClick={() => setIsDataFeedOpen(!isDataFeedOpen)}
               >
                 <span>Live Demand Insights &amp; Logistics Data</span>
@@ -1310,122 +1311,122 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
-            )}
-          </div>
-
-          {/* ────────────────── RIGHT: Quick Route Creation ──────────────── */}
-          {!isFullscreen && (
-            isRightPanelOpen ? (
-              <div style={s.rightPanel}>
-                <div style={s.rpHeader}>
-                  <span style={s.panelTitle}>Quick Route Creation</span>
-                  <button style={{ ...s.moreBtn, fontSize: 16 }} onClick={() => setIsRightPanelOpen(false)}><ChevronRight size={16} /></button>
-                </div>
-
-            {/* Departure Window */}
-            <div style={s.rpSection}>
-              <div style={s.rpLabel}>Departure Window</div>
-              <div style={s.rpInputRow}>
-                <div style={s.rpInputIcon}>
-                  <CalendarClock size={13} />
-                </div>
-                <input style={s.rpInput} defaultValue="Date/2023" readOnly />
-              </div>
-              <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-                <div style={{ ...s.rpInputRow, flex: 1 }}>
-                  <input style={s.rpInput} defaultValue="11:00 AM" readOnly />
-                </div>
-                <span style={{ color: T.textMuted, alignSelf: 'center', fontSize: 12 }}>-</span>
-                <div style={{ ...s.rpInputRow, flex: 1 }}>
-                  <input style={s.rpInput} defaultValue="11:00 PM" readOnly />
-                </div>
-              </div>
-            </div>
-
-            {/* Multi-Stop Route */}
-            <div style={s.rpSection}>
-              <div style={s.rpLabel}>Multi-Stop Route</div>
-              {waypoints.map((_, i) => (
-                <div key={i} style={{ ...s.rpInputRow, marginBottom: 6 }}>
-                  <div style={s.rpInputIcon}><Plus size={12} /></div>
-                  <input style={s.rpInput} placeholder="Add Waypoint" />
-                  <button style={s.rpRemoveBtn}><X size={12} /></button>
-                </div>
-              ))}
-              <button
-                style={s.addWaypointBtn}
-                onClick={() => setWaypoints(p => [...p, ''])}
-              >
-                Add waypoint
-              </button>
-            </div>
-
-            {/* Vehicle Constraints */}
-            <div style={s.rpSection}>
-              <div style={s.rpLabel}>Vehicle Constraints</div>
-              {[
-                { key: 'xlOnly' as const, label: 'XL Only' },
-                { key: 'cargoSpace' as const, label: 'Cargo Space > 500kg' },
-                { key: 'liftgate' as const, label: 'Liftgate' },
-              ].map((item) => (
-                <div key={item.key} style={s.rpCheckRow}>
-                  <div style={{
-                    ...s.rpCheckbox,
-                    background: vehicleConstraints[item.key] ? T.accent : 'transparent',
-                    borderColor: vehicleConstraints[item.key] ? T.accent : T.border,
-                  }}
-                    onClick={() => setVehicleConstraints(p => ({ ...p, [item.key]: !p[item.key] }))}
-                  >
-                    {vehicleConstraints[item.key] && (
-                      <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                        <path d="M1 4L3.5 6.5L9 1" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    )}
-                  </div>
-                  <span style={s.rpCheckLabel}>{item.label}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Pricing Templates */}
-            <div style={s.rpSection}>
-              <div style={s.rpLabel}>Pricing Templates</div>
-              {['Standard', 'Premium', 'Freight'].map((tmpl) => (
-                <div
-                  key={tmpl}
-                  style={s.rpRadioRow}
-                  onClick={() => setPricingTemplate(tmpl.toLowerCase())}
-                >
-                  <div style={{
-                    ...s.rpRadio,
-                    borderColor: pricingTemplate === tmpl.toLowerCase() ? T.accent : T.border,
-                  }}>
-                    {pricingTemplate === tmpl.toLowerCase() && (
-                      <div style={s.rpRadioDot} />
-                    )}
-                  </div>
-                  <span style={s.rpCheckLabel}>{tmpl}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Schedule Route button */}
-            <button style={s.scheduleBtn}>
-              Schedule Route
-            </button>
-          </div>
-            ) : (
-              <div style={{ ...s.rightPanel, width: 36, alignItems: 'center', cursor: 'pointer' }} onClick={() => setIsRightPanelOpen(true)}>
-                <div style={{ padding: '10px 0', borderBottom: `1px solid ${T.border}`, width: '100%', display: 'flex', justifyContent: 'center' }}>
-                  <ChevronLeft size={16} color={T.textMuted} />
-                </div>
-                <div style={{ writingMode: 'vertical-rl', padding: '16px 0', fontSize: 11, fontWeight: 600, color: T.textSecondary, letterSpacing: 1 }}>
-                  Quick Route Creation
-                </div>
-              </div>
-            )
           )}
         </div>
+
+        {/* ────────────────── RIGHT: Quick Route Creation ──────────────── */}
+        {!isFullscreen && (
+          isRightPanelOpen ? (
+            <div style={s.rightPanel}>
+              <div style={s.rpHeader}>
+                <span style={s.panelTitle}>Quick Route Creation</span>
+                <button style={{ ...s.moreBtn, fontSize: 16 }} onClick={() => setIsRightPanelOpen(false)}><ChevronRight size={16} /></button>
+              </div>
+
+              {/* Departure Window */}
+              <div style={s.rpSection}>
+                <div style={s.rpLabel}>Departure Window</div>
+                <div style={s.rpInputRow}>
+                  <div style={s.rpInputIcon}>
+                    <CalendarClock size={13} />
+                  </div>
+                  <input style={s.rpInput} defaultValue="Date/2023" readOnly />
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                  <div style={{ ...s.rpInputRow, flex: 1 }}>
+                    <input style={s.rpInput} defaultValue="11:00 AM" readOnly />
+                  </div>
+                  <span style={{ color: T.textMuted, alignSelf: 'center', fontSize: 12 }}>-</span>
+                  <div style={{ ...s.rpInputRow, flex: 1 }}>
+                    <input style={s.rpInput} defaultValue="11:00 PM" readOnly />
+                  </div>
+                </div>
+              </div>
+
+              {/* Multi-Stop Route */}
+              <div style={s.rpSection}>
+                <div style={s.rpLabel}>Multi-Stop Route</div>
+                {waypoints.map((_, i) => (
+                  <div key={i} style={{ ...s.rpInputRow, marginBottom: 6 }}>
+                    <div style={s.rpInputIcon}><Plus size={12} /></div>
+                    <input style={s.rpInput} placeholder="Add Waypoint" />
+                    <button style={s.rpRemoveBtn}><X size={12} /></button>
+                  </div>
+                ))}
+                <button
+                  style={s.addWaypointBtn}
+                  onClick={() => setWaypoints(p => [...p, ''])}
+                >
+                  Add waypoint
+                </button>
+              </div>
+
+              {/* Vehicle Constraints */}
+              <div style={s.rpSection}>
+                <div style={s.rpLabel}>Vehicle Constraints</div>
+                {[
+                  { key: 'xlOnly' as const, label: 'XL Only' },
+                  { key: 'cargoSpace' as const, label: 'Cargo Space > 500kg' },
+                  { key: 'liftgate' as const, label: 'Liftgate' },
+                ].map((item) => (
+                  <div key={item.key} style={s.rpCheckRow}>
+                    <div style={{
+                      ...s.rpCheckbox,
+                      background: vehicleConstraints[item.key] ? T.accent : 'transparent',
+                      borderColor: vehicleConstraints[item.key] ? T.accent : T.border,
+                    }}
+                      onClick={() => setVehicleConstraints(p => ({ ...p, [item.key]: !p[item.key] }))}
+                    >
+                      {vehicleConstraints[item.key] && (
+                        <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                          <path d="M1 4L3.5 6.5L9 1" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </div>
+                    <span style={s.rpCheckLabel}>{item.label}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Pricing Templates */}
+              <div style={s.rpSection}>
+                <div style={s.rpLabel}>Pricing Templates</div>
+                {['Standard', 'Premium', 'Freight'].map((tmpl) => (
+                  <div
+                    key={tmpl}
+                    style={s.rpRadioRow}
+                    onClick={() => setPricingTemplate(tmpl.toLowerCase())}
+                  >
+                    <div style={{
+                      ...s.rpRadio,
+                      borderColor: pricingTemplate === tmpl.toLowerCase() ? T.accent : T.border,
+                    }}>
+                      {pricingTemplate === tmpl.toLowerCase() && (
+                        <div style={s.rpRadioDot} />
+                      )}
+                    </div>
+                    <span style={s.rpCheckLabel}>{tmpl}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Schedule Route button */}
+              <button style={s.scheduleBtn}>
+                Schedule Route
+              </button>
+            </div>
+          ) : (
+            <div style={{ ...s.rightPanel, width: 36, alignItems: 'center', cursor: 'pointer' }} onClick={() => setIsRightPanelOpen(true)}>
+              <div style={{ padding: '10px 0', borderBottom: `1px solid ${T.border}`, width: '100%', display: 'flex', justifyContent: 'center' }}>
+                <ChevronLeft size={16} color={T.textMuted} />
+              </div>
+              <div style={{ writingMode: 'vertical-rl', padding: '16px 0', fontSize: 11, fontWeight: 600, color: T.textSecondary, letterSpacing: 1 }}>
+                Quick Route Creation
+              </div>
+            </div>
+          )
+        )}
+      </div>
     </>
   )
 }

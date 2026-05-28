@@ -66,7 +66,7 @@ export default function LoginPage() {
         headers: { Authorization: `Bearer ${data.access}` },
       })
       setAuth(userRes.data, data.access, data.refresh)
-      navigate('/campus-admin')
+      navigate('/')
     },
     onError: (error: any) => {
       const apiError = error?.response?.data?.error

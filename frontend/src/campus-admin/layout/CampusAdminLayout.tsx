@@ -3,13 +3,15 @@ import CampusAdminSidebar from '../components/CampusAdminSidebar'
 import CampusAdminTopNav from '../components/CampusAdminTopNav'
 import { useLocation } from 'react-router-dom'
 import CampusAdminDashboard from '../screens/DashboardScreen'
+import CampusAdminDispatch from '../pages/DispatchPage'
 import { type CSSProperties } from 'react'
 import { useCampusThemeStore, themeCss, T } from '../theme'
 
 export default function CampusAdminLayout() {
   const { mode } = useCampusThemeStore()
   const location = useLocation()
-  const isDashboard = location.pathname === '/campus-admin'
+  const isDashboard = location.pathname === '/'
+  const isDispatch = location.pathname === '/dispatch'
 
   const s: Record<string, CSSProperties> = {
     root: {
@@ -29,7 +31,10 @@ export default function CampusAdminLayout() {
           <div style={{ display: isDashboard ? 'flex' : 'none', flex: 1, overflow: 'hidden' }}>
             <CampusAdminDashboard />
           </div>
-          <div style={{ display: isDashboard ? 'none' : 'block', flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
+          <div style={{ display: isDispatch ? 'flex' : 'none', flex: 1, overflow: 'hidden' }}>
+            <CampusAdminDispatch />
+          </div>
+          <div style={{ display: (!isDashboard && !isDispatch) ? 'flex' : 'none', flexDirection: 'column', flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
             <Outlet />
           </div>
         </div>

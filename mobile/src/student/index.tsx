@@ -244,17 +244,24 @@ export default function StudentApp() {
     if (pinRecoveryRequired && locked) setLocked(false)
   }, [pinRecoveryRequired, locked, setLocked])
 
+  // Store latest state in refs for BackHandler to avoid re-attaching and stealing the top of the stack
+  const backStateRef = useRef({ activeTab, accountMode, rideScreen, isSidebarOpen })
+  useEffect(() => {
+    backStateRef.current = { activeTab, accountMode, rideScreen, isSidebarOpen }
+  }, [activeTab, accountMode, rideScreen, isSidebarOpen])
+
   // ─── Hardware back button ────────────────────────────────────────────────
   useEffect(() => {
     const handleBackPress = () => {
+      const state = backStateRef.current
       // Close ride overlay screens on back press
-      if (rideScreen !== 'none') {
+      if (state.rideScreen !== 'none') {
         setRideScreen('none')
         return true
       }
-      if (isSidebarOpen) { setIsSidebarOpen(false); return true }
-      if (accountMode !== 'view') { setAccountMode('view'); return true }
-      if (activeTab !== 'home') { setActiveTab('home'); return true }
+      if (state.isSidebarOpen) { setIsSidebarOpen(false); return true }
+      if (state.accountMode !== 'view') { setAccountMode('view'); return true }
+      if (state.activeTab !== 'home') { setActiveTab('home'); return true }
       const now = Date.now()
       if (now - lastBackPressAt.current < 1500) return false
       lastBackPressAt.current = now
@@ -262,7 +269,7 @@ export default function StudentApp() {
     }
     const sub = BackHandler.addEventListener('hardwareBackPress', handleBackPress)
     return () => sub.remove()
-  }, [activeTab, accountMode, rideScreen, isSidebarOpen])
+  }, [])
 
   // ─── Guards ───────────────────────────────────────────────────────────────
   if (!isAuthenticated || !user) return <StudentLoginScreen />
@@ -445,13 +452,11 @@ export default function StudentApp() {
         />
       </Modal>
 
-      <Modal
-        visible={rideScreen !== 'none'}
-        animationType="slide"
-        onRequestClose={() => setRideScreen('none')}
-      >
-        {renderRideOverlay()}
-      </Modal>
+      {rideScreen !== 'none' && (
+        <View style={[StyleSheet.absoluteFill, { zIndex: 999, elevation: 999, backgroundColor: '#f9f9f9' }]}>
+          {renderRideOverlay()}
+        </View>
+      )}
 
       <Modal visible={isAuthenticated && Boolean(pinRecoveryRequired)} transparent animationType="fade">
         <View style={styles.recoveryBackdrop}>

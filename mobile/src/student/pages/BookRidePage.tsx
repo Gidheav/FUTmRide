@@ -1,22 +1,23 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useCallback, useEffect, memo } from 'react'
 import {
   Alert,
-  Modal,
   Platform,
   ScrollView,
+  FlatList,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
+  BackHandler,
 } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
-import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as LocationService from 'expo-location'
 import api from '../../core/api'
 import useWalletStore from '../../core/walletStore'
 import locationData from '../Gk-location cordinate.json'
+import MapPickerPage from './MapPickerPage'
 
 const VEHICLES = [
   { id: 'motorcycle', label: 'Motorcycle (Okada)' },
@@ -60,13 +61,6 @@ const ALL_LOCATIONS: LocationOption[] = (locationData as Location[]).map((loc) =
   longitude: roundCoord(loc.longitude),
 }))
 
-const DEFAULT_REGION: Region = {
-  latitude: 9.5261,
-  longitude: 6.4514,
-  latitudeDelta: 0.02,
-  longitudeDelta: 0.02,
-}
-
 const filterLocations = (query: string) => {
   const normalized = query.trim().toLowerCase()
   if (!normalized) return ALL_LOCATIONS
@@ -82,9 +76,49 @@ const getSeatLimit = (vehicleId: string) => {
   return 6
 }
 
+// Memoized list item to prevent re-renders
+const LocationItem = memo(({ item, onPress }: { item: LocationOption; onPress: () => void }) => (
+  <TouchableOpacity style={styles.modalItem} onPress={onPress}>
+    <View style={styles.modalItemIcon}>
+      <MaterialIcons name="place" size={18} color="#6A1B9A" />
+    </View>
+    <View style={styles.modalItemContent}>
+      <Text style={styles.modalItemTitle}>{item.label}</Text>
+      <Text style={styles.modalItemSub}>{item.description}</Text>
+    </View>
+  </TouchableOpacity>
+))
+
 export default function BookRidePage({ onClose, onRideCreated }: BookRidePageProps) {
   const insets = useSafeAreaInsets()
-  const [activePicker, setActivePicker] = useState<'pickup' | 'dropoff' | null>(null)
+  const [activePicker, setActivePicker] = useState<'pickup' | 'dropoff' | 'vehicle' | 'time' | 'seats' | null>(null)
+  const [showMapPicker, setShowMapPicker] = useState(false)
+
+  const openPicker = useCallback((type: 'pickup' | 'dropoff' | 'vehicle' | 'time' | 'seats') => {
+    setActivePicker(type)
+  }, [])
+
+  const closePicker = useCallback(() => {
+    setActivePicker(null)
+  }, [])
+
+  useEffect(() => {
+    const handleBack = () => {
+      if (showMapPicker) {
+        setShowMapPicker(false)
+        return true
+      }
+      if (activePicker) {
+        setActivePicker(null)
+        return true
+      }
+      onClose()
+      return true
+    }
+    const subscription = BackHandler.addEventListener('hardwareBackPress', handleBack)
+    return () => subscription.remove()
+  }, [showMapPicker, activePicker, onClose])
+
   const [query, setQuery] = useState('')
   const [pickup, setPickup] = useState<LocationOption | null>(null)
   const [dropoff, setDropoff] = useState<LocationOption | null>(null)
@@ -95,7 +129,11 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const seatLimit = useMemo(() => getSeatLimit(vehicleType), [vehicleType])
-  const filteredLocations = useMemo(() => filterLocations(query), [query])
+  // Only compute filtered locations when a location picker is actually open
+  const filteredLocations = useMemo(() => {
+    if (activePicker !== 'pickup' && activePicker !== 'dropoff') return ALL_LOCATIONS
+    return filterLocations(query)
+  }, [query, activePicker])
 
   const handleUseCurrentLocation = async () => {
     const status = await LocationService.getForegroundPermissionsAsync()
@@ -116,10 +154,10 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
       latitude: roundCoord(current.coords.latitude),
       longitude: roundCoord(current.coords.longitude),
     })
-    setActivePicker(null)
+    closePicker()
   }
 
-  const handleSelectLocation = (item: LocationOption) => {
+  const handleSelectLocation = useCallback((item: LocationOption) => {
     if (activePicker === 'pickup') {
       setPickup(item)
     }
@@ -128,9 +166,9 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
       setMapDropoff(null)
     }
     setActivePicker(null)
-  }
+  }, [activePicker])
 
-  const handleMapSelect = (coords: { latitude: number; longitude: number }) => {
+  const handleMapSelect = useCallback((coords: { latitude: number; longitude: number }) => {
     const rounded = {
       latitude: roundCoord(coords.latitude),
       longitude: roundCoord(coords.longitude),
@@ -143,7 +181,7 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
       latitude: rounded.latitude,
       longitude: rounded.longitude,
     })
-  }
+  }, [])
 
   const handleSubmit = async () => {
     if (!pickup) {
@@ -194,8 +232,14 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
     }
   }
 
+  const renderLocationItem = useCallback(({ item }: { item: LocationOption }) => (
+    <LocationItem item={item} onPress={() => handleSelectLocation(item)} />
+  ), [handleSelectLocation])
+
+  const keyExtractor = useCallback((item: LocationOption) => item.id, [])
+
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}> 
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={onClose} activeOpacity={0.85}>
           <MaterialIcons name="arrow-back" size={20} color="#1a1c1c" />
@@ -206,101 +250,110 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Pickup</Text>
-          <TouchableOpacity style={styles.inputButton} onPress={() => setActivePicker('pickup')}>
-            <Text style={pickup ? styles.inputValue : styles.inputPlaceholder}>
-              {pickup ? pickup.label : 'Select pickup location'}
-            </Text>
-            <MaterialIcons name="keyboard-arrow-down" size={20} color="#8b8b8b" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.linkRow} onPress={handleUseCurrentLocation}>
-            <MaterialIcons name="my-location" size={18} color="#6A1B9A" />
-            <Text style={styles.linkText}>Use my current location</Text>
-          </TouchableOpacity>
-        </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Dropoff</Text>
-          <TouchableOpacity style={styles.inputButton} onPress={() => setActivePicker('dropoff')}>
-            <Text style={dropoff ? styles.inputValue : styles.inputPlaceholder}>
-              {dropoff ? dropoff.label : 'Select dropoff location'}
-            </Text>
-            <MaterialIcons name="keyboard-arrow-down" size={20} color="#8b8b8b" />
-          </TouchableOpacity>
+          <View style={styles.routeContainer}>
+            <View style={styles.routeTimeline}>
+              <View style={styles.timelineDotPickup} />
+              <View style={styles.timelineLine} />
+              <View style={styles.timelineDotDropoff} />
+            </View>
 
-          <Text style={styles.helperText}>Or pin a dropoff on the map</Text>
-          <View style={styles.mapCard}>
-            <MapView
-              style={styles.map}
-              provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-              initialRegion={DEFAULT_REGION}
-              onPress={(event) => handleMapSelect(event.nativeEvent.coordinate)}
+            <View style={styles.routeInputs}>
+              <View style={styles.routeInputGroup}>
+                <Text style={styles.routeInputLabel}>Pickup Location</Text>
+                <View style={styles.pickupInputRow}>
+                  <TouchableOpacity style={[styles.inputButton, { flex: 1 }]} onPress={() => openPicker('pickup')}>
+                    <Text style={pickup ? styles.inputValue : styles.inputPlaceholder} numberOfLines={1}>
+                      {pickup ? pickup.label : 'Search campus location'}
+                    </Text>
+                    <MaterialIcons name="keyboard-arrow-down" size={18} color="#8b8b8b" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.currentLocationBtn,
+                      pickup?.id === 'current-location' && styles.currentLocationBtnActive
+                    ]}
+                    onPress={handleUseCurrentLocation}
+                    activeOpacity={0.8}
+                  >
+                    <MaterialIcons
+                      name="my-location"
+                      size={20}
+                      color={pickup?.id === 'current-location' ? "#6A1B9A" : "#8b8b8b"}
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={[styles.routeInputGroup, { marginTop: 16 }]}>
+                <Text style={styles.routeInputLabel}>Dropoff Location</Text>
+                <TouchableOpacity style={styles.inputButton} onPress={() => openPicker('dropoff')}>
+                  <Text style={dropoff ? styles.inputValue : styles.inputPlaceholder} numberOfLines={1}>
+                    {dropoff ? dropoff.label : 'Search campus location'}
+                  </Text>
+                  <MaterialIcons name="keyboard-arrow-down" size={20} color="#8b8b8b" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.mapButtonContainer}>
+            <TouchableOpacity 
+              style={styles.mapButton} 
+              activeOpacity={0.8}
+              onPress={() => setShowMapPicker(true)}
             >
-              {mapDropoff && (
-                <Marker coordinate={mapDropoff} />
-              )}
-            </MapView>
+              <MaterialIcons name="map" size={18} color="#6A1B9A" />
+              <Text style={styles.mapButtonText}>Choose Dropoff on Map</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Vehicle & Seats</Text>
-          <View style={styles.vehicleRow}>
-            {VEHICLES.map((item) => (
+          <Text style={styles.cardTitle}>Vehicle, Seats & Time</Text>
+          <View style={styles.vehicleSeatContainer}>
+            <View style={styles.configColVehicle}>
+              <Text style={styles.dropdownLabel}>Vehicle</Text>
               <TouchableOpacity
-                key={item.id}
-                style={[styles.vehicleChip, vehicleType === item.id && styles.vehicleChipActive]}
-                onPress={() => {
-                  setVehicleType(item.id)
-                  setSeatCount((prev) => Math.min(prev, getSeatLimit(item.id)))
-                }}
+                style={styles.dropdownButton}
+                onPress={() => openPicker('vehicle')}
+                activeOpacity={0.8}
               >
-                <Text style={[styles.vehicleChipText, vehicleType === item.id && styles.vehicleChipTextActive]}>
-                  {item.label}
+                <Text style={styles.dropdownButtonText} numberOfLines={1}>
+                  {VEHICLES.find(v => v.id === vehicleType)?.label}
                 </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <View style={styles.seatRow}>
-            <Text style={styles.seatLabel}>Seats</Text>
-            <View style={styles.seatControls}>
-              <TouchableOpacity
-                style={[styles.seatButton, seatCount <= 1 && styles.seatButtonDisabled]}
-                onPress={() => setSeatCount((prev) => Math.max(1, prev - 1))}
-                disabled={seatCount <= 1}
-              >
-                <MaterialIcons name="remove" size={18} color={seatCount <= 1 ? '#bdbdbd' : '#1a1c1c'} />
-              </TouchableOpacity>
-              <Text style={styles.seatValue}>{seatCount}</Text>
-              <TouchableOpacity
-                style={[styles.seatButton, seatCount >= seatLimit && styles.seatButtonDisabled]}
-                onPress={() => setSeatCount((prev) => Math.min(seatLimit, prev + 1))}
-                disabled={seatCount >= seatLimit}
-              >
-                <MaterialIcons name="add" size={18} color={seatCount >= seatLimit ? '#bdbdbd' : '#1a1c1c'} />
+                <MaterialIcons name="keyboard-arrow-down" size={16} color="#8b8b8b" />
               </TouchableOpacity>
             </View>
-            <Text style={styles.seatHint}>Max {seatLimit}</Text>
-          </View>
-        </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Pickup Time</Text>
-          <View style={styles.scheduleRow}>
-            {SCHEDULE_OPTIONS.map((minutes) => (
+            <View style={styles.configColSeats}>
+              <Text style={styles.dropdownLabel}>Seats</Text>
               <TouchableOpacity
-                key={minutes}
-                style={[styles.scheduleChip, scheduledOffset === minutes && styles.scheduleChipActive]}
-                onPress={() => setScheduledOffset(minutes)}
+                style={styles.dropdownButton}
+                activeOpacity={0.8}
+                onPress={() => openPicker('seats')}
               >
-                <Text style={[styles.scheduleChipText, scheduledOffset === minutes && styles.scheduleChipTextActive]}>
-                  {minutes === 0 ? 'Now' : `+${minutes}m`}
+                <Text style={styles.dropdownButtonText} numberOfLines={1}>
+                  {seatCount}
                 </Text>
+                <MaterialIcons name="keyboard-arrow-down" size={16} color="#8b8b8b" />
               </TouchableOpacity>
-            ))}
+            </View>
+
+            <View style={styles.configColTime}>
+              <Text style={styles.dropdownLabel}>Time</Text>
+              <TouchableOpacity
+                style={styles.dropdownButton}
+                onPress={() => openPicker('time')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.dropdownButtonText} numberOfLines={1}>
+                  {scheduledOffset === 0 ? 'Now' : `+${scheduledOffset}m`}
+                </Text>
+                <MaterialIcons name="keyboard-arrow-down" size={16} color="#8b8b8b" />
+              </TouchableOpacity>
+            </View>
           </View>
-          <Text style={styles.helperText}>Pickups can be scheduled up to 30 minutes ahead.</Text>
         </View>
 
         <View style={styles.card}>
@@ -311,49 +364,133 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
           </View>
         </View>
 
-        <TouchableOpacity
-          style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
-          onPress={handleSubmit}
-          disabled={isSubmitting}
-        >
-          <Text style={styles.submitText}>{isSubmitting ? 'Booking...' : 'Request Ride'}</Text>
-          <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
-        </TouchableOpacity>
+        <View style={styles.submitContainer}>
+          <TouchableOpacity
+            style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
+            onPress={handleSubmit}
+            disabled={isSubmitting}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.submitText}>{isSubmitting ? 'Booking...' : 'Request Ride'}</Text>
+            <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
+          </TouchableOpacity>
+        </View>
       </ScrollView>
 
-      <Modal visible={!!activePicker} transparent animationType="fade" onRequestClose={() => setActivePicker(null)}>
-        <View style={styles.modalOverlay}>
+      {!!activePicker && (
+        <View style={styles.absoluteModalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Select {activePicker === 'pickup' ? 'pickup' : 'dropoff'}</Text>
-            <View style={styles.modalSearchRow}>
-              <MaterialIcons name="search" size={18} color="#9c9c9c" />
-              <TextInput
-                style={styles.modalSearchInput}
-                placeholder="Search locations"
-                placeholderTextColor="#9c9c9c"
-                value={query}
-                onChangeText={setQuery}
+            <Text style={styles.modalTitle}>
+              {activePicker === 'vehicle'
+                ? 'Select Vehicle Type'
+                : activePicker === 'time'
+                  ? 'Select Pickup Time'
+                  : activePicker === 'seats'
+                    ? 'Select Seats'
+                    : `Select ${activePicker === 'pickup' ? 'pickup' : 'dropoff'}`}
+            </Text>
+            {(activePicker === 'pickup' || activePicker === 'dropoff') && (
+              <View style={styles.modalSearchRow}>
+                <MaterialIcons name="search" size={18} color="#9c9c9c" />
+                <TextInput
+                  style={styles.modalSearchInput}
+                  placeholder="Search locations"
+                  placeholderTextColor="#9c9c9c"
+                  value={query}
+                  onChangeText={setQuery}
+                />
+              </View>
+            )}
+            {activePicker === 'vehicle' ? (
+              <ScrollView style={styles.modalList} showsVerticalScrollIndicator={false}>
+                {VEHICLES.map((item) => (
+                  <TouchableOpacity key={item.id} style={styles.modalItem} onPress={() => {
+                    setVehicleType(item.id)
+                    setSeatCount((prev) => Math.min(prev, getSeatLimit(item.id)))
+                    closePicker()
+                  }}>
+                    <View style={styles.modalItemIcon}>
+                      <MaterialIcons name={item.id === 'motorcycle' ? 'two-wheeler' : item.id === 'tricycle' ? 'electric-rickshaw' : 'directions-car'} size={18} color="#6A1B9A" />
+                    </View>
+                    <View style={styles.modalItemContent}>
+                      <Text style={styles.modalItemTitle}>{item.label}</Text>
+                      <Text style={styles.modalItemSub}>Max {getSeatLimit(item.id)} seats</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            ) : activePicker === 'time' ? (
+              <ScrollView style={styles.modalList} showsVerticalScrollIndicator={false}>
+                {SCHEDULE_OPTIONS.map((minutes) => (
+                  <TouchableOpacity key={minutes} style={styles.modalItem} onPress={() => {
+                    setScheduledOffset(minutes)
+                    closePicker()
+                  }}>
+                    <View style={styles.modalItemIcon}>
+                      <MaterialIcons name="schedule" size={18} color="#6A1B9A" />
+                    </View>
+                    <View style={styles.modalItemContent}>
+                      <Text style={styles.modalItemTitle}>{minutes === 0 ? 'Now' : `+${minutes} mins`}</Text>
+                      <Text style={styles.modalItemSub}>Pickup offset</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            ) : activePicker === 'seats' ? (
+              <ScrollView style={styles.modalList} showsVerticalScrollIndicator={false}>
+                {Array.from({ length: seatLimit }, (_, i) => i + 1).map((num) => (
+                  <TouchableOpacity key={num} style={styles.modalItem} onPress={() => {
+                    setSeatCount(num)
+                    closePicker()
+                  }}>
+                    <View style={styles.modalItemIcon}>
+                      <MaterialIcons name="person" size={18} color="#6A1B9A" />
+                    </View>
+                    <View style={styles.modalItemContent}>
+                      <Text style={styles.modalItemTitle}>{num} {num === 1 ? 'Seat' : 'Seats'}</Text>
+                      <Text style={styles.modalItemSub}>Number of passengers</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            ) : (
+              <FlatList
+                style={styles.modalList}
+                data={filteredLocations}
+                keyExtractor={keyExtractor}
+                showsVerticalScrollIndicator={false}
+                initialNumToRender={15}
+                maxToRenderPerBatch={10}
+                windowSize={3}
+                keyboardShouldPersistTaps="handled"
+                renderItem={renderLocationItem}
+                removeClippedSubviews={true}
+                getItemLayout={(_, index) => ({
+                  length: 53,
+                  offset: 53 * index,
+                  index,
+                })}
               />
-            </View>
-            <ScrollView style={styles.modalList} showsVerticalScrollIndicator={false}>
-              {filteredLocations.map((item) => (
-                <TouchableOpacity key={item.id} style={styles.modalItem} onPress={() => handleSelectLocation(item)}>
-                  <View style={styles.modalItemIcon}>
-                    <MaterialIcons name="place" size={18} color="#6A1B9A" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.modalItemTitle}>{item.label}</Text>
-                    <Text style={styles.modalItemSub}>{item.description}</Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <TouchableOpacity style={styles.modalClose} onPress={() => setActivePicker(null)}>
+            )}
+            <TouchableOpacity style={styles.modalClose} onPress={closePicker}>
               <Text style={styles.modalCloseText}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
-      </Modal>
+      )}
+
+      {showMapPicker && (
+        <View style={StyleSheet.absoluteFill}>
+          <MapPickerPage
+            onClose={() => setShowMapPicker(false)}
+            onConfirm={(coords) => {
+              handleMapSelect(coords)
+              setShowMapPicker(false)
+            }}
+            initialCoords={mapDropoff}
+          />
+        </View>
+      )}
     </View>
   )
 }
@@ -391,19 +528,16 @@ const styles = StyleSheet.create({
     width: 36,
   },
   content: {
-    padding: 20,
+    padding: 5,
     paddingBottom: 32,
   },
   card: {
     backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
+    borderRadius: 4,
+    padding: 12,
+    marginBottom: 2,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
   },
   cardTitle: {
     fontSize: 12,
@@ -414,14 +548,33 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
   },
   inputButton: {
+    height: 48,
     borderWidth: 1,
     borderColor: '#e2e2e2',
     borderRadius: 12,
     paddingHorizontal: 14,
-    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    backgroundColor: '#ffffff',
+  },
+  pickupInputRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  currentLocationBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e2e2',
+  },
+  currentLocationBtnActive: {
+    backgroundColor: '#f5effb',
+    borderColor: '#e5d0f5',
   },
   inputPlaceholder: {
     color: '#9c9c9c',
@@ -430,121 +583,111 @@ const styles = StyleSheet.create({
     color: '#1a1c1c',
     fontWeight: '600',
   },
-  linkRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 10,
-  },
-  linkText: {
-    color: '#6A1B9A',
-    fontWeight: '600',
-  },
   helperText: {
     fontSize: 12,
     color: '#8b8b8b',
     marginTop: 10,
   },
-  mapCard: {
-    height: 160,
-    borderRadius: 14,
-    overflow: 'hidden',
-    marginTop: 10,
-  },
-  map: {
-    flex: 1,
-  },
-  vehicleRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  vehicleChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#e2e2e2',
-    backgroundColor: '#fafafa',
-  },
-  vehicleChipActive: {
-    backgroundColor: '#6A1B9A',
-    borderColor: '#6A1B9A',
-  },
-  vehicleChipText: {
-    fontSize: 12,
-    color: '#5e5e5e',
-    fontWeight: '600',
-  },
-  vehicleChipTextActive: {
-    color: '#ffffff',
-  },
-  seatRow: {
-    marginTop: 14,
-    flexDirection: 'row',
+  mapButtonContainer: {
+    marginTop: 12,
     alignItems: 'center',
-    gap: 12,
   },
-  seatLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1a1c1c',
-  },
-  seatControls: {
+  mapButton: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  seatButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#ffffff',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#f5effb',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5d0f5',
   },
-  seatButtonDisabled: {
-    backgroundColor: '#efefef',
+  mapButtonText: {
+    color: '#6A1B9A',
+    fontWeight: '600',
+    fontSize: 14,
   },
-  seatValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1a1c1c',
-    minWidth: 20,
-    textAlign: 'center',
+  routeContainer: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    marginBottom: 4,
   },
-  seatHint: {
+  routeTimeline: {
+    width: 24,
+    alignItems: 'center',
+    paddingTop: 41,
+    paddingBottom: 19,
+    marginRight: 8,
+  },
+  timelineDotPickup: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#6A1B9A',
+  },
+  timelineLine: {
+    flex: 1,
+    width: 2,
+    backgroundColor: '#e2e2e2',
+    marginVertical: 4,
+  },
+  timelineDotDropoff: {
+    width: 10,
+    height: 10,
+    backgroundColor: '#1a1c1c',
+  },
+  routeInputs: {
+    flex: 1,
+  },
+  routeInputGroup: {
+    flex: 1,
+  },
+  routeInputLabel: {
     fontSize: 12,
     color: '#8b8b8b',
+    fontWeight: '600',
+    marginBottom: 6,
   },
-  scheduleRow: {
+  vehicleSeatContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    gap: 12,
   },
-  scheduleChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
+  configColVehicle: {
+    flex: 2,
+    gap: 6,
+  },
+  configColSeats: {
+    flex: 1,
+    gap: 6,
+  },
+  configColTime: {
+    flex: 1.2,
+    gap: 6,
+  },
+  dropdownLabel: {
+    fontSize: 12,
+    color: '#8b8b8b',
+    fontWeight: '600',
+  },
+  dropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 48,
     borderWidth: 1,
     borderColor: '#e2e2e2',
-    backgroundColor: '#fafafa',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    backgroundColor: '#ffffff',
   },
-  scheduleChipActive: {
-    backgroundColor: '#6A1B9A',
-    borderColor: '#6A1B9A',
-  },
-  scheduleChipText: {
-    fontSize: 12,
+  dropdownButtonText: {
+    fontSize: 13,
+    color: '#1a1c1c',
     fontWeight: '600',
-    color: '#5e5e5e',
-  },
-  scheduleChipTextActive: {
-    color: '#ffffff',
+    flex: 1,
+    paddingRight: 4,
   },
   paymentRow: {
     flexDirection: 'row',
@@ -556,13 +699,18 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1a1c1c',
   },
-  submitButton: {
-    marginTop: 8,
-    backgroundColor: '#6A1B9A',
-    borderRadius: 14,
-    paddingVertical: 14,
+  submitContainer: {
     alignItems: 'center',
+    marginTop: 12,
+    marginBottom: 20,
+  },
+  submitButton: {
+    backgroundColor: '#6A1B9A',
+    borderRadius: 24,
+    paddingVertical: 14,
+    paddingHorizontal: 32,
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
   },
@@ -574,15 +722,19 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 15,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+  absoluteModalOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
     justifyContent: 'center',
     padding: 20,
+    paddingHorizontal: 10,
+    zIndex: 1000,
   },
   modalCard: {
     backgroundColor: '#ffffff',
     borderRadius: 16,
+    borderColor: '#6b2e916a',
+    borderWidth: 1,
     padding: 16,
     maxHeight: '80%',
   },
@@ -625,6 +777,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5effb',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  modalItemContent: {
+    flex: 1,
   },
   modalItemTitle: {
     fontSize: 14,

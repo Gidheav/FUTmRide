@@ -95,7 +95,7 @@ export default function LoginPage() {
               {mutation.isPending ? <><span className="spinner" />Signing in...</> : 'Sign In'}
             </button>
             <p style={{ marginTop: '14px', textAlign: 'center', fontSize: '12px', color: '#666' }}>
-              Campus moderator? <a href="/campus-admin/login" style={{ color: '#007A47', textDecoration: 'none', fontWeight: 600 }}>Use Campus Admin Login</a>
+              Campus moderator? <a href="/login" style={{ color: '#007A47', textDecoration: 'none', fontWeight: 600 }}>Use Campus Admin Login</a>
             </p>
           </form>
         </div>

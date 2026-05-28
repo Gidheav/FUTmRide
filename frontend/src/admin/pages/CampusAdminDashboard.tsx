@@ -109,7 +109,7 @@ export default function CampusAdminDashboard() {
             <span className="nav-admin">Campus Admin</span>
           </div>
           <div className="nav-links">
-            <Link to="/campus-admin" className="nav-link active"><LayoutDashboard size={14} /> Local Dashboard</Link>
+            <Link to="/" className="nav-link active"><LayoutDashboard size={14} /> Local Dashboard</Link>
           </div>
           <div className="nav-right">
             <span className="nav-user">Hello, <strong>{user?.first_name}</strong></span>

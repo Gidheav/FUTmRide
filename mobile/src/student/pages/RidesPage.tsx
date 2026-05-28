@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
-  Modal,
+  FlatList,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
+  BackHandler,
 } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import * as LocationService from 'expo-location'
@@ -113,7 +114,22 @@ export default function StudentRidesPage() {
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const filteredLocations = useMemo(() => filterLocations(query), [query])
+  const filteredLocations = useMemo(() => {
+    if (!locationPickerOpen) return [] // Prevent mapping 275 items when closed
+    return filterLocations(query)
+  }, [query, locationPickerOpen])
+
+  useEffect(() => {
+    const handleBack = () => {
+      if (locationPickerOpen) {
+        setLocationPickerOpen(false)
+        return true
+      }
+      return false
+    }
+    const sub = BackHandler.addEventListener('hardwareBackPress', handleBack)
+    return () => sub.remove()
+  }, [locationPickerOpen])
 
   const stopScan = useCallback(() => {
     if (scanIntervalRef.current) clearInterval(scanIntervalRef.current)
@@ -284,7 +300,21 @@ export default function StudentRidesPage() {
     )
   }
 
+  const renderLocationItem = useCallback(({ item }: { item: LocationOption }) => (
+    <TouchableOpacity
+      style={styles.modalItem}
+      onPress={() => handleSelectLocation(item)}
+    >
+      <MaterialIcons name="place" size={18} color="#6A1B9A" />
+      <View style={{ flex: 1 }}>
+        <Text style={styles.modalItemTitle}>{item.label}</Text>
+        <Text style={styles.modalItemSubtitle}>{item.description}</Text>
+      </View>
+    </TouchableOpacity>
+  ), [])
+
   return (
+    <View style={{ flex: 1 }}>
     <ScrollView style={styles.page} contentContainerStyle={styles.pageContent} showsVerticalScrollIndicator={false}>
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Scan for available rides</Text>
@@ -426,48 +456,49 @@ export default function StudentRidesPage() {
         )}
       </View>
 
-      <Modal
-        visible={locationPickerOpen}
-        animationType="slide"
-        onRequestClose={() => setLocationPickerOpen(false)}
-      >
-        <View style={styles.modalPage}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setLocationPickerOpen(false)} style={styles.modalBack}>
-              <MaterialIcons name="close" size={20} color="#1a1c1c" />
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>Select location</Text>
-            <View style={styles.modalSpacer} />
-          </View>
+    </ScrollView>
 
-          <View style={styles.modalSearch}>
-            <MaterialIcons name="search" size={18} color="#6b7280" />
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Search locations"
-              value={query}
-              onChangeText={setQuery}
+      {locationPickerOpen && (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#ffffff', zIndex: 999, elevation: 999 }]}>
+          <View style={styles.modalPage}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setLocationPickerOpen(false)} style={styles.modalBack}>
+                <MaterialIcons name="close" size={20} color="#1a1c1c" />
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>Select location</Text>
+              <View style={styles.modalSpacer} />
+            </View>
+
+            <View style={styles.modalSearch}>
+              <MaterialIcons name="search" size={18} color="#6b7280" />
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Search locations"
+                value={query}
+                onChangeText={setQuery}
+              />
+            </View>
+
+            <FlatList
+              data={filteredLocations}
+              keyExtractor={(item) => item.id}
+              showsVerticalScrollIndicator={false}
+              initialNumToRender={15}
+              maxToRenderPerBatch={10}
+              windowSize={3}
+              keyboardShouldPersistTaps="handled"
+              renderItem={renderLocationItem}
+              removeClippedSubviews={true}
+              getItemLayout={(_, index) => ({
+                length: 64,
+                offset: 64 * index,
+                index,
+              })}
             />
           </View>
-
-          <ScrollView contentContainerStyle={styles.modalList}>
-            {filteredLocations.map((item) => (
-              <TouchableOpacity
-                key={item.id}
-                style={styles.modalItem}
-                onPress={() => handleSelectLocation(item)}
-              >
-                <MaterialIcons name="place" size={18} color="#6A1B9A" />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.modalItemTitle}>{item.label}</Text>
-                  <Text style={styles.modalItemSubtitle}>{item.description}</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
         </View>
-      </Modal>
-    </ScrollView>
+      )}
+    </View>
   )
 }
 
