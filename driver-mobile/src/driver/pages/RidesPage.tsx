@@ -38,6 +38,7 @@ const DEFAULT_DRIVER_PROFILE = {
   plate_number: 'PENDING',
 };
 
+
 type DriverMode = 'garage' | 'ondemand';
 
 type RideStudent = {
@@ -348,6 +349,7 @@ export default function DriverRidesPage() {
       clearInterval(interval);
     };
   }, [requestsError]);
+
 
   const handleAcceptRide = async (rideId: string) => {
     if (acceptingRideId) return;

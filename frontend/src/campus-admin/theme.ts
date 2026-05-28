@@ -38,9 +38,22 @@ interface ThemeStore {
   toggleMode: () => void
 }
 
+const getInitialMode = (): 'dark' | 'light' => {
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem('campus-theme')
+    if (saved === 'dark' || saved === 'light') return saved
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  }
+  return 'light'
+}
+
 export const useCampusThemeStore = create<ThemeStore>((set) => ({
-  mode: 'light',
-  toggleMode: () => set((state) => ({ mode: state.mode === 'dark' ? 'light' : 'dark' })),
+  mode: getInitialMode(),
+  toggleMode: () => set((state) => {
+    const next = state.mode === 'dark' ? 'light' : 'dark'
+    if (typeof window !== 'undefined') localStorage.setItem('campus-theme', next)
+    return { mode: next }
+  }),
 }))
 
 export const themeCss = `

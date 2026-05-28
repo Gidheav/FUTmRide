@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,11 +7,14 @@ import {
   Pressable,
   Switch,
   Alert,
+  TextInput,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
 import { useAuthStore } from '../../core/authStore';
+import { settingsApi } from '../../core/api';
+import { useSettingsStore } from '../../core/settingsStore';
 
 type Props = { onBack: () => void };
 
@@ -114,19 +117,349 @@ const MODAL_TITLES: Record<ModalId, string> = {
 export default function AccountSettingsPage({ onBack }: Props) {
   const insets = useSafeAreaInsets();
   const { logout } = useAuthStore();
-
-  // ── toggles
-  const [pushNotifications, setPushNotifications] = useState(true);
-  const [darkMode, setDarkMode] = useState(false);
-  const [biometricLock, setBiometricLock] = useState(true);
+  const { settings, hydrateFromApi, updateLocal } = useSettingsStore();
 
   // ── active sub-page
   const [activeModal, setActiveModal] = useState<ModalId | null>(null);
+  const [pinCurrent, setPinCurrent] = useState('');
+  const [pinNew, setPinNew] = useState('');
+  const [pinConfirm, setPinConfirm] = useState('');
+  const [pinBusy, setPinBusy] = useState(false);
+  const [twoFactorMethod, setTwoFactorMethod] = useState<'totp' | 'sms' | 'email' | null>(null);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [twoFactorSecret, setTwoFactorSecret] = useState('');
+  const [twoFactorBackupCodes, setTwoFactorBackupCodes] = useState<string[]>([]);
+  const [twoFactorBusy, setTwoFactorBusy] = useState(false);
+  const [twoFactorStage, setTwoFactorStage] = useState<'idle' | 'verify' | 'disable'>('idle');
+
+  useEffect(() => {
+    let isMounted = true;
+    settingsApi
+      .getPreferences()
+      .then((res) => {
+        if (isMounted && res?.data) {
+          hydrateFromApi(res.data);
+        }
+      })
+      .catch(() => null);
+    return () => {
+      isMounted = false;
+    };
+  }, [hydrateFromApi]);
+
+  const updateSetting = async (
+    patch: Partial<typeof settings>,
+    apiPatch: Record<string, unknown>
+  ) => {
+    const previous = { ...settings };
+    updateLocal(patch);
+    try {
+      await settingsApi.updatePreferences(apiPatch);
+    } catch (error) {
+      updateLocal(previous);
+      Alert.alert('Update failed', 'Please try again.');
+    }
+  };
+
+  const languageLabel = settings.language === 'en' ? 'English' : settings.language;
+  const navigationLabel = settings.navigationApp === 'google_maps' ? 'Google Maps' : 'Google Maps';
+  const isDarkMode = settings.themeMode === 'dark';
+
+  const handlePinSave = async () => {
+    if (!pinNew || pinNew !== pinConfirm) {
+      Alert.alert('PIN mismatch', 'Please confirm your new PIN.');
+      return;
+    }
+    setPinBusy(true);
+    try {
+      const payload: Record<string, string> = { new_pin: pinNew };
+      if (settings.hasPin) {
+        payload.current_pin = pinCurrent;
+      }
+      await settingsApi.setPin(payload);
+      updateLocal({ hasPin: true });
+      setPinCurrent('');
+      setPinNew('');
+      setPinConfirm('');
+      Alert.alert('PIN updated', 'Your PIN has been saved.');
+      setActiveModal(null);
+    } catch (error) {
+      Alert.alert('PIN update failed', 'Please check your PIN and try again.');
+    } finally {
+      setPinBusy(false);
+    }
+  };
+
+  const handleTwoFactorStart = async (method: 'totp' | 'sms' | 'email') => {
+    setTwoFactorBusy(true);
+    try {
+      const res = await settingsApi.startTwoFactor({ method });
+      setTwoFactorMethod(method);
+      setTwoFactorCode('');
+      setTwoFactorStage('verify');
+      if (method === 'totp') {
+        setTwoFactorSecret(res?.data?.secret || '');
+        setTwoFactorBackupCodes(res?.data?.backup_codes || []);
+      } else {
+        setTwoFactorSecret('');
+        setTwoFactorBackupCodes([]);
+      }
+    } catch (error) {
+      Alert.alert('2FA start failed', 'Please try again.');
+    } finally {
+      setTwoFactorBusy(false);
+    }
+  };
+
+  const handleTwoFactorConfirm = async () => {
+    if (!twoFactorMethod) {
+      return;
+    }
+    if (!twoFactorCode) {
+      Alert.alert('Missing code', 'Enter the verification code.');
+      return;
+    }
+    setTwoFactorBusy(true);
+    try {
+      const res = await settingsApi.confirmTwoFactor({
+        method: twoFactorMethod,
+        code: twoFactorCode,
+      });
+      if (res?.data) {
+        hydrateFromApi(res.data);
+      }
+      setTwoFactorStage('idle');
+      setTwoFactorMethod(null);
+      setTwoFactorCode('');
+      setTwoFactorSecret('');
+      setTwoFactorBackupCodes([]);
+      Alert.alert('2FA enabled', 'Two-factor authentication is now active.');
+      setActiveModal(null);
+    } catch (error) {
+      Alert.alert('2FA verification failed', 'Please check your code and try again.');
+    } finally {
+      setTwoFactorBusy(false);
+    }
+  };
+
+  const handleTwoFactorDisable = async () => {
+    if (!pinCurrent) {
+      Alert.alert('PIN required', 'Enter your PIN to disable 2FA.');
+      return;
+    }
+    setTwoFactorBusy(true);
+    try {
+      await settingsApi.disableTwoFactor({ pin: pinCurrent });
+      updateLocal({ twoFactorEnabled: false, twoFactorMethods: [] });
+      setPinCurrent('');
+      setTwoFactorStage('idle');
+      Alert.alert('2FA disabled', 'Two-factor authentication has been disabled.');
+      setActiveModal(null);
+    } catch (error) {
+      Alert.alert('Disable failed', 'PIN is incorrect or request failed.');
+    } finally {
+      setTwoFactorBusy(false);
+    }
+  };
 
   // ─── Modal content ──────────────────────────────────────────────────────────
 
   const renderModalContent = () => {
     switch (activeModal) {
+      case 'changePin':
+        return (
+          <View style={styles.formContent}>
+            {settings.hasPin ? (
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Current PIN</Text>
+                <TextInput
+                  style={styles.input}
+                  value={pinCurrent}
+                  onChangeText={setPinCurrent}
+                  placeholder="Enter current PIN"
+                  keyboardType="number-pad"
+                  secureTextEntry
+                  maxLength={6}
+                />
+              </View>
+            ) : (
+              <Text style={[FONTS.bodySm, { color: COLORS.tertiary }]}>Set a secure PIN for app and wallet actions.</Text>
+            )}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>New PIN</Text>
+              <TextInput
+                style={styles.input}
+                value={pinNew}
+                onChangeText={setPinNew}
+                placeholder="Enter new PIN"
+                keyboardType="number-pad"
+                secureTextEntry
+                maxLength={6}
+              />
+            </View>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Confirm PIN</Text>
+              <TextInput
+                style={styles.input}
+                value={pinConfirm}
+                onChangeText={setPinConfirm}
+                placeholder="Confirm new PIN"
+                keyboardType="number-pad"
+                secureTextEntry
+                maxLength={6}
+              />
+            </View>
+            <Pressable
+              style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
+              onPress={handlePinSave}
+              disabled={pinBusy}
+            >
+              <Text style={styles.primaryButtonText}>{pinBusy ? 'Saving...' : 'Save PIN'}</Text>
+            </Pressable>
+          </View>
+        );
+
+      case 'twoFactor':
+        return (
+          <View style={styles.formContent}>
+            {settings.twoFactorEnabled ? (
+              <>
+                <Text style={[FONTS.bodyMd, { color: COLORS.onSurface }]}>Two-factor authentication is enabled.</Text>
+                <Text style={[FONTS.bodySm, { color: COLORS.tertiary }]}>Methods: {settings.twoFactorMethods.join(', ') || 'totp'}</Text>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Enter PIN to disable</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={pinCurrent}
+                    onChangeText={setPinCurrent}
+                    placeholder="PIN"
+                    keyboardType="number-pad"
+                    secureTextEntry
+                    maxLength={6}
+                  />
+                </View>
+                <Pressable
+                  style={({ pressed }) => [styles.dangerButton, pressed && styles.dangerButtonPressed]}
+                  onPress={handleTwoFactorDisable}
+                  disabled={twoFactorBusy}
+                >
+                  <Text style={styles.dangerButtonText}>{twoFactorBusy ? 'Disabling...' : 'Disable 2FA'}</Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                {twoFactorStage === 'verify' ? (
+                  <>
+                    {twoFactorMethod === 'totp' ? (
+                      <View style={styles.noticeCard}>
+                        <Text style={[FONTS.bodySm, { color: COLORS.onSurface }]}>TOTP Secret</Text>
+                        <Text style={[FONTS.bodyMd, { color: COLORS.primary }]}>{twoFactorSecret || '---'}</Text>
+                        {twoFactorBackupCodes.length > 0 ? (
+                          <Text style={[FONTS.bodySm, { color: COLORS.tertiary }]}>Backup codes: {twoFactorBackupCodes.join(' ')}</Text>
+                        ) : null}
+                      </View>
+                    ) : null}
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.inputLabel}>Verification Code</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={twoFactorCode}
+                        onChangeText={setTwoFactorCode}
+                        placeholder="Enter code"
+                        keyboardType="number-pad"
+                        maxLength={6}
+                      />
+                    </View>
+                    <Pressable
+                      style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
+                      onPress={handleTwoFactorConfirm}
+                      disabled={twoFactorBusy}
+                    >
+                      <Text style={styles.primaryButtonText}>{twoFactorBusy ? 'Verifying...' : 'Confirm 2FA'}</Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <>
+                    <Text style={[FONTS.bodyMd, { color: COLORS.onSurface }]}>Enable two-factor authentication</Text>
+                    <Pressable
+                      style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed]}
+                      onPress={() => handleTwoFactorStart('totp')}
+                    >
+                      <View style={styles.optionTextWrap}>
+                        <Text style={[FONTS.bodyMd, { color: COLORS.onSurface }]}>Authenticator App (TOTP)</Text>
+                        <Text style={[FONTS.bodySm, { color: COLORS.tertiary }]}>Recommended</Text>
+                      </View>
+                      <MaterialIcons name="chevron-right" size={20} color={COLORS.tertiary} />
+                    </Pressable>
+                    <Pressable
+                      style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed]}
+                      onPress={() => handleTwoFactorStart('sms')}
+                    >
+                      <View style={styles.optionTextWrap}>
+                        <Text style={[FONTS.bodyMd, { color: COLORS.onSurface }]}>SMS Code</Text>
+                        <Text style={[FONTS.bodySm, { color: COLORS.tertiary }]}>Send code to phone</Text>
+                      </View>
+                      <MaterialIcons name="chevron-right" size={20} color={COLORS.tertiary} />
+                    </Pressable>
+                    <Pressable
+                      style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed]}
+                      onPress={() => handleTwoFactorStart('email')}
+                    >
+                      <View style={styles.optionTextWrap}>
+                        <Text style={[FONTS.bodyMd, { color: COLORS.onSurface }]}>Email Code</Text>
+                        <Text style={[FONTS.bodySm, { color: COLORS.tertiary }]}>Send code to email</Text>
+                      </View>
+                      <MaterialIcons name="chevron-right" size={20} color={COLORS.tertiary} />
+                    </Pressable>
+                  </>
+                )}
+              </>
+            )}
+          </View>
+        );
+
+      case 'language':
+        return (
+          <View style={styles.formContent}>
+            <Pressable
+              style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed]}
+              onPress={() => {
+                updateSetting({ language: 'en' }, { language: 'en' });
+                setActiveModal(null);
+              }}
+            >
+              <View style={styles.optionTextWrap}>
+                <Text style={[FONTS.bodyMd, { color: COLORS.onSurface }]}>English</Text>
+                <Text style={[FONTS.bodySm, { color: COLORS.tertiary }]}>Default</Text>
+              </View>
+              {settings.language === 'en' ? (
+                <MaterialIcons name="check" size={20} color={COLORS.primary} />
+              ) : null}
+            </Pressable>
+          </View>
+        );
+
+      case 'navigationApp':
+        return (
+          <View style={styles.formContent}>
+            <Pressable
+              style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed]}
+              onPress={() => {
+                updateSetting({ navigationApp: 'google_maps' }, { navigation_app: 'google_maps' });
+                setActiveModal(null);
+              }}
+            >
+              <View style={styles.optionTextWrap}>
+                <Text style={[FONTS.bodyMd, { color: COLORS.onSurface }]}>Google Maps</Text>
+                <Text style={[FONTS.bodySm, { color: COLORS.tertiary }]}>Recommended</Text>
+              </View>
+              {settings.navigationApp === 'google_maps' ? (
+                <MaterialIcons name="check" size={20} color={COLORS.primary} />
+              ) : null}
+            </Pressable>
+          </View>
+        );
+
       case 'terms':
         return (
           <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.formContent}>
@@ -235,23 +568,39 @@ export default function AccountSettingsPage({ onBack }: Props) {
           <SettingsRow
             icon="language"
             title="Language"
-            trailing={<ValueChevron value="English" />}
+            trailing={<ValueChevron value={languageLabel} />}
             onPress={() => setActiveModal('language')}
           />
           <SettingsRow
             icon="notifications"
             title="Push Notifications"
-            trailing={<ToggleSwitch value={pushNotifications} onValueChange={setPushNotifications} />}
+            trailing={
+              <ToggleSwitch
+                value={settings.pushEnabled}
+                onValueChange={(value) => updateSetting(
+                  { pushEnabled: value },
+                  { push_enabled: value }
+                )}
+              />
+            }
           />
           <SettingsRow
             icon="dark-mode"
             title="Dark Mode"
-            trailing={<ToggleSwitch value={darkMode} onValueChange={setDarkMode} />}
+            trailing={
+              <ToggleSwitch
+                value={isDarkMode}
+                onValueChange={(value) => updateSetting(
+                  { themeMode: value ? 'dark' : 'light' },
+                  { theme_mode: value ? 'dark' : 'light' }
+                )}
+              />
+            }
           />
           <SettingsRow
             icon="map"
             title="Navigation App"
-            trailing={<ValueChevron value="Google Maps" />}
+            trailing={<ValueChevron value={navigationLabel} />}
             isLast
             onPress={() => setActiveModal('navigationApp')}
           />
@@ -269,7 +618,15 @@ export default function AccountSettingsPage({ onBack }: Props) {
           <SettingsRow
             icon="fingerprint"
             title="Biometric Lock"
-            trailing={<ToggleSwitch value={biometricLock} onValueChange={setBiometricLock} />}
+            trailing={
+              <ToggleSwitch
+                value={settings.biometricEnabled}
+                onValueChange={(value) => updateSetting(
+                  { biometricEnabled: value },
+                  { biometric_enabled: value }
+                )}
+              />
+            }
             isLast
           />
         </View>
@@ -410,5 +767,71 @@ const styles = StyleSheet.create({
   formContent: {
     padding: 20,
     paddingBottom: 48,
+  },
+  inputGroup: {
+    gap: 6,
+  },
+  inputLabel: {
+    ...FONTS.bodySm,
+    color: COLORS.tertiary,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: COLORS.surfaceContainerHighest,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: COLORS.surfaceContainerLowest,
+    color: COLORS.onSurface,
+    fontSize: 16,
+  },
+  primaryButton: {
+    marginTop: 12,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  primaryButtonPressed: {
+    opacity: 0.9,
+  },
+  primaryButtonText: {
+    ...FONTS.labelLg,
+    color: COLORS.onPrimary,
+  },
+  dangerButton: {
+    marginTop: 12,
+    backgroundColor: COLORS.errorContainer,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  dangerButtonPressed: {
+    opacity: 0.9,
+  },
+  dangerButtonText: {
+    ...FONTS.labelLg,
+    color: COLORS.error,
+  },
+  noticeCard: {
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: COLORS.surfaceContainerLow,
+    gap: 6,
+  },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: COLORS.surfaceContainerLow,
+  },
+  optionRowPressed: {
+    backgroundColor: COLORS.surfaceContainerHighest,
+  },
+  optionTextWrap: {
+    gap: 2,
   },
 });

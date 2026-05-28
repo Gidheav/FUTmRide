@@ -1,11 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
-import { BackHandler, Platform, StyleSheet, Text, ToastAndroid, TouchableOpacity, View } from 'react-native'
+import { Alert, AppState, BackHandler, Platform, StyleSheet, Text, ToastAndroid, TouchableOpacity, View } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { useQuery } from '@tanstack/react-query'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useAuthStore } from '../core/authStore'
-import { verificationApi } from '../core/api'
+import { authApi, settingsApi, verificationApi } from '../core/api'
 import { COLORS, FONTS } from '../core/theme'
+import { useSettingsStore } from '../core/settingsStore'
+import { useAppLockStore } from '../core/appLockStore'
+import {
+  addNotificationReceivedListener,
+  addNotificationResponseListener,
+  registerDriverPushToken,
+  showRideStatusNotification,
+  clearRideStatusNotification,
+} from '../core/pushNotifications'
+import { useDriverWalletStore } from '../core/driverWalletStore'
+import { useDriverRidesStore } from '../core/driverRidesStore'
 import DriverLoginScreen from './screens/LoginScreen'
 import DriverDashboardScreen from './screens/DashboardScreen'
 import AccountVerificationScreen from './screens/AccountVerificationScreen'
@@ -16,16 +27,32 @@ import DriverProfilePage from './pages/ProfilePage'
 import EditProfilePage from './pages/EditProfilePage'
 import AccountSettingsPage from './pages/AccountSettingsPage'
 import CreateGarageRideScreen from './screens/CreateGarageRideScreen'
+import AppLockScreen from './screens/AppLockScreen'
 import DriverLayout from './layout/DriverLayout'
 import type { DriverTab } from './types'
 
 type SubPage = null | 'settings' | 'edit-profile' | 'account-verification' | 'vehicle-verification' | 'verification-success' | 'garage-ride'
 
+const GARAGE_STATUS_LABELS: Record<string, string> = {
+  open: 'Accepting passengers',
+  full: 'Full (ready to depart)',
+  departed: 'Departed',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+}
+
 export default function DriverApp() {
-  const { isAuthenticated, user } = useAuthStore()
+  const { isAuthenticated, user, logout, patchUser } = useAuthStore()
+  const { setSummary } = useDriverWalletStore()
+  const { garageRide, garagePassengers } = useDriverRidesStore()
+  const { settings, hydrateFromApi } = useSettingsStore()
+  const { isLocked, setLocked, setUnlocked, reset: resetLock } = useAppLockStore()
   const [activeTab, setActiveTab] = useState<DriverTab>('home')
   const [subPage, setSubPage] = useState<SubPage>(null)
+  const [lockBusy, setLockBusy] = useState(false)
   const lastBackPressRef = useRef(0)
+  const lastRideNotificationKey = useRef<string | null>(null)
+  const rideClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (Platform.OS !== 'android') {
@@ -57,6 +84,148 @@ export default function DriverApp() {
     return () => subscription.remove()
   }, [activeTab, subPage])
 
+  useEffect(() => {
+    if (!isAuthenticated) {
+      resetLock()
+      return
+    }
+    settingsApi
+      .getPreferences()
+      .then((res) => {
+        if (res?.data) {
+          hydrateFromApi(res.data)
+        }
+      })
+      .catch(() => null)
+  }, [hydrateFromApi, isAuthenticated, resetLock])
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return
+    }
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'background') {
+        if (settings.biometricEnabled || settings.hasPin) {
+          setLocked(true)
+        }
+      }
+    })
+    return () => subscription.remove()
+  }, [isAuthenticated, setLocked, settings.biometricEnabled, settings.hasPin])
+
+  useEffect(() => {
+    if (!isAuthenticated || !settings.pushEnabled) {
+      if (isAuthenticated) {
+        authApi.updateMe({ fcm_token: null }).catch(() => null)
+      }
+      return
+    }
+
+    let isMounted = true
+    registerDriverPushToken(user?.fcm_token)
+      .then((token) => {
+        if (!isMounted || !token) {
+          return
+        }
+        return authApi.updateMe({ fcm_token: token })
+      })
+      .catch(() => null)
+    return () => {
+      isMounted = false
+    }
+  }, [isAuthenticated, settings.pushEnabled, user?.fcm_token])
+
+  const handleWalletNotification = (data: Record<string, any>) => {
+    if (!data) return
+    const balance = data.wallet_balance
+    if (balance !== undefined && balance !== null) {
+      patchUser({ wallet_balance: String(balance) })
+      const current = useDriverWalletStore.getState().summary
+      if (current) {
+        setSummary({
+          ...current,
+          wallet_balance: String(balance),
+        })
+      }
+      return
+    }
+  }
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+    const cleanup = addNotificationResponseListener((data) => {
+      handleWalletNotification(data)
+      const rideId = data?.ride_id as string | undefined
+      const garageRideId = data?.garage_ride_id as string | undefined
+      if (rideId || garageRideId) {
+        setActiveTab('rides')
+        setSubPage(null)
+        return
+      }
+      const isWalletEvent = Boolean(
+        data?.wallet_balance !== undefined ||
+        data?.transaction_id ||
+        data?.reference
+      )
+      if (isWalletEvent) {
+        setActiveTab('wallet')
+        setSubPage(null)
+      }
+    })
+    return cleanup
+  }, [isAuthenticated])
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+    const cleanup = addNotificationReceivedListener((data) => {
+      handleWalletNotification(data)
+    })
+    return cleanup
+  }, [isAuthenticated])
+
+  useEffect(() => {
+    if (rideClearTimer.current) {
+      clearTimeout(rideClearTimer.current)
+      rideClearTimer.current = null
+    }
+
+    if (!garageRide) {
+      lastRideNotificationKey.current = null
+      void clearRideStatusNotification()
+      return
+    }
+
+    const status = String(garageRide.status || 'open')
+    const isActive = ['open', 'full', 'departed'].includes(status)
+    const booked = Number(garageRide.booked_seats || 0)
+    const total = Number(garageRide.total_seats || 0)
+    const statusLabel = GARAGE_STATUS_LABELS[status] || 'Ride update'
+    const message = `Garage ride: ${booked}/${total} seats booked • ${statusLabel}`
+    const key = `${garageRide.id}:${status}:${booked}:${total}`
+
+    if (key === lastRideNotificationKey.current) return
+    lastRideNotificationKey.current = key
+
+    void showRideStatusNotification(
+      'Active garage ride',
+      message,
+      {
+        garage_ride_id: String(garageRide.id || ''),
+        garage_status: status,
+        seats_booked: String(booked),
+        total_seats: String(total),
+      },
+      'driver-ride-status',
+      { sticky: isActive, silent: false },
+    )
+
+    if (!isActive) {
+      rideClearTimer.current = setTimeout(() => {
+        void clearRideStatusNotification()
+      }, 1500)
+    }
+  }, [garageRide, garagePassengers.length])
+
   // Fetch verification progress for the banner
   const { data: progressData } = useQuery({
     queryKey: ['verification-progress'],
@@ -66,6 +235,9 @@ export default function DriverApp() {
   })
 
   if (!isAuthenticated || !user) {
+    if (Platform.OS === 'android') {
+      void stopRideForegroundService()
+    }
     return (
       <SafeAreaProvider>
         <DriverLoginScreen />
@@ -79,6 +251,61 @@ export default function DriverApp() {
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
           <DriverLoginScreen />
         </View>
+      </SafeAreaProvider>
+    )
+  }
+
+  if ((settings.biometricEnabled || settings.hasPin) && isLocked) {
+    return (
+      <SafeAreaProvider>
+        <AppLockScreen
+          hasPin={settings.hasPin}
+          biometricEnabled={settings.biometricEnabled}
+          busy={lockBusy}
+          onUnlockPin={async (pin) => {
+            if (!pin) {
+              return
+            }
+            setLockBusy(true)
+            try {
+              await settingsApi.verifyPin({ pin })
+              setUnlocked()
+            } catch (error) {
+              if (Platform.OS === 'android') {
+                ToastAndroid.show('Invalid PIN', ToastAndroid.SHORT)
+              } else {
+                Alert.alert('Invalid PIN', 'Please try again.')
+              }
+            } finally {
+              setLockBusy(false)
+            }
+          }}
+          onUnlockBiometric={async () => {
+            setLockBusy(true)
+            try {
+              const LocalAuth = await import('expo-local-authentication')
+              const result = await LocalAuth.authenticateAsync({
+                promptMessage: 'Unlock LR Ride',
+                fallbackLabel: 'Use PIN',
+              })
+              if (result.success) {
+                setUnlocked()
+              }
+            } catch (error) {
+              if (Platform.OS === 'android') {
+                ToastAndroid.show('Biometric failed', ToastAndroid.SHORT)
+              } else {
+                Alert.alert('Biometric failed', 'Please try again.')
+              }
+            } finally {
+              setLockBusy(false)
+            }
+          }}
+          onLogout={() => {
+            logout()
+            resetLock()
+          }}
+        />
       </SafeAreaProvider>
     )
   }

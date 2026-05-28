@@ -21,11 +21,30 @@ import CampusAdminDispatch from "../campus-admin/pages/DispatchPage"
 import CampusAdminFleet from "../campus-admin/pages/FleetPage"
 import CampusAdminSchedule from "../campus-admin/pages/SchedulePage"
 import CampusAdminAnalytics from "../campus-admin/pages/AnalyticsPage"
-import CampusAdminProfile from "../campus-admin/pages/ProfilePage"
 import CampusAdminSettings from "../campus-admin/pages/SettingsPage"
 import CampusAdminNotifications from "../campus-admin/pages/NotificationsPage"
 import CampusAdminEngine from "../campus-admin/pages/EngineCalculationPage"
 import CampusAdminLayout from "../campus-admin/layout/CampusAdminLayout"
+
+const MOBILE_UA_RE = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i
+const MIN_DESKTOP_WIDTH = 1024
+
+const isDesktopAllowed = () => {
+  const isMobileUa = MOBILE_UA_RE.test(navigator.userAgent || "")
+  const isSmallScreen = window.innerWidth < MIN_DESKTOP_WIDTH
+  return !(isMobileUa || isSmallScreen)
+}
+
+function DesktopOnlyScreen() {
+  return (
+    <div className="desktop-only-screen" role="alert" aria-live="assertive">
+      <div>
+        <h1>Desktop only</h1>
+        <p>This application is available on desktop browsers only.</p>
+      </div>
+    </div>
+  )
+}
 
 function RequireAuth({ children, role }: { children: React.ReactNode; role?: string }) {
   const { isAuthenticated, user } = useAuthStore()
@@ -45,6 +64,17 @@ function RequireAuth({ children, role }: { children: React.ReactNode; role?: str
 export default function AppRouter() {
   const { setAuth, clearAuth } = useAuthStore()
   const [isHydrating, setIsHydrating] = useState(true)
+  const [desktopAllowed, setDesktopAllowed] = useState(isDesktopAllowed())
+
+  useEffect(() => {
+    const evaluate = () => setDesktopAllowed(isDesktopAllowed())
+    window.addEventListener("resize", evaluate)
+    window.addEventListener("orientationchange", evaluate)
+    return () => {
+      window.removeEventListener("resize", evaluate)
+      window.removeEventListener("orientationchange", evaluate)
+    }
+  }, [])
 
   useEffect(() => {
     const hydrate = async () => {
@@ -67,6 +97,7 @@ export default function AppRouter() {
     hydrate()
   }, [setAuth, clearAuth])
 
+  if (!desktopAllowed) return <DesktopOnlyScreen />
   if (isHydrating) return null // Or a full page LoadingSpinner if preferred
 
   return (
@@ -92,7 +123,6 @@ export default function AppRouter() {
         <Route path="/schedule" element={<CampusAdminSchedule />} />
         <Route path="/analytics" element={<CampusAdminAnalytics />} />
         <Route path="/engine" element={<CampusAdminEngine />} />
-        <Route path="/profile" element={<CampusAdminProfile />} />
         <Route path="/settings" element={<CampusAdminSettings />} />
         <Route path="/notifications" element={<CampusAdminNotifications />} />
       </Route>

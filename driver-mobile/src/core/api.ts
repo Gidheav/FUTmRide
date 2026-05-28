@@ -87,6 +87,18 @@ export const verificationApi = {
   getMyDocuments: () => api.get('verification/documents/'),
 }
 
+export const settingsApi = {
+  getPreferences: () => api.get('auth/settings/preferences/'),
+  updatePreferences: (data: any) => api.patch('auth/settings/preferences/', data),
+  setPin: (data: any) => api.post('auth/settings/pin/set/', data),
+  verifyPin: (data: any) => api.post('auth/settings/pin/verify/', data),
+  startTwoFactor: (data: any) => api.post('auth/settings/2fa/start/', data),
+  confirmTwoFactor: (data: any) => api.post('auth/settings/2fa/confirm/', data),
+  disableTwoFactor: (data: any) => api.post('auth/settings/2fa/disable/', data),
+  requestTwoFactor: (data: any) => api.post('auth/2fa/request/', data),
+  verifyTwoFactor: (data: any) => api.post('auth/2fa/verify/', data),
+}
+
 export const driverWalletApi = {
   getSummary: () => api.get('wallet/driver/summary/'),
   getTransactions: () => api.get('wallet/transactions/'),

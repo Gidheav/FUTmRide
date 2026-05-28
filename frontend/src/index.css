@@ -146,6 +146,55 @@ body {
   min-height: 100vh;
 }
 
+#desktop-only,
+.desktop-only-screen {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: #ffffff;
+  color: #111111;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 32px;
+  z-index: 99999;
+}
+
+.desktop-only-screen {
+  display: flex;
+}
+
+#desktop-only h1,
+.desktop-only-screen h1 {
+  margin: 0 0 12px 0;
+  font-size: 24px;
+}
+
+#desktop-only p,
+.desktop-only-screen p {
+  margin: 0;
+  font-size: 16px;
+  color: #444444;
+}
+
+[data-desktop-only="blocked"] #root {
+  display: none;
+}
+
+[data-desktop-only="blocked"] #desktop-only {
+  display: flex;
+}
+
+@media (max-width: 1024px) {
+  #root {
+    display: none;
+  }
+
+  #desktop-only {
+    display: flex;
+  }
+}
+
 input::placeholder {
   color: var(--text-muted);
 }

@@ -5,8 +5,72 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Campus Admin</title>
+    <style>
+      #desktop-only {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: #ffffff;
+        color: #111111;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 32px;
+        z-index: 99999;
+        font-family: Arial, Helvetica, sans-serif;
+      }
+      #desktop-only h1 {
+        margin: 0 0 12px 0;
+        font-size: 24px;
+      }
+      #desktop-only p {
+        margin: 0;
+        font-size: 16px;
+        color: #444444;
+      }
+    </style>
+    <script>
+      (function () {
+        var mobileRe = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i;
+        var isMobileUa = mobileRe.test(navigator.userAgent || "");
+
+        function isSmallScreen() {
+          return window.innerWidth < 1024;
+        }
+
+        function applyState(blocked) {
+          window.__DESKTOP_ONLY_BLOCKED__ = blocked;
+          var root = document.getElementById("root");
+          var banner = document.getElementById("desktop-only");
+
+          if (blocked) {
+            document.documentElement.setAttribute("data-desktop-only", "blocked");
+            if (root) root.style.display = "none";
+            if (banner) banner.style.display = "flex";
+          } else {
+            document.documentElement.removeAttribute("data-desktop-only");
+            if (root) root.style.display = "";
+            if (banner) banner.style.display = "none";
+          }
+        }
+
+        function evaluate() {
+          applyState(isMobileUa || isSmallScreen());
+        }
+
+        evaluate();
+        window.addEventListener("resize", evaluate);
+        window.addEventListener("orientationchange", evaluate);
+      })();
+    </script>
   </head>
   <body>
+    <div id="desktop-only" role="alert" aria-live="assertive">
+      <div>
+        <h1>Desktop only</h1>
+        <p>This application is available on desktop browsers only.</p>
+      </div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

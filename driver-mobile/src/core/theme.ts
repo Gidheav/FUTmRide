@@ -1,4 +1,4 @@
-export const COLORS = {
+const LIGHT_COLORS = {
   surfaceContainerLow: "#f3f3f3",
   onTertiary: "#ffffff",
   onPrimaryFixedVariant: "#005227",
@@ -46,6 +46,35 @@ export const COLORS = {
   onTertiaryContainer: "#2c2c2c",
   onPrimaryFixed: "#00210c",
   tertiary: "#5e5e5e"
+};
+
+const DARK_COLORS = {
+  ...LIGHT_COLORS,
+  background: "#121212",
+  surface: "#1a1c1c",
+  surfaceBright: "#1a1c1c",
+  surfaceDim: "#0f0f0f",
+  surfaceContainerLowest: "#141414",
+  surfaceContainerLow: "#1e1e1e",
+  surfaceContainer: "#232323",
+  surfaceContainerHigh: "#2a2a2a",
+  surfaceContainerHighest: "#303030",
+  surfaceVariant: "#2a2a2a",
+  onSurface: "#f1f1f1",
+  onBackground: "#f1f1f1",
+  onSurfaceVariant: "#c8c8c8",
+  outline: "#8a8a8a",
+  outlineVariant: "#3a3a3a",
+  tertiary: "#c1c1c1",
+  tertiaryFixedDim: "#4a4a4a",
+  onTertiaryFixedVariant: "#c8c8c8",
+};
+
+export let COLORS = { ...LIGHT_COLORS };
+
+export const applyThemeMode = (mode: 'system' | 'light' | 'dark') => {
+  const target = mode === 'dark' ? DARK_COLORS : LIGHT_COLORS;
+  Object.assign(COLORS, target);
 };
 
 export const FONTS = {

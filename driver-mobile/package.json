@@ -17,6 +17,8 @@
     "expo-constants": "~17.0.8",
     "expo-dev-client": "~6.0.21",
     "expo-device": "~8.0.10",
+    "expo-local-authentication": "~17.0.8",
+    "expo-constants": "~17.0.8",
     "expo-camera": "~17.0.10",
     "expo-image-picker": "^55.0.20",
     "expo-linear-gradient": "~15.0.8",

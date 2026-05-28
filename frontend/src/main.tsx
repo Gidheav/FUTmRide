@@ -17,24 +17,31 @@ const queryClient = new QueryClient({
   },
 })
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <BrowserRouter>
-          <AppRouter />
-          <Toaster
-            position="top-right"
-            toastOptions={{
-              duration: 4000,
-              style: {
-                borderRadius: '8px',
-                fontSize: '14px',
-              },
-            }}
-          />
-        </BrowserRouter>
-      </QueryClientProvider>
-    </ErrorBoundary>
-  </StrictMode>
-)
+const desktopOnlyBlocked = (window as Window & { __DESKTOP_ONLY_BLOCKED__?: boolean })
+  .__DESKTOP_ONLY_BLOCKED__ === true
+
+const rootElement = document.getElementById('root')
+
+if (rootElement && !desktopOnlyBlocked) {
+  createRoot(rootElement).render(
+    <StrictMode>
+      <ErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <BrowserRouter>
+            <AppRouter />
+            <Toaster
+              position="top-right"
+              toastOptions={{
+                duration: 4000,
+                style: {
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                },
+              }}
+            />
+          </BrowserRouter>
+        </QueryClientProvider>
+      </ErrorBoundary>
+    </StrictMode>
+  )
+}

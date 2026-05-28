@@ -4,7 +4,8 @@ import {
   LogOut, User as UserIcon, Sun, Moon,
   Download, Megaphone, UserPlus,
   ArrowLeft, ChevronRight, History, ShieldAlert, UserX,
-  Radio, Crosshair, Activity, Zap, Route, Monitor, Bell, Sliders, ShieldCheck
+  Radio, Crosshair, Activity, Zap, Route, Monitor, Bell, Sliders, ShieldCheck,
+  Wrench, Ticket, Plug, Flag, LifeBuoy
 } from 'lucide-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { CSSProperties } from 'react'
@@ -229,6 +230,26 @@ export default function CampusAdminTopNav() {
           <button style={{ ...s.topNavBtn, color: settingsTab === 'system' ? T.accent : T.textSecondary, background: settingsTab === 'system' ? T.accentBg : 'transparent' }} onClick={() => setSettingsTab('system')}>
             <Sliders size={13} strokeWidth={1.8} />
             <span>System Rules</span>
+          </button>
+          <button style={{ ...s.topNavBtn, color: settingsTab === 'access' ? T.accent : T.textSecondary, background: settingsTab === 'access' ? T.accentBg : 'transparent' }} onClick={() => setSettingsTab('access')}>
+            <ShieldAlert size={13} strokeWidth={1.8} />
+            <span>Access</span>
+          </button>
+          <button style={{ ...s.topNavBtn, color: settingsTab === 'promotion' ? T.accent : T.textSecondary, background: settingsTab === 'promotion' ? T.accentBg : 'transparent' }} onClick={() => setSettingsTab('promotion')}>
+            <Ticket size={13} strokeWidth={1.8} />
+            <span>Promotion</span>
+          </button>
+          <button style={{ ...s.topNavBtn, color: settingsTab === 'integration' ? T.accent : T.textSecondary, background: settingsTab === 'integration' ? T.accentBg : 'transparent' }} onClick={() => setSettingsTab('integration')}>
+            <Plug size={13} strokeWidth={1.8} />
+            <span>Integration</span>
+          </button>
+          <button style={{ ...s.topNavBtn, color: settingsTab === 'feature_flag' ? T.accent : T.textSecondary, background: settingsTab === 'feature_flag' ? T.accentBg : 'transparent' }} onClick={() => setSettingsTab('feature_flag')}>
+            <Flag size={13} strokeWidth={1.8} />
+            <span>Feature Flag</span>
+          </button>
+          <button style={{ ...s.topNavBtn, color: settingsTab === 'support' ? T.accent : T.textSecondary, background: settingsTab === 'support' ? T.accentBg : 'transparent' }} onClick={() => setSettingsTab('support')}>
+            <LifeBuoy size={13} strokeWidth={1.8} />
+            <span>Support</span>
           </button>
         </nav>
       ) : (

@@ -15,7 +15,7 @@ import {
 import { useState } from 'react'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useAuthStore } from '../../core/authStore'
-import api from '../../core/api'
+import api, { settingsApi } from '../../core/api'
 import { API_BASE_URL } from '../../../config/apiConfig'
 
 const HERO_IMAGE =
@@ -36,7 +36,16 @@ export default function DriverLoginScreen() {
   const [registerConsent, setRegisterConsent] = useState(false)
   const [registerLoading, setRegisterLoading] = useState(false)
   const [registerError, setRegisterError] = useState('')
+  const [twoFactorRequired, setTwoFactorRequired] = useState(false)
+  const [twoFactorMethods, setTwoFactorMethods] = useState<string[]>([])
+  const [twoFactorMethod, setTwoFactorMethod] = useState<'totp' | 'sms' | 'email' | null>(null)
+  const [twoFactorCode, setTwoFactorCode] = useState('')
+  const [twoFactorChallenge, setTwoFactorChallenge] = useState('')
+  const [twoFactorBusy, setTwoFactorBusy] = useState(false)
   const setAuth = useAuthStore((state) => state.setAuth)
+  const availableTwoFactorMethods = twoFactorMethods.length
+    ? twoFactorMethods
+    : ['totp', 'sms', 'email']
 
   const getApiErrorMessage = (err: any, fallback: string) => {
     const message = err?.response?.data?.error?.message
@@ -79,6 +88,15 @@ export default function DriverLoginScreen() {
         : { phone_number: trimmedIdentifier, password }
       const loginRes = await api.post('auth/login/', payload)
 
+      if (loginRes.data?.two_factor_required) {
+        setTwoFactorRequired(true)
+        setTwoFactorMethods(loginRes.data.methods || [])
+        setTwoFactorChallenge(loginRes.data.login_challenge || '')
+        setTwoFactorMethod((loginRes.data.methods || [])[0] || 'totp')
+        setTwoFactorCode('')
+        return
+      }
+
       const userRes = await api.get('users/me/', {
         headers: { Authorization: `Bearer ${loginRes.data.access}` },
       })
@@ -88,6 +106,48 @@ export default function DriverLoginScreen() {
       setError(getApiErrorMessage(err, 'Login failed. Please try again.'))
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleTwoFactorRequest = async (method: 'totp' | 'sms' | 'email') => {
+    setTwoFactorMethod(method)
+    if (method === 'totp') {
+      return
+    }
+    setTwoFactorBusy(true)
+    try {
+      await settingsApi.requestTwoFactor({ login_challenge: twoFactorChallenge, method })
+      Alert.alert('Code sent', `A verification code was sent via ${method}.`)
+    } catch (err) {
+      Alert.alert('2FA failed', 'Unable to send verification code.')
+    } finally {
+      setTwoFactorBusy(false)
+    }
+  }
+
+  const handleTwoFactorVerify = async () => {
+    if (!twoFactorMethod || !twoFactorCode) {
+      setError('Enter your verification code')
+      return
+    }
+    setTwoFactorBusy(true)
+    setError('')
+    try {
+      const res = await settingsApi.verifyTwoFactor({
+        login_challenge: twoFactorChallenge,
+        method: twoFactorMethod,
+        code: twoFactorCode,
+      })
+      setAuth(res.data.user, res.data.access, res.data.refresh)
+      setTwoFactorRequired(false)
+      setTwoFactorCode('')
+      setTwoFactorChallenge('')
+      setTwoFactorMethods([])
+      setTwoFactorMethod(null)
+    } catch (err: any) {
+      setError(getApiErrorMessage(err, '2FA verification failed.'))
+    } finally {
+      setTwoFactorBusy(false)
     }
   }
 
@@ -279,6 +339,66 @@ export default function DriverLoginScreen() {
               </>
             ) : (
               <>
+                {twoFactorRequired ? (
+                  <>
+                    {error ? <Text style={styles.errorText}>{error}</Text> : null}
+                    <Text style={styles.sectionTitle}>Two-Factor Verification</Text>
+                    <View style={styles.methodRow}>
+                      {availableTwoFactorMethods.includes('totp') ? (
+                        <TouchableOpacity
+                          style={[styles.methodChip, twoFactorMethod === 'totp' && styles.methodChipActive]}
+                          onPress={() => handleTwoFactorRequest('totp')}
+                        >
+                          <Text style={twoFactorMethod === 'totp' ? styles.methodChipTextActive : styles.methodChipText}>TOTP</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                      {availableTwoFactorMethods.includes('sms') ? (
+                        <TouchableOpacity
+                          style={[styles.methodChip, twoFactorMethod === 'sms' && styles.methodChipActive]}
+                          onPress={() => handleTwoFactorRequest('sms')}
+                        >
+                          <Text style={twoFactorMethod === 'sms' ? styles.methodChipTextActive : styles.methodChipText}>SMS</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                      {availableTwoFactorMethods.includes('email') ? (
+                        <TouchableOpacity
+                          style={[styles.methodChip, twoFactorMethod === 'email' && styles.methodChipActive]}
+                          onPress={() => handleTwoFactorRequest('email')}
+                        >
+                          <Text style={twoFactorMethod === 'email' ? styles.methodChipTextActive : styles.methodChipText}>Email</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                    <View style={styles.inputGroup}>
+                      <MaterialIcons name="verified-user" size={20} color="#5e5e5e" style={styles.inputIcon} />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Verification code"
+                        placeholderTextColor="#7b7b7b"
+                        value={twoFactorCode}
+                        onChangeText={setTwoFactorCode}
+                        keyboardType="number-pad"
+                        editable={!twoFactorBusy}
+                      />
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.primaryButton, twoFactorBusy && styles.primaryButtonDisabled]}
+                      onPress={handleTwoFactorVerify}
+                      disabled={twoFactorBusy}
+                      activeOpacity={0.9}
+                    >
+                      {twoFactorBusy ? (
+                        <ActivityIndicator color="#ffffff" />
+                      ) : (
+                        <>
+                          <Text style={styles.primaryButtonText}>Verify & Continue</Text>
+                          <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
                 {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
                 <View style={styles.inputGroup}>
@@ -345,6 +465,8 @@ export default function DriverLoginScreen() {
                   <MaterialIcons name="directions-car" size={18} color="#1a1c1c" />
                   <Text style={styles.secondaryButtonText}>Create Driver Account</Text>
                 </TouchableOpacity>
+                  </>
+                )}
               </>
             )}
 
@@ -435,6 +557,40 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#1a1c1c',
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1a1c1c',
+    marginBottom: 10,
+  },
+  methodRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  methodChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: '#f3f3f3',
+    borderWidth: 1,
+    borderColor: '#e2e2e2',
+  },
+  methodChipActive: {
+    backgroundColor: '#6A1B9A',
+    borderColor: '#6A1B9A',
+  },
+  methodChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1a1c1c',
+  },
+  methodChipTextActive: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ffffff',
   },
   inputGroup: {
     flexDirection: 'row',
