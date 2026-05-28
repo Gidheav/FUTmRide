@@ -46,14 +46,7 @@ function SettingsCard({
   )
 }
 
-function InfoPill({ icon: Icon, label }: { icon: any; label: string }) {
-  return (
-    <div style={s.infoPill}>
-      <Icon size={13} color={T.textMuted} />
-      <span style={s.infoPillText}>{label}</span>
-    </div>
-  )
-}
+
 
 function SecurityChecklistItem({ icon: Icon, title, text }: { icon: any; title: string; text: string }) {
   return (
@@ -79,11 +72,6 @@ function EmailChangeSectionReplica() {
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
 
-  const glassPanelStyle = {
-    background: mode === 'dark' ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.03)',
-    backdropFilter: 'blur(10px)',
-    border: `1px solid ${mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)'}`,
-  }
   const inputDarkStyle = {
     background: mode === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.8)',
     border: `1px solid ${mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
@@ -111,7 +99,7 @@ function EmailChangeSectionReplica() {
   }
 
   return (
-    <section style={{ ...glassPanelStyle, borderRadius: 16, padding: '32px 24px' }}>
+    <section>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <h2 style={{ fontSize: 20, fontWeight: 700, color: T.textPrimary, display: 'flex', alignItems: 'center', gap: 8 }}>
           <Mail size={24} style={{ color: T.textMuted }} />
@@ -133,7 +121,7 @@ function EmailChangeSectionReplica() {
       {status && <StatusBanner msg={status.msg} type={status.type} />}
 
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-        <div className="settings-form-grid">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <label style={{ fontSize: 12, fontWeight: 600, color: T.textMuted }}>New Email Address</label>
             <div style={{ position: 'relative' }}>
@@ -150,11 +138,7 @@ function EmailChangeSectionReplica() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 16, borderTop: `1px solid ${mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}` }}>
-          <p style={{ fontSize: 12, color: T.textMuted, maxWidth: 300, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-            <Info size={16} color="#4f90ff" style={{ flexShrink: 0 }} />
-            <span>Enter your current password, submit the new email, and your local auth snapshot updates immediately on success.</span>
-          </p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingTop: 16, borderTop: `1px solid ${mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}` }}>
           <button type="submit" disabled={loading} style={{ background: T.accent, color: '#fff', padding: '12px 32px', borderRadius: 8, fontWeight: 700, border: 'none', cursor: 'pointer', boxShadow: `0 10px 15px -3px ${T.accent}33`, opacity: loading ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: 8 }}>
             {loading ? <Loader2 size={16} className="spin" /> : null}
             Save Changes
@@ -176,11 +160,6 @@ function PasswordChangeSectionReplica() {
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
 
-  const glassPanelStyle = {
-    background: mode === 'dark' ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.03)',
-    backdropFilter: 'blur(10px)',
-    border: `1px solid ${mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)'}`,
-  }
   const inputDarkStyle = {
     background: mode === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.8)',
     border: `1px solid ${mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
@@ -225,7 +204,7 @@ function PasswordChangeSectionReplica() {
   }
 
   return (
-    <section style={{ ...glassPanelStyle, borderRadius: 16, padding: '32px 24px', position: 'relative', overflow: 'hidden' }}>
+    <section style={{ position: 'relative' }}>
       <div style={{ position: 'absolute', right: -80, top: -80, width: 256, height: 256, borderRadius: '50%', background: `${T.accent}1a`, filter: 'blur(80px)', pointerEvents: 'none' }} />
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
@@ -276,7 +255,7 @@ function PasswordChangeSectionReplica() {
             </div>
           </div>
 
-          <div className="settings-form-grid">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: T.textMuted }}>New Password</label>
               <div style={{ position: 'relative' }}>
@@ -307,14 +286,8 @@ function PasswordChangeSectionReplica() {
 function SettingsRightSidebarReplica() {
   const { mode } = useCampusThemeStore()
 
-  const glassPanelStyle = {
-    background: mode === 'dark' ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.03)',
-    backdropFilter: 'blur(10px)',
-    border: `1px solid ${mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)'}`,
-  }
-
   return (
-    <div style={{ ...glassPanelStyle, borderRadius: 16, padding: '32px 24px', position: 'sticky', top: 24 }}>
+    <div style={{ position: 'sticky', top: 24 }}>
       <h3 style={{ fontSize: 20, fontWeight: 700, color: T.textPrimary, marginBottom: 24, display: 'flex', alignItems: 'center', gap: 8 }}>
         <BookOpen size={24} color={T.accent} />
         What to expect
@@ -365,8 +338,8 @@ function SettingsRightSidebarReplica() {
 
 function DisplaySettingsSection() {
   return (
-    <SettingsCard title="Map & Display Preferences" subtitle="Customize how the dashboard looks.">
-      <div style={s.emptyCard}>Display settings will be available in a future update.</div>
+    <SettingsCard title="Map & GIS Preferences" subtitle="Customize how the dashboard looks.">
+      <div style={s.emptyCard}>Map & GIS settings will be available in a future update.</div>
     </SettingsCard>
   )
 }
@@ -394,7 +367,7 @@ export default function SettingsPage() {
   const { mode } = useCampusThemeStore()
 
   const titles = {
-    display: 'Display Preferences',
+    display: 'Map & GIS Preferences',
     notifications: 'Alert Rules',
     system: 'Global Configuration'
   }
@@ -402,12 +375,6 @@ export default function SettingsPage() {
     display: 'Customize the visual behavior and map defaults across the application.',
     notifications: 'Configure push, email, and sound alerts for critical campus operations.',
     system: 'Adjust operational boundaries, matchmaking rules, and system-wide constraints.'
-  }
-
-  const glassPanelStyle = {
-    background: mode === 'dark' ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.03)',
-    backdropFilter: 'blur(10px)',
-    border: `1px solid ${mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)'}`,
   }
 
   return (
@@ -424,8 +391,18 @@ export default function SettingsPage() {
 
         .settings-replica-grid {
           display: grid;
-          grid-template-columns: 2fr 1fr;
-          gap: 32px;
+          grid-template-columns: 1fr 1fr 340px;
+          gap: 40px;
+          align-items: start;
+        }
+
+        @media (max-width: 1400px) {
+          .settings-replica-grid {
+            grid-template-columns: 1fr 1fr;
+          }
+          .settings-right-sidebar {
+            grid-column: 1 / -1;
+          }
         }
 
         @media (max-width: 1080px) {
@@ -447,17 +424,8 @@ export default function SettingsPage() {
             padding: 18px 4px !important;
           }
 
-
-          .settings-chipRow {
-            flex-wrap: wrap;
-          }
-
           .settings-form-grid {
             grid-template-columns: 1fr !important;
-          }
-
-          .settings-actions {
-            flex-direction: column !important;
           }
         }
       `}</style>
@@ -468,18 +436,11 @@ export default function SettingsPage() {
 
             {/* Security Grid */}
             <div className="settings-replica-grid">
-
-              {/* Left Column (Main Forms) */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
-                <EmailChangeSectionReplica />
-                <PasswordChangeSectionReplica />
-              </div>
-
-              {/* Right Column (Info) */}
-              <div>
+              <EmailChangeSectionReplica />
+              <PasswordChangeSectionReplica />
+              <div className="settings-right-sidebar">
                 <SettingsRightSidebarReplica />
               </div>
-
             </div>
           </div>
         </main>
@@ -622,7 +583,6 @@ const s: Record<string, CSSProperties> = {
   },
   title: { color: T.textPrimary, fontSize: 30, fontWeight: 800, lineHeight: 1.1, margin: 0 },
   subtitle: { color: T.textSecondary, fontSize: 14, marginTop: 10, maxWidth: 680, lineHeight: 1.6 },
-  chipRow: { display: 'flex', gap: 10, marginTop: 18 },
 
   heroGrid: { display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) minmax(320px, 0.8fr)', gap: 18, alignItems: 'stretch' },
   heroCard: {
@@ -648,20 +608,6 @@ const s: Record<string, CSSProperties> = {
   },
   heroCardTitle: { color: T.textPrimary, fontSize: 15, fontWeight: 700 },
   heroCardText: { color: T.textSecondary, fontSize: 13, lineHeight: 1.55, marginTop: 4 },
-  heroCardStats: {
-    display: 'grid',
-    gridTemplateColumns: '1fr auto 1fr',
-    gap: 16,
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 16,
-    background: T.bgInput,
-    border: `1px solid ${T.border}`,
-  },
-  statBlock: { display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 },
-  statLabel: { color: T.textMuted, fontSize: 11, textTransform: 'uppercase' as const, letterSpacing: '0.08em', fontWeight: 700 },
-  statValue: { color: T.textPrimary, fontSize: 13, fontWeight: 600, lineHeight: 1.4 },
-  statDivider: { width: 1, height: 36, background: T.border },
 
   contentGrid: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: 20, position: 'relative', zIndex: 1 },
   contentCol: { display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0 },
@@ -751,60 +697,10 @@ const s: Record<string, CSSProperties> = {
     borderTopColor: 'rgba(239,68,68,0.1)',
   },
 
-  form: { display: 'flex', flexDirection: 'column', gap: 16 },
-  fieldWrap: { display: 'flex', flexDirection: 'column', gap: 6 },
-  label: { color: T.textSecondary, fontSize: 12, fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.05em' },
-  inputWrap: {
-    display: 'flex', alignItems: 'center',
-    background: T.bgInput, border: `1px solid ${T.border}`,
-    borderRadius: 10, padding: '0 14px', height: 44,
-    transition: 'border-color 0.2s',
-  },
-  input: {
-    flex: 1, background: 'transparent', border: 'none', outline: 'none',
-    color: T.textPrimary, fontSize: 14, height: '100%',
-  },
-  toggleBtn: {
-    background: 'none', border: 'none', cursor: 'pointer', padding: 4,
-    display: 'flex', alignItems: 'center',
-  },
-  infoPill: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 6,
-    padding: '8px 10px',
-    borderRadius: 999,
-    border: `1px solid ${T.border}`,
-    background: T.bgInput,
-    color: T.textSecondary,
-    fontSize: 12,
-    fontWeight: 600,
-  },
-  infoPillText: { whiteSpace: 'nowrap' },
-
-  btn: {
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    background: T.accent, color: '#fff', border: 'none',
-    borderRadius: 12, padding: '12px 20px', fontSize: 14, fontWeight: 700,
-    cursor: 'pointer', transition: 'opacity 0.2s',
-  },
-  btnSecondary: {
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    background: 'transparent', color: T.textSecondary,
-    border: `1px solid ${T.border}`,
-    borderRadius: 12, padding: '12px 20px', fontSize: 14, fontWeight: 500,
-    cursor: 'pointer',
-  },
-
   banner: {
     display: 'flex', alignItems: 'center', gap: 10,
     padding: '10px 14px', borderRadius: 10,
     border: '1px solid', marginBottom: 16,
-  },
-
-  hint: {
-    color: T.textMuted, fontSize: 12, margin: 0,
-    display: 'flex', alignItems: 'center',
   },
 
   emptyCard: { padding: 16, fontSize: 13, color: T.textMuted, border: `1px dashed ${T.border}`, borderRadius: 10, textAlign: 'center' },

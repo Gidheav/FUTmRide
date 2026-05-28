@@ -220,7 +220,7 @@ export default function CampusAdminTopNav() {
           </button>
           <button style={{ ...s.topNavBtn, color: settingsTab === 'display' ? T.accent : T.textSecondary, background: settingsTab === 'display' ? T.accentBg : 'transparent' }} onClick={() => setSettingsTab('display')}>
             <Monitor size={13} strokeWidth={1.8} />
-            <span>Map & Display</span>
+            <span>Map & GIS</span>
           </button>
           <button style={{ ...s.topNavBtn, color: settingsTab === 'notifications' ? T.accent : T.textSecondary, background: settingsTab === 'notifications' ? T.accentBg : 'transparent' }} onClick={() => setSettingsTab('notifications')}>
             <Bell size={13} strokeWidth={1.8} />

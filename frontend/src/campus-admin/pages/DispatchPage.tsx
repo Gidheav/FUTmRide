@@ -375,7 +375,7 @@ export default function DispatchPage() {
 
   const heatIncidents = useMemo(() => {
     return mergedIncidents
-      .filter((incident) => incident.latitude && incident.longitude)
+      .filter((incident: any) => incident.latitude && incident.longitude)
       .filter((incident) => ['high_demand_shortage', 'no_driver_assigned'].includes(incident.type))
       .slice(0, 50)
   }, [mergedIncidents])
@@ -576,7 +576,7 @@ export default function DispatchPage() {
                 />
               )}
 
-              {showHeat && heatIncidents.map((incident) => (
+              {showHeat && heatIncidents.map((incident: any) => (
                 <Circle
                   key={`heat-${incident.id}`}
                   center={{ lat: Number(incident.latitude), lng: Number(incident.longitude) }}
