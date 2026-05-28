@@ -384,6 +384,22 @@ class GarageRideCompleteView(APIView):
                         },
                     )
                     try:
+                        from apps.notifications.services import NotificationService
+                        NotificationService.notify(
+                            user=request.user,
+                            notification_type='payment_received',
+                            title='Earnings credited',
+                            body=f'NGN {total_paid} credited for garage ride {ride.reference}.',
+                            data={
+                                'garage_ride_id': str(ride.id),
+                                'garage_reference': ride.reference,
+                                'amount': str(total_paid),
+                                'wallet_balance': str(request.user.driver_profile.wallet_balance),
+                            },
+                        )
+                    except Exception as notify_error:
+                        logger.warning('garage_driver_credit_notify_failed ref=%s error=%s', ride.reference, str(notify_error))
+                    try:
                         profile = request.user.driver_profile
                         profile.total_trips += 1
                         profile.total_earnings += total_paid
