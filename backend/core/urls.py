@@ -19,6 +19,7 @@ urlpatterns = [
     path("api/v1/rides/", include("apps.rides.urls")),
     path("api/v1/tracking/", include("apps.tracking.urls")),
     path("api/v1/payments/", include("apps.payments.urls")),
+    path("api/v1/", include("apps.payments.urls")),
     path("api/v1/pricing/", include("apps.pricing.urls")),
     path("api/v1/notifications/", include("apps.notifications.urls")),
     path("api/v1/ratings/", include("apps.ratings.urls")),
