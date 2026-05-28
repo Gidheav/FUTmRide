@@ -1,7 +1,8 @@
 import logging
+import re
 from django.conf import settings
 from django.core.cache import cache
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 
 logger = logging.getLogger("apps.security")
 
@@ -13,6 +14,46 @@ RATE_LIMIT_RULES = {
     "/api/v1/payments/webhooks/": (30, 60),
 }
 DEFAULT_RATE = (120, 60)
+
+MOBILE_UA_RE = re.compile(r"Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile", re.IGNORECASE)
+DESKTOP_ONLY_EXEMPT_PATH_PREFIXES = ("/health/",)
+
+
+class DesktopOnlyMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if self._is_exempt_path(request.path):
+            return self.get_response(request)
+
+        user_agent = request.META.get("HTTP_USER_AGENT", "")
+        if user_agent and MOBILE_UA_RE.search(user_agent):
+            if request.path.startswith("/api/") or request.path.startswith("/ws/"):
+                return JsonResponse(
+                    {"error": {"code": "DESKTOP_ONLY", "message": "Desktop browsers only."}},
+                    status=403,
+                )
+            return HttpResponse(self._html_message(), status=403, content_type="text/html")
+
+        return self.get_response(request)
+
+    def _is_exempt_path(self, path):
+        return path.startswith(DESKTOP_ONLY_EXEMPT_PATH_PREFIXES)
+
+    def _html_message(self):
+        return (
+            "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\" />"
+            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />"
+            "<title>Desktop Only</title><style>"
+            "body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#fff;color:#111;}"
+            ".wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;"
+            "text-align:center;padding:32px;}h1{margin:0 0 12px 0;font-size:24px;}"
+            "p{margin:0;font-size:16px;color:#444;}</style></head>"
+            "<body><div class=\"wrap\"><div><h1>Desktop only</h1>"
+            "<p>This application is available on desktop browsers only.</p>"
+            "</div></div></body></html>"
+        )
 
 
 class RateLimitMiddleware:
