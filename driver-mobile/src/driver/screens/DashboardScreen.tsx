@@ -9,12 +9,14 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
 import { driverApi } from '../../core/api';
+import { useAuthStore } from '../../core/authStore';
 import { useGarageRideStore } from '../../core/garageRideStore';
 
 const ACTIVE_GARAGE_STATUSES = new Set(['open', 'full', 'departed']);
 
 const DashboardScreen = ({ onCreateGarageRide }: { onCreateGarageRide?: () => void }) => {
   const { status, setStatus } = useGarageRideStore();
+  const { user } = useAuthStore();
 
   useEffect(() => {
     let isMounted = true;
@@ -90,7 +92,9 @@ const DashboardScreen = ({ onCreateGarageRide }: { onCreateGarageRide?: () => vo
         </View>
         <View style={[styles.statCard, AMBIENT_SHADOW]}>
           <MaterialIcons name="account-balance-wallet" size={22} color={COLORS.primary} />
-          <Text style={[FONTS.headlineMd, { color: COLORS.onSurface }]}>₦38k</Text>
+          <Text style={[FONTS.headlineMd, { color: COLORS.onSurface }]}>
+            {user?.wallet_balance ? `₦${Number(user.wallet_balance).toLocaleString()}` : '₦0'}
+          </Text>
           <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Wallet balance</Text>
         </View>
       </View>

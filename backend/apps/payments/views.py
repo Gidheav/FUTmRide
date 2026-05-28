@@ -7,6 +7,8 @@ from uuid import UUID
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
+from django.db.models import Sum
+from django.db.models.functions import TruncDate
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
@@ -18,12 +20,16 @@ from rest_framework.views import APIView
 from apps.accounts.models import StudentProfile, UserRole
 from .models import GatewayTransaction, WalletTransaction, WebhookEvent
 from .serializers import (
+    DriverPayoutMethodSerializer,
+    DriverWithdrawalCreateSerializer,
+    DriverWithdrawalSerializer,
     InitiateTopUpSerializer,
     WalletTransactionSerializer,
     WalletTransferLookupSerializer,
     WalletTransferSerializer,
 )
 from .services import FlutterwaveService, PaystackService, WalletService, generate_reference
+from .models import DriverPayoutMethod, DriverWithdrawal
 
 logger = logging.getLogger('apps.payments')
 UUID_PATTERN = re.compile(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', re.IGNORECASE)
@@ -148,7 +154,239 @@ class WalletTransactionListView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return WalletTransaction.objects.filter(user=self.request.user).order_by('-created_at')
+        return (
+            WalletTransaction.objects.select_related('ride')
+            .filter(user=self.request.user)
+            .order_by('-created_at')
+        )
+
+
+class DriverWalletSummaryView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != UserRole.DRIVER:
+            return Response(
+                {'error': {'code': 'FORBIDDEN', 'message': 'Only drivers can access wallet summary.'}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            profile = request.user.driver_profile
+        except Exception:
+            return Response(
+                {'error': {'code': 'PROFILE_NOT_FOUND', 'message': 'Driver profile not found.'}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        now = timezone.now()
+        start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        fallback_target = getattr(settings, 'DRIVER_DAILY_GOAL', Decimal('15000'))
+        profile_target = profile.daily_goal_target
+        daily_goal_target = profile_target if profile_target and profile_target > 0 else fallback_target
+
+        daily_earned = (
+            WalletTransaction.objects.filter(
+                user=request.user,
+                source=WalletTransaction.Source.DRIVER_EARNING,
+                created_at__gte=start_of_day,
+            )
+            .aggregate(total=Sum('amount'))
+            .get('total')
+            or Decimal('0')
+        )
+
+        weekly_start = (start_of_day - timedelta(days=6))
+        weekly_qs = WalletTransaction.objects.filter(
+            user=request.user,
+            source=WalletTransaction.Source.DRIVER_EARNING,
+            created_at__gte=weekly_start,
+        )
+        weekly_total = weekly_qs.aggregate(total=Sum('amount')).get('total') or Decimal('0')
+
+        daily_series = (
+            weekly_qs.annotate(day=TruncDate('created_at'))
+            .values('day')
+            .annotate(total=Sum('amount'))
+            .order_by('day')
+        )
+        series_map = {item['day']: item['total'] for item in daily_series}
+        series_payload = []
+        for idx in range(7):
+            day = weekly_start.date() + timedelta(days=idx)
+            amount = series_map.get(day, Decimal('0'))
+            series_payload.append({
+                'date': day.isoformat(),
+                'day_label': day.strftime('%a')[0],
+                'amount': str(amount),
+            })
+
+        prev_week_start = weekly_start - timedelta(days=7)
+        prev_week_end = weekly_start - timedelta(days=1)
+        prev_week_total = (
+            WalletTransaction.objects.filter(
+                user=request.user,
+                source=WalletTransaction.Source.DRIVER_EARNING,
+                created_at__date__gte=prev_week_start.date(),
+                created_at__date__lte=prev_week_end.date(),
+            )
+            .aggregate(total=Sum('amount'))
+            .get('total')
+            or Decimal('0')
+        )
+
+        change_percent = Decimal('0')
+        if prev_week_total > 0:
+            change_percent = ((weekly_total - prev_week_total) / prev_week_total) * 100
+
+        points = int(profile.total_trips or 0) * 50
+        tier_name = 'Bronze'
+        next_tier_name = 'Silver'
+        next_tier_points = 2000
+        if points >= 5000:
+            tier_name = 'Platinum'
+            next_tier_name = 'Platinum'
+            next_tier_points = 5000
+        elif points >= 2500:
+            tier_name = 'Gold'
+            next_tier_name = 'Platinum'
+            next_tier_points = 5000
+        elif points >= 1000:
+            tier_name = 'Silver'
+            next_tier_name = 'Gold'
+            next_tier_points = 2500
+
+        payout_method = None
+        try:
+            payout_method = DriverPayoutMethodSerializer(request.user.driver_payout_method).data
+        except DriverPayoutMethod.DoesNotExist:
+            payout_method = None
+
+        return Response({
+            'wallet_balance': str(profile.wallet_balance),
+            'total_earnings': str(profile.total_earnings),
+            'daily_goal': {
+                'target': str(daily_goal_target),
+                'earned': str(daily_earned),
+                'progress_percent': float((daily_earned / daily_goal_target * 100) if daily_goal_target else 0),
+                'remaining': str(max(daily_goal_target - daily_earned, Decimal('0'))),
+            },
+            'weekly_analytics': {
+                'total_earned': str(weekly_total),
+                'change_percent': float(change_percent),
+                'series': series_payload,
+            },
+            'rewards': {
+                'tier': tier_name,
+                'points': points,
+                'next_tier': next_tier_name,
+                'next_tier_points': next_tier_points,
+                'points_to_next': max(next_tier_points - points, 0),
+            },
+            'payout_method': payout_method,
+        })
+
+
+class DriverPayoutMethodView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != UserRole.DRIVER:
+            return Response(
+                {'error': {'code': 'FORBIDDEN', 'message': 'Only drivers can access payout methods.'}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            method = request.user.driver_payout_method
+        except DriverPayoutMethod.DoesNotExist:
+            return Response({'payout_method': None})
+        return Response({'payout_method': DriverPayoutMethodSerializer(method).data})
+
+    def put(self, request):
+        if request.user.role != UserRole.DRIVER:
+            return Response(
+                {'error': {'code': 'FORBIDDEN', 'message': 'Only drivers can update payout methods.'}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = DriverPayoutMethodSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        account_number = serializer.validated_data['account_number'].strip()
+        if not account_number.isdigit() or len(account_number) not in {10, 12}:
+            return Response(
+                {'error': {'code': 'INVALID_ACCOUNT_NUMBER', 'message': 'Account number must be 10 or 12 digits.'}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        method, _ = DriverPayoutMethod.objects.update_or_create(
+            user=request.user,
+            defaults={
+                'bank_name': serializer.validated_data['bank_name'].strip(),
+                'bank_code': serializer.validated_data.get('bank_code', '').strip(),
+                'account_number': account_number,
+                'account_name': serializer.validated_data['account_name'].strip(),
+            },
+        )
+
+        return Response({'payout_method': DriverPayoutMethodSerializer(method).data})
+
+
+class DriverWithdrawalCreateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role != UserRole.DRIVER:
+            return Response(
+                {'error': {'code': 'FORBIDDEN', 'message': 'Only drivers can withdraw.'}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            payout_method = request.user.driver_payout_method
+        except DriverPayoutMethod.DoesNotExist:
+            return Response(
+                {'error': {'code': 'PAYOUT_METHOD_REQUIRED', 'message': 'Add a payout method first.'}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = DriverWithdrawalCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        amount = serializer.validated_data['amount']
+
+        try:
+            with transaction.atomic():
+                tx = WalletService.debit(
+                    user=request.user,
+                    amount=amount,
+                    source=WalletTransaction.Source.DRIVER_WITHDRAWAL,
+                    narration='Driver withdrawal request',
+                    metadata={
+                        'bank_name': payout_method.bank_name,
+                        'account_last4': payout_method.account_number[-4:],
+                    },
+                )
+                tx.status = WalletTransaction.Status.PENDING
+                tx.save(update_fields=['status'])
+
+                withdrawal = DriverWithdrawal.objects.create(
+                    reference=generate_reference('WD'),
+                    user=request.user,
+                    payout_method=payout_method,
+                    amount=amount,
+                    fee=Decimal('0'),
+                    status=DriverWithdrawal.Status.PENDING,
+                    bank_name=payout_method.bank_name,
+                    account_number_last4=payout_method.account_number[-4:],
+                    metadata={'wallet_transaction_reference': tx.reference},
+                )
+        except ValueError as exc:
+            return Response(
+                {'error': {'code': 'WITHDRAWAL_FAILED', 'message': str(exc)}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {'withdrawal': DriverWithdrawalSerializer(withdrawal).data},
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class WalletTransferRecipientLookupView(APIView):

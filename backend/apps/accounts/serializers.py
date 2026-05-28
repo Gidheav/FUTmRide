@@ -344,7 +344,7 @@ class DriverProfileSerializer(serializers.ModelSerializer):
             "id", "user", "vehicle_type", "vehicle_make", "vehicle_model",
             "vehicle_year", "vehicle_color", "plate_number", "verification_status",
             "maintenance_status", "last_service_date", "service_due_date", "odometer_km",
-            "is_online", "is_on_trip", "wallet_balance", "total_trips",
+            "is_online", "is_on_trip", "wallet_balance", "daily_goal_target", "total_trips",
             "total_earnings", "average_rating", "acceptance_rate",
             "cancellation_rate", "verified_at", "created_at",
         ]

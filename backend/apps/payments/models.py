@@ -22,6 +22,12 @@ class WalletTransaction(models.Model):
         PROMOTION = 'promotion', 'Promotional Credit'
         ADMIN_ADJUSTMENT = 'admin_adjustment', 'Admin Adjustment'
 
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        COMPLETED = 'completed', 'Completed'
+        FAILED = 'failed', 'Failed'
+        REVERSED = 'reversed', 'Reversed'
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     reference = models.CharField(max_length=40, unique=True, db_index=True)
     user = models.ForeignKey(User, on_delete=models.PROTECT, related_name='wallet_transactions')
@@ -33,6 +39,12 @@ class WalletTransaction(models.Model):
     balance_after = models.DecimalField(max_digits=12, decimal_places=2)
     narration = models.CharField(max_length=255)
     metadata = models.JSONField(default=dict, blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.COMPLETED,
+        db_index=True,
+    )
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
@@ -41,6 +53,7 @@ class WalletTransaction(models.Model):
         indexes = [
             models.Index(fields=['user', 'created_at']),
             models.Index(fields=['ride']),
+            models.Index(fields=['user', 'status']),
         ]
 
     def __str__(self):
@@ -86,6 +99,64 @@ class GatewayTransaction(models.Model):
 
     def __str__(self):
         return f'GatewayTx({self.internal_reference} {self.gateway} {self.gateway_status})'
+
+
+class DriverPayoutMethod(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='driver_payout_method')
+    bank_name = models.CharField(max_length=120)
+    bank_code = models.CharField(max_length=20, blank=True)
+    account_number = models.CharField(max_length=20)
+    account_name = models.CharField(max_length=120)
+    is_verified = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'driver_payout_methods'
+
+    def __str__(self):
+        return f'DriverPayoutMethod({self.user_id} {self.bank_name})'
+
+
+class DriverWithdrawal(models.Model):
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        PROCESSING = 'processing', 'Processing'
+        COMPLETED = 'completed', 'Completed'
+        FAILED = 'failed', 'Failed'
+        CANCELLED = 'cancelled', 'Cancelled'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    reference = models.CharField(max_length=40, unique=True, db_index=True)
+    user = models.ForeignKey(User, on_delete=models.PROTECT, related_name='driver_withdrawals')
+    payout_method = models.ForeignKey(
+        DriverPayoutMethod,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='withdrawals',
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, db_index=True)
+    bank_name = models.CharField(max_length=120, blank=True)
+    account_number_last4 = models.CharField(max_length=4, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    requested_at = models.DateTimeField(auto_now_add=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'driver_withdrawals'
+        ordering = ['-requested_at']
+        indexes = [
+            models.Index(fields=['user', 'status']),
+            models.Index(fields=['reference']),
+        ]
+
+    def __str__(self):
+        return f'DriverWithdrawal({self.reference} {self.status} {self.amount})'
 
 
 class WebhookEvent(models.Model):

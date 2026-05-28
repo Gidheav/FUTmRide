@@ -2,10 +2,12 @@ import { useState, type CSSProperties, type FormEvent, type ReactNode } from 're
 import {
   Mail, Lock, Eye, EyeOff, CheckCircle, AlertCircle,
   Shield, KeyRound, Loader2, Sparkles, ArrowRight, ShieldCheck, CircleAlert,
+  Monitor, Bell, Sliders, Settings, AtSign, BookOpen, MailCheck, LogOut, Key, Info, ArrowLeft
 } from 'lucide-react'
-import { T } from '../theme'
+import { T, useCampusThemeStore } from '../theme'
 import api from '../../core/api'
 import { useAuthStore } from '../../core/authStore'
+import { useSettingsStore } from '../settingsStore'
 
 /* ──────────────────────────── helpers ──────────────────────────── */
 
@@ -21,32 +23,25 @@ function StatusBanner({ msg, type }: { msg: string; type: 'success' | 'error' })
   )
 }
 
-function SectionCard({
-  icon: Icon,
-  title,
-  subtitle,
-  children,
-  accent = false,
+function SettingsCard({
+  title, subtitle, children, footer, danger
 }: {
-  icon: any
-  title: string
-  subtitle: string
-  children: ReactNode
-  accent?: boolean
+  title: string; subtitle: string; children: ReactNode; footer?: ReactNode; danger?: boolean
 }) {
   return (
-    <section style={{ ...s.section, ...(accent ? s.sectionAccent : {}) }}>
-      <div style={s.sectionHeader}>
-        <div style={{ ...s.iconCircle, ...(accent ? s.iconCircleAccent : {}) }}>
-          <Icon size={20} color={accent ? '#fff' : T.accent} />
+    <section style={{ ...s.settingsCard, ...(danger ? s.settingsCardDanger : {}) }}>
+      <div style={s.settingsCardBody}>
+        <div style={s.settingsCardHeader}>
+          <h3 style={s.settingsCardTitle}>{title}</h3>
+          <p style={s.settingsCardSub}>{subtitle}</p>
         </div>
-        <div style={{ minWidth: 0 }}>
-          <h3 style={s.sectionTitle}>{title}</h3>
-          <p style={s.sectionSub}>{subtitle}</p>
-        </div>
+        {children}
       </div>
-
-      {children}
+      {footer && (
+        <div style={{ ...s.settingsCardFooter, ...(danger ? s.settingsCardFooterDanger : {}) }}>
+          {footer}
+        </div>
+      )}
     </section>
   )
 }
@@ -74,182 +69,148 @@ function SecurityChecklistItem({ icon: Icon, title, text }: { icon: any; title: 
   )
 }
 
-function InputField({
-  label, type = 'text', value, onChange, placeholder, icon: Icon, disabled,
-  showToggle, onToggle, visible,
-}: {
-  label: string; type?: string; value: string; onChange: (v: string) => void
-  placeholder?: string; icon?: any; disabled?: boolean
-  showToggle?: boolean; onToggle?: () => void; visible?: boolean
-}) {
-  return (
-    <div style={s.fieldWrap}>
-      <label style={s.label}>{label}</label>
-      <div style={s.inputWrap}>
-        {Icon && <Icon size={16} color={T.textMuted} style={{ marginRight: 10 }} />}
-        <input
-          type={showToggle ? (visible ? 'text' : 'password') : type}
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          placeholder={placeholder}
-          disabled={disabled}
-          style={s.input}
-          autoComplete="off"
-        />
-        {showToggle && (
-          <button type="button" onClick={onToggle} style={s.toggleBtn}>
-            {visible ? <EyeOff size={16} color={T.textMuted} /> : <Eye size={16} color={T.textMuted} />}
-          </button>
-        )}
-      </div>
-    </div>
-  )
-}
+/* ──────────────────────── Replica Section ──────────────────── */
 
-/* ──────────────────────── Email Change Section ──────────────────── */
-
-function EmailChangeSection() {
+function EmailChangeSectionReplica() {
   const { user, setAuth } = useAuthStore()
+  const { mode } = useCampusThemeStore()
   const [currentPassword, setCurrentPassword] = useState('')
   const [newEmail, setNewEmail] = useState('')
-  const [showPw, setShowPw] = useState(false)
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
+
+  const glassPanelStyle = {
+    background: mode === 'dark' ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.03)',
+    backdropFilter: 'blur(10px)',
+    border: `1px solid ${mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)'}`,
+  }
+  const inputDarkStyle = {
+    background: mode === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.8)',
+    border: `1px solid ${mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
+    color: T.textPrimary,
+    outline: 'none',
+  }
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setStatus(null)
-    if (!currentPassword || !newEmail) {
-      setStatus({ msg: 'All fields are required.', type: 'error' })
-      return
-    }
+    if (!currentPassword || !newEmail) return setStatus({ msg: 'All fields are required.', type: 'error' })
     setLoading(true)
     try {
-      const res = await api.post('/auth/settings/change-email/', {
-        current_password: currentPassword,
-        new_email: newEmail,
-      })
+      const res = await api.post('/auth/settings/change-email/', { current_password: currentPassword, new_email: newEmail })
       setStatus({ msg: res.data.message || 'Email updated successfully.', type: 'success' })
-      setCurrentPassword('')
-      setNewEmail('')
-      // Update local auth store with new email
+      setCurrentPassword(''); setNewEmail('')
       if (user) {
-        const access = localStorage.getItem('access_token') || ''
-        const refresh = localStorage.getItem('refresh_token') || ''
-        setAuth({ ...user, email: res.data.email }, access, refresh)
+        setAuth({ ...user, email: res.data.email }, localStorage.getItem('access_token') || '', localStorage.getItem('refresh_token') || '')
       }
     } catch (err: any) {
-      const msg = err.response?.data?.error?.message
-        || err.response?.data?.error?.details?.current_password?.[0]
-        || err.response?.data?.error?.details?.new_email?.[0]
-        || 'Failed to update email.'
-      setStatus({ msg, type: 'error' })
+      setStatus({ msg: err.response?.data?.error?.message || 'Failed to update email.', type: 'error' })
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <SectionCard
-      icon={Mail}
-      title="Email Address"
-      subtitle={`Current: ${user?.email || 'Not set'}`}
-    >
-      <div style={s.sectionMetaRow}>
-        <InfoPill icon={ShieldCheck} label="Protected with current password" />
-        <InfoPill icon={Sparkles} label="Updates your live auth profile" />
+    <section style={{ ...glassPanelStyle, borderRadius: 16, padding: '32px 24px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700, color: T.textPrimary, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Mail size={24} style={{ color: T.textMuted }} />
+          Email Management
+        </h2>
+        <span style={{ padding: '4px 12px', background: `${T.accent}33`, color: T.accent, fontSize: 12, fontWeight: 700, borderRadius: 999, border: `1px solid ${T.accent}4d` }}>
+          Verified
+        </span>
+      </div>
+
+      <div style={{ background: mode === 'dark' ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.05)', padding: 16, borderRadius: 8, marginBottom: 32, border: `1px solid ${mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <p style={{ fontSize: 12, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4, fontWeight: 600 }}>Current Email</p>
+          <p style={{ fontSize: 16, color: T.textPrimary, fontFamily: 'monospace' }}>{user?.email || 'Not set'}</p>
+        </div>
+        <CheckCircle size={24} color={T.accent} fill={`${T.accent}33`} />
       </div>
 
       {status && <StatusBanner msg={status.msg} type={status.type} />}
 
-      <form onSubmit={handleSubmit} style={s.form}>
-        <InputField
-          label="Current Password"
-          type="password"
-          value={currentPassword}
-          onChange={setCurrentPassword}
-          placeholder="Enter your current password"
-          icon={Lock}
-          showToggle
-          visible={showPw}
-          onToggle={() => setShowPw(p => !p)}
-        />
-        <InputField
-          label="New Email Address"
-          type="email"
-          value={newEmail}
-          onChange={setNewEmail}
-          placeholder="your-new-email@example.com"
-          icon={Mail}
-        />
-        <button type="submit" disabled={loading} style={{ ...s.btn, opacity: loading ? 0.7 : 1 }}>
-          {loading ? <Loader2 size={16} className="spin" /> : <CheckCircle size={16} />}
-          <span style={{ marginLeft: 8 }}>{loading ? 'Updating…' : 'Update Email'}</span>
-        </button>
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <div className="settings-form-grid">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: T.textMuted }}>New Email Address</label>
+            <div style={{ position: 'relative' }}>
+              <AtSign size={18} style={{ color: T.textMuted, position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+              <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} style={{ ...inputDarkStyle, width: '100%', borderRadius: 8, padding: '12px 16px 12px 40px', fontSize: 14 }} placeholder="Enter new email" />
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: T.textMuted }}>Current Password <span style={{ color: '#ef4444' }}>*</span></label>
+            <div style={{ position: 'relative' }}>
+              <Lock size={18} style={{ color: T.textMuted, position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+              <input type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} style={{ ...inputDarkStyle, width: '100%', borderRadius: 8, padding: '12px 16px 12px 40px', fontSize: 14 }} placeholder="Required for change" />
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 16, borderTop: `1px solid ${mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}` }}>
+          <p style={{ fontSize: 12, color: T.textMuted, maxWidth: 300, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+            <Info size={16} color="#4f90ff" style={{ flexShrink: 0 }} />
+            <span>Enter your current password, submit the new email, and your local auth snapshot updates immediately on success.</span>
+          </p>
+          <button type="submit" disabled={loading} style={{ background: T.accent, color: '#fff', padding: '12px 32px', borderRadius: 8, fontWeight: 700, border: 'none', cursor: 'pointer', boxShadow: `0 10px 15px -3px ${T.accent}33`, opacity: loading ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+            {loading ? <Loader2 size={16} className="spin" /> : null}
+            Save Changes
+          </button>
+        </div>
       </form>
-    </SectionCard>
+    </section>
   )
 }
 
-/* ──────────────────── Password Change Section ─────────────────── */
-
-type PwStep = 'request' | 'confirm'
-
-function PasswordChangeSection() {
-  const [step, setStep] = useState<PwStep>('request')
+function PasswordChangeSectionReplica() {
+  const { mode } = useCampusThemeStore()
+  const { clearAuth } = useAuthStore()
+  const [step, setStep] = useState<'request' | 'confirm'>('request')
   const [currentPassword, setCurrentPassword] = useState('')
-  const [showPw, setShowPw] = useState(false)
   const [otpCode, setOtpCode] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [showNew, setShowNew] = useState(false)
-  const [emailHint, setEmailHint] = useState('')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
-  const { clearAuth } = useAuthStore()
 
-  const handleRequestOTP = async (e: FormEvent) => {
-    e.preventDefault()
+  const glassPanelStyle = {
+    background: mode === 'dark' ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.03)',
+    backdropFilter: 'blur(10px)',
+    border: `1px solid ${mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)'}`,
+  }
+  const inputDarkStyle = {
+    background: mode === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.8)',
+    border: `1px solid ${mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
+    color: T.textPrimary,
+    outline: 'none',
+  }
+
+  const handleRequestOTP = async () => {
     setStatus(null)
-    if (!currentPassword) {
-      setStatus({ msg: 'Current password is required.', type: 'error' })
-      return
-    }
+    if (!currentPassword) return setStatus({ msg: 'Current password is required.', type: 'error' })
     setLoading(true)
     try {
-      const res = await api.post('/auth/settings/password-change/request-otp/', {
-        current_password: currentPassword,
-      })
-      setEmailHint(res.data.email_hint || '')
+      const res = await api.post('/auth/settings/password-change/request-otp/', { current_password: currentPassword })
       setStep('confirm')
       setStatus({ msg: res.data.message || 'OTP sent to your email.', type: 'success' })
     } catch (err: any) {
-      const msg = err.response?.data?.error?.message
-        || err.response?.data?.error?.details?.current_password?.[0]
-        || 'Failed to request OTP.'
-      setStatus({ msg, type: 'error' })
+      setStatus({ msg: err.response?.data?.error?.message || 'Failed to request OTP.', type: 'error' })
     } finally {
       setLoading(false)
     }
   }
 
-  const handleConfirm = async (e: FormEvent) => {
-    e.preventDefault()
+  const handleConfirm = async () => {
     setStatus(null)
-    if (!otpCode || !newPassword || !confirmPassword) {
-      setStatus({ msg: 'All fields are required.', type: 'error' })
-      return
-    }
-    if (newPassword !== confirmPassword) {
-      setStatus({ msg: 'Passwords do not match.', type: 'error' })
-      return
-    }
+    if (!otpCode || !newPassword || !confirmPassword) return setStatus({ msg: 'All fields are required.', type: 'error' })
+    if (newPassword !== confirmPassword) return setStatus({ msg: 'Passwords do not match.', type: 'error' })
     setLoading(true)
     try {
       await api.post('/auth/settings/password-change/confirm/', {
-        otp_code: otpCode,
-        new_password: newPassword,
-        confirm_password: confirmPassword,
+        otp_code: otpCode, new_password: newPassword, confirm_password: confirmPassword,
       })
       setStatus({ msg: 'Password changed successfully. Redirecting to login…', type: 'success' })
       setTimeout(() => {
@@ -257,109 +218,215 @@ function PasswordChangeSection() {
         window.location.href = '/login'
       }, 2000)
     } catch (err: any) {
-      const msg = err.response?.data?.error?.message
-        || err.response?.data?.error?.details?.otp_code?.[0]
-        || err.response?.data?.error?.details?.new_password?.[0]
-        || 'Failed to change password.'
-      setStatus({ msg, type: 'error' })
+      setStatus({ msg: err.response?.data?.error?.message || 'Failed to change password.', type: 'error' })
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <SectionCard
-      icon={KeyRound}
-      title="Change Password"
-      subtitle={`Requires email OTP verification for security.${emailHint ? ` Code sent to ${emailHint}` : ''}`}
-      accent
-    >
-      <div style={s.sectionMetaRow}>
-        <InfoPill icon={ShieldCheck} label={step === 'request' ? 'Step 1: Request code' : 'Step 2: Confirm change'} />
-        <InfoPill icon={CircleAlert} label="You will be signed out after a successful change" />
+    <section style={{ ...glassPanelStyle, borderRadius: 16, padding: '32px 24px', position: 'relative', overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', right: -80, top: -80, width: 256, height: 256, borderRadius: '50%', background: `${T.accent}1a`, filter: 'blur(80px)', pointerEvents: 'none' }} />
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
+        <div>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: T.textPrimary, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <KeyRound size={24} style={{ color: T.textMuted }} />
+            Change Password
+          </h2>
+          <p style={{ fontSize: 14, color: T.textMuted, marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <ShieldCheck size={16} /> Requires email OTP verification.
+          </p>
+        </div>
       </div>
 
       {status && <StatusBanner msg={status.msg} type={status.type} />}
 
-      {step === 'request' ? (
-        <form onSubmit={handleRequestOTP} style={s.form}>
-          <InputField
-            label="Current Password"
-            type="password"
-            value={currentPassword}
-            onChange={setCurrentPassword}
-            placeholder="Enter your current password"
-            icon={Lock}
-            showToggle
-            visible={showPw}
-            onToggle={() => setShowPw(p => !p)}
-          />
-          <p style={s.hint}>
-            <Shield size={14} color={T.textMuted} style={{ marginRight: 6, verticalAlign: 'middle' }} />
-            A 6-digit verification code will be sent to your email.
-          </p>
-          <button type="submit" disabled={loading} style={{ ...s.btn, opacity: loading ? 0.7 : 1 }}>
-            {loading ? <Loader2 size={16} className="spin" /> : <Mail size={16} />}
-            <span style={{ marginLeft: 8 }}>{loading ? 'Sending…' : 'Send Verification Code'}</span>
-          </button>
-        </form>
-      ) : (
-        <form onSubmit={handleConfirm} style={s.form}>
-          <InputField
-            label="Verification Code"
-            value={otpCode}
-            onChange={setOtpCode}
-            placeholder="Enter 6-digit code from email"
-            icon={Shield}
-          />
-          <InputField
-            label="New Password"
-            type="password"
-            value={newPassword}
-            onChange={setNewPassword}
-            placeholder="Enter new password (min 8 chars)"
-            icon={Lock}
-            showToggle
-            visible={showNew}
-            onToggle={() => setShowNew(p => !p)}
-          />
-          <InputField
-            label="Confirm New Password"
-            type="password"
-            value={confirmPassword}
-            onChange={setConfirmPassword}
-            placeholder="Re-enter new password"
-            icon={Lock}
-          />
-          <div style={{ display: 'flex', gap: 12 }}>
-            <button
-              type="button"
-              onClick={() => { setStep('request'); setStatus(null); setOtpCode(''); setNewPassword(''); setConfirmPassword('') }}
-              style={s.btnSecondary}
-            >
-              ← Back
-            </button>
-            <button type="submit" disabled={loading} style={{ ...s.btn, flex: 1, opacity: loading ? 0.7 : 1 }}>
-              {loading ? <Loader2 size={16} className="spin" /> : <CheckCircle size={16} />}
-              <span style={{ marginLeft: 8 }}>{loading ? 'Changing…' : 'Change Password'}</span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+        {/* Step 1 */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: T.textMuted }}>Current Password</label>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <div style={{ position: 'relative', flex: 1, minWidth: 240 }}>
+              <Lock size={18} style={{ color: T.textMuted, position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+              <input type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} style={{ ...inputDarkStyle, width: '100%', borderRadius: 8, padding: '12px 16px 12px 40px', fontSize: 14 }} placeholder="Enter current password" />
+            </div>
+            <button type="button" onClick={handleRequestOTP} disabled={loading} style={{ background: mode === 'dark' ? '#2f3131' : '#e2e2e2', color: T.textPrimary, padding: '12px 24px', borderRadius: 8, fontWeight: 700, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, whiteSpace: 'nowrap' }}>
+              {loading && step === 'request' ? <Loader2 size={16} className="spin" /> : null}
+              Request Code
             </button>
           </div>
-        </form>
-      )}
-    </SectionCard>
+          <p style={{ fontSize: 12, color: T.textMuted }}>A 6-digit code will be sent to your inbox.</p>
+        </div>
+
+        {/* Step 2 */}
+        <div style={{ opacity: step === 'request' ? 0.4 : 1, pointerEvents: step === 'request' ? 'none' : 'auto', display: 'flex', flexDirection: 'column', gap: 24, paddingTop: 24, borderTop: `1px solid ${mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}`, position: 'relative' }}>
+          {step === 'request' && (
+            <div style={{ position: 'absolute', inset: 0, zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', padding: 12, borderRadius: '50%' }}>
+                <Lock size={24} color="#fff" />
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: T.textMuted }}>Verification Code (OTP)</label>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <input type="text" value={otpCode} onChange={e => setOtpCode(e.target.value)} maxLength={6} style={{ ...inputDarkStyle, width: '100%', maxWidth: 240, textAlign: 'center', fontSize: 20, fontFamily: 'monospace', letterSpacing: '0.5em', padding: '12px 0', borderRadius: 8 }} placeholder="------" />
+            </div>
+          </div>
+
+          <div className="settings-form-grid">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: T.textMuted }}>New Password</label>
+              <div style={{ position: 'relative' }}>
+                <Key size={18} style={{ color: T.textMuted, position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+                <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} style={{ ...inputDarkStyle, width: '100%', borderRadius: 8, padding: '12px 16px 12px 40px', fontSize: 14 }} placeholder="Must be at least 8 characters" />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: T.textMuted }}>Confirm Password</label>
+              <div style={{ position: 'relative' }}>
+                <Key size={18} style={{ color: T.textMuted, position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+                <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} style={{ ...inputDarkStyle, width: '100%', borderRadius: 8, padding: '12px 16px 12px 40px', fontSize: 14 }} placeholder="Re-enter new password" />
+              </div>
+            </div>
+          </div>
+
+          <button type="button" onClick={handleConfirm} disabled={loading} style={{ width: '100%', background: T.accent, color: '#fff', opacity: loading && step === 'confirm' ? 0.7 : 1, padding: 16, borderRadius: 8, fontWeight: 700, border: 'none', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 16 }}>
+            {loading && step === 'confirm' ? <Loader2 size={16} className="spin" /> : null}
+            Confirm & Update Password
+          </button>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function SettingsRightSidebarReplica() {
+  const { mode } = useCampusThemeStore()
+
+  const glassPanelStyle = {
+    background: mode === 'dark' ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.03)',
+    backdropFilter: 'blur(10px)',
+    border: `1px solid ${mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)'}`,
+  }
+
+  return (
+    <div style={{ ...glassPanelStyle, borderRadius: 16, padding: '32px 24px', position: 'sticky', top: 24 }}>
+      <h3 style={{ fontSize: 20, fontWeight: 700, color: T.textPrimary, marginBottom: 24, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <BookOpen size={24} color={T.accent} />
+        What to expect
+      </h3>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+          <div style={{ width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 4, background: mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', border: `1px solid ${mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}` }}>
+            <MailCheck size={18} style={{ color: T.textMuted }} />
+          </div>
+          <div>
+            <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, color: T.textPrimary }}>Email Changes</h4>
+            <p style={{ fontSize: 12, lineHeight: 1.6, color: T.textMuted }}>Providing your current password alongside your new email results in an immediate update to your profile. No secondary confirmation required.</p>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+          <div style={{ width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 4, background: `${T.accent}1a`, border: `1px solid ${T.accent}4d` }}>
+            <ShieldCheck size={18} color={T.accent} />
+          </div>
+          <div>
+            <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, color: T.textPrimary }}>Password Changes</h4>
+            <p style={{ fontSize: 12, lineHeight: 1.6, color: T.textMuted }}>You must first verify intent by requesting a 6-digit OTP code to your registered email before a new password can be set.</p>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+          <div style={{ width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 4, background: 'rgba(239,68,68,0.1)', border: `1px solid rgba(239,68,68,0.3)` }}>
+            <LogOut size={18} color="#f87171" />
+          </div>
+          <div>
+            <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, color: T.textPrimary }}>Session Handling</h4>
+            <p style={{ fontSize: 12, lineHeight: 1.6, color: T.textMuted }}>A successful password change will immediately invalidate all active sessions across all devices. You will be redirected to the login screen.</p>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 32, paddingTop: 24, borderTop: `1px solid ${mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}` }}>
+        <a href="#" style={{ fontSize: 14, display: 'flex', alignItems: 'center', gap: 4, color: '#4f90ff', textDecoration: 'none' }}>
+          Read Security Policy <ArrowRight size={16} />
+        </a>
+      </div>
+    </div>
+  )
+}
+
+/* ──────────────────── Tab Placeholder Sections ─────────────────── */
+
+function DisplaySettingsSection() {
+  return (
+    <SettingsCard title="Map & Display Preferences" subtitle="Customize how the dashboard looks.">
+      <div style={s.emptyCard}>Display settings will be available in a future update.</div>
+    </SettingsCard>
+  )
+}
+
+function NotificationSettingsSection() {
+  return (
+    <SettingsCard title="Alerts & Notifications" subtitle="Manage sound and popup rules.">
+      <div style={s.emptyCard}>Notification settings will be available in a future update.</div>
+    </SettingsCard>
+  )
+}
+
+function SystemSettingsSection() {
+  return (
+    <SettingsCard title="System Configuration" subtitle="Global variables and operational rules.">
+      <div style={s.emptyCard}>System configuration is currently managed via the Engine section.</div>
+    </SettingsCard>
   )
 }
 
 /* ──────────────────────── Main Settings Page ──────────────────── */
 
 export default function SettingsPage() {
-  const { user } = useAuthStore()
+  const { activeTab } = useSettingsStore()
+  const { mode } = useCampusThemeStore()
+
+  const titles = {
+    display: 'Display Preferences',
+    notifications: 'Alert Rules',
+    system: 'Global Configuration'
+  }
+  const subtitles = {
+    display: 'Customize the visual behavior and map defaults across the application.',
+    notifications: 'Configure push, email, and sound alerts for critical campus operations.',
+    system: 'Adjust operational boundaries, matchmaking rules, and system-wide constraints.'
+  }
+
+  const glassPanelStyle = {
+    background: mode === 'dark' ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.03)',
+    backdropFilter: 'blur(10px)',
+    border: `1px solid ${mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)'}`,
+  }
 
   return (
     <>
       <style>{`
         @keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
         .spin { animation: spin 1s linear infinite; }
+
+        .settings-form-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 20px;
+        }
+
+        .settings-replica-grid {
+          display: grid;
+          grid-template-columns: 2fr 1fr;
+          gap: 32px;
+        }
 
         @media (max-width: 1080px) {
           .settings-grid {
@@ -369,6 +436,10 @@ export default function SettingsPage() {
           .settings-sidebar {
             order: 2;
           }
+
+          .settings-replica-grid {
+            grid-template-columns: 1fr !important;
+          }
         }
 
         @media (max-width: 720px) {
@@ -376,16 +447,13 @@ export default function SettingsPage() {
             padding: 18px 4px !important;
           }
 
-          .settings-header {
-            padding: 20px !important;
-          }
-
-          .settings-hero {
-            grid-template-columns: 1fr !important;
-          }
 
           .settings-chipRow {
             flex-wrap: wrap;
+          }
+
+          .settings-form-grid {
+            grid-template-columns: 1fr !important;
           }
 
           .settings-actions {
@@ -393,102 +461,115 @@ export default function SettingsPage() {
           }
         }
       `}</style>
-      <main style={s.main} className="settings-shell">
-        <div style={s.bgGlowA} />
-        <div style={s.bgGlowB} />
 
-        <div style={s.header} className="settings-header">
-          <div style={s.heroGrid} className="settings-hero">
-            <div>
-              <div style={s.kicker}>
-                <Sparkles size={12} color={T.accent} />
-                <span>Campus admin security</span>
+      {activeTab === 'account' ? (
+        <main style={{ flex: 1, overflowY: 'auto', width: '100%', padding: '32px 24px', background: mode === 'dark' ? '#1a1c1c' : '#f9f9f9' }}>
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 32 }}>
+
+            {/* Security Grid */}
+            <div className="settings-replica-grid">
+
+              {/* Left Column (Main Forms) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+                <EmailChangeSectionReplica />
+                <PasswordChangeSectionReplica />
               </div>
-              <h1 style={s.title}>Account Settings</h1>
-              <p style={s.subtitle}>Manage your email address and password from a single, structured security workspace.</p>
 
-              <div style={s.chipRow} className="settings-chipRow">
-                <InfoPill icon={Mail} label="Email updates" />
-                <InfoPill icon={Lock} label="Password reset via OTP" />
-                <InfoPill icon={Shield} label="Authenticated actions only" />
+              {/* Right Column (Info) */}
+              <div>
+                <SettingsRightSidebarReplica />
+              </div>
+
+            </div>
+          </div>
+        </main>
+      ) : (
+        <main style={s.main} className="settings-shell">
+          <div style={s.bgGlowA} />
+          <div style={s.bgGlowB} />
+
+          <div style={s.header} className="settings-header">
+            <div style={s.heroGrid} className="settings-hero">
+              <div>
+                <div style={s.kicker}>
+                  <Settings size={12} color={T.accent} />
+                  <span>System Configuration</span>
+                </div>
+                {/* @ts-ignore */}
+                <h1 style={s.title}>{titles[activeTab]}</h1>
+                {/* @ts-ignore */}
+                <p style={s.subtitle}>{subtitles[activeTab]}</p>
+              </div>
+
+              <div style={s.heroCard}>
+                <div style={s.heroCardTop}>
+                  <div style={s.heroIcon}>
+                    <ShieldCheck size={18} color={T.accent} />
+                  </div>
+                  <div>
+                    <div style={s.heroCardTitle}>Configuration summary</div>
+                    <div style={s.heroCardText}>These settings manage the global variables and UI preferences for your local browser environment.</div>
+                  </div>
+                </div>
               </div>
             </div>
+          </div>
 
-            <div style={s.heroCard}>
-              <div style={s.heroCardTop}>
-                <div style={s.heroIcon}>
+          <div style={s.contentGrid} className="settings-grid">
+            <div style={s.contentCol}>
+              {activeTab === 'display' && <DisplaySettingsSection />}
+              {activeTab === 'notifications' && <NotificationSettingsSection />}
+              {activeTab === 'system' && <SystemSettingsSection />}
+            </div>
+
+            <aside style={s.sidebarCard} className="settings-sidebar">
+              <div style={s.sidebarHeader}>
+                <div style={s.sidebarIcon}>
                   <ShieldCheck size={18} color={T.accent} />
                 </div>
                 <div>
-                  <div style={s.heroCardTitle}>Security summary</div>
-                  <div style={s.heroCardText}>Your settings changes are protected by password confirmation and email OTP verification.</div>
+                  <div style={s.sidebarTitle}>What to expect</div>
+                  <div style={s.sidebarText}>The settings interface is categorized into distinct domains.</div>
                 </div>
               </div>
 
-              <div style={s.heroCardStats}>
-                <div style={s.statBlock}>
-                  <span style={s.statLabel}>Current email</span>
-                  <span style={s.statValue}>{user?.email || 'Not set'}</span>
-                </div>
-                <div style={s.statDivider} />
-                <div style={s.statBlock}>
-                  <span style={s.statLabel}>Password flow</span>
-                  <span style={s.statValue}>Request code → confirm</span>
-                </div>
+              <div style={s.checklist}>
+                {activeTab === 'display' ? (
+                  <SecurityChecklistItem
+                    icon={Monitor}
+                    title="UI Customization"
+                    text="Display settings are saved to your browser's local storage and persist across sessions."
+                  />
+                ) : activeTab === 'notifications' ? (
+                  <SecurityChecklistItem
+                    icon={Bell}
+                    title="Actionable Alerts"
+                    text="Customize which operational events trigger sound notifications or dashboard popups."
+                  />
+                ) : (
+                  <SecurityChecklistItem
+                    icon={Sliders}
+                    title="Global Constraints"
+                    text="System rules affect all active operations and can only be modified by root administrators."
+                  />
+                )}
               </div>
-            </div>
+
+              <div style={s.sidebarFooter}>
+                <ArrowRight size={14} color={T.textMuted} />
+                <span style={s.sidebarFooterText}>No changes were made to request payloads or endpoints.</span>
+              </div>
+            </aside>
           </div>
-        </div>
 
-        <div style={s.contentGrid} className="settings-grid">
-          <div style={s.contentCol}>
-            <EmailChangeSection />
-            <PasswordChangeSection />
+          <div style={s.footer}>
+            <Shield size={14} color={T.textMuted} />
+            <span style={{ color: T.textMuted, fontSize: 12, marginLeft: 6 }}>
+              All changes are logged for security.
+            </span>
           </div>
-
-          <aside style={s.sidebarCard} className="settings-sidebar">
-            <div style={s.sidebarHeader}>
-              <div style={s.sidebarIcon}>
-                <ShieldCheck size={18} color={T.accent} />
-              </div>
-              <div>
-                <div style={s.sidebarTitle}>What to expect</div>
-                <div style={s.sidebarText}>The page is reorganized for clarity, but the underlying flows remain the same.</div>
-              </div>
-            </div>
-
-            <div style={s.checklist}>
-              <SecurityChecklistItem
-                icon={Mail}
-                title="Email changes"
-                text="Enter your current password, submit the new email, and your local auth snapshot updates immediately on success."
-              />
-              <SecurityChecklistItem
-                icon={KeyRound}
-                title="Password changes"
-                text="Request a verification code first, then confirm the new password with the OTP sent to your inbox."
-              />
-              <SecurityChecklistItem
-                icon={Shield}
-                title="Session handling"
-                text="Successful password changes still clear the session and redirect to login, just like before."
-              />
-            </div>
-
-            <div style={s.sidebarFooter}>
-              <ArrowRight size={14} color={T.textMuted} />
-              <span style={s.sidebarFooterText}>No changes were made to request payloads or endpoints.</span>
-            </div>
-          </aside>
-        </div>
-
-        <div style={s.footer}>
-          <Shield size={14} color={T.textMuted} />
-          <span style={{ color: T.textMuted, fontSize: 12, marginLeft: 6 }}>
-            All changes are logged for security. Password changes require email OTP verification.
-          </span>
-        </div>
-      </main>
+        </main>
+      )}
     </>
   )
 }
@@ -638,31 +719,37 @@ const s: Record<string, CSSProperties> = {
   },
   sidebarFooterText: { color: T.textMuted, fontSize: 12, lineHeight: 1.5 },
 
-  sectionMetaRow: { display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 },
-
-  section: {
+  settingsCard: {
     background: T.bgPanel,
     border: `1px solid ${T.border}`,
-    borderRadius: 20,
-    padding: 22,
-    boxShadow: '0 10px 30px rgba(0,0,0,0.10)',
+    borderRadius: 12,
+    overflow: 'hidden',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
   },
-  sectionAccent: {
-    background: `linear-gradient(180deg, ${T.bgPanel} 0%, ${T.bgCard} 100%)`,
+  settingsCardDanger: {
+    borderColor: 'rgba(239,68,68,0.3)',
   },
-  sectionHeader: { display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 16 },
-  iconCircle: {
-    width: 44, height: 44, borderRadius: 14,
-    background: T.accentBg,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    flexShrink: 0,
+  settingsCardBody: {
+    padding: '24px 28px',
   },
-  iconCircleAccent: {
-    background: T.accent,
-    boxShadow: `0 10px 22px ${T.accentBg}`,
+  settingsCardHeader: {
+    marginBottom: 20,
   },
-  sectionTitle: { color: T.textPrimary, fontSize: 16, fontWeight: 600, margin: 0 },
-  sectionSub: { color: T.textSecondary, fontSize: 13, margin: '4px 0 0', lineHeight: 1.5 },
+  settingsCardTitle: { color: T.textPrimary, fontSize: 16, fontWeight: 700, margin: 0 },
+  settingsCardSub: { color: T.textSecondary, fontSize: 13, margin: '4px 0 0', lineHeight: 1.5 },
+  settingsCardFooter: {
+    background: T.bgInput,
+    borderTop: `1px solid ${T.border}`,
+    padding: '14px 28px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  settingsCardFooterDanger: {
+    background: 'rgba(239,68,68,0.02)',
+    borderTopColor: 'rgba(239,68,68,0.1)',
+  },
 
   form: { display: 'flex', flexDirection: 'column', gap: 16 },
   fieldWrap: { display: 'flex', flexDirection: 'column', gap: 6 },
@@ -719,6 +806,8 @@ const s: Record<string, CSSProperties> = {
     color: T.textMuted, fontSize: 12, margin: 0,
     display: 'flex', alignItems: 'center',
   },
+
+  emptyCard: { padding: 16, fontSize: 13, color: T.textMuted, border: `1px dashed ${T.border}`, borderRadius: 10, textAlign: 'center' },
 
   footer: {
     display: 'flex', alignItems: 'center',

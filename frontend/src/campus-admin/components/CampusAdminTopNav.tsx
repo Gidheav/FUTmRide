@@ -4,7 +4,7 @@ import {
   LogOut, User as UserIcon, Sun, Moon,
   Download, Megaphone, UserPlus,
   ArrowLeft, ChevronRight, History, ShieldAlert, UserX,
-  Radio, Crosshair, Activity, Zap, Route
+  Radio, Crosshair, Activity, Zap, Route, Monitor, Bell, Sliders, ShieldCheck
 } from 'lucide-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { CSSProperties } from 'react'
@@ -12,6 +12,7 @@ import api from '../../core/api'
 import { useAuthStore } from '../../core/authStore'
 import { T, useCampusThemeStore } from '../theme'
 import { useDispatchStore } from '../dispatchStore'
+import { useSettingsStore } from '../settingsStore'
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/' },
@@ -28,6 +29,7 @@ export default function CampusAdminTopNav() {
   const { mode, toggleMode } = useCampusThemeStore()
 
   const { wsConnected, showTraffic, setShowTraffic, showHeat, setShowHeat, showRoutes, setShowRoutes, triggerRecenter } = useDispatchStore()
+  const { activeTab: settingsTab, setActiveTab: setSettingsTab } = useSettingsStore()
 
   const verifyMatch = location.pathname.match(/\/users\/(.*)\/verify/)
   const verifyDriverId = verifyMatch ? verifyMatch[1] : null
@@ -129,6 +131,16 @@ export default function CampusAdminTopNav() {
               Fleet visibility, ride queue, and incident response
             </div>
           </div>
+        ) : location.pathname === '/settings' ? (
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3, display: 'flex', alignItems: 'center' }}>
+              <Settings size={16} color={T.accent} style={{ marginRight: 8 }} />
+              System Configuration
+            </div>
+            <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
+              Manage accounts, display preferences, and global settings
+            </div>
+          </div>
         ) : (
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3 }}>
@@ -198,6 +210,25 @@ export default function CampusAdminTopNav() {
           <button style={{ ...s.topNavBtn, color: showRoutes ? T.warn : T.textSecondary, background: showRoutes ? `${T.warn}15` : 'transparent' }} onClick={() => setShowRoutes(p => !p)}>
             <Route size={13} strokeWidth={1.8} />
             <span>Routes</span>
+          </button>
+        </nav>
+      ) : location.pathname === '/settings' ? (
+        <nav style={s.topNav}>
+          <button style={{ ...s.topNavBtn, color: settingsTab === 'account' ? T.accent : T.textSecondary, background: settingsTab === 'account' ? T.accentBg : 'transparent' }} onClick={() => setSettingsTab('account')}>
+            <ShieldCheck size={13} strokeWidth={1.8} />
+            <span>Account</span>
+          </button>
+          <button style={{ ...s.topNavBtn, color: settingsTab === 'display' ? T.accent : T.textSecondary, background: settingsTab === 'display' ? T.accentBg : 'transparent' }} onClick={() => setSettingsTab('display')}>
+            <Monitor size={13} strokeWidth={1.8} />
+            <span>Map & Display</span>
+          </button>
+          <button style={{ ...s.topNavBtn, color: settingsTab === 'notifications' ? T.accent : T.textSecondary, background: settingsTab === 'notifications' ? T.accentBg : 'transparent' }} onClick={() => setSettingsTab('notifications')}>
+            <Bell size={13} strokeWidth={1.8} />
+            <span>Notifications</span>
+          </button>
+          <button style={{ ...s.topNavBtn, color: settingsTab === 'system' ? T.accent : T.textSecondary, background: settingsTab === 'system' ? T.accentBg : 'transparent' }} onClick={() => setSettingsTab('system')}>
+            <Sliders size={13} strokeWidth={1.8} />
+            <span>System Rules</span>
           </button>
         </nav>
       ) : (

@@ -87,4 +87,12 @@ export const verificationApi = {
   getMyDocuments: () => api.get('verification/documents/'),
 }
 
+export const driverWalletApi = {
+  getSummary: () => api.get('wallet/driver/summary/'),
+  getTransactions: () => api.get('wallet/transactions/'),
+  getPayoutMethod: () => api.get('wallet/driver/payout-method/'),
+  updatePayoutMethod: (data: any) => api.put('wallet/driver/payout-method/', data),
+  requestWithdrawal: (data: any) => api.post('wallet/driver/withdrawals/', data),
+}
+
 export default api

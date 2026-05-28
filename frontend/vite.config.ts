@@ -9,8 +9,6 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         "@core": path.resolve(__dirname, "src/core"),
-        "@student": path.resolve(__dirname, "src/student"),
-        "@driver": path.resolve(__dirname, "src/driver"),
         "@admin": path.resolve(__dirname, "src/admin"),
       },
     },

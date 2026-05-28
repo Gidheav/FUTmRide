@@ -1,5 +1,8 @@
 ﻿from django.urls import path
 from .views import (
+    DriverPayoutMethodView,
+    DriverWalletSummaryView,
+    DriverWithdrawalCreateView,
     FlutterwaveWebhookView,
     InitiateTopUpView,
     PaystackWebhookView,
@@ -11,6 +14,9 @@ from .views import (
 
 urlpatterns = [
     path('wallet/transactions/', WalletTransactionListView.as_view(), name='wallet-transactions'),
+    path('wallet/driver/summary/', DriverWalletSummaryView.as_view(), name='wallet-driver-summary'),
+    path('wallet/driver/payout-method/', DriverPayoutMethodView.as_view(), name='wallet-driver-payout-method'),
+    path('wallet/driver/withdrawals/', DriverWithdrawalCreateView.as_view(), name='wallet-driver-withdrawal'),
     path('wallet/transfer/lookup/', WalletTransferRecipientLookupView.as_view(), name='wallet-transfer-lookup'),
     path('wallet/transfer/', WalletTransferView.as_view(), name='wallet-transfer'),
     path('wallet/topup/', InitiateTopUpView.as_view(), name='wallet-topup'),

@@ -209,6 +209,7 @@ class DriverProfile(models.Model):
     is_on_trip = models.BooleanField(default=False)
 
     wallet_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    daily_goal_target = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     total_earnings = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     commission_rate = models.DecimalField(max_digits=5, decimal_places=2, default=15.00)
 

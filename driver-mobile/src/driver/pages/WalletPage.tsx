@@ -1,5 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  TextInput,
   View,
   Text,
   StyleSheet,
@@ -9,28 +13,254 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
+import { driverApi, driverWalletApi, verificationApi } from '../../core/api';
+import { useAuthStore } from '../../core/authStore';
+import { useDriverWalletStore } from '../../core/driverWalletStore';
 
 const FILTER_TABS = ['All', 'Earned', 'Payouts', 'Bonuses'];
 
-const CHART_DATA = [
-  { day: 'M', height: 40 },
-  { day: 'T', height: 60 },
-  { day: 'W', height: 90, active: true },
-  { day: 'T', height: 50 },
-  { day: 'F', height: 75 },
-  { day: 'S', height: 30 },
-  { day: 'S', height: 10 },
-];
+const formatCurrency = (value?: string | number | null) => {
+  if (value === null || value === undefined) return '₦0.00';
+  const num = Number(value);
+  if (Number.isNaN(num)) return '₦0.00';
+  return `₦${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
+const formatShortCurrency = (value?: string | number | null) => {
+  if (value === null || value === undefined) return '₦0';
+  const num = Number(value);
+  if (Number.isNaN(num)) return '₦0';
+  return `₦${num.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+};
+
+const formatDate = (value?: string | null) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
 
 export default function DriverWalletPage() {
   const [activeFilter, setActiveFilter] = useState('All');
+  const [loading, setLoading] = useState(true);
+  const [showPayoutModal, setShowPayoutModal] = useState(false);
+  const [savingPayout, setSavingPayout] = useState(false);
+  const [bankName, setBankName] = useState('');
+  const [bankCode, setBankCode] = useState('');
+  const [accountName, setAccountName] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [showGoalModal, setShowGoalModal] = useState(false);
+  const [savingGoal, setSavingGoal] = useState(false);
+  const [goalInput, setGoalInput] = useState('');
+
+  const { user, patchUser } = useAuthStore();
+  const {
+    summary,
+    transactions,
+    payoutMethod,
+    documents,
+    setSummary,
+    setTransactions,
+    setPayoutMethod,
+    setDocuments,
+  } = useDriverWalletStore();
+
+  const effectivePayoutMethod = payoutMethod || summary?.payout_method || null;
+  const availableBalance = Number(summary?.wallet_balance ?? user?.wallet_balance ?? 0);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadWallet = async () => {
+      try {
+        setLoading(true);
+        const [summaryRes, txRes, payoutRes, docsRes] = await Promise.all([
+          driverWalletApi.getSummary(),
+          driverWalletApi.getTransactions(),
+          driverWalletApi.getPayoutMethod(),
+          verificationApi.getMyDocuments(),
+        ]);
+
+        if (!isMounted) return;
+        setSummary(summaryRes?.data ?? null);
+        if (summaryRes?.data?.wallet_balance !== undefined) {
+          patchUser({ wallet_balance: summaryRes.data.wallet_balance });
+        }
+
+        const txList = Array.isArray(txRes?.data) ? txRes.data : txRes?.data?.results || [];
+        setTransactions(txList);
+
+        setPayoutMethod(payoutRes?.data?.payout_method ?? null);
+
+        const docList = Array.isArray(docsRes?.data) ? docsRes.data : docsRes?.data?.results || [];
+        setDocuments(docList);
+      } catch (error) {
+        console.warn('[DriverWallet] load failed:', error);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    loadWallet();
+    return () => {
+      isMounted = false;
+    };
+  }, [patchUser, setDocuments, setPayoutMethod, setSummary, setTransactions]);
+
+  const openPayoutModal = () => {
+    setBankName(effectivePayoutMethod?.bank_name ?? '');
+    setBankCode(effectivePayoutMethod?.bank_code ?? '');
+    setAccountName(effectivePayoutMethod?.account_name ?? '');
+    setAccountNumber('');
+    setShowPayoutModal(true);
+  };
+
+  const openGoalModal = () => {
+    const currentTarget = summary?.daily_goal?.target ?? '';
+    setGoalInput(currentTarget ? String(currentTarget) : '');
+    setShowGoalModal(true);
+  };
+
+  const savePayoutMethod = async () => {
+    if (!bankName.trim() || !accountName.trim() || !accountNumber.trim()) {
+      Alert.alert('Missing details', 'Bank name, account name, and account number are required.');
+      return;
+    }
+    setSavingPayout(true);
+    try {
+      const response = await driverWalletApi.updatePayoutMethod({
+        bank_name: bankName.trim(),
+        bank_code: bankCode.trim(),
+        account_name: accountName.trim(),
+        account_number: accountNumber.trim(),
+      });
+      setPayoutMethod(response?.data?.payout_method ?? null);
+      setShowPayoutModal(false);
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.error?.message ||
+        error?.response?.data?.detail ||
+        'Failed to save payout method.';
+      Alert.alert('Error', message);
+    } finally {
+      setSavingPayout(false);
+    }
+  };
+
+  const saveDailyGoal = async () => {
+    const cleaned = goalInput.replace(/,/g, '').trim();
+    if (cleaned) {
+      const value = Number(cleaned);
+      if (Number.isNaN(value) || value <= 0) {
+        Alert.alert('Invalid amount', 'Enter a daily goal greater than zero.');
+        return;
+      }
+    }
+    setSavingGoal(true);
+    try {
+      await driverApi.updateProfile({
+        daily_goal_target: cleaned ? Number(cleaned) : null,
+      });
+      const summaryRes = await driverWalletApi.getSummary();
+      setSummary(summaryRes?.data ?? null);
+      setShowGoalModal(false);
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.error?.message ||
+        error?.response?.data?.detail ||
+        'Failed to update daily goal.';
+      Alert.alert('Error', message);
+    } finally {
+      setSavingGoal(false);
+    }
+  };
+
+  const handleCashOut = () => {
+    if (!effectivePayoutMethod) {
+      Alert.alert('Add payout method', 'Please add your bank account before withdrawing.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Add now', onPress: openPayoutModal },
+      ]);
+      return;
+    }
+    if (!availableBalance || availableBalance <= 0) {
+      Alert.alert('No balance', 'You have no available balance to withdraw.');
+      return;
+    }
+    Alert.alert(
+      'Confirm cash out',
+      `Withdraw ${formatCurrency(availableBalance)} to ${effectivePayoutMethod.bank_name}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Withdraw',
+          onPress: async () => {
+            try {
+              await driverWalletApi.requestWithdrawal({ amount: availableBalance });
+              const summaryRes = await driverWalletApi.getSummary();
+              setSummary(summaryRes?.data ?? null);
+              if (summaryRes?.data?.wallet_balance !== undefined) {
+                patchUser({ wallet_balance: summaryRes.data.wallet_balance });
+              }
+              const txRes = await driverWalletApi.getTransactions();
+              const txList = Array.isArray(txRes?.data) ? txRes.data : txRes?.data?.results || [];
+              setTransactions(txList);
+              Alert.alert('Withdrawal requested', 'Your cash out request is pending.');
+            } catch (error: any) {
+              const msg =
+                error?.response?.data?.error?.message ||
+                error?.response?.data?.detail ||
+                'Withdrawal request failed.';
+              Alert.alert('Error', msg);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const chartSeries = useMemo(() => {
+    const series = summary?.weekly_analytics?.series ?? [];
+    const amounts = series.map((item) => Number(item.amount || 0));
+    const max = Math.max(1, ...amounts);
+    return series.map((item) => ({
+      day: item.day_label,
+      amount: Number(item.amount || 0),
+      height: Math.max(12, Math.round((Number(item.amount || 0) / max) * 100)),
+    }));
+  }, [summary?.weekly_analytics?.series]);
+
+  const latestDocument = useMemo(() => {
+    if (!documents?.length) return null;
+    return [...documents].sort((a, b) => (b.uploaded_at || '').localeCompare(a.uploaded_at || ''))[0];
+  }, [documents]);
+
+  const filteredTransactions = useMemo(() => {
+    if (!transactions?.length) return [];
+    switch (activeFilter) {
+      case 'Earned':
+        return transactions.filter((tx) => tx.source === 'driver_earning');
+      case 'Payouts':
+        return transactions.filter((tx) => tx.source === 'driver_withdrawal');
+      case 'Bonuses':
+        return transactions.filter((tx) => ['promotion', 'admin_adjustment'].includes(tx.source));
+      default:
+        return transactions;
+    }
+  }, [activeFilter, transactions]);
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator={false}
-    >
+    <>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
       {/* ── Premium Balance Header Card ── */}
       <LinearGradient
         colors={[COLORS.primaryContainer, COLORS.primary]}
@@ -43,9 +273,11 @@ export default function DriverWalletPage() {
         <View style={styles.blob2} />
 
         <Text style={styles.balanceLabel}>Total Wallet Balance</Text>
-        <Text style={styles.balanceAmount}>₦45,250.00</Text>
+        <Text style={styles.balanceAmount}>
+          {formatCurrency(summary?.wallet_balance ?? user?.wallet_balance ?? 0)}
+        </Text>
 
-        <TouchableOpacity style={styles.cashOutBtn} activeOpacity={0.9}>
+        <TouchableOpacity style={styles.cashOutBtn} activeOpacity={0.9} onPress={handleCashOut}>
           <MaterialIcons name="account-balance" size={18} color={COLORS.primary} />
           <Text style={[FONTS.labelLg, { color: COLORS.primary }]}>Cash Out to Bank</Text>
         </TouchableOpacity>
@@ -58,17 +290,33 @@ export default function DriverWalletPage() {
             <MaterialIcons name="track-changes" size={18} color={COLORS.primaryContainer} />
             <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}>Daily Goal</Text>
           </View>
-          <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>₦15,000</Text>
+          <View style={styles.goalActionRow}>
+            <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}
+            >{formatShortCurrency(summary?.daily_goal?.target ?? 0)}</Text>
+            <TouchableOpacity style={styles.goalEditBtn} onPress={openGoalModal} activeOpacity={0.8}>
+              <MaterialIcons name="edit" size={14} color={COLORS.primary} />
+              <Text style={styles.goalEditText}>Edit</Text>
+            </TouchableOpacity>
+          </View>
         </View>
         <View style={styles.goalValues}>
-          <Text style={[FONTS.headlineMd, { color: COLORS.primaryContainer }]}>₦12,450</Text>
-          <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>83%</Text>
+          <Text style={[FONTS.headlineMd, { color: COLORS.primaryContainer }]}
+          >{formatShortCurrency(summary?.daily_goal?.earned ?? 0)}</Text>
+          <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}
+          >{Math.round(summary?.daily_goal?.progress_percent ?? 0)}%</Text>
         </View>
         <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: '83%' }]} />
+          <View
+            style={[
+              styles.progressFill,
+              { width: `${Math.min(100, Math.max(0, summary?.daily_goal?.progress_percent ?? 0))}%` },
+            ]}
+          />
         </View>
         <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, fontSize: 12 }]}>
-          Just ₦2,550 to reach today's target!
+          {summary?.daily_goal?.remaining
+            ? `Just ${formatShortCurrency(summary.daily_goal.remaining)} to reach today's target!`
+            : 'Set a goal to track your earnings.'}
         </Text>
       </View>
 
@@ -79,31 +327,47 @@ export default function DriverWalletPage() {
           <View style={styles.analyticsTop}>
             <View>
               <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Total Earned</Text>
-              <Text style={[FONTS.headlineMd, { color: COLORS.onSurface }]}>₦128,400</Text>
+              <Text style={[FONTS.headlineMd, { color: COLORS.onSurface }]}>
+                {formatShortCurrency(summary?.weekly_analytics?.total_earned ?? 0)}
+              </Text>
             </View>
             <View style={styles.trendBadge}>
-              <MaterialIcons name="arrow-upward" size={14} color={COLORS.surfaceTint} />
-              <Text style={[FONTS.labelMd, { color: COLORS.surfaceTint }]}>12%</Text>
+              <MaterialIcons
+                name={(summary?.weekly_analytics?.change_percent ?? 0) >= 0 ? 'arrow-upward' : 'arrow-downward'}
+                size={14}
+                color={COLORS.surfaceTint}
+              />
+              <Text style={[FONTS.labelMd, { color: COLORS.surfaceTint }]}>
+                {Math.abs(Math.round(summary?.weekly_analytics?.change_percent ?? 0))}%
+              </Text>
             </View>
           </View>
 
           {/* Mini Bar Chart */}
           <View style={styles.chartRow}>
-            {CHART_DATA.map((bar, idx) => (
+            {(chartSeries.length ? chartSeries : [
+              { day: 'M', height: 12 },
+              { day: 'T', height: 12 },
+              { day: 'W', height: 12 },
+              { day: 'T', height: 12 },
+              { day: 'F', height: 12 },
+              { day: 'S', height: 12 },
+              { day: 'S', height: 12 },
+            ]).map((bar, idx) => (
               <View key={idx} style={styles.chartCol}>
                 <View style={styles.chartBarWrap}>
                   <View
                     style={[
                       styles.chartBar,
                       { height: `${bar.height}%` },
-                      bar.active && styles.chartBarActive,
+                      bar.height >= 80 && styles.chartBarActive,
                     ]}
                   />
                 </View>
                 <Text
                   style={[
                     styles.chartLabel,
-                    bar.active && { color: COLORS.primary, fontWeight: '700' },
+                    bar.height >= 80 && { color: COLORS.primary, fontWeight: '700' },
                   ]}
                 >
                   {bar.day}
@@ -124,17 +388,19 @@ export default function DriverWalletPage() {
                 <MaterialIcons name="military-tech" size={28} color="#d97706" />
               </View>
               <View>
-                <Text style={[FONTS.headlineMd, { color: COLORS.onSurface }]}>Gold Driver</Text>
+                <Text style={[FONTS.headlineMd, { color: COLORS.onSurface }]}
+                >{summary?.rewards?.tier ?? 'Driver'}</Text>
                 <Text style={[FONTS.labelMd, { color: '#d97706' }]}>Active Tier</Text>
               </View>
             </View>
             <Text style={styles.rewardsPoints}>
-              2,450<Text style={styles.rewardsPtsSuffix}>pts</Text>
+              {(summary?.rewards?.points ?? 0).toLocaleString()}
+              <Text style={styles.rewardsPtsSuffix}>pts</Text>
             </Text>
           </View>
           <View style={styles.rewardsFooter}>
             <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant, fontSize: 12 }]}>
-              Next tier: Platinum (5,000 pts)
+              Next tier: {summary?.rewards?.next_tier ?? 'Gold'} ({(summary?.rewards?.next_tier_points ?? 0).toLocaleString()} pts)
             </Text>
             <TouchableOpacity style={styles.viewPerksBtn} activeOpacity={0.7}>
               <Text style={[FONTS.labelMd, { color: COLORS.primaryContainer, fontSize: 12 }]}>
@@ -152,7 +418,9 @@ export default function DriverWalletPage() {
         <View style={[styles.gridCell, AMBIENT_SHADOW]}>
           <View style={styles.gridCellHeader}>
             <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Bank Account</Text>
-            <MaterialIcons name="edit" size={18} color={COLORS.primaryContainer} />
+            <TouchableOpacity onPress={openPayoutModal} activeOpacity={0.7}>
+              <MaterialIcons name="edit" size={18} color={COLORS.primaryContainer} />
+            </TouchableOpacity>
           </View>
           <View style={styles.gridCellBody}>
             <View style={styles.gridCellIcon}>
@@ -160,9 +428,11 @@ export default function DriverWalletPage() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[FONTS.labelMd, { color: COLORS.onSurface }]} numberOfLines={1}>
-                Access Bank
+                {effectivePayoutMethod?.bank_name || 'Add bank account'}
               </Text>
-              <Text style={{ fontSize: 12, color: COLORS.onSurfaceVariant }}>**** 1234</Text>
+              <Text style={{ fontSize: 12, color: COLORS.onSurfaceVariant }}>
+                {effectivePayoutMethod?.account_number_masked || (effectivePayoutMethod?.account_last4 ? `**** ${effectivePayoutMethod.account_last4}` : 'No account on file')}
+              </Text>
             </View>
           </View>
         </View>
@@ -178,8 +448,12 @@ export default function DriverWalletPage() {
               <MaterialIcons name="description" size={16} color={COLORS.onSurfaceVariant} />
             </View>
             <View>
-              <Text style={[FONTS.labelMd, { color: COLORS.onSurface }]}>Statements</Text>
-              <Text style={{ fontSize: 12, color: COLORS.onSurfaceVariant }}>Oct 2024</Text>
+              <Text style={[FONTS.labelMd, { color: COLORS.onSurface }]}>
+                {latestDocument ? latestDocument.document_type.replace(/_/g, ' ') : 'Statements'}
+              </Text>
+              <Text style={{ fontSize: 12, color: COLORS.onSurfaceVariant }}>
+                {latestDocument ? new Date(latestDocument.uploaded_at).toLocaleDateString() : 'No statements yet'}
+              </Text>
             </View>
           </View>
         </View>
@@ -224,98 +498,120 @@ export default function DriverWalletPage() {
           ))}
         </ScrollView>
 
-        {/* Transaction: Ride Earnings */}
-        <View style={[styles.txnCard, AMBIENT_SHADOW]}>
-          <View style={styles.txnRow}>
-            <View style={styles.txnLeft}>
-              <View style={[styles.txnIcon, { backgroundColor: COLORS.primaryContainer + '1A' }]}>
-                <MaterialIcons name="directions-car" size={20} color={COLORS.primaryContainer} />
-              </View>
-              <View>
-                <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}>Ride #LR-9823</Text>
-                <Text style={styles.txnDate}>Today, 14:30</Text>
-              </View>
-            </View>
-            <View style={{ alignItems: 'flex-end', gap: 4 }}>
-              <Text style={[FONTS.labelLg, { color: COLORS.primaryContainer }]}>+₦1,250</Text>
-              <View style={styles.statusBadgeGreen}>
-                <Text style={styles.statusBadgeGreenText}>Completed</Text>
-              </View>
-            </View>
+        {loading ? (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator size="small" color={COLORS.primary} />
+            <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant }]}>Loading wallet activity...</Text>
           </View>
-          <View style={styles.txnMeta}>
-            <View style={styles.txnMetaItem}>
-              <MaterialIcons name="route" size={14} color={COLORS.onSurfaceVariant} />
-              <Text style={styles.txnMetaText}>4.2 km</Text>
-            </View>
-            <View style={styles.txnMetaItem}>
-              <MaterialIcons name="schedule" size={14} color={COLORS.onSurfaceVariant} />
-              <Text style={styles.txnMetaText}>18 min</Text>
-            </View>
-            <View style={styles.txnMetaItem}>
-              <MaterialIcons name="favorite" size={14} color={COLORS.primary} />
-              <Text style={[styles.txnMetaText, { color: COLORS.primary }]}>₦200 Tip</Text>
-            </View>
+        ) : filteredTransactions.length === 0 ? (
+          <View style={styles.emptyState}>
+            <MaterialIcons name="inbox" size={32} color={COLORS.outline} />
+            <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginTop: 8 }]}>No transactions yet.</Text>
           </View>
-        </View>
+        ) : (
+          filteredTransactions.map((tx) => {
+            const isCredit = tx.transaction_type === 'credit';
+            const amountLabel = `${isCredit ? '+' : '-'}${formatShortCurrency(tx.amount)}`;
+            const statusLabel = tx.status ? tx.status[0].toUpperCase() + tx.status.slice(1) : 'Completed';
+            const statusStyle =
+              tx.status === 'pending'
+                ? styles.statusBadgePending
+                : tx.status === 'failed'
+                ? styles.statusBadgeFailed
+                : isCredit
+                ? styles.statusBadgeGreen
+                : styles.statusBadgeGrey;
+            const statusTextStyle =
+              tx.status === 'pending'
+                ? styles.statusBadgePendingText
+                : tx.status === 'failed'
+                ? styles.statusBadgeFailedText
+                : isCredit
+                ? styles.statusBadgeGreenText
+                : styles.statusBadgeGreyText;
 
-        {/* Transaction: Bank Transfer */}
-        <View style={[styles.txnCard, AMBIENT_SHADOW]}>
-          <View style={styles.txnRow}>
-            <View style={styles.txnLeft}>
-              <View style={[styles.txnIcon, { backgroundColor: COLORS.surfaceContainerHighest }]}>
-                <MaterialIcons name="account-balance-wallet" size={20} color={COLORS.onSurfaceVariant} />
-              </View>
-              <View>
-                <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}>Bank Transfer</Text>
-                <Text style={styles.txnDate}>Yesterday, 09:15</Text>
-              </View>
-            </View>
-            <View style={{ alignItems: 'flex-end', gap: 4 }}>
-              <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}>-₦20,000</Text>
-              <View style={styles.statusBadgeGrey}>
-                <Text style={styles.statusBadgeGreyText}>Completed</Text>
-              </View>
-            </View>
-          </View>
-          <View style={styles.txnMeta}>
-            <View style={styles.txnMetaItem}>
-              <MaterialIcons name="account-balance" size={14} color={COLORS.onSurfaceVariant} />
-              <Text style={styles.txnMetaText}>Access Bank ending 1234</Text>
-            </View>
-            <View style={styles.txnMetaItem}>
-              <MaterialIcons name="receipt-long" size={14} color={COLORS.onSurfaceVariant} />
-              <Text style={styles.txnMetaText}>Fee: ₦50</Text>
-            </View>
-          </View>
-        </View>
+            const title =
+              tx.source === 'driver_earning' && tx.ride_reference
+                ? `Ride ${tx.ride_reference}`
+                : tx.source === 'driver_withdrawal'
+                ? 'Bank Transfer'
+                : tx.source === 'promotion'
+                ? 'Bonus'
+                : tx.narration || 'Wallet activity';
 
-        {/* Transaction: Weekly Bonus */}
-        <View style={[styles.txnCard, AMBIENT_SHADOW]}>
-          <View style={styles.txnRow}>
-            <View style={styles.txnLeft}>
-              <View style={[styles.txnIcon, { backgroundColor: '#fef3c7' }]}>
-                <MaterialIcons name="stars" size={20} color="#d97706" />
+            const metaItems: Array<{ icon: keyof typeof MaterialIcons.glyphMap; label: string; highlight?: boolean }>
+              = [];
+            if (tx.ride_distance_km) {
+              metaItems.push({ icon: 'route', label: `${tx.ride_distance_km} km` });
+            }
+            if (tx.ride_duration_minutes) {
+              metaItems.push({ icon: 'schedule', label: `${tx.ride_duration_minutes} min` });
+            }
+            if (tx.metadata?.bank_name || tx.metadata?.account_last4) {
+              const bankLabel = tx.metadata?.bank_name
+                ? `${tx.metadata.bank_name}${tx.metadata?.account_last4 ? ` ending ${tx.metadata.account_last4}` : ''}`
+                : `Account ending ${tx.metadata.account_last4}`;
+              metaItems.push({ icon: 'account-balance', label: bankLabel });
+            }
+
+            const iconName =
+              tx.source === 'driver_earning'
+                ? 'directions-car'
+                : tx.source === 'driver_withdrawal'
+                ? 'account-balance-wallet'
+                : tx.source === 'promotion'
+                ? 'stars'
+                : 'payments';
+
+            const iconBg =
+              tx.source === 'driver_earning'
+                ? COLORS.primaryContainer + '1A'
+                : tx.source === 'promotion'
+                ? '#fef3c7'
+                : COLORS.surfaceContainerHighest;
+
+            const iconColor =
+              tx.source === 'driver_earning'
+                ? COLORS.primaryContainer
+                : tx.source === 'promotion'
+                ? '#d97706'
+                : COLORS.onSurfaceVariant;
+
+            return (
+              <View key={tx.id} style={[styles.txnCard, AMBIENT_SHADOW]}>
+                <View style={styles.txnRow}>
+                  <View style={styles.txnLeft}>
+                    <View style={[styles.txnIcon, { backgroundColor: iconBg }]}>
+                      <MaterialIcons name={iconName as any} size={20} color={iconColor} />
+                    </View>
+                    <View>
+                      <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}>{title}</Text>
+                      <Text style={styles.txnDate}>{formatDate(tx.created_at)}</Text>
+                    </View>
+                  </View>
+                  <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                    <Text style={[FONTS.labelLg, { color: isCredit ? COLORS.primaryContainer : COLORS.onSurface }]}>
+                      {amountLabel}
+                    </Text>
+                    <View style={statusStyle}>
+                      <Text style={statusTextStyle}>{statusLabel}</Text>
+                    </View>
+                  </View>
+                </View>
+                {metaItems.length ? (
+                  <View style={styles.txnMeta}>
+                    {metaItems.map((item, idx) => (
+                      <View key={`${tx.id}-meta-${idx}`} style={styles.txnMetaItem}>
+                        <MaterialIcons name={item.icon} size={14} color={item.highlight ? COLORS.primary : COLORS.onSurfaceVariant} />
+                        <Text style={[styles.txnMetaText, item.highlight && { color: COLORS.primary }]}> {item.label}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
               </View>
-              <View>
-                <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}>Weekly Bonus</Text>
-                <Text style={styles.txnDate}>Oct 24, 2024</Text>
-              </View>
-            </View>
-            <View style={{ alignItems: 'flex-end', gap: 4 }}>
-              <Text style={[FONTS.labelLg, { color: COLORS.primaryContainer }]}>+₦2,500</Text>
-              <View style={styles.statusBadgePending}>
-                <Text style={styles.statusBadgePendingText}>Pending</Text>
-              </View>
-            </View>
-          </View>
-          <View style={styles.txnMeta}>
-            <View style={styles.txnMetaItem}>
-              <MaterialIcons name="flag" size={14} color={COLORS.onSurfaceVariant} />
-              <Text style={styles.txnMetaText}>10/10 Rides Goal Reached</Text>
-            </View>
-          </View>
-        </View>
+            );
+          })
+        )}
 
         {/* View All */}
         <TouchableOpacity style={styles.viewAllBtn} activeOpacity={0.8}>
@@ -324,7 +620,136 @@ export default function DriverWalletPage() {
           </Text>
         </TouchableOpacity>
       </View>
-    </ScrollView>
+      </ScrollView>
+
+      <Modal
+        visible={showPayoutModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPayoutModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, AMBIENT_SHADOW]}>
+            <Text style={[FONTS.headlineMd, { color: COLORS.onSurface }]}>Payout Method</Text>
+            <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginTop: 4 }]}
+            >Add or update your bank account.</Text>
+
+            <View style={styles.modalField}>
+              <Text style={styles.modalLabel}>Bank name</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={bankName}
+                onChangeText={setBankName}
+                placeholder="Access Bank"
+                placeholderTextColor={COLORS.outline}
+              />
+            </View>
+
+            <View style={styles.modalField}>
+              <Text style={styles.modalLabel}>Bank code (optional)</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={bankCode}
+                onChangeText={setBankCode}
+                placeholder="044"
+                placeholderTextColor={COLORS.outline}
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.modalField}>
+              <Text style={styles.modalLabel}>Account name</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={accountName}
+                onChangeText={setAccountName}
+                placeholder="Account holder"
+                placeholderTextColor={COLORS.outline}
+              />
+            </View>
+
+            <View style={styles.modalField}>
+              <Text style={styles.modalLabel}>Account number</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={accountNumber}
+                onChangeText={setAccountNumber}
+                placeholder="0123456789"
+                placeholderTextColor={COLORS.outline}
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancel}
+                onPress={() => setShowPayoutModal(false)}
+              >
+                <Text style={[FONTS.labelLg, { color: COLORS.onSurfaceVariant }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalSave}
+                onPress={savePayoutMethod}
+                disabled={savingPayout}
+              >
+                {savingPayout ? (
+                  <ActivityIndicator size="small" color={COLORS.onPrimary} />
+                ) : (
+                  <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showGoalModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowGoalModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, AMBIENT_SHADOW]}>
+            <Text style={[FONTS.headlineMd, { color: COLORS.onSurface }]}>Daily Goal</Text>
+            <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginTop: 4 }]}
+            >Set your daily earnings target.</Text>
+
+            <View style={styles.modalField}>
+              <Text style={styles.modalLabel}>Target amount (NGN)</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={goalInput}
+                onChangeText={setGoalInput}
+                placeholder="15000"
+                placeholderTextColor={COLORS.outline}
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancel}
+                onPress={() => setShowGoalModal(false)}
+              >
+                <Text style={[FONTS.labelLg, { color: COLORS.onSurfaceVariant }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalSave}
+                onPress={saveDailyGoal}
+                disabled={savingGoal}
+              >
+                {savingGoal ? (
+                  <ActivityIndicator size="small" color={COLORS.onPrimary} />
+                ) : (
+                  <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -335,6 +760,17 @@ const styles = StyleSheet.create({
     paddingTop: 24,
     paddingBottom: 112,
     gap: 24,
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    justifyContent: 'center',
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 16,
   },
 
   /* ── Balance Card ── */
@@ -408,6 +844,25 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
+  },
+  goalActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  goalEditBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(99, 102, 241, 0.12)',
+  },
+  goalEditText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.primary,
   },
   goalTitleRow: {
     flexDirection: 'row',
@@ -694,6 +1149,19 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.onSurfaceVariant,
   },
+  statusBadgeFailed: {
+    backgroundColor: COLORS.errorContainer,
+    borderWidth: 1,
+    borderColor: COLORS.error,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 9999,
+  },
+  statusBadgeFailedText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: COLORS.error,
+  },
   viewAllBtn: {
     borderWidth: 1,
     borderColor: COLORS.surfaceContainerHigh,
@@ -701,5 +1169,55 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: 'center',
     marginTop: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 20,
+    gap: 12,
+  },
+  modalField: {
+    gap: 6,
+  },
+  modalLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.onSurfaceVariant,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: COLORS.surfaceContainerHigh,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: COLORS.onSurface,
+    backgroundColor: COLORS.surfaceContainerLowest,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  modalCancel: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.surfaceContainerHigh,
+    backgroundColor: COLORS.surfaceContainerLowest,
+  },
+  modalSave: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
   },
 });

@@ -1,6 +1,7 @@
 # backend/core/settings/production.py
 import os
 import sys
+from urllib.parse import urlparse
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
@@ -36,6 +37,13 @@ DATABASES = {
 
 # Redis Configuration
 REDIS_URL = env('REDIS_URL', default='redis://red-d84s0m4vikkc739cn740:6379')
+REDIS_PASSWORD = env('REDIS_PASSWORD', default='')
+if REDIS_PASSWORD and '@' not in REDIS_URL:
+    parsed = urlparse(REDIS_URL)
+    host = parsed.hostname or 'localhost'
+    port = parsed.port or 6379
+    db = parsed.path or '/0'
+    REDIS_URL = f'redis://:{REDIS_PASSWORD}@{host}:{port}{db}'
 REDIS_MAX_CONNECTIONS = env.int('REDIS_MAX_CONNECTIONS', default=30)
 REDIS_SOCKET_CONNECT_TIMEOUT = env.float('REDIS_SOCKET_CONNECT_TIMEOUT', default=2.0)
 REDIS_SOCKET_TIMEOUT = env.float('REDIS_SOCKET_TIMEOUT', default=2.0)
