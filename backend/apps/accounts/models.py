@@ -116,6 +116,50 @@ class User(AbstractBaseUser, PermissionsMixin):
         self.save(update_fields=['failed_login_attempts', 'locked_until'])
 
 
+class UserSettings(models.Model):
+    class ThemeMode(models.TextChoices):
+        SYSTEM = 'system', 'System'
+        LIGHT = 'light', 'Light'
+        DARK = 'dark', 'Dark'
+
+    class NavigationApp(models.TextChoices):
+        GOOGLE_MAPS = 'google_maps', 'Google Maps'
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='settings')
+    language = models.CharField(max_length=10, default='en')
+    theme_mode = models.CharField(max_length=10, choices=ThemeMode.choices, default=ThemeMode.SYSTEM)
+    push_enabled = models.BooleanField(default=True)
+    navigation_app = models.CharField(
+        max_length=30,
+        choices=NavigationApp.choices,
+        default=NavigationApp.GOOGLE_MAPS,
+    )
+    biometric_enabled = models.BooleanField(default=False)
+
+    two_factor_enabled = models.BooleanField(default=False)
+    two_factor_methods = models.JSONField(default=list, blank=True)
+    totp_secret = models.CharField(max_length=64, blank=True)
+    totp_confirmed_at = models.DateTimeField(null=True, blank=True)
+    backup_codes = models.JSONField(default=list, blank=True)
+
+    pin_hash = models.CharField(max_length=128, blank=True)
+    pin_updated_at = models.DateTimeField(null=True, blank=True)
+
+    active_device_id = models.CharField(max_length=128, blank=True)
+    active_device_platform = models.CharField(max_length=40, blank=True)
+    active_device_name = models.CharField(max_length=120, blank=True)
+    active_device_last_seen = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'user_settings'
+
+    def __str__(self):
+        return f'UserSettings({self.user_id})'
+
+
 class StudentProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='student_profile')
     matric_number = models.CharField(max_length=20, unique=True, null=True, blank=True)
@@ -248,6 +292,7 @@ class OTPVerification(models.Model):
         LOGIN = 'login', 'Login'
         PASSWORD_RESET = 'password_reset', 'Password Reset'
         TRANSACTION_PIN = 'transaction_pin', 'Transaction PIN'
+        TWO_FACTOR = 'two_factor', 'Two-Factor Auth'
         EMAIL_CHANGE = 'email_change', 'Email Change'
         PASSWORD_CHANGE = 'password_change', 'Password Change'
 

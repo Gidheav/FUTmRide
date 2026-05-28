@@ -86,6 +86,9 @@ class OTPService:
             OTPVerification.Purpose.TRANSACTION_PIN: (
                 f'Your FUTMINNA Ride transaction code is {code}. Valid for {expiry} minutes.'
             ),
+            OTPVerification.Purpose.TWO_FACTOR: (
+                f'Your FUTMINNA Ride 2FA code is {code}. Valid for {expiry} minutes.'
+            ),
         }
         return messages.get(purpose, f'Your FUTMINNA Ride code is {code}.')
 
@@ -294,6 +297,14 @@ class EmailOTPService:
                 f'Your password change verification code is: {code}\n\n'
                 f'This code is valid for {expiry} minutes.\n'
                 f'If you did not request this change, please ignore this email and secure your account.\n\n'
+                f'- LR-Ride Team',
+            )
+        if purpose == OTPVerification.Purpose.TWO_FACTOR:
+            return (
+                'LR-Ride: Two-Factor Verification',
+                f'Your two-factor verification code is: {code}\n\n'
+                f'This code is valid for {expiry} minutes.\n'
+                f'If you did not request this code, please secure your account.\n\n'
                 f'- LR-Ride Team',
             )
         # EMAIL_CHANGE or fallback

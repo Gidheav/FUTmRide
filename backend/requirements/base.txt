@@ -26,3 +26,4 @@ python-decouple==3.8
 phonenumbers==8.13.50
 djangorestframework-gis==1.1
 django-phonenumber-field==8.0.0
+pyotp==2.9.0

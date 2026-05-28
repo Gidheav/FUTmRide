@@ -1,5 +1,9 @@
 import logging
+import secrets
+from django.conf import settings
 from django.utils import timezone
+from django.core import signing
+from django.contrib.auth.hashers import check_password, make_password
 from rest_framework import generics, permissions, status, filters
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -8,13 +12,21 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import Campus, CampusAdminProfile, DriverProfile, OTPVerification, StudentProfile, User, UserRole
+from .models import Campus, CampusAdminProfile, DriverProfile, OTPVerification, StudentProfile, User, UserRole, UserSettings
 from .permissions import IsAdminUser, IsAdminOrCampusAdmin
 from .serializers import (
     ChangePasswordSerializer,
     ChangeEmailSerializer,
     RequestPasswordChangeOTPSerializer,
     ConfirmPasswordChangeSerializer,
+    UserSettingsSerializer,
+    PinSetSerializer,
+    PinVerifySerializer,
+    TwoFactorStartSerializer,
+    TwoFactorConfirmSerializer,
+    TwoFactorDisableSerializer,
+    TwoFactorChallengeRequestSerializer,
+    TwoFactorChallengeVerifySerializer,
     DriverAvailabilitySerializer,
     DriverProfileCreateSerializer,
     DriverProfileSerializer,
@@ -34,6 +46,49 @@ from .serializers import (
 from .services import OTPService, EmailOTPService, StudentSignupVerificationService
 
 logger = logging.getLogger('apps.accounts')
+
+
+def _get_user_settings(user: User) -> UserSettings:
+    settings_obj, _created = UserSettings.objects.get_or_create(user=user)
+    return settings_obj
+
+
+def _build_user_payload(user: User) -> dict:
+    campus_info = None
+    try:
+        if user.role == UserRole.STUDENT and user.student_profile.campus:
+            campus_info = {"id": str(user.student_profile.campus.id), "name": user.student_profile.campus.name}
+        elif user.role == UserRole.DRIVER and hasattr(user, 'driver_profile') and user.driver_profile.campus:
+            campus_info = {"id": str(user.driver_profile.campus.id), "name": user.driver_profile.campus.name}
+        elif user.role == UserRole.CAMPUS_ADMIN and hasattr(user, 'campus_admin_profile'):
+            campus_info = {"id": str(user.campus_admin_profile.campus.id), "name": user.campus_admin_profile.campus.name}
+    except Exception:
+        pass
+
+    return {
+        "id": str(user.id),
+        "phone_number": str(user.phone_number) if user.phone_number else None,
+        "email": user.email,
+        "full_name": user.full_name,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "role": user.role,
+        "is_verified": user.is_verified,
+        "campus": campus_info,
+    }
+
+
+def _unsign_login_challenge(token: str) -> User | None:
+    signer = signing.TimestampSigner()
+    max_age = getattr(settings, 'TWO_FACTOR_CHALLENGE_TTL', 300)
+    try:
+        raw = signer.unsign(token, max_age=max_age)
+    except signing.BadSignature:
+        return None
+    try:
+        return User.objects.get(id=raw)
+    except User.DoesNotExist:
+        return None
 
 
 class RegisterView(generics.CreateAPIView):
@@ -579,6 +634,287 @@ class ChangeEmailView(APIView):
         return Response({
             'message': 'Email updated successfully.',
             'email': new_email,
+        })
+
+
+class UserSettingsView(generics.RetrieveUpdateAPIView):
+    serializer_class = UserSettingsSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        settings, _created = UserSettings.objects.get_or_create(user=self.request.user)
+        return settings
+
+
+class PinSetView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = PinSetSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        settings_obj = _get_user_settings(request.user)
+        current_pin = (serializer.validated_data.get('current_pin') or '').strip()
+        new_pin = serializer.validated_data['new_pin']
+
+        if settings_obj.pin_hash:
+            if not current_pin or not check_password(current_pin, settings_obj.pin_hash):
+                return Response(
+                    {'error': {'code': 'PIN_INVALID', 'message': 'Current PIN is incorrect.'}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        settings_obj.pin_hash = make_password(new_pin)
+        settings_obj.pin_updated_at = timezone.now()
+        settings_obj.save(update_fields=['pin_hash', 'pin_updated_at'])
+        return Response({'message': 'PIN updated successfully.'})
+
+
+class PinVerifyView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = PinVerifySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        settings_obj = _get_user_settings(request.user)
+        pin = serializer.validated_data['pin']
+        if not settings_obj.pin_hash or not check_password(pin, settings_obj.pin_hash):
+            return Response(
+                {'error': {'code': 'PIN_INVALID', 'message': 'PIN is incorrect.'}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response({'verified': True})
+
+
+class TwoFactorStartView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = TwoFactorStartSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        method = serializer.validated_data['method']
+        settings_obj = _get_user_settings(request.user)
+
+        if method == 'totp':
+            try:
+                import pyotp
+            except Exception:
+                return Response(
+                    {'error': {'code': 'TOTP_UNAVAILABLE', 'message': 'TOTP is not available.'}},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+            secret = pyotp.random_base32()
+            settings_obj.totp_secret = secret
+            settings_obj.totp_confirmed_at = None
+            settings_obj.backup_codes = [secrets.token_hex(4) for _ in range(8)]
+            settings_obj.save(update_fields=['totp_secret', 'totp_confirmed_at', 'backup_codes'])
+            issuer = 'LR Ride'
+            label = request.user.email or str(request.user.phone_number)
+            otpauth_url = pyotp.totp.TOTP(secret).provisioning_uri(name=label, issuer_name=issuer)
+            return Response({
+                'method': 'totp',
+                'secret': secret,
+                'otpauth_url': otpauth_url,
+                'backup_codes': settings_obj.backup_codes,
+            })
+
+        if method == 'sms':
+            if not request.user.phone_number:
+                return Response(
+                    {'error': {'code': 'NO_PHONE', 'message': 'Phone number is required for SMS 2FA.'}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            OTPService.create_and_send(request.user, OTPVerification.Purpose.TWO_FACTOR)
+            return Response({'method': 'sms', 'message': 'Verification code sent via SMS.'})
+
+        if not request.user.email:
+            return Response(
+                {'error': {'code': 'NO_EMAIL', 'message': 'Email is required for email 2FA.'}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        EmailOTPService.create_and_send(request.user, OTPVerification.Purpose.TWO_FACTOR)
+        return Response({'method': 'email', 'message': 'Verification code sent via email.'})
+
+
+class TwoFactorConfirmView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = TwoFactorConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        method = serializer.validated_data['method']
+        code = serializer.validated_data['code']
+        settings_obj = _get_user_settings(request.user)
+
+        if method == 'totp':
+            try:
+                import pyotp
+            except Exception:
+                return Response(
+                    {'error': {'code': 'TOTP_UNAVAILABLE', 'message': 'TOTP is not available.'}},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+            if not settings_obj.totp_secret:
+                return Response(
+                    {'error': {'code': 'TOTP_MISSING', 'message': 'TOTP setup has not been started.'}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            totp = pyotp.TOTP(settings_obj.totp_secret)
+            if not totp.verify(code, valid_window=1):
+                return Response(
+                    {'error': {'code': 'OTP_INVALID', 'message': 'Invalid TOTP code.'}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            settings_obj.totp_confirmed_at = timezone.now()
+
+        elif method == 'sms':
+            if not request.user.phone_number:
+                return Response(
+                    {'error': {'code': 'NO_PHONE', 'message': 'Phone number is required for SMS 2FA.'}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            success, message = OTPService.verify(str(request.user.phone_number), code, OTPVerification.Purpose.TWO_FACTOR)
+            if not success:
+                return Response({'error': {'code': 'OTP_INVALID', 'message': message}}, status=status.HTTP_400_BAD_REQUEST)
+
+        else:
+            if not request.user.email:
+                return Response(
+                    {'error': {'code': 'NO_EMAIL', 'message': 'Email is required for email 2FA.'}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            success, message = EmailOTPService.verify(request.user.email, code, OTPVerification.Purpose.TWO_FACTOR)
+            if not success:
+                return Response({'error': {'code': 'OTP_INVALID', 'message': message}}, status=status.HTTP_400_BAD_REQUEST)
+
+        methods = settings_obj.two_factor_methods or []
+        if method not in methods:
+            methods.append(method)
+        settings_obj.two_factor_enabled = True
+        settings_obj.two_factor_methods = methods
+        settings_obj.save(update_fields=['two_factor_enabled', 'two_factor_methods', 'totp_confirmed_at'])
+        return Response(UserSettingsSerializer(settings_obj).data)
+
+
+class TwoFactorDisableView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = TwoFactorDisableSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        settings_obj = _get_user_settings(request.user)
+        pin = serializer.validated_data['pin']
+        if not settings_obj.pin_hash or not check_password(pin, settings_obj.pin_hash):
+            return Response(
+                {'error': {'code': 'PIN_INVALID', 'message': 'PIN is incorrect.'}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        settings_obj.two_factor_enabled = False
+        settings_obj.two_factor_methods = []
+        settings_obj.totp_secret = ''
+        settings_obj.totp_confirmed_at = None
+        settings_obj.backup_codes = []
+        settings_obj.save(
+            update_fields=[
+                'two_factor_enabled',
+                'two_factor_methods',
+                'totp_secret',
+                'totp_confirmed_at',
+                'backup_codes',
+            ]
+        )
+        return Response({'message': 'Two-factor authentication disabled.'})
+
+
+class TwoFactorChallengeRequestView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = TwoFactorChallengeRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        method = serializer.validated_data['method']
+        user = _unsign_login_challenge(serializer.validated_data['login_challenge'])
+        if not user:
+            return Response(
+                {'error': {'code': 'CHALLENGE_INVALID', 'message': 'Login challenge expired.'}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if method == 'sms':
+            if not user.phone_number:
+                return Response(
+                    {'error': {'code': 'NO_PHONE', 'message': 'Phone number is required for SMS 2FA.'}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            OTPService.create_and_send(user, OTPVerification.Purpose.TWO_FACTOR)
+            return Response({'message': 'Verification code sent via SMS.'})
+
+        if method == 'email':
+            if not user.email:
+                return Response(
+                    {'error': {'code': 'NO_EMAIL', 'message': 'Email is required for email 2FA.'}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            EmailOTPService.create_and_send(user, OTPVerification.Purpose.TWO_FACTOR)
+            return Response({'message': 'Verification code sent via email.'})
+
+        return Response({'message': 'TOTP does not require a delivery step.'})
+
+
+class TwoFactorChallengeVerifyView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = TwoFactorChallengeVerifySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        method = serializer.validated_data['method']
+        code = serializer.validated_data['code']
+        user = _unsign_login_challenge(serializer.validated_data['login_challenge'])
+        if not user:
+            return Response(
+                {'error': {'code': 'CHALLENGE_INVALID', 'message': 'Login challenge expired.'}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        settings_obj = _get_user_settings(user)
+        if method == 'totp':
+            try:
+                import pyotp
+            except Exception:
+                return Response(
+                    {'error': {'code': 'TOTP_UNAVAILABLE', 'message': 'TOTP is not available.'}},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+            if not settings_obj.totp_secret:
+                return Response(
+                    {'error': {'code': 'TOTP_MISSING', 'message': 'TOTP is not configured.'}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            totp = pyotp.TOTP(settings_obj.totp_secret)
+            if not totp.verify(code, valid_window=1):
+                return Response(
+                    {'error': {'code': 'OTP_INVALID', 'message': 'Invalid TOTP code.'}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        elif method == 'sms':
+            success, message = OTPService.verify(str(user.phone_number), code, OTPVerification.Purpose.TWO_FACTOR)
+            if not success:
+                return Response({'error': {'code': 'OTP_INVALID', 'message': message}}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            success, message = EmailOTPService.verify(user.email, code, OTPVerification.Purpose.TWO_FACTOR)
+            if not success:
+                return Response({'error': {'code': 'OTP_INVALID', 'message': message}}, status=status.HTTP_400_BAD_REQUEST)
+
+        now = timezone.now()
+        user.last_login = now
+        user.session_started_at = now
+        user.last_refresh_at = now
+        user.save(update_fields=["last_login", "session_started_at", "last_refresh_at"])
+
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            'refresh': str(refresh),
+            'access': str(refresh.access_token),
+            'user': _build_user_payload(user),
         })
 
 

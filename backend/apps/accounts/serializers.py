@@ -3,10 +3,11 @@ from datetime import timedelta
 from django.conf import settings
 from django.utils import timezone
 from django.contrib.auth.password_validation import validate_password
+from django.core import signing
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import DriverProfile, StudentProfile, User, UserRole, Campus, CampusAdminProfile
+from .models import DriverProfile, StudentProfile, User, UserRole, Campus, CampusAdminProfile, UserSettings
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -115,6 +116,34 @@ class FutminnaTokenObtainPairSerializer(TokenObtainPairSerializer):
             self.fields[self.username_field].required = False
             self.fields[self.username_field].allow_blank = True
 
+    def _build_user_payload(self, user):
+        campus_info = None
+        try:
+            if user.role == UserRole.STUDENT and user.student_profile.campus:
+                campus_info = {"id": str(user.student_profile.campus.id), "name": user.student_profile.campus.name}
+            elif user.role == UserRole.DRIVER and hasattr(user, 'driver_profile') and user.driver_profile.campus:
+                campus_info = {"id": str(user.driver_profile.campus.id), "name": user.driver_profile.campus.name}
+            elif user.role == UserRole.CAMPUS_ADMIN and hasattr(user, 'campus_admin_profile'):
+                campus_info = {"id": str(user.campus_admin_profile.campus.id), "name": user.campus_admin_profile.campus.name}
+        except Exception:
+            pass
+
+        return {
+            "id": str(user.id),
+            "phone_number": str(user.phone_number) if user.phone_number else None,
+            "email": user.email,
+            "full_name": user.full_name,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "role": user.role,
+            "is_verified": user.is_verified,
+            "campus": campus_info,
+        }
+
+    def _create_login_challenge(self, user):
+        signer = signing.TimestampSigner()
+        return signer.sign(str(user.id))
+
     def validate(self, attrs):
         email = (attrs.get("email") or "").strip().lower()
         phone_number = (attrs.get("phone_number") or "").strip()
@@ -147,37 +176,26 @@ class FutminnaTokenObtainPairSerializer(TokenObtainPairSerializer):
         if not user.is_active:
             raise serializers.ValidationError({"error": "This account has been deactivated."})
         user.reset_failed_login()
+        settings_obj, _created = UserSettings.objects.get_or_create(user=user)
+        if settings_obj.two_factor_enabled and settings_obj.two_factor_methods:
+            return {
+                "two_factor_required": True,
+                "methods": settings_obj.two_factor_methods,
+                "login_challenge": self._create_login_challenge(user),
+                "user": self._build_user_payload(user),
+            }
+
         now = timezone.now()
         user.last_login = now
         user.session_started_at = now
         user.last_refresh_at = now
         user.save(update_fields=["last_login", "session_started_at", "last_refresh_at"])
-        campus_info = None
-        try:
-            if user.role == UserRole.STUDENT and user.student_profile.campus:
-                campus_info = {"id": str(user.student_profile.campus.id), "name": user.student_profile.campus.name}
-            elif user.role == UserRole.DRIVER and hasattr(user, 'driver_profile') and user.driver_profile.campus:
-                campus_info = {"id": str(user.driver_profile.campus.id), "name": user.driver_profile.campus.name}
-            elif user.role == UserRole.CAMPUS_ADMIN and hasattr(user, 'campus_admin_profile'):
-                campus_info = {"id": str(user.campus_admin_profile.campus.id), "name": user.campus_admin_profile.campus.name}
-        except Exception:
-            pass
 
         refresh = self.get_token(user)
         data = {
             "refresh": str(refresh),
             "access": str(refresh.access_token),
-        }
-        data["user"] = {
-            "id": str(user.id),
-            "phone_number": str(user.phone_number) if user.phone_number else None,
-            "email": user.email,
-            "full_name": user.full_name,
-            "first_name": user.first_name,
-            "last_name": user.last_name,
-            "role": user.role,
-            "is_verified": user.is_verified,
-            "campus": campus_info,
+            "user": self._build_user_payload(user),
         }
         return data
 
@@ -284,6 +302,27 @@ class UserProfileSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('A user with this phone number already exists.')
 
         return raw
+
+
+class UserSettingsSerializer(serializers.ModelSerializer):
+    has_pin = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UserSettings
+        fields = [
+            'has_pin',
+            'language',
+            'theme_mode',
+            'push_enabled',
+            'navigation_app',
+            'biometric_enabled',
+            'two_factor_enabled',
+            'two_factor_methods',
+        ]
+        read_only_fields = ['has_pin']
+
+    def get_has_pin(self, obj):
+        return bool(obj.pin_hash)
 
 
 class CampusSerializer(serializers.ModelSerializer):
@@ -504,6 +543,59 @@ class RequestPasswordChangeOTPSerializer(serializers.Serializer):
     def validate_current_password(self, value):
         if not self.context['request'].user.check_password(value):
             raise serializers.ValidationError('Current password is incorrect.')
+        return value
+
+
+class PinSetSerializer(serializers.Serializer):
+    current_pin = serializers.CharField(required=False, allow_blank=True)
+    new_pin = serializers.CharField(min_length=4, max_length=6)
+
+    def validate_new_pin(self, value):
+        if not value.isdigit():
+            raise serializers.ValidationError('PIN must be numeric.')
+        return value
+
+
+class PinVerifySerializer(serializers.Serializer):
+    pin = serializers.CharField(min_length=4, max_length=6)
+
+    def validate_pin(self, value):
+        if not value.isdigit():
+            raise serializers.ValidationError('PIN must be numeric.')
+        return value
+
+
+class TwoFactorStartSerializer(serializers.Serializer):
+    method = serializers.ChoiceField(choices=['totp', 'sms', 'email'])
+
+
+class TwoFactorConfirmSerializer(serializers.Serializer):
+    method = serializers.ChoiceField(choices=['totp', 'sms', 'email'])
+    code = serializers.CharField(max_length=6, min_length=6)
+
+    def validate_code(self, value):
+        if not value.isdigit():
+            raise serializers.ValidationError('Code must be numeric.')
+        return value
+
+
+class TwoFactorDisableSerializer(serializers.Serializer):
+    pin = serializers.CharField(min_length=4, max_length=6)
+
+
+class TwoFactorChallengeRequestSerializer(serializers.Serializer):
+    login_challenge = serializers.CharField()
+    method = serializers.ChoiceField(choices=['totp', 'sms', 'email'])
+
+
+class TwoFactorChallengeVerifySerializer(serializers.Serializer):
+    login_challenge = serializers.CharField()
+    method = serializers.ChoiceField(choices=['totp', 'sms', 'email'])
+    code = serializers.CharField(max_length=6, min_length=6)
+
+    def validate_code(self, value):
+        if not value.isdigit():
+            raise serializers.ValidationError('Code must be numeric.')
         return value
 
 

@@ -129,6 +129,12 @@ class NotificationService:
             body=body,
             data=data or {},
         )
-        if user.fcm_token:
+        push_enabled = True
+        try:
+            if hasattr(user, 'settings'):
+                push_enabled = user.settings.push_enabled
+        except Exception:
+            push_enabled = True
+        if push_enabled and user.fcm_token:
             PushNotificationService.send(user.fcm_token, title, body, data)
         return notif

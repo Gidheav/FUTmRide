@@ -2,6 +2,7 @@ import logging
 from decimal import Decimal
 
 from django.db import transaction, IntegrityError
+from django.db.models import Sum
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -351,6 +352,51 @@ class GarageRideCompleteView(APIView):
         ride.completed_at = timezone.now()
         ride.save(update_fields=['status', 'completed_at'])
         logger.info('garage_ride_completed ref=%s driver=%s', ride.reference, str(request.user.id))
+
+        try:
+            total_paid = (
+                ride.passengers.aggregate(total=Sum('amount_paid')).get('total')
+                or Decimal('0')
+            )
+            if total_paid > 0:
+                existing = WalletTransaction.objects.filter(
+                    user=request.user,
+                    source=WalletTransaction.Source.DRIVER_EARNING,
+                    transaction_type=WalletTransaction.TransactionType.CREDIT,
+                    metadata__garage_ride_id=str(ride.id),
+                ).first()
+                if existing:
+                    logger.info(
+                        'garage_driver_already_paid ref=%s tx=%s',
+                        ride.reference,
+                        existing.reference,
+                    )
+                else:
+                    WalletService.credit(
+                        user=request.user,
+                        amount=total_paid,
+                        source=WalletTransaction.Source.DRIVER_EARNING,
+                        narration=f'Garage ride earnings — {ride.reference}',
+                        metadata={
+                            'garage_ride_id': str(ride.id),
+                            'garage_reference': ride.reference,
+                            'passenger_count': ride.passengers.count(),
+                        },
+                    )
+                    try:
+                        profile = request.user.driver_profile
+                        profile.total_trips += 1
+                        profile.total_earnings += total_paid
+                        profile.save(update_fields=['total_trips', 'total_earnings'])
+                    except DriverProfile.DoesNotExist:
+                        pass
+                    logger.info(
+                        'garage_driver_credited ref=%s amount=%s',
+                        ride.reference,
+                        str(total_paid),
+                    )
+        except Exception as exc:
+            logger.error('garage_driver_credit_error ref=%s error=%s', ride.reference, str(exc))
 
         broadcast_ride_event('ride_completed', ride=ride)
 

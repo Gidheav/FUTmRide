@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import DriverProfile, OTPVerification, StudentProfile, StudentSignupVerificationSession, User
+from .models import DriverProfile, OTPVerification, StudentProfile, StudentSignupVerificationSession, User, UserSettings
 
 
 @admin.register(User)
@@ -78,3 +78,10 @@ class StudentSignupVerificationSessionAdmin(admin.ModelAdmin):
     list_filter = ['is_verified']
     search_fields = ['email', 'verification_token']
     readonly_fields = ['id', 'created_at', 'updated_at']
+
+
+@admin.register(UserSettings)
+class UserSettingsAdmin(admin.ModelAdmin):
+    list_display = ['user', 'language', 'theme_mode', 'push_enabled', 'biometric_enabled', 'two_factor_enabled']
+    list_filter = ['theme_mode', 'push_enabled', 'biometric_enabled', 'two_factor_enabled']
+    search_fields = ['user__first_name', 'user__last_name', 'user__phone_number', 'user__email']
