@@ -53,7 +53,7 @@ class WalletTransaction(models.Model):
         indexes = [
             models.Index(fields=['user', 'created_at']),
             models.Index(fields=['ride']),
-            models.Index(fields=['user', 'status'], name='wallet_trans_user_st_4c2686_idx'),
+            models.Index(fields=['user', 'status'], name='wallet_user_status_idx'),
         ]
 
     def __str__(self):
@@ -151,8 +151,8 @@ class DriverWithdrawal(models.Model):
         db_table = 'driver_withdrawals'
         ordering = ['-requested_at']
         indexes = [
-            models.Index(fields=['user', 'status'], name='driver_with_user_st_9b25c4_idx'),
-            models.Index(fields=['reference'], name='driver_with_ref_4df4f5_idx'),
+            models.Index(fields=['user', 'status'], name='driver_with_user_idx'),
+            models.Index(fields=['reference'], name='driver_with_ref_idx'),
         ]
 
     def __str__(self):

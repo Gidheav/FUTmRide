@@ -28,7 +28,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name='wallettransaction',
-            index=models.Index(fields=['user', 'status'], name='wallet_trans_user_st_4c2686_idx'),
+            index=models.Index(fields=['user', 'status'], name='wallet_user_status_idx'),
         ),
         migrations.CreateModel(
             name='DriverPayoutMethod',
@@ -71,10 +71,10 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name='driverwithdrawal',
-            index=models.Index(fields=['user', 'status'], name='driver_with_user_st_9b25c4_idx'),
+            index=models.Index(fields=['user', 'status'], name='driver_with_user_idx'),
         ),
         migrations.AddIndex(
             model_name='driverwithdrawal',
-            index=models.Index(fields=['reference'], name='driver_with_ref_4df4f5_idx'),
+            index=models.Index(fields=['reference'], name='driver_with_ref_idx'),
         ),
     ]

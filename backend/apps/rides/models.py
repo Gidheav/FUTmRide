@@ -180,8 +180,8 @@ class DriverRideRequest(models.Model):
         db_table = 'driver_ride_requests'
         unique_together = [('ride', 'driver')]
         indexes = [
-            models.Index(fields=['ride', 'response'], name='driver_ride_request__e1_idx'),
-            models.Index(fields=['driver', 'offered_at'], name='driver_ride_request__e2_idx'),
+            models.Index(fields=['ride', 'response']),
+            models.Index(fields=['driver', 'offered_at']),
         ]
 
     def __str__(self):

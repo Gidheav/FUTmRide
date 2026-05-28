@@ -34,6 +34,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name='dispatchincidentlog',
-            index=models.Index(fields=['campus_id', 'last_seen_at'], name='dispatch_incident_logs_campus_last_seen_idx'),
+            index=models.Index(fields=['campus_id', 'last_seen_at'], name='dispatch_campus_seen_idx'),
         ),
     ]
