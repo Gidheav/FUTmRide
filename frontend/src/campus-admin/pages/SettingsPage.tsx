@@ -393,12 +393,45 @@ export default function SettingsPage() {
           display: grid;
           grid-template-columns: 1fr 1fr 340px;
           gap: 40px;
-          align-items: start;
+          height: 100%;
+          min-height: 0;
+        }
+
+        .scroll-col {
+          height: 100%;
+          overflow-y: auto;
+          min-height: 0;
+          padding-right: 12px;
+        }
+        .scroll-col::-webkit-scrollbar {
+          display: none;
+        }
+        .scroll-col {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+
+        .account-main {
+          flex: 1;
+          width: 100%;
+          padding: 32px 24px;
+          box-sizing: border-box;
+          height: 100%;
+          overflow-y: hidden;
         }
 
         @media (max-width: 1400px) {
           .settings-replica-grid {
             grid-template-columns: 1fr 1fr;
+            height: auto;
+          }
+          .scroll-col {
+            height: auto;
+            overflow-y: visible;
+            padding-right: 0;
+          }
+          .account-main {
+            overflow-y: auto;
           }
           .settings-right-sidebar {
             grid-column: 1 / -1;
@@ -431,14 +464,18 @@ export default function SettingsPage() {
       `}</style>
 
       {activeTab === 'account' ? (
-        <main style={{ flex: 1, overflowY: 'auto', width: '100%', padding: '32px 24px', background: mode === 'dark' ? '#1a1c1c' : '#f9f9f9' }}>
-          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 32 }}>
+        <main className="account-main" style={{ background: mode === 'dark' ? '#1a1c1c' : '#f9f9f9' }}>
+          <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
 
             {/* Security Grid */}
             <div className="settings-replica-grid">
-              <EmailChangeSectionReplica />
-              <PasswordChangeSectionReplica />
-              <div className="settings-right-sidebar">
+              <div className="scroll-col">
+                <EmailChangeSectionReplica />
+              </div>
+              <div className="scroll-col">
+                <PasswordChangeSectionReplica />
+              </div>
+              <div className="scroll-col settings-right-sidebar">
                 <SettingsRightSidebarReplica />
               </div>
             </div>

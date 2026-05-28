@@ -58,7 +58,7 @@ class DispatchIncidentLog(models.Model):
         db_table = 'dispatch_incident_logs'
         ordering = ['-last_seen_at']
         indexes = [
-            models.Index(fields=['campus_id', 'last_seen_at']),
+            models.Index(fields=['campus_id', 'last_seen_at'], name='dispatch_incident_logs_campus_last_seen_idx'),
         ]
 
     def __str__(self):

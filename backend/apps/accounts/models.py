@@ -293,8 +293,8 @@ class StudentSignupVerificationSession(models.Model):
     class Meta:
         db_table = 'student_signup_verification_sessions'
         indexes = [
-            models.Index(fields=['email', 'is_verified', 'consumed_at']),
-            models.Index(fields=['created_at']),
+            models.Index(fields=['email', 'is_verified', 'consumed_at'], name='student_sig_email_05fc90_idx'),
+            models.Index(fields=['created_at'], name='student_sig_created_ca0d82_idx'),
         ]
 
     def __str__(self):
