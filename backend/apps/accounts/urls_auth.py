@@ -7,6 +7,7 @@ from .views import (
     SessionTokenRefreshView,
     ChangeEmailView, RequestPasswordChangeOTPView, ConfirmPasswordChangeView,
     UserSettingsView,
+    IntegrationStatusView, IntegrationConfigView,
     PinSetView, PinVerifyView,
     TwoFactorStartView, TwoFactorConfirmView, TwoFactorDisableView,
     TwoFactorChallengeRequestView, TwoFactorChallengeVerifyView,
@@ -36,4 +37,6 @@ urlpatterns = [
     path('settings/change-email/', ChangeEmailView.as_view(), name='auth-change-email'),
     path('settings/password-change/request-otp/', RequestPasswordChangeOTPView.as_view(), name='auth-password-change-otp'),
     path('settings/password-change/confirm/', ConfirmPasswordChangeView.as_view(), name='auth-password-change-confirm'),
+    path('settings/integrations/status/', IntegrationStatusView.as_view(), name='auth-integrations-status'),
+    path('settings/integrations/config/', IntegrationConfigView.as_view(), name='auth-integrations-config'),
 ]

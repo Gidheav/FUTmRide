@@ -198,6 +198,41 @@ class AuthenticationTestCase(TestCase):
         }, format='json')
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
+
+class IntegrationSettingsTestCase(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = User.objects.create_user(
+            phone_number='+2348011111112',
+            password='SecurePass123!',
+            first_name='Admin',
+            last_name='User',
+            role=UserRole.ADMIN,
+            data_consent_given=True,
+        )
+        self.status_url = reverse('auth-integrations-status')
+        self.config_url = reverse('auth-integrations-config')
+
+    def test_integration_status_returns_payload(self):
+        self.client.force_authenticate(user=self.admin)
+        res = self.client.get(self.status_url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertIn('payments', res.data)
+        self.assertIn('notifications', res.data)
+        self.assertIn('routing', res.data)
+        self.assertIn('auth', res.data)
+
+    def test_integration_config_patch_updates(self):
+        self.client.force_authenticate(user=self.admin)
+        res = self.client.get(self.config_url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        res = self.client.patch(self.config_url, {
+            'payments_enabled': False,
+            'notifications_enabled': True,
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['payments_enabled'], False)
+
     def test_login_nonexistent_user_rejected(self):
         res = self.client.post(self.login_url, {
             'email': 'ghost.m9999999@st.futminna.edu.ng',

@@ -160,6 +160,45 @@ class UserSettings(models.Model):
         return f'UserSettings({self.user_id})'
 
 
+class IntegrationSettings(models.Model):
+    """
+    Singleton model for platform integrations configuration (non-secret toggles).
+    Secrets remain in environment variables and are not stored here.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    payments_enabled = models.BooleanField(default=True)
+    paystack_enabled = models.BooleanField(default=True)
+    flutterwave_enabled = models.BooleanField(default=True)
+    notifications_enabled = models.BooleanField(default=True)
+    email_enabled = models.BooleanField(default=True)
+    sms_enabled = models.BooleanField(default=True)
+    push_enabled = models.BooleanField(default=True)
+    fcm_enabled = models.BooleanField(default=True)
+    expo_enabled = models.BooleanField(default=True)
+    routing_enabled = models.BooleanField(default=True)
+    auth_google_enabled = models.BooleanField(default=False)
+    auth_apple_enabled = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='integration_settings_updates',
+    )
+
+    class Meta:
+        db_table = 'integration_settings'
+        verbose_name = 'Integration Settings'
+        verbose_name_plural = 'Integration Settings'
+
+    def __str__(self):
+        return 'IntegrationSettings'
+
+    @classmethod
+    def load(cls):
+        obj, _created = cls.objects.get_or_create(defaults={})
+        return obj
+
+
 class StudentProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='student_profile')
     matric_number = models.CharField(max_length=20, unique=True, null=True, blank=True)

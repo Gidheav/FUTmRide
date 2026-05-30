@@ -12,7 +12,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import Campus, CampusAdminProfile, DriverProfile, OTPVerification, StudentProfile, User, UserRole, UserSettings
+from .models import Campus, CampusAdminProfile, DriverProfile, IntegrationSettings, OTPVerification, StudentProfile, User, UserRole, UserSettings
 from .permissions import IsAdminUser, IsAdminOrCampusAdmin
 from .serializers import (
     ChangePasswordSerializer,
@@ -20,6 +20,7 @@ from .serializers import (
     RequestPasswordChangeOTPSerializer,
     ConfirmPasswordChangeSerializer,
     UserSettingsSerializer,
+    IntegrationSettingsSerializer,
     PinSetSerializer,
     PinVerifySerializer,
     TwoFactorStartSerializer,
@@ -44,6 +45,7 @@ from .serializers import (
     CampusSerializer,
 )
 from .services import OTPService, EmailOTPService, StudentSignupVerificationService
+from apps.pricing.models import PlatformSettings
 
 logger = logging.getLogger('apps.accounts')
 
@@ -76,6 +78,15 @@ def _build_user_payload(user: User) -> dict:
         "is_verified": user.is_verified,
         "campus": campus_info,
     }
+
+
+def _mask_secret(value: str, show_last: int = 4) -> str:
+    if not value:
+        return ''
+    trimmed = value.strip()
+    if len(trimmed) <= show_last:
+        return '*' * len(trimmed)
+    return f"{'*' * (len(trimmed) - show_last)}{trimmed[-show_last:]}"
 
 
 def _unsign_login_challenge(token: str) -> User | None:
@@ -644,6 +655,115 @@ class UserSettingsView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         settings, _created = UserSettings.objects.get_or_create(user=self.request.user)
         return settings
+
+
+class IntegrationStatusView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
+
+    def get(self, request):
+        platform_settings = PlatformSettings.load()
+        paystack_secret = getattr(settings, 'PAYSTACK_SECRET_KEY', '')
+        paystack_public = getattr(settings, 'PAYSTACK_PUBLIC_KEY', '')
+        flutter_secret = getattr(settings, 'FLUTTERWAVE_SECRET_KEY', '')
+        flutter_public = getattr(settings, 'FLUTTERWAVE_PUBLIC_KEY', '')
+        flutter_webhook = getattr(settings, 'FLUTTERWAVE_WEBHOOK_SECRET', '')
+        termii_key = getattr(settings, 'TERMII_API_KEY', '')
+        fcm_key = getattr(settings, 'FCM_SERVER_KEY', '')
+        brevo_key = getattr(settings, 'BREVO_API_KEY', '')
+        email_password = getattr(settings, 'EMAIL_HOST_PASSWORD', '')
+        google_maps_key = getattr(settings, 'GOOGLE_MAPS_API_KEY', '')
+        osrm_base_url = getattr(settings, 'OSRM_BASE_URL', '')
+        google_oauth_client = getattr(settings, 'GOOGLE_OAUTH_CLIENT_ID', '')
+        google_oauth_secret = getattr(settings, 'GOOGLE_OAUTH_CLIENT_SECRET', '')
+
+        data = {
+            'generated_at': timezone.now(),
+            'payments': {
+                'paystack': {
+                    'configured': bool(paystack_secret and paystack_public),
+                    'secret_key': _mask_secret(paystack_secret),
+                    'public_key': _mask_secret(paystack_public),
+                    'webhook_allowlist_count': len(getattr(settings, 'PAYSTACK_WEBHOOK_IP_ALLOWLIST', [])),
+                },
+                'flutterwave': {
+                    'configured': bool(flutter_secret and flutter_public),
+                    'secret_key': _mask_secret(flutter_secret),
+                    'public_key': _mask_secret(flutter_public),
+                    'webhook_secret': _mask_secret(flutter_webhook),
+                    'webhook_allowlist_count': len(getattr(settings, 'FLUTTERWAVE_WEBHOOK_IP_ALLOWLIST', [])),
+                },
+            },
+            'notifications': {
+                'email': {
+                    'configured': bool(brevo_key or email_password),
+                    'provider': 'brevo' if brevo_key else ('smtp' if email_password else 'console'),
+                },
+                'sms': {
+                    'configured': bool(termii_key),
+                    'provider': 'termii',
+                },
+                'fcm': {
+                    'configured': bool(fcm_key),
+                },
+                'expo': {
+                    'configured': True,
+                },
+            },
+            'routing': {
+                'provider': platform_settings.distance_provider,
+                'providers': {
+                    'haversine': {'available': True},
+                    'osrm': {'available': bool(osrm_base_url)},
+                    'google': {'available': bool(google_maps_key)},
+                },
+            },
+            'auth': {
+                'google_oauth': {
+                    'configured': bool(google_oauth_client and google_oauth_secret),
+                    'client_id': _mask_secret(google_oauth_client),
+                },
+            },
+        }
+        return Response(data)
+
+
+class IntegrationConfigView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
+
+    def get(self, request):
+        integration = IntegrationSettings.load()
+        platform_settings = PlatformSettings.load()
+        payload = IntegrationSettingsSerializer(integration).data
+        payload['routing_provider'] = platform_settings.distance_provider
+        return Response(payload)
+
+    def patch(self, request):
+        integration = IntegrationSettings.load()
+        platform_settings = PlatformSettings.load()
+        data = request.data.copy()
+        provider = data.pop('routing_provider', None)
+        if isinstance(provider, list):
+            provider = provider[0] if provider else None
+        serializer = IntegrationSettingsSerializer(
+            integration, data=data, partial=True, context={'request': request}
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save(updated_by=request.user)
+
+        if provider:
+            valid_providers = {choice[0] for choice in PlatformSettings.DistanceProvider.choices}
+            if provider not in valid_providers:
+                return Response(
+                    {'error': {'code': 'INVALID_PROVIDER', 'message': 'Invalid routing provider.'}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            platform_settings.distance_provider = provider
+            platform_settings.updated_by = request.user
+            platform_settings.save(update_fields=['distance_provider', 'updated_by', 'updated_at'])
+
+        payload = IntegrationSettingsSerializer(integration).data
+        payload['routing_provider'] = platform_settings.distance_provider
+        return Response(payload)
 
 
 class PinSetView(APIView):

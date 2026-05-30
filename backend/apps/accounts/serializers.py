@@ -7,7 +7,7 @@ from django.core import signing
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import DriverProfile, StudentProfile, User, UserRole, Campus, CampusAdminProfile, UserSettings
+from .models import DriverProfile, StudentProfile, User, UserRole, Campus, CampusAdminProfile, UserSettings, IntegrationSettings
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -323,6 +323,27 @@ class UserSettingsSerializer(serializers.ModelSerializer):
 
     def get_has_pin(self, obj):
         return bool(obj.pin_hash)
+
+
+class IntegrationSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IntegrationSettings
+        fields = [
+            'payments_enabled',
+            'paystack_enabled',
+            'flutterwave_enabled',
+            'notifications_enabled',
+            'email_enabled',
+            'sms_enabled',
+            'push_enabled',
+            'fcm_enabled',
+            'expo_enabled',
+            'routing_enabled',
+            'auth_google_enabled',
+            'auth_apple_enabled',
+            'updated_at',
+        ]
+        read_only_fields = ['updated_at']
 
 
 class CampusSerializer(serializers.ModelSerializer):
