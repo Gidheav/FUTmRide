@@ -1,4 +1,4 @@
-﻿from rest_framework import serializers
+from rest_framework import serializers
 from .models import WalletTransaction, GatewayTransaction, DriverPayoutMethod, DriverWithdrawal
 
 
@@ -9,6 +9,8 @@ class WalletTransactionSerializer(serializers.ModelSerializer):
     ride_pickup_address = serializers.SerializerMethodField()
     ride_dropoff_address = serializers.SerializerMethodField()
 
+    ride_passenger_name = serializers.SerializerMethodField()
+
     class Meta:
         model = WalletTransaction
         fields = [
@@ -17,6 +19,7 @@ class WalletTransactionSerializer(serializers.ModelSerializer):
             'narration', 'created_at', 'status', 'metadata',
             'ride_reference', 'ride_distance_km', 'ride_duration_minutes',
             'ride_pickup_address', 'ride_dropoff_address',
+            'ride_passenger_name',
         ]
         read_only_fields = fields
 
@@ -38,6 +41,11 @@ class WalletTransactionSerializer(serializers.ModelSerializer):
 
     def get_ride_dropoff_address(self, obj):
         return obj.ride.dropoff_address if obj.ride else None
+
+    def get_ride_passenger_name(self, obj):
+        if not obj.ride or not obj.ride.student:
+            return None
+        return obj.ride.student.full_name
 
 
 class GatewayTransactionSerializer(serializers.ModelSerializer):

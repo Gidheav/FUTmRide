@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   FlatList,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -147,11 +148,19 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
     )
   }
 
+  // Keys to never show in the raw data rows for wallet transactions
+  const HIDDEN_WALLET_KEYS = new Set(['wallet_balance', 'source', 'message'])
+
   if (selectedNotification) {
     const cfg = TYPE_ICONS[selectedNotification.notification_type] || TYPE_ICONS.general
     const isCredit = selectedNotification.notification_type === 'payment_received'
     const isDebit = selectedNotification.notification_type === 'payment_debited'
     const isTransaction = isCredit || isDebit
+
+    // Extract amount for prominent display on debit/credit
+    const txAmount = selectedNotification.data?.amount
+      ? `₦${Number(selectedNotification.data.amount).toLocaleString('en-NG', { minimumFractionDigits: 2 })}`
+      : null
 
     return (
       <View style={styles.page}>
@@ -163,7 +172,7 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
           <View style={styles.headerSpacer} />
         </View>
 
-        <View style={styles.detailsContent}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.detailsContent} showsVerticalScrollIndicator={false}>
           <View style={styles.receiptCard}>
             <View style={styles.receiptHeader}>
               <MaterialIcons 
@@ -171,6 +180,11 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
                 size={48} 
                 color={isTransaction ? (isCredit ? '#2e7d32' : '#b91c1c') : cfg.color} 
               />
+              {isTransaction && txAmount ? (
+                <Text style={[styles.receiptAmount, { color: isCredit ? '#2e7d32' : '#b91c1c' }]}>
+                  {isDebit ? '−' : '+'}{txAmount}
+                </Text>
+              ) : null}
               <Text style={styles.receiptTitle}>{selectedNotification.title}</Text>
               <Text style={styles.receiptDate}>
                 {new Date(selectedNotification.created_at).toLocaleString('en-NG', {
@@ -183,12 +197,15 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
 
             <View style={styles.receiptBody}>
               <View style={styles.receiptRow}>
-                <Text style={styles.receiptLabel}>Message</Text>
+                <Text style={styles.receiptLabel}>Details</Text>
                 <Text style={styles.receiptValue}>{selectedNotification.body}</Text>
               </View>
 
               {Object.entries(selectedNotification.data || {}).map(([key, value]) => {
-                if (value === null || value === undefined) return null
+                if (value === null || value === undefined || value === '') return null
+                // Hide developer-facing keys and the amount (already shown prominently)
+                if (HIDDEN_WALLET_KEYS.has(key)) return null
+                if (isTransaction && key === 'amount') return null
                 const formattedKey = key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
                 return (
                   <View style={styles.receiptRow} key={key}>
@@ -209,7 +226,7 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
               <Text style={styles.receiptCloseText}>Back to Notifications</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </ScrollView>
       </View>
     )
   }
@@ -420,6 +437,13 @@ const styles = StyleSheet.create({
   // Details/Receipt view
   detailsContent: {
     padding: 20,
+    paddingBottom: 40,
+  },
+  receiptAmount: {
+    fontSize: 32,
+    fontWeight: '800',
+    marginTop: 4,
+    letterSpacing: -0.5,
   },
   receiptCard: {
     width: '100%',

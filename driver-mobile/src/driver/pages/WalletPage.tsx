@@ -57,6 +57,7 @@ export default function DriverWalletPage() {
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [savingGoal, setSavingGoal] = useState(false);
   const [goalInput, setGoalInput] = useState('');
+  const [selectedTransaction, setSelectedTransaction] = useState<any | null>(null);
 
   const { user, patchUser } = useAuthStore();
   const {
@@ -509,8 +510,9 @@ export default function DriverWalletPage() {
             <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginTop: 8 }]}>No transactions yet.</Text>
           </View>
         ) : (
-          filteredTransactions.map((tx) => {
-            const isCredit = tx.transaction_type === 'credit';
+          <View style={{ gap: 2 }}>
+            {filteredTransactions.map((tx) => {
+              const isCredit = tx.transaction_type === 'credit';
             const amountLabel = `${isCredit ? '+' : '-'}${formatShortCurrency(tx.amount)}`;
             const statusLabel = tx.status ? tx.status[0].toUpperCase() + tx.status.slice(1) : 'Completed';
             const statusStyle =
@@ -578,7 +580,21 @@ export default function DriverWalletPage() {
                 : COLORS.onSurfaceVariant;
 
             return (
-              <View key={tx.id} style={[styles.txnCard, AMBIENT_SHADOW]}>
+              <TouchableOpacity
+                key={tx.id}
+                style={[styles.txnCard, AMBIENT_SHADOW]}
+                activeOpacity={0.8}
+                onPress={() => setSelectedTransaction({
+                  ...tx,
+                  title,
+                  isCredit,
+                  amountLabel,
+                  statusLabel,
+                  iconName,
+                  iconColor,
+                  iconBg,
+                })}
+              >
                 <View style={styles.txnRow}>
                   <View style={styles.txnLeft}>
                     <View style={[styles.txnIcon, { backgroundColor: iconBg }]}>
@@ -608,9 +624,10 @@ export default function DriverWalletPage() {
                     ))}
                   </View>
                 ) : null}
-              </View>
+              </TouchableOpacity>
             );
-          })
+            })}
+          </View>
         )}
 
         {/* View All */}
@@ -747,6 +764,114 @@ export default function DriverWalletPage() {
               </TouchableOpacity>
             </View>
           </View>
+        </View>
+      </Modal>
+
+      {/* ── Transaction Details Modal ── */}
+      <Modal
+        visible={!!selectedTransaction}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedTransaction(null)}
+      >
+        <View style={styles.modalOverlay}>
+          {selectedTransaction && (
+            <View style={[styles.receiptCard, AMBIENT_SHADOW]}>
+              <View style={styles.receiptHeader}>
+                <MaterialIcons
+                  name={
+                    selectedTransaction.source === 'driver_earning' ? 'check-circle' :
+                    selectedTransaction.source === 'driver_withdrawal' ? 'account-balance' :
+                    selectedTransaction.iconName as any
+                  }
+                  size={48}
+                  color={selectedTransaction.isCredit ? '#2e7d32' : (selectedTransaction.source === 'driver_withdrawal' ? '#b91c1c' : selectedTransaction.iconColor)}
+                />
+                <Text style={[styles.receiptAmount, { color: selectedTransaction.isCredit ? '#2e7d32' : '#b91c1c' }]}>
+                  {selectedTransaction.amountLabel}
+                </Text>
+                <Text style={styles.receiptTitle}>{selectedTransaction.title}</Text>
+                <Text style={styles.receiptDate}>{formatDate(selectedTransaction.created_at)}</Text>
+              </View>
+
+              <View style={styles.receiptDivider} />
+
+              <ScrollView style={styles.receiptBody} showsVerticalScrollIndicator={false}>
+                {selectedTransaction.source === 'driver_earning' && (
+                  <View style={styles.receiptRow}>
+                    <Text style={styles.receiptLabel}>Passenger / Sender</Text>
+                    <Text style={styles.receiptValue}>{selectedTransaction.ride_passenger_name || 'Student'}</Text>
+                  </View>
+                )}
+
+                <View style={styles.receiptRow}>
+                  <Text style={styles.receiptLabel}>Details</Text>
+                  <Text style={styles.receiptValue}>{selectedTransaction.narration || 'Wallet activity'}</Text>
+                </View>
+
+                <View style={styles.receiptRow}>
+                  <Text style={styles.receiptLabel}>Status</Text>
+                  <Text style={styles.receiptValue}>{selectedTransaction.statusLabel}</Text>
+                </View>
+
+                {selectedTransaction.source === 'driver_earning' && (
+                  <>
+                    <View style={styles.receiptRow}>
+                      <Text style={styles.receiptLabel}>Ride Reference</Text>
+                      <Text style={styles.receiptValue}>{selectedTransaction.ride_reference}</Text>
+                    </View>
+                    <View style={styles.receiptRow}>
+                      <Text style={styles.receiptLabel}>Distance</Text>
+                      <Text style={styles.receiptValue}>{selectedTransaction.ride_distance_km ? `${selectedTransaction.ride_distance_km} km` : 'N/A'}</Text>
+                    </View>
+                    <View style={styles.receiptRow}>
+                      <Text style={styles.receiptLabel}>Duration</Text>
+                      <Text style={styles.receiptValue}>{selectedTransaction.ride_duration_minutes ? `${selectedTransaction.ride_duration_minutes} min` : 'N/A'}</Text>
+                    </View>
+                    <View style={styles.receiptRow}>
+                      <Text style={styles.receiptLabel}>Pickup</Text>
+                      <Text style={styles.receiptValue}>{selectedTransaction.ride_pickup_address || 'N/A'}</Text>
+                    </View>
+                    <View style={styles.receiptRow}>
+                      <Text style={styles.receiptLabel}>Dropoff</Text>
+                      <Text style={styles.receiptValue}>{selectedTransaction.ride_dropoff_address || 'N/A'}</Text>
+                    </View>
+                  </>
+                )}
+
+                {selectedTransaction.source === 'driver_withdrawal' && selectedTransaction.metadata && (
+                  <>
+                    <View style={styles.receiptRow}>
+                      <Text style={styles.receiptLabel}>Destination Bank</Text>
+                      <Text style={styles.receiptValue}>{selectedTransaction.metadata.bank_name || 'N/A'}</Text>
+                    </View>
+                    <View style={styles.receiptRow}>
+                      <Text style={styles.receiptLabel}>Account Details</Text>
+                      <Text style={styles.receiptValue}>
+                        {selectedTransaction.metadata.account_name || 'N/A'} 
+                        {selectedTransaction.metadata.account_last4 ? ` (**** ${selectedTransaction.metadata.account_last4})` : ''}
+                      </Text>
+                    </View>
+                  </>
+                )}
+                
+                <View style={styles.receiptRow}>
+                  <Text style={styles.receiptLabel}>Transaction Reference</Text>
+                  <Text style={[styles.receiptValue, { fontSize: 12, color: COLORS.onSurfaceVariant }]}>{selectedTransaction.reference}</Text>
+                </View>
+              </ScrollView>
+
+              <View style={styles.receiptDivider} />
+
+              <TouchableOpacity
+                style={styles.receiptCloseButton}
+                onPress={() => setSelectedTransaction(null)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.receiptCloseText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </Modal>
     </>
@@ -1219,5 +1344,73 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 12,
     backgroundColor: COLORS.primary,
+  },
+  receiptCard: {
+    width: '100%',
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 24,
+    elevation: 4,
+    maxHeight: '90%',
+  },
+  receiptHeader: {
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 8,
+  },
+  receiptAmount: {
+    fontSize: 32,
+    fontWeight: '800',
+    marginTop: 4,
+    letterSpacing: -0.5,
+  },
+  receiptTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1a1c1c',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  receiptDate: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  receiptDivider: {
+    height: 0,
+    borderTopWidth: 1,
+    borderColor: '#e2e2e2',
+    borderStyle: 'dashed',
+    marginVertical: 16,
+  },
+  receiptBody: {
+    paddingRight: 4,
+  },
+  receiptRow: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 4,
+    marginBottom: 16,
+  },
+  receiptLabel: {
+    fontSize: 13,
+    color: '#6b7280',
+  },
+  receiptValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1a1c1c',
+    lineHeight: 20,
+  },
+  receiptCloseButton: {
+    backgroundColor: '#f5effb',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  receiptCloseText: {
+    color: COLORS.primary,
+    fontWeight: '700',
+    fontSize: 15,
   },
 });
