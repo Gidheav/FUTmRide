@@ -19,7 +19,7 @@ const css = '' +
   '*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }' +
   'body { background: #0a0a0a; font-family: system-ui, -apple-system, sans-serif; }' +
   '.page { min-height: 100vh; background: #0a0a0a; display: flex; align-items: center; justify-content: center; padding: 24px; }' +
-  '.card { background: #141414; border: 1px solid #222; border-radius: 20px; padding: 48px 40px; width: 100%; max-width: 400px; }' +
+  '.card { background: #141414; border: 1px solid #222; border-radius: 2px; padding: 48px 40px; width: 100%; max-width: 400px; }' +
   '.card-top { text-align: center; margin-bottom: 36px; }' +
   '.admin-badge { width: 52px; height: 52px; background: #007A47; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }' +
   '.card-title { font-family: ui-serif, Georgia, serif; font-size: 28px; color: #fff; letter-spacing: -0.8px; margin-bottom: 6px; }' +

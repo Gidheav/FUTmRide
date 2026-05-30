@@ -94,13 +94,14 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
   const [distanceKm, setDistanceKm] = useState<number | null>(null)
   const [estimatedFare, setEstimatedFare] = useState<number | null>(null)
   const [isEstimating, setIsEstimating] = useState(false)
-  const [saveRoute, setSaveRoute] = useState(true)
+  const [saveRoute, setSaveRoute] = useState(false)
   const [loading, setLoading] = useState(false)
   const [hydrating, setHydrating] = useState(!cachedGarageRide)
   const [isUpdatingRide, setIsUpdatingRide] = useState(false)
   const [locationPickerOpen, setLocationPickerOpen] = useState<null | 'origin' | 'destination'>(null)
   const [locationQuery, setLocationQuery] = useState('')
   const [isMapPreviewOpen, setIsMapPreviewOpen] = useState(false)
+  const [isSavedRoutesOpen, setIsSavedRoutesOpen] = useState(false)
   
   // Created ride state
   const [ride, setRide] = useState<any>(cachedGarageRide)
@@ -267,6 +268,7 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
       upsertSavedRoute({ ...route, last_used_at: nextUsedAt })
       driverApi.updateSavedRoute(route.id, { last_used_at: nextUsedAt }).catch(() => {})
     }
+    setIsSavedRoutesOpen(false)
   }
 
   const upsertSavedRoute = (route: any) => {
@@ -356,48 +358,54 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
       setStatus('active')
 
       if (saveRoute) {
-        const tempRoute = {
-          id: `local-${Date.now()}`,
-          name: '',
-          origin_address: origin.label,
-          origin_latitude: roundCoord(origin.latitude),
-          origin_longitude: roundCoord(origin.longitude),
-          destination_address: destination.label,
-          destination_latitude: roundCoord(destination.latitude),
-          destination_longitude: roundCoord(destination.longitude),
-          distance_km: distance,
-          last_used_at: new Date().toISOString(),
+        const isDuplicate = savedRoutes.some(item => 
+          item.origin_address === origin.label && 
+          item.destination_address === destination.label
+        )
+        if (!isDuplicate) {
+          const tempRoute = {
+            id: `local-${Date.now()}`,
+            name: '',
+            origin_address: origin.label,
+            origin_latitude: roundCoord(origin.latitude),
+            origin_longitude: roundCoord(origin.longitude),
+            destination_address: destination.label,
+            destination_latitude: roundCoord(destination.latitude),
+            destination_longitude: roundCoord(destination.longitude),
+            distance_km: distance,
+            last_used_at: new Date().toISOString(),
+          }
+          upsertSavedRoute(tempRoute)
+          driverApi
+            .createSavedRoute({
+              name: tempRoute.name,
+              origin_address: tempRoute.origin_address,
+              origin_latitude: tempRoute.origin_latitude,
+              origin_longitude: tempRoute.origin_longitude,
+              destination_address: tempRoute.destination_address,
+              destination_latitude: tempRoute.destination_latitude,
+              destination_longitude: tempRoute.destination_longitude,
+              distance_km: tempRoute.distance_km,
+              last_used_at: tempRoute.last_used_at,
+            })
+            .then((resp) => {
+              if (resp?.data?.id) {
+                const next = savedRoutes.filter((item) => {
+                  if (!String(item.id).startsWith('local-')) return true
+                  return !(
+                    item.origin_address === tempRoute.origin_address &&
+                    item.destination_address === tempRoute.destination_address &&
+                    Number(item.distance_km) === Number(tempRoute.distance_km)
+                  )
+                })
+                next.unshift(resp.data)
+                setSavedRoutes(next)
+              }
+            })
+            .catch(() => {
+              // Keep local entry; sync can retry later.
+            })
         }
-        upsertSavedRoute(tempRoute)
-        driverApi
-          .createSavedRoute({
-            name: tempRoute.name,
-            origin_address: tempRoute.origin_address,
-            origin_latitude: tempRoute.origin_latitude,
-            origin_longitude: tempRoute.origin_longitude,
-            destination_address: tempRoute.destination_address,
-            destination_latitude: tempRoute.destination_latitude,
-            destination_longitude: tempRoute.destination_longitude,
-            distance_km: tempRoute.distance_km,
-            last_used_at: tempRoute.last_used_at,
-          })
-          .then((resp) => {
-            if (resp?.data?.id) {
-              const next = savedRoutes.filter((item) => {
-                if (!String(item.id).startsWith('local-')) return true
-                return !(
-                  item.origin_address === tempRoute.origin_address &&
-                  item.destination_address === tempRoute.destination_address &&
-                  Number(item.distance_km) === Number(tempRoute.distance_km)
-                )
-              })
-              next.unshift(resp.data)
-              setSavedRoutes(next)
-            }
-          })
-          .catch(() => {
-            // Keep local entry; sync can retry later.
-          })
       }
     } catch (err: any) {
       const msg = err?.response?.data?.error?.message || 'Could not create garage ride.'
@@ -606,24 +614,16 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
         </Text>
 
         {savedRoutes.length > 0 && (
-          <View style={styles.savedRoutesWrap}>
-            <View style={styles.savedRoutesHeader}>
-              <Text style={styles.sectionTitle}>Saved Routes</Text>
-              <TouchableOpacity onPress={handleSwapRoute} disabled={!origin || !destination}>
-                <Text style={styles.swapText}>Swap</Text>
-              </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.input, { marginBottom: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]} 
+            onPress={() => setIsSavedRoutesOpen(true)}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <MaterialIcons name="bookmark" size={20} color={COLORS.primary} />
+              <Text style={styles.inputText}>Select from Saved Routes</Text>
             </View>
-            {savedRoutes.slice(0, 4).map((route) => (
-              <TouchableOpacity
-                key={route.id}
-                style={styles.savedRouteCard}
-                onPress={() => handleUseSavedRoute(route)}
-              >
-                <Text style={styles.savedRouteTitle}>{route.name || `${route.origin_address} → ${route.destination_address}`}</Text>
-                <Text style={styles.savedRouteMeta}>{formatDistance(Number(route.distance_km || 0))}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+            <MaterialIcons name="chevron-right" size={20} color={COLORS.onSurfaceVariant} />
+          </TouchableOpacity>
         )}
 
         <View style={styles.formGroup}>
@@ -766,6 +766,40 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
               ) : null}
             </MapView>
           </View>
+        </View>
+      </Modal>
+
+      <Modal visible={isSavedRoutesOpen} animationType="slide" onRequestClose={() => setIsSavedRoutesOpen(false)}>
+        <View style={styles.modalPage}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setIsSavedRoutesOpen(false)} style={styles.modalBack}>
+              <MaterialIcons name="arrow-back" size={20} color={COLORS.onSurface} />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Saved Routes</Text>
+            <View style={{ width: 20 }} />
+          </View>
+          <ScrollView contentContainerStyle={styles.modalList}>
+            <View style={{ height: 16 }} />
+            {savedRoutes.length === 0 ? (
+              <Text style={[styles.description, { textAlign: 'center', marginTop: 40 }]}>No saved routes found.</Text>
+            ) : (
+              savedRoutes.map((route) => (
+                <TouchableOpacity
+                  key={route.id}
+                  style={styles.savedRouteCard}
+                  onPress={() => handleUseSavedRoute(route)}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <MaterialIcons name="route" size={24} color={COLORS.primary} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.savedRouteTitle}>{route.name || `${route.origin_address} → ${route.destination_address}`}</Text>
+                      <Text style={styles.savedRouteMeta}>{formatDistance(Number(route.distance_km || 0))}</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ))
+            )}
+          </ScrollView>
         </View>
       </Modal>
     </View>

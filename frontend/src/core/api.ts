@@ -3,6 +3,14 @@ import axios from 'axios'
 const rawBase = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8002/api/v1'
 const BASE_URL = rawBase.endsWith('/') ? rawBase : `${rawBase}/`
 
+export const getMediaUrl = (url?: string | null) => {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  
+  const backendHost = rawBase.replace(/\/api\/v1\/?$/, '');
+  return `${backendHost}${url.startsWith('/') ? '' : '/'}${url}`;
+}
+
 export const api = axios.create({
   baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' },

@@ -59,7 +59,7 @@ export default function VehicleVerificationScreen({ onBack, onAllUploaded }: Pro
     } else {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
       if (status !== 'granted') { Alert.alert('Permission Required', 'Photo library access needed.'); return }
-      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.85 })
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85 })
       if (!result.canceled && result.assets.length > 0) {
         const asset = result.assets[0]
         const ext = asset.uri.split('.').pop() || 'jpg'

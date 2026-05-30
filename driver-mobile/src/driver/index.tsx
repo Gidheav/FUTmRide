@@ -15,6 +15,8 @@ import {
   showRideStatusNotification,
   clearRideStatusNotification,
 } from '../core/pushNotifications'
+// Safe no-op – expo-task-manager isn't installed; prevents the old ReferenceError
+const stopRideForegroundService = async () => { /* no-op */ }
 import { useDriverWalletStore } from '../core/driverWalletStore'
 import { useDriverRidesStore } from '../core/driverRidesStore'
 import DriverLoginScreen from './screens/LoginScreen'
@@ -314,7 +316,12 @@ export default function DriverApp() {
   if (subPage === 'settings') {
     return (
       <SafeAreaProvider>
-        <AccountSettingsPage onBack={() => setSubPage(null)} />
+        <AccountSettingsPage
+          onBack={() => setSubPage(null)}
+          verificationProgress={progressData}
+          onStartAccountVerification={() => setSubPage('account-verification')}
+          onStartVehicleVerification={() => setSubPage('vehicle-verification')}
+        />
       </SafeAreaProvider>
     )
   }
@@ -436,25 +443,6 @@ export default function DriverApp() {
   return (
     <SafeAreaProvider>
       <DriverLayout activeTab={activeTab} onTabChange={setActiveTab}>
-        {/* Verification Banner */}
-        {banner && (
-          <TouchableOpacity
-            style={[s.banner, { backgroundColor: banner.bg }]}
-            onPress={banner.action ?? undefined}
-            activeOpacity={banner.action ? 0.8 : 1}
-            disabled={!banner.action}
-          >
-            <MaterialIcons name={banner.icon} size={20} color={banner.color} />
-            <Text style={[s.bannerText, { color: banner.color }]} numberOfLines={2}>
-              {banner.label}
-            </Text>
-            {banner.cta && (
-              <View style={[s.bannerCta, { backgroundColor: banner.color }]}>
-                <Text style={s.bannerCtaText}>{banner.cta}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        )}
         {renderPage()}
       </DriverLayout>
     </SafeAreaProvider>

@@ -21,7 +21,7 @@ export const T = {
   blue: 'var(--theme-blue, #3b82f6)',
   purple: 'var(--theme-purple, #8b5cf6)',
   sidebar: 'var(--theme-sidebar, #0d1117)',
-  topBar: 'var(--theme-topBar, #0f1420)',
+  topBar: 'var(--theme-topBar, #4d2211ff)',
   mapBg: 'var(--theme-mapBg, #0c1827)',
   mapOverlayBg: 'var(--theme-mapOverlayBg, rgba(11,15,25,0.92))',
   mapTooltipBg: 'var(--theme-mapTooltipBg, rgba(11,15,25,0.88))',

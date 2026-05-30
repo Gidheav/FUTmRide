@@ -7,7 +7,7 @@ import {
   CreditCard, FileText, ShieldCheck, Mail, Phone, MapPin, User,
   Calendar, ShieldAlert
 } from 'lucide-react'
-import api from '../../core/api'
+import api, { getMediaUrl } from '../../core/api'
 import { T } from '../theme'
 
 const FONT = T.fontFamily
@@ -164,7 +164,7 @@ export default function UnifiedVerificationPage() {
         <div style={s.profileHeader}>
           <div style={s.avatarWrap}>
             {detail.driver.profile_photo ? (
-              <img src={detail.driver.profile_photo} alt="Driver" style={s.avatarImg} />
+              <img src={getMediaUrl(detail.driver.profile_photo)} alt="Driver" style={s.avatarImg} />
             ) : (
               <div style={s.avatarInitial}>{detail.driver.full_name?.[0] ?? '?'}</div>
             )}
@@ -274,7 +274,7 @@ export default function UnifiedVerificationPage() {
               {activeTab === 'nin' ? (
                 detail.account_verification?.nin_scan_url ? (
                   <img 
-                    src={detail.account_verification.nin_scan_url} 
+                    src={getMediaUrl(detail.account_verification.nin_scan_url)} 
                     style={{ ...s.scanImg, transform: `scale(${zoom/100})` }} 
                     alt="NIN Scan"
                   />
@@ -282,7 +282,7 @@ export default function UnifiedVerificationPage() {
               ) : (
                 currentDoc?.file_url ? (
                   <img 
-                    src={currentDoc.file_url} 
+                    src={getMediaUrl(currentDoc.file_url)} 
                     style={{ ...s.scanImg, transform: `scale(${zoom/100})` }} 
                     alt="Document"
                   />

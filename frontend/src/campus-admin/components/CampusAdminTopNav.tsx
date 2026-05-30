@@ -14,6 +14,7 @@ import { useAuthStore } from '../../core/authStore'
 import { T, useCampusThemeStore } from '../theme'
 import { useDispatchStore } from '../dispatchStore'
 import { useSettingsStore } from '../settingsStore'
+import { useAnalyticsStore } from '../analyticsStore'
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/' },
@@ -31,6 +32,7 @@ export default function CampusAdminTopNav() {
 
   const { wsConnected, showTraffic, setShowTraffic, showHeat, setShowHeat, showRoutes, setShowRoutes, triggerRecenter } = useDispatchStore()
   const { activeTab: settingsTab, setActiveTab: setSettingsTab } = useSettingsStore()
+  const { activeTab: analyticsTab, setActiveTab: setAnalyticsTab } = useAnalyticsStore()
 
   const verifyMatch = location.pathname.match(/\/users\/(.*)\/verify/)
   const verifyDriverId = verifyMatch ? verifyMatch[1] : null
@@ -142,6 +144,16 @@ export default function CampusAdminTopNav() {
               Manage accounts, display preferences, and global settings
             </div>
           </div>
+        ) : location.pathname === '/analytics' ? (
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3, display: 'flex', alignItems: 'center' }}>
+              <BarChart3 size={16} color={T.accent} style={{ marginRight: 8 }} />
+              Analytics & Insights
+            </div>
+            <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
+              Monitor system performance and operational intelligence
+            </div>
+          </div>
         ) : (
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3 }}>
@@ -250,6 +262,17 @@ export default function CampusAdminTopNav() {
           <button style={{ ...s.topNavBtn, color: settingsTab === 'support' ? T.accent : T.textSecondary, background: settingsTab === 'support' ? T.accentBg : 'transparent' }} onClick={() => setSettingsTab('support')}>
             <LifeBuoy size={13} strokeWidth={1.8} />
             <span>Support</span>
+          </button>
+        </nav>
+      ) : location.pathname === '/analytics' ? (
+        <nav style={s.topNav}>
+          <button style={{ ...s.topNavBtn, color: analyticsTab === 'efficiency' ? T.accent : T.textSecondary, background: analyticsTab === 'efficiency' ? T.accentBg : 'transparent' }} onClick={() => setAnalyticsTab('efficiency')}>
+            <Activity size={13} strokeWidth={1.8} />
+            <span>Efficiency Metrics</span>
+          </button>
+          <button style={{ ...s.topNavBtn, color: analyticsTab === 'intelligence' ? T.accent : T.textSecondary, background: analyticsTab === 'intelligence' ? T.accentBg : 'transparent' }} onClick={() => setAnalyticsTab('intelligence')}>
+            <Crosshair size={13} strokeWidth={1.8} />
+            <span>Intelligence Ops</span>
           </button>
         </nav>
       ) : (

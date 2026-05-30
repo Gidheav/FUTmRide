@@ -18,19 +18,19 @@ type FormData = z.infer<typeof schema>
 const css = '' +
   '*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }' +
   'body { background: #0e1a2a; font-family: system-ui, -apple-system, sans-serif; }' +
-  '.page { min-height: 100vh; background: radial-gradient(circle at 10% -10%, rgba(16,185,129,0.2), transparent 40%), #0e1a2a; display: flex; align-items: center; justify-content: center; padding: 24px; }' +
-  '.card { background: rgba(255,255,255,0.95); border: 1px solid #dbe2ea; border-radius: 20px; padding: 40px; width: 100%; max-width: 420px; }' +
+  '.page { min-height: 100vh; background: radial-gradient(circle at 50% -10%, rgba(16,185,129,0.2), transparent 10%), #0e1a2a; display: flex; align-items: center; justify-content: center; padding: 24px; }' +
+  '.card { background: rgba(255, 255, 255, 0.1); border: 1px solid #dbe2ea0b; border-radius:2px; padding: 40px; width: 100%; max-width: 420px; }' +
   '.card-top { text-align: center; margin-bottom: 28px; }' +
   '.admin-badge { width: 52px; height: 52px; background: #0f766e; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; }' +
   '.card-title { font-family: ui-serif, Georgia, serif; font-size: 30px; color: #0f172a; letter-spacing: -0.7px; margin-bottom: 6px; }' +
   '.card-sub { font-size: 13px; color: #64748b; }' +
   '.field { margin-bottom: 16px; }' +
   '.field-label { font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: #64748b; margin-bottom: 8px; display: block; }' +
-  '.field-input { width: 100%; height: 48px; padding: 0 42px 0 14px; background: #f8fafc; border: 1.5px solid #dbe2ea; border-radius: 10px; font-family: system-ui, -apple-system, sans-serif; font-size: 14px; color: #0f172a; outline: none; transition: border-color 0.15s; box-sizing: border-box; }' +
+  '.field-input { width: 100%; height: 48px; padding: 0 42px 0 14px; background: #f8fafc49; border: 1.5px solid #e8eef42c; border-radius: 10px; font-family: system-ui, -apple-system, sans-serif; font-size: 14px; color: #0f172a; outline: none; transition: border-color 0.15s; box-sizing: border-box; }' +
   '.field-input:focus { border-color: #0f766e; }' +
   '.field-input::placeholder { color: #94a3b8; }' +
   '.input-wrap { position: relative; }' +
-  '.show-btn { position: absolute; right: 0; top: 0; height: 48px; width: 44px; display: flex; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase; font-family: system-ui, -apple-system, sans-serif; transition: color 0.15s; }' +
+  '.show-btn { position: absolute; right: 3px; top: 0; height: 48px; width: 44px; display: flex; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; color: #64748b; font-size: 11px; font-weight: 700; font-family: system-ui, -apple-system, sans-serif; transition: color 0.15s; }' +
   '.show-btn:hover { color: #0f766e; }' +
   '.field-error { color: #dc2626; font-size: 12px; margin-top: 5px; }' +
   '.submit-btn { width: 100%; height: 50px; background: #0f766e; border: none; border-radius: 10px; color: #fff; font-family: system-ui, -apple-system, sans-serif; font-size: 14px; font-weight: 700; cursor: pointer; margin-top: 6px; transition: background 0.2s; }' +
@@ -97,7 +97,7 @@ export default function LoginPage() {
               <label className="field-label">Password</label>
               <div className="input-wrap">
                 <input {...register('password')} type={showPassword ? 'text' : 'password'} placeholder="Enter password" className="field-input" />
-                <button type="button" className="show-btn" onClick={() => setShowPassword(!showPassword)}>{showPassword ? 'hide' : 'show'}</button>
+                <button type="button" className="show-btn" onClick={() => setShowPassword(!showPassword)}>{showPassword ? 'Hide' : 'Show'}</button>
               </div>
               {errors.password && <div className="field-error">{errors.password.message}</div>}
             </div>

@@ -102,6 +102,11 @@ export const registerDriverPushToken = async (currentServerToken?: string | null
       )
       return null
     }
+    // Silently ignore auth errors — token may be expired/refreshing
+    const status = error?.response?.status
+    if (status === 401 || status === 403) {
+      return null
+    }
     console.warn('push registration failed', error)
     return null
   }

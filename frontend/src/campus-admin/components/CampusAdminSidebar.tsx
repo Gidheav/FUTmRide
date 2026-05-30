@@ -12,7 +12,6 @@ const SIDEBAR_ICONS = [
   { icon: BarChart3, path: '/analytics' },
   { icon: Calculator, path: '/engine' },
   { icon: Bell, path: '/notifications' },
-  { icon: User, path: '/profile' },
   { icon: Settings, path: '/settings' },
 ]
 

@@ -264,10 +264,31 @@ class AdminAccountVerificationReviewView(APIView):
         av.reviewed_at = timezone.now()
         av.save()
 
-        # If approved, mark user's account as verified
+        # Sync User.is_verified and DriverProfile.verification_status
+        from apps.accounts.models import DriverProfile
         if av.status == AccountVerification.Status.APPROVED:
             av.driver.is_verified = True
             av.driver.save(update_fields=['is_verified'])
+            # Update the driver profile so the garage-ride creation gate passes
+            try:
+                dp = av.driver.driver_profile
+                dp.verification_status = DriverProfile.VerificationStatus.APPROVED
+                dp.verified_at = timezone.now()
+                dp.verified_by = request.user
+                dp.save(update_fields=['verification_status', 'verified_at', 'verified_by'])
+            except DriverProfile.DoesNotExist:
+                pass
+        elif av.status == AccountVerification.Status.REJECTED:
+            av.driver.is_verified = False
+            av.driver.save(update_fields=['is_verified'])
+            # Revert driver profile status so they can't accept rides
+            try:
+                dp = av.driver.driver_profile
+                if dp.verification_status == DriverProfile.VerificationStatus.APPROVED:
+                    dp.verification_status = DriverProfile.VerificationStatus.REJECTED
+                    dp.save(update_fields=['verification_status'])
+            except DriverProfile.DoesNotExist:
+                pass
 
         return Response(AdminAccountVerificationDetailSerializer(av, context={'request': request}).data)
 

@@ -8,15 +8,23 @@ import {
   Switch,
   Alert,
   TextInput,
+  RefreshControl,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQueryClient } from '@tanstack/react-query';
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
 import { useAuthStore } from '../../core/authStore';
 import { settingsApi } from '../../core/api';
 import { useSettingsStore } from '../../core/settingsStore';
 
-type Props = { onBack: () => void };
+type Props = {
+  onBack: () => void;
+  verificationProgress?: any;
+  onStartAccountVerification?: () => void;
+  onStartVehicleVerification?: () => void;
+};
+
 
 // ─── Small sub-components ────────────────────────────────────────────────────
 
@@ -114,10 +122,12 @@ const MODAL_TITLES: Record<ModalId, string> = {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function AccountSettingsPage({ onBack }: Props) {
+export default function AccountSettingsPage({ onBack, verificationProgress, onStartAccountVerification, onStartVehicleVerification }: Props) {
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
   const { logout } = useAuthStore();
   const { settings, hydrateFromApi, updateLocal } = useSettingsStore();
+  const [refreshing, setRefreshing] = useState(false);
 
   // ── active sub-page
   const [activeModal, setActiveModal] = useState<ModalId | null>(null);
@@ -146,6 +156,22 @@ export default function AccountSettingsPage({ onBack }: Props) {
       isMounted = false;
     };
   }, [hydrateFromApi]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['verification-progress'] }),
+        settingsApi.getPreferences().then((res) => {
+          if (res?.data) hydrateFromApi(res.data);
+        })
+      ]);
+    } catch (e) {
+      console.warn('Refresh failed', e);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const updateSetting = async (
     patch: Partial<typeof settings>,
@@ -561,7 +587,61 @@ export default function AccountSettingsPage({ onBack }: Props) {
         style={{ flex: 1 }}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
+        }
       >
+        {/* Tasks – verification requirements */}
+        {(() => {
+          const accountStatus = verificationProgress?.account_verification?.status ?? null;
+          const vehicleDocs = verificationProgress?.vehicle_documents ?? [];
+          const allVehicleApproved = vehicleDocs.length > 0 && vehicleDocs.every((d: any) => d.status === 'approved');
+          const isFullyVerified = accountStatus === 'approved' && allVehicleApproved;
+
+          if (isFullyVerified) return null;
+
+          return (
+            <>
+              <Text style={styles.sectionTitle}>TASKS</Text>
+              <View style={[styles.card, AMBIENT_SHADOW]}>
+                {!accountStatus && (
+                  <SettingsRow
+                    icon="account-circle"
+                    title="Complete Account Verification"
+                    subtitle="Submit your identity documents to start accepting rides"
+                    onPress={onStartAccountVerification}
+                  />
+                )}
+                {accountStatus === 'pending' || accountStatus === 'under_review' ? (
+                  <SettingsRow
+                    icon="hourglass-top"
+                    title="Account Verification Under Review"
+                    subtitle="Your submission is being reviewed by campus admin"
+                    trailing={<View style={taskStyles.statusPill}><Text style={taskStyles.statusPillText}>Pending</Text></View>}
+                  />
+                ) : null}
+                {accountStatus === 'rejected' ? (
+                  <SettingsRow
+                    icon="error"
+                    title="Account Verification Rejected"
+                    subtitle="Your submission was rejected. Please resubmit."
+                    onPress={onStartAccountVerification}
+                  />
+                ) : null}
+                {accountStatus === 'approved' && !allVehicleApproved ? (
+                  <SettingsRow
+                    icon="directions-car"
+                    title="Upload Vehicle Documents"
+                    subtitle="Account verified! Now upload your vehicle documents."
+                    onPress={onStartVehicleVerification}
+                    isLast
+                  />
+                ) : null}
+              </View>
+            </>
+          );
+        })()}
+
         {/* App Settings */}
         <Text style={styles.sectionTitle}>APP SETTINGS</Text>
         <View style={[styles.card, AMBIENT_SHADOW]}>
@@ -833,5 +913,19 @@ const styles = StyleSheet.create({
   },
   optionTextWrap: {
     gap: 2,
+  },
+});
+
+const taskStyles = StyleSheet.create({
+  statusPill: {
+    backgroundColor: '#E3F2FD',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1565C0',
   },
 });

@@ -65,34 +65,47 @@ export default function AccountVerificationScreen({ onBack, onSuccess }: Props) 
   })
 
   const pickNinScan = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Please allow access to your photo library.')
-      return
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.85,
-      allowsEditing: false,
-    })
-    if (!result.canceled && result.assets.length > 0) {
-      const asset = result.assets[0]
-      const ext = asset.uri.split('.').pop() || 'jpg'
-      setNinScan({ uri: asset.uri, name: `nin_scan.${ext}`, type: `image/${ext}` })
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please allow access to your photo library.')
+        return
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        quality: 0.85,
+        allowsEditing: false,
+      })
+      console.log('[NIN Picker] result:', JSON.stringify(result))
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0]
+        const uri = asset.uri
+        const ext = uri.split('.').pop()?.split('?')[0] || 'jpg'
+        setNinScan({ uri, name: `nin_scan.${ext}`, type: `image/${ext === 'png' ? 'png' : 'jpeg'}` })
+      }
+    } catch (err: any) {
+      console.warn('[NIN Picker] error:', err)
+      Alert.alert('Image Picker Error', err?.message || 'Failed to pick image.')
     }
   }
 
   const takePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync()
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Please allow camera access.')
-      return
-    }
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.85 })
-    if (!result.canceled && result.assets.length > 0) {
-      const asset = result.assets[0]
-      const ext = asset.uri.split('.').pop() || 'jpg'
-      setNinScan({ uri: asset.uri, name: `nin_scan.${ext}`, type: `image/${ext}` })
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync()
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please allow camera access.')
+        return
+      }
+      const result = await ImagePicker.launchCameraAsync({ quality: 0.85 })
+      console.log('[NIN Camera] result:', JSON.stringify(result))
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0]
+        const uri = asset.uri
+        const ext = uri.split('.').pop()?.split('?')[0] || 'jpg'
+        setNinScan({ uri, name: `nin_scan.${ext}`, type: `image/${ext === 'png' ? 'png' : 'jpeg'}` })
+      }
+    } catch (err: any) {
+      console.warn('[NIN Camera] error:', err)
+      Alert.alert('Camera Error', err?.message || 'Failed to take photo.')
     }
   }
 
