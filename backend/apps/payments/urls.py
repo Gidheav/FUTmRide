@@ -4,6 +4,7 @@ from .views import (
     DriverWalletSummaryView,
     DriverWithdrawalCreateView,
     FlutterwaveWebhookView,
+    GatewaySummaryView,
     InitiateTopUpView,
     PaystackWebhookView,
     TopUpStatusView,
@@ -21,6 +22,7 @@ urlpatterns = [
     path('wallet/transfer/', WalletTransferView.as_view(), name='wallet-transfer'),
     path('wallet/topup/', InitiateTopUpView.as_view(), name='wallet-topup'),
     path('wallet/topup/status/<str:reference>/', TopUpStatusView.as_view(), name='wallet-topup-status'),
+    path('gateways/summary/', GatewaySummaryView.as_view(), name='gateway-summary'),
     path('webhooks/paystack/', PaystackWebhookView.as_view(), name='webhook-paystack'),
     path('webhooks/flutterwave/', FlutterwaveWebhookView.as_view(), name='webhook-flutterwave'),
 ]

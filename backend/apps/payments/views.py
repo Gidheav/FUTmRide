@@ -18,6 +18,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.models import StudentProfile, UserRole
+from apps.accounts.permissions import IsAdminOrCampusAdmin
 from .models import GatewayTransaction, WalletTransaction, WebhookEvent
 from .serializers import (
     DriverPayoutMethodSerializer,
@@ -159,6 +160,54 @@ class WalletTransactionListView(generics.ListAPIView):
             .filter(user=self.request.user)
             .order_by('-created_at')
         )
+
+
+class GatewaySummaryView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
+
+    def get(self, request):
+        now = timezone.now()
+        start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        def build_gateway_summary(gateway: str):
+            qs = GatewayTransaction.objects.filter(
+                gateway=gateway,
+                created_at__gte=start_of_day,
+            )
+            attempts = qs.count()
+            success = qs.filter(gateway_status=GatewayTransaction.GatewayStatus.SUCCESS).count()
+            failed = qs.filter(gateway_status=GatewayTransaction.GatewayStatus.FAILED).count()
+            revenue = (
+                qs.filter(gateway_status=GatewayTransaction.GatewayStatus.SUCCESS)
+                .aggregate(total=Sum('amount'))
+                .get('total')
+                or Decimal('0')
+            )
+            success_rate = float((success / attempts) * 100) if attempts else 0.0
+            return {
+                'attempts': attempts,
+                'success': success,
+                'failed': failed,
+                'success_rate': round(success_rate, 1),
+                'revenue_today': str(revenue),
+            }
+
+        payload = {
+            'generated_at': now.isoformat(),
+            'gateways': {
+                'paystack': build_gateway_summary(GatewayTransaction.Gateway.PAYSTACK),
+                'flutterwave': build_gateway_summary(GatewayTransaction.Gateway.FLUTTERWAVE),
+                'stripe': {
+                    'status': 'inactive',
+                    'success_rate': 0.0,
+                    'attempts': 0,
+                    'success': 0,
+                    'failed': 0,
+                    'revenue_today': '0',
+                },
+            },
+        }
+        return Response(payload)
 
 
 class DriverWalletSummaryView(APIView):

@@ -330,6 +330,7 @@ class IntegrationSettingsSerializer(serializers.ModelSerializer):
         model = IntegrationSettings
         fields = [
             'payments_enabled',
+            'payments_primary_gateway',
             'paystack_enabled',
             'flutterwave_enabled',
             'notifications_enabled',

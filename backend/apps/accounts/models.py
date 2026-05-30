@@ -166,8 +166,17 @@ class IntegrationSettings(models.Model):
     Secrets remain in environment variables and are not stored here.
     """
 
+    class PaymentGateway(models.TextChoices):
+        PAYSTACK = 'paystack', 'Paystack'
+        FLUTTERWAVE = 'flutterwave', 'Flutterwave'
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     payments_enabled = models.BooleanField(default=True)
+    payments_primary_gateway = models.CharField(
+        max_length=20,
+        choices=PaymentGateway.choices,
+        default=PaymentGateway.PAYSTACK,
+    )
     paystack_enabled = models.BooleanField(default=True)
     flutterwave_enabled = models.BooleanField(default=True)
     notifications_enabled = models.BooleanField(default=True)
