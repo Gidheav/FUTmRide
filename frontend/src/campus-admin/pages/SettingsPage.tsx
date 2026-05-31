@@ -965,7 +965,100 @@ function PromotionsReplica() {
 }
 
 function IntegrationsReplica() {
-  const { mode } = useCampusThemeStore()
+  const [selectedGateway, setSelectedGateway] = useState<string | null>(null)
+  const [summary, setSummary] = useState<any>(null)
+  const [statusData, setStatusData] = useState<any>(null)
+  const [config, setConfig] = useState<any>(null)
+  const [loadingData, setLoadingData] = useState(true)
+  const [revealedKeys, setRevealedKeys] = useState<Record<string, boolean>>({})
+  const [copied, setCopied] = useState<string | null>(null)
+  const [testResult, setTestResult] = useState<any>(null)
+  const [testing, setTesting] = useState(false)
+  const [savingPrimary, setSavingPrimary] = useState(false)
+  const [actionMsg, setActionMsg] = useState<{ text: string; ok: boolean } | null>(null)
+
+  // Fetch live data on mount
+  const loadData = async () => {
+    setLoadingData(true)
+    try {
+      const [summaryRes, statusRes, configRes] = await Promise.all([
+        api.get('/payments/gateways/summary/'),
+        api.get('/auth/settings/integrations/status/'),
+        api.get('/auth/settings/integrations/config/'),
+      ])
+      setSummary(summaryRes.data)
+      setStatusData(statusRes.data)
+      setConfig(configRes.data)
+    } catch (err) {
+      console.error('Failed to load integration data', err)
+    } finally {
+      setLoadingData(false)
+    }
+  }
+
+  useState(() => { loadData() })
+
+  const primaryGateway = config?.payments_primary_gateway || 'paystack'
+
+  const gwSummary = (gw: string) => summary?.gateways?.[gw] || {}
+  const gwStatus = (gw: string) => statusData?.payments?.[gw] || {}
+
+  const getGwColor = (gw: string) =>
+    gw === 'paystack' ? '#0BA4DB' : gw === 'flutterwave' ? '#FB9129' : '#635BFF'
+
+  const getGwLabel = (gw: string) =>
+    gw === 'paystack' ? 'P' : gw === 'flutterwave' ? 'F' : 'S'
+
+  const getGwStatus = (gw: string) => {
+    if (gw === 'stripe') return 'Inactive'
+    return primaryGateway === gw ? 'Active' : 'Standby'
+  }
+
+  const formatRevenue = (val: string | undefined) => {
+    if (!val) return '₦0'
+    const n = parseFloat(val)
+    return `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+  }
+
+  const handleCopy = (text: string, key: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(key)
+      setTimeout(() => setCopied(null), 2000)
+    })
+  }
+
+  const handleTestConnection = async () => {
+    if (!selectedGateway || selectedGateway === 'stripe') return
+    setTesting(true)
+    setTestResult(null)
+    setActionMsg(null)
+    try {
+      const res = await api.post('/payments/gateways/test/', { gateway: selectedGateway })
+      setTestResult(res.data)
+    } catch (err: any) {
+      setTestResult({ success: false, error: err.response?.data?.error || 'Test failed.' })
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  const handleSetPrimary = async () => {
+    if (!selectedGateway || selectedGateway === 'stripe') return
+    setSavingPrimary(true)
+    setActionMsg(null)
+    const newPrimary = primaryGateway === selectedGateway ? 'flutterwave' : selectedGateway
+    try {
+      await api.patch('/auth/settings/integrations/config/', {
+        payments_primary_gateway: newPrimary,
+      })
+      await loadData()
+      setActionMsg({ text: `${newPrimary.charAt(0).toUpperCase() + newPrimary.slice(1)} is now the primary gateway.`, ok: true })
+    } catch (err: any) {
+      setActionMsg({ text: err.response?.data?.error?.message || 'Failed to update gateway.', ok: false })
+    } finally {
+      setSavingPrimary(false)
+    }
+  }
 
   const panelStyle = {
     background: T.bgPanel,
@@ -975,6 +1068,19 @@ function IntegrationsReplica() {
     display: 'flex',
     flexDirection: 'column' as const,
   }
+
+  const gateways = ['paystack', 'flutterwave', 'stripe']
+
+  // Drawer: show selected gateway details
+  const drawerGw = selectedGateway
+  const drawerStatus = drawerGw ? gwStatus(drawerGw) : {}
+  const drawerSummary = drawerGw ? gwSummary(drawerGw) : {}
+  const isPrimary = drawerGw === primaryGateway
+  const isConfigured = drawerStatus.configured ?? false
+  const publicKey = drawerStatus.public_key || '—'
+  const secretKey = drawerStatus.secret_key || '—'
+  const revealKey = `${drawerGw}-secret`
+  const publicRevealKey = `${drawerGw}-public`
 
   return (
     <div style={{ width: '100%', maxWidth: 1600, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 32 }}>
@@ -986,66 +1092,246 @@ function IntegrationsReplica() {
               <Wallet size={18} style={{ color: T.textMuted }} />
               Payment Gateways
             </h3>
-            <span style={{ background: `${T.accent}1a`, color: T.accent, padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600, border: `1px solid ${T.accent}4d` }}>
-              Active: Paystack
+            <span style={{ background: `${T.accent}1a`, color: T.accent, padding: '2px 10px', borderRadius: 999, fontSize: 11, fontWeight: 600, border: `1px solid ${T.accent}4d`, textTransform: 'capitalize' }}>
+              {loadingData ? 'Loading…' : `Active: ${primaryGateway}`}
             </span>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
-            {/* Paystack */}
-            <div style={{ border: `2px solid ${T.accent}`, background: `${T.accent}0d`, borderRadius: 0, padding: 16, cursor: 'pointer', position: 'relative' }}>
-              <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: T.accent }} />
-                <span style={{ fontSize: 10, color: T.accent, fontWeight: 700, textTransform: 'uppercase' }}>Active</span>
-              </div>
-              <div style={{ width: 32, height: 32, borderRadius: 0, background: 'rgba(11,164,219,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0BA4DB', fontWeight: 700, fontSize: 16, marginBottom: 8 }}>P</div>
-              <h4 style={{ fontSize: 13, fontWeight: 700, color: T.textPrimary, marginBottom: 4 }}>Paystack</h4>
-              <p style={{ fontSize: 12, color: T.textSecondary }}>Primary NGN Processor.</p>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderTop: `1px solid ${T.borderLight}`, paddingTop: 12, marginTop: 12 }}>
-                <div>
-                  <p style={{ fontSize: 10, color: T.textMuted, textTransform: 'uppercase', marginBottom: 4 }}>Success Rate</p>
-                  <p style={{ fontSize: 14, fontWeight: 600, color: T.textPrimary }}>99.4%</p>
-                </div>
-                <ArrowRight size={16} color={T.textMuted} />
-              </div>
+          {loadingData ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: T.textMuted, fontSize: 13 }}>
+              <Loader2 size={16} className="spin" /> Loading live data…
             </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
+              {gateways.map(gw => {
+                const gwS = gwSummary(gw)
+                const gwSt = gwStatus(gw)
+                const color = getGwColor(gw)
+                const label = getGwLabel(gw)
+                const gwStatusLabel = getGwStatus(gw)
+                const isActive = gwStatusLabel === 'Active'
+                const isInactive = gwStatusLabel === 'Inactive'
+                const dotColor = isActive ? T.accent : isInactive ? T.textMuted : T.textSecondary
+                const dotLabel = isActive ? 'Active' : isInactive ? 'Inactive' : 'Standby'
+                const configured = gwSt.configured ?? false
+                return (
+                  <div
+                    key={gw}
+                    onClick={() => setSelectedGateway(gw)}
+                    style={{
+                      border: isActive ? `2px solid ${T.accent}` : `1px solid ${T.borderLight}`,
+                      background: isActive ? `${T.accent}0d` : T.bgCard,
+                      borderRadius: 0, padding: 16, cursor: 'pointer', position: 'relative',
+                      opacity: isInactive ? 0.6 : 1, transition: 'box-shadow 0.15s',
+                    }}
+                  >
+                    <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ width: 7, height: 7, borderRadius: '50%', background: dotColor }} />
+                      <span style={{ fontSize: 10, color: dotColor, fontWeight: 700, textTransform: 'uppercase' }}>{dotLabel}</span>
+                    </div>
+                    <div style={{ width: 32, height: 32, borderRadius: 0, background: `${color}1a`, display: 'flex', alignItems: 'center', justifyContent: 'center', color, fontWeight: 700, fontSize: 16, marginBottom: 8 }}>{label}</div>
+                    <h4 style={{ fontSize: 13, fontWeight: 700, color: T.textPrimary, marginBottom: 4, textTransform: 'capitalize' }}>{gw}</h4>
+                    <p style={{ fontSize: 12, color: T.textSecondary }}>
+                      {configured ? (gw === 'paystack' ? 'Primary NGN Processor.' : gw === 'flutterwave' ? 'Failover Processor.' : 'International Cards.') : 'Keys not configured.'}
+                    </p>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderTop: `1px solid ${T.borderLight}`, paddingTop: 12, marginTop: 12 }}>
+                      <div>
+                        {isInactive ? (
+                          <><p style={{ fontSize: 10, color: T.textMuted, textTransform: 'uppercase', marginBottom: 4 }}>Status</p><p style={{ fontSize: 14, fontWeight: 600, color: T.textPrimary }}>Needs Setup</p></>
+                        ) : (
+                          <><p style={{ fontSize: 10, color: T.textMuted, textTransform: 'uppercase', marginBottom: 4 }}>Success Rate</p><p style={{ fontSize: 14, fontWeight: 600, color: T.textPrimary }}>{gwS.success_rate !== undefined ? `${gwS.success_rate}%` : '—'}</p></>
+                        )}
+                      </div>
+                      <ArrowRight size={16} color={T.textMuted} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
 
-            {/* Flutterwave */}
-            <div style={{ border: `1px solid ${T.borderLight}`, background: T.bgCard, borderRadius: 0, padding: 16, cursor: 'pointer', position: 'relative' }}>
-              <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: T.textSecondary }} />
-                <span style={{ fontSize: 10, color: T.textSecondary, fontWeight: 700, textTransform: 'uppercase' }}>Standby</span>
-              </div>
-              <div style={{ width: 32, height: 32, borderRadius: 0, background: 'rgba(251,145,41,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FB9129', fontWeight: 700, fontSize: 16, marginBottom: 8 }}>F</div>
-              <h4 style={{ fontSize: 13, fontWeight: 700, color: T.textPrimary, marginBottom: 4 }}>Flutterwave</h4>
-              <p style={{ fontSize: 12, color: T.textSecondary }}>Failover Processor.</p>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderTop: `1px solid ${T.borderLight}`, paddingTop: 12, marginTop: 12 }}>
-                <div>
-                  <p style={{ fontSize: 10, color: T.textMuted, textTransform: 'uppercase', marginBottom: 4 }}>Success Rate</p>
-                  <p style={{ fontSize: 14, fontWeight: 600, color: T.textPrimary }}>98.1%</p>
+          {/* Side Drawer */}
+          {selectedGateway && (
+            <div
+              style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', justifyContent: 'flex-end' }}
+              onClick={() => { setSelectedGateway(null); setTestResult(null); setActionMsg(null) }}
+            >
+              <div
+                style={{ width: 420, height: '100%', backgroundColor: T.bgPanel, borderLeft: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', boxShadow: '-8px 0 40px rgba(0,0,0,0.25)', overflowY: 'auto' }}
+                onClick={e => e.stopPropagation()}
+              >
+                {/* Drawer Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: `1px solid ${T.borderLight}`, position: 'sticky', top: 0, background: T.bgPanel, zIndex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 0, background: `${getGwColor(selectedGateway)}1a`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: getGwColor(selectedGateway), fontWeight: 800, fontSize: 16 }}>
+                      {getGwLabel(selectedGateway)}
+                    </div>
+                    <div>
+                      <h2 style={{ fontSize: 16, fontWeight: 700, color: T.textPrimary, textTransform: 'capitalize' }}>{selectedGateway}</h2>
+                      <p style={{ fontSize: 11, color: isPrimary ? T.accent : T.textMuted }}>{isPrimary ? '● Primary Gateway' : '○ Standby'}</p>
+                    </div>
+                  </div>
+                  <X size={22} color={T.textMuted} style={{ cursor: 'pointer' }} onClick={() => { setSelectedGateway(null); setTestResult(null); setActionMsg(null) }} />
                 </div>
-                <ArrowRight size={16} color={T.textMuted} />
-              </div>
-            </div>
 
-            {/* Stripe */}
-            <div style={{ border: `1px solid ${T.borderLight}`, background: T.bgCard, borderRadius: 0, padding: 16, cursor: 'pointer', position: 'relative', opacity: 0.6 }}>
-              <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: T.textMuted }} />
-                <span style={{ fontSize: 10, color: T.textMuted, fontWeight: 700, textTransform: 'uppercase' }}>Inactive</span>
-              </div>
-              <div style={{ width: 32, height: 32, borderRadius: 0, background: 'rgba(99,91,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#635BFF', fontWeight: 700, fontSize: 16, marginBottom: 8 }}>S</div>
-              <h4 style={{ fontSize: 13, fontWeight: 700, color: T.textPrimary, marginBottom: 4 }}>Stripe</h4>
-              <p style={{ fontSize: 12, color: T.textSecondary }}>International Cards.</p>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderTop: `1px solid ${T.borderLight}`, paddingTop: 12, marginTop: 12 }}>
-                <div>
-                  <p style={{ fontSize: 10, color: T.textMuted, textTransform: 'uppercase', marginBottom: 4 }}>Status</p>
-                  <p style={{ fontSize: 14, fontWeight: 600, color: T.textPrimary }}>Needs Setup</p>
+                <div style={{ flex: 1, padding: 24, display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+                  {/* Configuration Status */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12, background: isConfigured ? `${T.accent}0d` : 'rgba(239,68,68,0.07)', border: `1px solid ${isConfigured ? T.accent + '33' : 'rgba(239,68,68,0.3)'}`, borderRadius: 0 }}>
+                    {isConfigured ? <CheckCircle size={16} color={T.accent} /> : <AlertCircle size={16} color="#ef4444" />}
+                    <span style={{ fontSize: 13, fontWeight: 600, color: isConfigured ? T.accent : '#ef4444' }}>
+                      {isConfigured ? 'Keys configured — Ready to process payments' : 'API keys not configured in environment'}
+                    </span>
+                  </div>
+
+                  {/* API Keys */}
+                  <div>
+                    <h3 style={{ fontSize: 13, fontWeight: 700, color: T.textSecondary, marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>API Keys</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {/* Public Key */}
+                      <div>
+                        <label style={{ fontSize: 11, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>Public Key</label>
+                        <div style={{ background: T.bgCard, padding: '10px 12px', border: `1px solid ${T.borderLight}`, marginTop: 5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 12, color: T.textPrimary, fontFamily: 'monospace', wordBreak: 'break-all', flex: 1 }}>
+                            {revealedKeys[publicRevealKey] ? publicKey : publicKey.replace(/(?<=.{6}).(?=.{4})/g, '*')}
+                          </span>
+                          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                            <button
+                              onClick={() => setRevealedKeys(prev => ({ ...prev, [publicRevealKey]: !prev[publicRevealKey] }))}
+                              style={{ background: 'none', border: 'none', color: T.accent, fontSize: 11, cursor: 'pointer', fontWeight: 600, padding: '2px 4px' }}
+                            >{revealedKeys[publicRevealKey] ? 'Hide' : 'Reveal'}</button>
+                            <button
+                              onClick={() => handleCopy(publicKey, publicRevealKey)}
+                              style={{ background: 'none', border: 'none', color: copied === publicRevealKey ? T.accent : T.textMuted, cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                              title="Copy to clipboard"
+                            >
+                              {copied === publicRevealKey ? <CheckCircle size={13} /> : <Copy size={13} />}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      {/* Secret Key */}
+                      <div>
+                        <label style={{ fontSize: 11, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>Secret Key</label>
+                        <div style={{ background: T.bgCard, padding: '10px 12px', border: `1px solid ${T.borderLight}`, marginTop: 5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 12, color: T.textPrimary, fontFamily: 'monospace', flex: 1 }}>
+                            {revealedKeys[revealKey] ? secretKey : '••••••••••••••••'}
+                          </span>
+                          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                            <button
+                              onClick={() => setRevealedKeys(prev => ({ ...prev, [revealKey]: !prev[revealKey] }))}
+                              style={{ background: 'none', border: 'none', color: T.accent, fontSize: 11, cursor: 'pointer', fontWeight: 600, padding: '2px 4px' }}
+                            >{revealedKeys[revealKey] ? 'Hide' : 'Reveal'}</button>
+                            <button
+                              onClick={() => handleCopy(secretKey, revealKey)}
+                              style={{ background: 'none', border: 'none', color: copied === revealKey ? T.accent : T.textMuted, cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                              title="Copy to clipboard"
+                            >
+                              {copied === revealKey ? <CheckCircle size={13} /> : <Copy size={13} />}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Performance Metrics */}
+                  <div>
+                    <h3 style={{ fontSize: 13, fontWeight: 700, color: T.textSecondary, marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>Performance Metrics (Today)</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <div style={{ background: T.bgCard, padding: 14, border: `1px solid ${T.borderLight}` }}>
+                        <span style={{ fontSize: 11, color: T.textMuted, display: 'block', marginBottom: 6 }}>Success Rate</span>
+                        <span style={{ fontSize: 20, fontWeight: 800, color: T.textPrimary }}>
+                          {drawerSummary.success_rate !== undefined ? `${drawerSummary.success_rate}%` : '—'}
+                        </span>
+                      </div>
+                      <div style={{ background: T.bgCard, padding: 14, border: `1px solid ${T.borderLight}` }}>
+                        <span style={{ fontSize: 11, color: T.textMuted, display: 'block', marginBottom: 6 }}>Transactions</span>
+                        <span style={{ fontSize: 20, fontWeight: 800, color: T.textPrimary }}>
+                          {drawerSummary.attempts !== undefined ? drawerSummary.attempts : '—'}
+                        </span>
+                      </div>
+                      <div style={{ background: T.bgCard, padding: 14, border: `1px solid ${T.borderLight}` }}>
+                        <span style={{ fontSize: 11, color: T.textMuted, display: 'block', marginBottom: 6 }}>Successful</span>
+                        <span style={{ fontSize: 20, fontWeight: 800, color: T.accent }}>
+                          {drawerSummary.success !== undefined ? drawerSummary.success : '—'}
+                        </span>
+                      </div>
+                      <div style={{ background: T.bgCard, padding: 14, border: `1px solid ${T.borderLight}` }}>
+                        <span style={{ fontSize: 11, color: T.textMuted, display: 'block', marginBottom: 6 }}>Failed</span>
+                        <span style={{ fontSize: 20, fontWeight: 800, color: drawerSummary.failed > 0 ? '#ef4444' : T.textPrimary }}>
+                          {drawerSummary.failed !== undefined ? drawerSummary.failed : '—'}
+                        </span>
+                      </div>
+                      <div style={{ background: T.bgCard, padding: 14, border: `1px solid ${T.borderLight}`, gridColumn: 'span 2' }}>
+                        <span style={{ fontSize: 11, color: T.textMuted, display: 'block', marginBottom: 6 }}>Revenue Today</span>
+                        <span style={{ fontSize: 22, fontWeight: 800, color: T.textPrimary }}>
+                          {drawerSummary.revenue_today !== undefined ? formatRevenue(drawerSummary.revenue_today) : '—'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Test Connection Result */}
+                  {testResult && (
+                    <div style={{ padding: 14, background: testResult.success ? `${T.accent}0d` : 'rgba(239,68,68,0.07)', border: `1px solid ${testResult.success ? T.accent + '44' : 'rgba(239,68,68,0.3)'}`, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {testResult.success ? <CheckCircle size={16} color={T.accent} /> : <AlertCircle size={16} color="#ef4444" />}
+                        <span style={{ fontSize: 13, fontWeight: 700, color: testResult.success ? T.accent : '#ef4444' }}>
+                          {testResult.success ? testResult.message : testResult.error}
+                        </span>
+                      </div>
+                      {testResult.latency_ms !== undefined && (
+                        <span style={{ fontSize: 11, color: T.textMuted, marginLeft: 24 }}>Latency: {testResult.latency_ms}ms · HTTP {testResult.http_status}</span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Action Message */}
+                  {actionMsg && (
+                    <div style={{ padding: 12, background: actionMsg.ok ? `${T.accent}0d` : 'rgba(239,68,68,0.07)', border: `1px solid ${actionMsg.ok ? T.accent + '33' : 'rgba(239,68,68,0.3)'}`, fontSize: 13, color: actionMsg.ok ? T.accent : '#ef4444' }}>
+                      {actionMsg.text}
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div>
+                    <h3 style={{ fontSize: 13, fontWeight: 700, color: T.textSecondary, marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>Actions</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {/* Test Connection */}
+                      {selectedGateway !== 'stripe' && (
+                        <button
+                          onClick={handleTestConnection}
+                          disabled={testing}
+                          style={{ padding: '12px 16px', background: `${T.accent}1a`, color: T.accent, border: `1px solid ${T.accent}33`, fontWeight: 700, fontSize: 13, cursor: testing ? 'not-allowed' : 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, opacity: testing ? 0.7 : 1 }}
+                        >
+                          {testing ? <Loader2 size={14} className="spin" /> : <Zap size={14} />}
+                          {testing ? 'Testing…' : 'Test Connection'}
+                        </button>
+                      )}
+                      {/* Make Primary / Standby */}
+                      {selectedGateway !== 'stripe' && (
+                        <button
+                          onClick={handleSetPrimary}
+                          disabled={savingPrimary}
+                          style={{ padding: '12px 16px', background: T.bgCard, color: T.textPrimary, border: `1px solid ${T.borderLight}`, fontWeight: 700, fontSize: 13, cursor: savingPrimary ? 'not-allowed' : 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, opacity: savingPrimary ? 0.7 : 1 }}
+                        >
+                          {savingPrimary ? <Loader2 size={14} className="spin" /> : <Signal size={14} />}
+                          {savingPrimary ? 'Saving…' : isPrimary ? 'Set Flutterwave as Primary' : 'Make Primary Gateway'}
+                        </button>
+                      )}
+                      {selectedGateway === 'stripe' && (
+                        <div style={{ padding: 14, background: T.bgCard, border: `1px solid ${T.borderLight}`, fontSize: 12, color: T.textMuted, textAlign: 'center' }}>
+                          Stripe configuration requires server-side environment variables. Contact your DevOps team.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
                 </div>
-                <Settings size={16} color={T.textMuted} />
               </div>
             </div>
-          </div>
+          )}
         </section>
 
         {/* Wallet API */}
@@ -1067,7 +1353,9 @@ function IntegrationsReplica() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: T.bgCard, padding: 12, border: `1px solid ${T.borderLight}`, borderRadius: 0 }}>
               <div>
                 <p style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary }}>Webhook Endpoints</p>
-                <p style={{ fontSize: 12, color: T.textSecondary }}>2 Active Listeners</p>
+                <p style={{ fontSize: 12, color: T.textSecondary }}>
+                  {loadingData ? '…' : `${statusData?.payments?.paystack?.configured ? 1 : 0} + ${statusData?.payments?.flutterwave?.configured ? 1 : 0} Active Listeners`}
+                </p>
               </div>
               <button style={{ background: 'none', border: 'none', color: T.accent, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Manage</button>
             </div>
@@ -1092,7 +1380,9 @@ function IntegrationsReplica() {
                 <h4 style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <MapPin size={14} color="#4285F4" /> Google Maps Platform
                 </h4>
-                <span style={{ fontSize: 10, padding: '2px 6px', background: 'transparent', color: T.textSecondary, borderRadius: 0 }}>v3.exp</span>
+                <span style={{ fontSize: 10, padding: '2px 6px', background: 'transparent', color: T.textSecondary, borderRadius: 0 }}>
+                  {loadingData ? '…' : statusData?.routing?.providers?.google?.available ? 'Configured' : 'Not Configured'}
+                </span>
               </div>
               <div style={{ background: T.bgCard, border: `1px solid ${T.borderLight}`, padding: 12, borderRadius: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -1100,30 +1390,28 @@ function IntegrationsReplica() {
                   <Copy size={12} color={T.textMuted} style={{ cursor: 'pointer' }} />
                 </div>
                 <div style={{ background: 'transparent', padding: '4px 8px', fontSize: 11, fontFamily: 'monospace', color: T.textPrimary, marginBottom: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  AIzaSyD-*************************
+                  {loadingData ? '…' : statusData?.routing?.providers?.google?.available ? 'AIzaSyD-*************************' : 'Not set'}
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: T.textSecondary, marginBottom: 4 }}>
-                  <span>Requests today:</span>
-                  <span style={{ fontWeight: 700, color: T.textPrimary }}>14,205</span>
-                </div>
-                <div style={{ width: '100%', height: 4, background: 'transparent', borderRadius: 0 }}>
-                  <div style={{ width: '45%', height: '100%', background: T.accent, borderRadius: 0 }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: T.textSecondary }}>
+                  <span>Active routing provider:</span>
+                  <span style={{ fontWeight: 700, color: T.textPrimary, textTransform: 'capitalize' }}>{loadingData ? '…' : config?.routing_provider || 'haversine'}</span>
                 </div>
               </div>
             </div>
 
-            {/* OpenWeather */}
+            {/* OSRM */}
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <h4 style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Cloud size={14} color="#EB6E4B" /> OpenWeather API
+                  <Route size={14} color="#EB6E4B" /> OSRM (Open Routing)
                 </h4>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.accent }} />
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: loadingData ? T.textMuted : statusData?.routing?.providers?.osrm?.available ? T.accent : T.textMuted }} />
               </div>
               <div style={{ background: T.bgCard, border: `1px solid ${T.borderLight}`, padding: 12, borderRadius: 0 }}>
-                <p style={{ fontSize: 11, color: T.textSecondary, marginBottom: 8 }}>Used for surge pricing algorithms during heavy rain.</p>
+                <p style={{ fontSize: 11, color: T.textSecondary, marginBottom: 8 }}>Open-source routing engine for campus geofencing.</p>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: T.textMuted }}>
-                  <Clock size={12} /> Last synced: 2 mins ago
+                  <Signal size={12} />
+                  {loadingData ? 'Checking…' : statusData?.routing?.providers?.osrm?.available ? 'OSRM endpoint configured' : 'OSRM not configured — using Haversine'}
                 </div>
               </div>
             </div>
@@ -1138,29 +1426,19 @@ function IntegrationsReplica() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 12, background: T.bgCard, border: `1px solid ${T.borderLight}`, borderRadius: 0, cursor: 'pointer' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 24, height: 24, background: 'rgba(73,184,130,0.1)', color: '#49B882', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, borderRadius: 0 }}>S</div>
-                <span style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary }}>Segment CDP</span>
+            {[
+              { label: 'Segment CDP', color: '#49B882', l: 'S' },
+              { label: 'Mixpanel', color: '#7856FF', l: 'M' },
+              { label: 'Amplitude', color: '#205CBA', l: 'A', paused: true },
+            ].map(item => (
+              <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 12, background: T.bgCard, border: `1px solid ${T.borderLight}`, borderRadius: 0, cursor: 'pointer', opacity: item.paused ? 0.6 : 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 24, height: 24, background: `${item.color}1a`, color: item.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, borderRadius: 0 }}>{item.l}</div>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary }}>{item.label}</span>
+                </div>
+                {item.paused ? <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: T.textMuted }}>Paused</span> : <Settings size={16} color={T.textMuted} />}
               </div>
-              <Settings size={16} color={T.textMuted} />
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 12, background: T.bgCard, border: `1px solid ${T.borderLight}`, borderRadius: 0, cursor: 'pointer' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 24, height: 24, background: 'rgba(120,86,255,0.1)', color: '#7856FF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, borderRadius: 0 }}>M</div>
-                <span style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary }}>Mixpanel</span>
-              </div>
-              <Settings size={16} color={T.textMuted} />
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 12, background: T.bgCard, border: `1px solid ${T.borderLight}`, borderRadius: 0, cursor: 'pointer', opacity: 0.6 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 24, height: 24, background: 'rgba(32,92,186,0.1)', color: '#205CBA', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, borderRadius: 0 }}>A</div>
-                <span style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary }}>Amplitude</span>
-              </div>
-              <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: T.textMuted }}>Paused</span>
-            </div>
+            ))}
           </div>
         </section>
 
@@ -1176,9 +1454,16 @@ function IntegrationsReplica() {
             </div>
             
             <div style={{ display: 'flex', gap: 8 }}>
-              <div style={{ flex: 1, background: T.bgCard, border: `1px solid ${T.borderLight}`, padding: '8px 0', display: 'flex', justifyContent: 'center', cursor: 'pointer', borderRadius: 0, fontWeight: 700, color: T.textPrimary }}>G</div>
-              <div style={{ flex: 1, background: T.bgCard, border: `1px solid ${T.borderLight}`, padding: '8px 0', display: 'flex', justifyContent: 'center', cursor: 'pointer', borderRadius: 0, fontWeight: 700, color: T.textPrimary }}>M</div>
-              <div style={{ flex: 1, background: T.bgCard, border: `1px solid ${T.borderLight}`, padding: '8px 0', display: 'flex', justifyContent: 'center', cursor: 'pointer', borderRadius: 0, fontWeight: 700, color: T.textPrimary, opacity: 0.5 }}>O</div>
+              {[
+                { l: 'G', label: 'Google', key: 'auth_google_enabled' },
+                { l: 'M', label: 'Microsoft', key: null },
+                { l: 'O', label: 'Other', key: null, disabled: true },
+              ].map(auth => (
+                <div key={auth.l} style={{ flex: 1, background: T.bgCard, border: `1px solid ${(auth.key && config?.[auth.key]) ? T.accent : T.borderLight}`, padding: '8px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', borderRadius: 0, opacity: auth.disabled ? 0.4 : 1, gap: 4 }}>
+                  <span style={{ fontWeight: 800, color: (auth.key && config?.[auth.key]) ? T.accent : T.textPrimary, fontSize: 14 }}>{auth.l}</span>
+                  <span style={{ fontSize: 9, color: T.textMuted }}>{(auth.key && config?.[auth.key]) ? 'On' : 'Off'}</span>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -1202,6 +1487,7 @@ function IntegrationsReplica() {
     </div>
   )
 }
+
 
 function FeatureFlagsReplica() {
   const panelStyle = {
@@ -1709,6 +1995,13 @@ export default function SettingsPage() {
           overflow-y: hidden;
         }
 
+        /* If element has both classes, allow vertical scrolling but keep scrollbar hidden */
+        .account-main.scroll-col {
+          overflow-y: auto;
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        .account-main.scroll-col::-webkit-scrollbar { display: none; }
         .gis-grid {
           display: grid;
           grid-template-columns: repeat(12, 1fr);

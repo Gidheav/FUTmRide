@@ -1,10 +1,11 @@
-﻿from django.urls import path
+from django.urls import path
 from .views import (
     DriverPayoutMethodView,
     DriverWalletSummaryView,
     DriverWithdrawalCreateView,
     FlutterwaveWebhookView,
     GatewaySummaryView,
+    GatewayTestConnectionView,
     InitiateTopUpView,
     PaystackWebhookView,
     TopUpStatusView,
@@ -23,6 +24,7 @@ urlpatterns = [
     path('wallet/topup/', InitiateTopUpView.as_view(), name='wallet-topup'),
     path('wallet/topup/status/<str:reference>/', TopUpStatusView.as_view(), name='wallet-topup-status'),
     path('gateways/summary/', GatewaySummaryView.as_view(), name='gateway-summary'),
+    path('gateways/test/', GatewayTestConnectionView.as_view(), name='gateway-test-connection'),
     path('webhooks/paystack/', PaystackWebhookView.as_view(), name='webhook-paystack'),
     path('webhooks/flutterwave/', FlutterwaveWebhookView.as_view(), name='webhook-flutterwave'),
 ]

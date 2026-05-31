@@ -967,3 +967,107 @@ class FlutterwaveWebhookView(APIView):
                 logger.error('flutterwave_webhook_error ref=%s error=%s', reference, str(e))
 
         return Response(status=status.HTTP_200_OK)
+
+
+class GatewayTestConnectionView(APIView):
+    """
+    Test whether the configured gateway API keys are valid.
+    Makes a lightweight read-only API call to each gateway and returns the result.
+    """
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
+
+    def post(self, request):
+        gateway = (request.data.get('gateway') or '').lower().strip()
+        if gateway not in ('paystack', 'flutterwave'):
+            return Response(
+                {'error': {'code': 'INVALID_GATEWAY', 'message': 'Gateway must be paystack or flutterwave.'}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        import time
+        start = time.monotonic()
+        try:
+            if gateway == 'paystack':
+                key = getattr(settings, 'PAYSTACK_SECRET_KEY', '')
+                if not key:
+                    return Response({'success': False, 'gateway': gateway, 'error': 'PAYSTACK_SECRET_KEY not configured.'})
+                resp = requests.get(
+                    'https://api.paystack.co/bank',
+                    headers={'Authorization': f'Bearer {key}'},
+                    params={'country': 'nigeria', 'perPage': 1},
+                    timeout=10,
+                )
+                latency_ms = round((time.monotonic() - start) * 1000)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get('status') is True:
+                        return Response({
+                            'success': True,
+                            'gateway': gateway,
+                            'latency_ms': latency_ms,
+                            'http_status': resp.status_code,
+                            'message': 'Connection successful. Keys are valid.',
+                        })
+                    return Response({
+                        'success': False,
+                        'gateway': gateway,
+                        'latency_ms': latency_ms,
+                        'http_status': resp.status_code,
+                        'error': data.get('message', 'Unexpected response from Paystack.'),
+                    })
+                return Response({
+                    'success': False,
+                    'gateway': gateway,
+                    'latency_ms': latency_ms,
+                    'http_status': resp.status_code,
+                    'error': f'Paystack returned HTTP {resp.status_code}. Check your secret key.',
+                })
+            else:  # flutterwave
+                key = getattr(settings, 'FLUTTERWAVE_SECRET_KEY', '')
+                if not key:
+                    return Response({'success': False, 'gateway': gateway, 'error': 'FLUTTERWAVE_SECRET_KEY not configured.'})
+                resp = requests.get(
+                    'https://api.flutterwave.com/v3/banks/NG',
+                    headers={'Authorization': f'Bearer {key}'},
+                    params={'per_page': 1},
+                    timeout=10,
+                )
+                latency_ms = round((time.monotonic() - start) * 1000)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get('status') == 'success':
+                        return Response({
+                            'success': True,
+                            'gateway': gateway,
+                            'latency_ms': latency_ms,
+                            'http_status': resp.status_code,
+                            'message': 'Connection successful. Keys are valid.',
+                        })
+                    return Response({
+                        'success': False,
+                        'gateway': gateway,
+                        'latency_ms': latency_ms,
+                        'http_status': resp.status_code,
+                        'error': data.get('message', 'Unexpected response from Flutterwave.'),
+                    })
+                return Response({
+                    'success': False,
+                    'gateway': gateway,
+                    'latency_ms': latency_ms,
+                    'http_status': resp.status_code,
+                    'error': f'Flutterwave returned HTTP {resp.status_code}. Check your secret key.',
+                })
+        except requests.Timeout:
+            latency_ms = round((time.monotonic() - start) * 1000)
+            return Response({
+                'success': False,
+                'gateway': gateway,
+                'latency_ms': latency_ms,
+                'error': 'Connection timed out. The gateway API may be unreachable.',
+            })
+        except Exception as exc:
+            logger.error('gateway_test_connection_error gateway=%s error=%s', gateway, exc)
+            return Response(
+                {'success': False, 'gateway': gateway, 'error': 'Unexpected error during connection test.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
