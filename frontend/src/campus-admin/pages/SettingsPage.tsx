@@ -1036,7 +1036,9 @@ function IntegrationsReplica() {
       const res = await api.post('/payments/gateways/test/', { gateway: selectedGateway })
       setTestResult(res.data)
     } catch (err: any) {
-      setTestResult({ success: false, error: err.response?.data?.error || 'Test failed.' })
+      const errorObj = err.response?.data?.error;
+      const errorMsg = typeof errorObj === 'string' ? errorObj : errorObj?.message || 'Test failed.';
+      setTestResult({ success: false, error: errorMsg })
     } finally {
       setTesting(false)
     }
@@ -1167,22 +1169,21 @@ function IntegrationsReplica() {
                       {getGwLabel(selectedGateway)}
                     </div>
                     <div>
-                      <h2 style={{ fontSize: 16, fontWeight: 700, color: T.textPrimary, textTransform: 'capitalize' }}>{selectedGateway}</h2>
-                      <p style={{ fontSize: 11, color: isPrimary ? T.accent : T.textMuted }}>{isPrimary ? '● Primary Gateway' : '○ Standby'}</p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <h2 style={{ fontSize: 16, fontWeight: 700, color: T.textPrimary, textTransform: 'capitalize' }}>{selectedGateway}</h2>
+                        {isConfigured ? (
+                          <span style={{ fontSize: 10, background: `${T.accent}1a`, color: T.accent, padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>Ready</span>
+                        ) : (
+                          <span style={{ fontSize: 10, background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>Not Configured</span>
+                        )}
+                      </div>
+                      <p style={{ fontSize: 11, color: isPrimary ? T.accent : T.textMuted, marginTop: 2 }}>{isPrimary ? '● Primary Gateway' : '○ Standby'}</p>
                     </div>
                   </div>
                   <X size={22} color={T.textMuted} style={{ cursor: 'pointer' }} onClick={() => { setSelectedGateway(null); setTestResult(null); setActionMsg(null) }} />
                 </div>
 
                 <div style={{ flex: 1, padding: 24, display: 'flex', flexDirection: 'column', gap: 24 }}>
-
-                  {/* Configuration Status */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12, background: isConfigured ? `${T.accent}0d` : 'rgba(239,68,68,0.07)', border: `1px solid ${isConfigured ? T.accent + '33' : 'rgba(239,68,68,0.3)'}`, borderRadius: 0 }}>
-                    {isConfigured ? <CheckCircle size={16} color={T.accent} /> : <AlertCircle size={16} color="#ef4444" />}
-                    <span style={{ fontSize: 13, fontWeight: 600, color: isConfigured ? T.accent : '#ef4444' }}>
-                      {isConfigured ? 'Keys configured — Ready to process payments' : 'API keys not configured in environment'}
-                    </span>
-                  </div>
 
                   {/* API Keys */}
                   <div>
