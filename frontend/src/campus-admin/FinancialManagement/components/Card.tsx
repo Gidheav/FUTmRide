@@ -14,10 +14,8 @@ export const Card = memo(({ children, className = '', glow = '', style }: {
       style={{
         background: T.bgPanel,
         border: `1px solid ${T.border}`,
-        borderRadius: 12,
-        boxShadow: glow
-          ? `0 0 0 1px ${accent}22, 0 4px 24px ${accent}11`
-          : '0 4px 20px rgba(0,0,0,0.05)',
+        borderRadius: 0,
+        boxShadow: 'none',
         ...style,
       }}
     >

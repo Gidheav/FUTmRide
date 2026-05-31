@@ -59,7 +59,7 @@ export const TransactionsTab = memo(({ txs, period }: { txs: Tx[]; period: Perio
 
   // Inline Th — intentionally kept local (typed to SortK, not global SortKey)
   const Th = ({ label, k, cls = '' }: { label: string; k: SortK; cls?: string }) => (
-    <th className={`px-3 py-2.5 text-left cursor-pointer select-none group hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-colors ${cls}`} onClick={() => sortBy(k)}>
+    <th className={`px-4 py-3 text-left cursor-pointer select-none group hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-colors ${cls}`} onClick={() => sortBy(k)}>
       <div className="flex items-center gap-1">
         <span className={`text-[9px] font-sans font-semibold uppercase tracking-widest ${sortK===k ? 'text-emerald-500 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-600'}`}>{label}</span>
         <Icon name={sortK===k ? (sortD==='asc'?'arrow_upward':'arrow_downward') : 'unfold_more'} size={10} className={sortK===k ? 'text-emerald-500 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-700 group-hover:text-slate-600 dark:group-hover:text-slate-500'} />
@@ -72,7 +72,7 @@ export const TransactionsTab = memo(({ txs, period }: { txs: Tx[]; period: Perio
       {/* ── LEFT: table ── */}
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
         {/* Toolbar */}
-        <div className="fh-toolbar px-4 py-2.5 flex items-center gap-2 flex-shrink-0 overflow-x-auto" style={THIN}>
+        <div className="fh-toolbar px-6 py-3 flex items-center gap-2 flex-shrink-0 overflow-x-auto" style={THIN}>
           <div className="relative w-52 flex-shrink-0">
             <Icon name="search" size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-600" />
             <input type="text" placeholder="Ref · email · name…" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
@@ -102,9 +102,9 @@ export const TransactionsTab = memo(({ txs, period }: { txs: Tx[]; period: Perio
                 <Th label="REF"    k="created_at" cls={panelOpen ? 'hidden 2xl:table-cell' : 'hidden md:table-cell'} />
                 <Th label="AMOUNT" k="amount"     />
                 <Th label="STATUS" k="status"     cls={panelOpen ? 'hidden xl:table-cell' : 'hidden sm:table-cell'} />
-                <th className={`px-3 py-2.5 text-left ${panelOpen ? 'hidden' : 'hidden lg:table-cell'}`}><span className="text-[9px] font-sans font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-600">METHOD</span></th>
+                <th className={`px-4 py-3 text-left ${panelOpen ? 'hidden' : 'hidden lg:table-cell'}`}><span className="text-[9px] font-sans font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-600">METHOD</span></th>
                 <Th label="DATE"   k="created_at" cls={panelOpen ? 'hidden' : 'hidden xl:table-cell'} />
-                <th className="px-3 py-2.5 text-right"><span className="text-[9px] font-sans font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-600">ACTION</span></th>
+                <th className="px-4 py-3 text-right"><span className="text-[9px] font-sans font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-600">ACTION</span></th>
               </tr>
             </thead>
             <tbody>
@@ -115,7 +115,7 @@ export const TransactionsTab = memo(({ txs, period }: { txs: Tx[]; period: Perio
                   return (
                     <tr key={t.id} onClick={() => setDetail(p => p?.id === t.id ? null : t)}
                       className={`border-b cursor-pointer transition-colors ${sel ? 'fh-row-sel' : i%2===0 ? 'fh-row-even' : 'fh-row-odd'}`}>
-                      <td className="px-3 py-2.5">
+                      <td className="px-4 py-3">
                         <div className="flex items-center gap-2.5">
                           <Avatar id={t.id} name={t.user_name||t.user_email} cls="w-7 h-7 text-[10px]" />
                           <div className="min-w-0">
@@ -124,10 +124,10 @@ export const TransactionsTab = memo(({ txs, period }: { txs: Tx[]; period: Perio
                           </div>
                         </div>
                       </td>
-                      <td className={`px-3 py-2.5 ${panelOpen ? 'hidden 2xl:table-cell' : 'hidden md:table-cell'}`}>
+                      <td className={`px-4 py-3 ${panelOpen ? 'hidden 2xl:table-cell' : 'hidden md:table-cell'}`}>
                         <span className="font-mono text-[10px] text-slate-500 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 rounded truncate block max-w-[160px]">{t.reference}</span>
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-4 py-3">
                         <span className={`text-xs font-mono font-bold ${t.status==='SUCCESS' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400'}`}>{compact(t.amount)}</span>
                       </td>
                       <td className={`px-3 py-2.5 ${panelOpen ? 'hidden xl:table-cell' : 'hidden sm:table-cell'}`}><StatusPill status={t.status} /></td>

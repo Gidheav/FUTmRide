@@ -117,10 +117,10 @@ REST_FRAMEWORK = {
         "rest_framework.throttling.UserRateThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
-        "anon": "120/min",
-        "user": "300/min",
-        "auth_anon": "30/min",
-        "auth_user": "60/min",
+        "anon": "600/min",
+        "user": "1200/min",
+        "auth_anon": "300/min",
+        "auth_user": "600/min",
     },
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "EXCEPTION_HANDLER": "core.exceptions.custom_exception_handler",
@@ -140,6 +140,7 @@ SIMPLE_JWT = {
 }
 
 SESSION_MAX_AGE_DAYS = 14
+RATE_LIMIT_ENABLED = env.bool("RATE_LIMIT_ENABLED", default=True)
 
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[
     "http://localhost:5174",

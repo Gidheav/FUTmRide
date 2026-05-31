@@ -31,7 +31,7 @@ export const ReportsTab = memo(({ txs }: { txs: Tx[] }) => {
   };
 
   return (
-    <div className="p-4 sm:p-6 space-y-5">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-display font-semibold text-slate-800 dark:text-slate-300">Financial Reports</h2>
@@ -43,11 +43,11 @@ export const ReportsTab = memo(({ txs }: { txs: Tx[] }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4" style={{ gap: 2 }}>
         {REPORTS.map(r => (
           <Card key={r.id} className="overflow-hidden hover:border-slate-700 transition-all group cursor-pointer" glow={r.color}>
             <div className="h-0.5 w-full" style={{ background:`linear-gradient(90deg, ${r.color}80, ${r.color}20)` }} />
-            <div className="p-4">
+            <div className="p-6">
               <div className="flex items-start justify-between mb-3">
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{background:`${r.color}22`}}>
                   <Icon name={r.icon} size={18} style={{color:r.color}} />
@@ -74,13 +74,13 @@ export const ReportsTab = memo(({ txs }: { txs: Tx[] }) => {
       </div>
 
       <Card>
-        <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
           <span className="text-[9px] font-sans font-semibold text-slate-600 uppercase tracking-widest">Scheduled Reports</span>
           <button className="flex items-center gap-1 text-[10px] font-sans text-emerald-500 hover:text-emerald-400 transition-colors">
             <Icon name="add" size={12} />NEW SCHEDULE
           </button>
         </div>
-        <div className="p-8 flex flex-col items-center justify-center text-center">
+        <div className="p-10 flex flex-col items-center justify-center text-center">
           <div className="w-14 h-14 rounded-2xl bg-slate-800/60 border border-slate-700 flex items-center justify-center mb-3">
             <Icon name="schedule_send" size={26} className="text-slate-600" />
           </div>

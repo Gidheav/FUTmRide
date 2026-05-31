@@ -84,8 +84,8 @@ export const OverviewTab = memo(({ txs, period }: { txs: Tx[]; period: Period })
   const pendCount = current.filter(t => t.status === 'PENDING' || t.status === 'PROCESSING').length;
 
   return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6" style={{ gap: 2 }}>
         <KPICard label="Total Revenue"  value={Math.round(revenue/100)}     sub={`vs ${compact(prevRevenue)} prev period`}  spark={revSpark.map(v=>v/100)} color={T.accent} icon="payments"       delta={revDelta}          prefix="₦" />
         <KPICard label="Transactions"   value={current.length}              sub={`${success.length} successful`}            spark={txnSpark}               color={T.blue} icon="receipt_long"   delta={txDelta}                />
         <KPICard label="Success Rate"   value={sucRate}                     sub={`was ${prevSucRate}% prev period`}          spark={[prevSucRate,sucRate]}   color={T.purple} icon="verified"       delta={sucRate-prevSucRate} prefix="%" />
@@ -94,8 +94,8 @@ export const OverviewTab = memo(({ txs, period }: { txs: Tx[]; period: Period })
         <KPICard label="Pending"        value={pendCount}                   sub="awaiting confirmation"                      spark={Array(10).fill(pendCount)} color={T.textMuted} icon="hourglass_top" />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <Card className="xl:col-span-2 p-5" glow={T.accent}>
+      <div className="grid grid-cols-1 xl:grid-cols-3" style={{ gap: 2 }}>
+        <Card className="xl:col-span-2 p-6" glow={T.accent}>
           <div className="flex items-start justify-between mb-4">
             <div>
               <p className="text-[10px] font-sans font-semibold uppercase tracking-widest" style={{ color: T.textMuted }}>Revenue Trend</p>
@@ -108,7 +108,7 @@ export const OverviewTab = memo(({ txs, period }: { txs: Tx[]; period: Period })
           </div>
           <AreaChart data={revChart} color={T.accent} h={160} />
         </Card>
-        <Card className="p-5">
+        <Card className="p-6">
           <p className="text-[10px] font-sans font-semibold uppercase tracking-widest mb-4" style={{ color: T.textMuted }}>Giving Breakdown</p>
           <div className="flex flex-col items-center gap-4">
             <Donut segs={catData.length > 0 ? catData : [{ label: 'None', value: 1, color: '#1e293b' }]} size={140} thick={24} />
@@ -127,9 +127,9 @@ export const OverviewTab = memo(({ txs, period }: { txs: Tx[]; period: Period })
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3" style={{ gap: 2 }}>
         <Card className="lg:col-span-2">
-          <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+          <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
             <span className="text-[10px] font-sans font-semibold text-slate-500 uppercase tracking-widest">Recent Activity</span>
             <span className="text-[10px] font-sans text-slate-600">{current.length} total this period</span>
           </div>
@@ -137,7 +137,7 @@ export const OverviewTab = memo(({ txs, period }: { txs: Tx[]; period: Period })
             {recent.length === 0
               ? <p className="text-xs font-sans text-slate-600 text-center py-8">No transactions in this period</p>
               : recent.map(t => (
-                <div key={t.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-800/30 transition-colors">
+                <div key={t.id} className="flex items-center gap-3 px-6 py-3 hover:bg-slate-800/30 transition-colors">
                   <Avatar id={t.id} name={t.user_name || t.user_email} cls="w-7 h-7 text-[10px]" />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold text-slate-300 truncate">{t.user_name || t.user_email}</p>
@@ -149,7 +149,7 @@ export const OverviewTab = memo(({ txs, period }: { txs: Tx[]; period: Period })
               ))}
           </div>
         </Card>
-        <Card className="p-5">
+        <Card className="p-6">
           <p className="text-[10px] font-sans font-semibold text-slate-500 uppercase tracking-widest mb-4">Top Givers</p>
           <div className="space-y-3">
             {topG.length === 0
@@ -168,7 +168,7 @@ export const OverviewTab = memo(({ txs, period }: { txs: Tx[]; period: Period })
         </Card>
       </div>
 
-      <Card className="p-5">
+      <Card className="p-6">
         <p className="text-[10px] font-sans font-semibold text-slate-500 uppercase tracking-widest mb-4">Transaction Volume by Period</p>
         <BarViz data={revChart.map(d => ({ label: d.label, value: d.value }))} color="#3b82f6" h={80} />
       </Card>

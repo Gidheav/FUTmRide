@@ -104,6 +104,10 @@ LOGGING = {
 # CORS — explicit web origins only (native mobile apps do not use CORS)
 CORS_ALLOW_ALL_ORIGINS = False
 DEFAULT_WEB_ORIGINS = [
+    'http://localhost:5174',
+    'http://localhost:5175',
+    'http://127.0.0.1:5174',
+    'http://127.0.0.1:5175',
     'https://futmapp.vercel.app',
     'https://lrride.ng',
     'https://www.lrride.ng',

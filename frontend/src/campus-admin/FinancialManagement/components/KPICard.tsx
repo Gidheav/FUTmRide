@@ -30,7 +30,7 @@ export const KPICard = memo(({
     : animated.toLocaleString();
   const accent = color || T.accent;
   return (
-    <Card className="p-4 flex flex-col gap-3" glow={accent}>
+    <Card className="p-6 flex flex-col gap-4" glow={accent}>
       <div className="flex items-start justify-between">
         <span className="text-[10px] font-sans font-semibold uppercase tracking-widest"
           style={{ color: T.textMuted }}>

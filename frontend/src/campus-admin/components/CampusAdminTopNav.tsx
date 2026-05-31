@@ -16,6 +16,7 @@ import { T, useCampusThemeStore } from '../theme'
 import { useDispatchStore } from '../dispatchStore'
 import { useSettingsStore } from '../settingsStore'
 import { useAnalyticsStore } from '../analyticsStore'
+import { type FinancialTab, useFinancialStore } from '../financialStore'
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/' },
@@ -26,11 +27,12 @@ const NAV_ITEMS = [
   { label: 'Settings', icon: Settings, path: '/settings' },
 ]
 
-const FINANCIAL_NAV_ITEMS = [
+const FINANCIAL_NAV_ITEMS: Array<{ label: string; tab: FinancialTab }> = [
   { label: 'OVERVIEW', tab: 'overview' },
   { label: 'TRANSACTIONS', tab: 'transactions' },
   { label: 'MEMBERS', tab: 'members' },
   { label: 'REPORTS', tab: 'reports' },
+  { label: 'PAYOUTS', tab: 'payouts' },
 ]
 
 export default function CampusAdminTopNav() {
@@ -42,13 +44,12 @@ export default function CampusAdminTopNav() {
   const { wsConnected, showTraffic, setShowTraffic, showHeat, setShowHeat, showRoutes, setShowRoutes, triggerRecenter } = useDispatchStore()
   const { activeTab: settingsTab, setActiveTab: setSettingsTab } = useSettingsStore()
   const { activeTab: analyticsTab, setActiveTab: setAnalyticsTab } = useAnalyticsStore()
+  const { activeTab: financeTab, setActiveTab: setFinanceTab } = useFinancialStore()
 
   const verifyMatch = location.pathname.match(/\/users\/(.*)\/verify/)
   const verifyDriverId = verifyMatch ? verifyMatch[1] : null
   const searchParams = new URLSearchParams(location.search)
   const activeTab = searchParams.get('tab') || 'personal'
-  const financeTabParam = searchParams.get('tab')
-  const financeTab = financeTabParam && FINANCIAL_NAV_ITEMS.some((item) => item.tab === financeTabParam) ? financeTabParam : 'overview'
 
   const { data: unifiedDetail } = useQuery<any>({
     queryKey: ['admin-unified-detail', verifyDriverId],
@@ -310,7 +311,7 @@ export default function CampusAdminTopNav() {
                   background: isActive ? T.accentBg : 'transparent',
                   letterSpacing: 0.4,
                 }}
-                onClick={() => navigate(`/financial?tab=${item.tab}`)}
+                onClick={() => setFinanceTab(item.tab)}
               >
                 <span>{item.label}</span>
               </button>

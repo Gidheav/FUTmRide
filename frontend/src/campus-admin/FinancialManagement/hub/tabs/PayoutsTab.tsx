@@ -427,10 +427,10 @@ export const PayoutsTab = memo(() => {
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="p-4 sm:p-6 space-y-5">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
 
       {/* ── Balance + Initiate ── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: 2 }}>
 
         <Card className="md:col-span-2 p-6" glow="#10b981">
           <div className="flex items-start justify-between">
@@ -470,7 +470,7 @@ export const PayoutsTab = memo(() => {
           </div>
         </Card>
 
-        <Card className="p-5">
+        <Card className="p-6">
           <p className="text-[9px] font-sans font-semibold uppercase tracking-widest mb-4" style={{color:'var(--fh-text3)'}}>Withdrawal Summary</p>
           <div className="space-y-3">
             {[
@@ -490,7 +490,7 @@ export const PayoutsTab = memo(() => {
 
       {/* ── Withdrawal History ── */}
       <Card>
-        <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
           <span className="text-[9px] font-sans font-semibold text-slate-600 uppercase tracking-widest">Withdrawal History</span>
           <button onClick={fetchHistory} className="flex items-center gap-1.5 text-[10px] font-sans text-slate-600 hover:text-emerald-400 transition-colors">
             <Icon name="refresh" size={11} />Refresh

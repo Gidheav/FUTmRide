@@ -125,10 +125,10 @@ export const FH_CSS = `
 .fh-card {
   background: var(--fh-surface) !important;
   border: 1px solid var(--fh-border) !important;
-  border-radius: 12px !important;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.05) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
 }
-.fh-bar-track { background: var(--fh-surface2) !important; border-radius: 8px !important; }
+.fh-bar-track { background: var(--fh-surface2) !important; border-radius: 0 !important; }
 .fh-toolbar { background: var(--fh-surface) !important; border-bottom: 1px solid var(--fh-border) !important; }
 .fh-thead { background: var(--fh-surface2) !important; border-bottom: 1px solid var(--fh-border2) !important; }
 .fh-row-even { background: var(--fh-row-even) !important; border-color: var(--fh-border) !important; }
@@ -139,15 +139,21 @@ export const FH_CSS = `
   background: var(--fh-input-bg) !important;
   border: 1px solid var(--fh-border2) !important;
   color: var(--fh-text1) !important;
-  border-radius: 6px !important;
+  border-radius: 0 !important;
 }
 .fh-input::placeholder { color: var(--fh-text4) !important; }
 .fh-input:focus { border-color: var(--fh-accent) !important; outline: none !important; box-shadow: 0 0 0 1px var(--fh-accent-bg) !important; }
 .fh-panel { background: var(--fh-surface) !important; border-left: 1px solid var(--fh-border) !important; }
-.fh-panel-inner { background: var(--fh-surface2) !important; border-color: var(--fh-border) !important; border-radius: 12px !important; }
+.fh-panel-inner { background: var(--fh-surface2) !important; border-color: var(--fh-border) !important; border-radius: 0 !important; }
 .fh table thead tr { background: var(--fh-surface2) !important; }
 .fh .fh-divider { border-color: var(--fh-border) !important; }
 .fh { scrollbar-color: var(--fh-border2) transparent; }
+.fh .rounded-md,
+.fh .rounded-lg,
+.fh .rounded-xl,
+.fh .rounded-2xl {
+  border-radius: 0 !important;
+}
 @keyframes fh-spin { to { transform: rotate(360deg); } }
 @keyframes fh-ping { 0%,100%{opacity:.2;transform:scale(1)} 50%{opacity:.4;transform:scale(1.15)} }
 @keyframes fh-bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }

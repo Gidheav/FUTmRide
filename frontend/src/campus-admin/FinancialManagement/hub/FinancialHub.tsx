@@ -1,59 +1,39 @@
 // FinancialHub — campus admin finance shell (styled like Settings)
 import React, {
-  lazy, Suspense, useState, useEffect, useRef,
+  useState, useEffect, useRef,
   useCallback, useMemo,
 } from 'react'
 import { Download, RefreshCw, Search, X } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import type { HubTab, Period, Tx } from '../types/financial.types'
+import type { Period, Tx } from '../types/financial.types'
 import { injectFHCSS } from '../helpers/hub.helpers'
 import { compact, exportCSV, periodLabel } from '../helpers/hub.helpers'
-import { MOCK_TXS, THIN } from '../constants/hub.constants'
+import { MOCK_TXS } from '../constants/hub.constants'
 import { PeriodSelector } from '../components/PeriodSelector'
-import {
-  OverviewSkeleton,
-  TransactionsSkeleton,
-  MembersSkeleton,
-  ReportsSkeleton,
-} from '../components/SkeletonLoaders'
 import { campusPanel } from '../../shared/campusPanelStyles'
 import { T } from '../../theme'
 import apiService from '../../../services/api.service'
-
-const OverviewTab = lazy(() => import('./tabs/OverviewTab').then(m => ({ default: m.OverviewTab })))
-const TransactionsTab = lazy(() => import('./tabs/TransactionsTab').then(m => ({ default: m.TransactionsTab })))
-const MembersTab = lazy(() => import('./tabs/MembersTab').then(m => ({ default: m.MembersTab })))
-const ReportsTab = lazy(() => import('./tabs/ReportsTab').then(m => ({ default: m.ReportsTab })))
-
-type FinancialHubTab = Extract<HubTab, 'overview' | 'transactions' | 'members' | 'reports'>
-
-const HUB_TABS: FinancialHubTab[] = ['overview', 'transactions', 'members', 'reports']
-
-const getTabFromSearch = (search: string): FinancialHubTab => {
-  const tab = new URLSearchParams(search).get('tab') as FinancialHubTab | null
-  return tab && HUB_TABS.includes(tab) ? tab : 'overview'
-}
+import { useFinancialStore } from '../../financialStore'
+import { OverviewTab } from './tabs/OverviewTab'
+import { TransactionsTab } from './tabs/TransactionsTab'
+import { MembersTab } from './tabs/MembersTab'
+import { ReportsTab } from './tabs/ReportsTab'
+import { PayoutsTab } from './tabs/PayoutsTab'
 
 const FinancialHub: React.FC = () => {
   injectFHCSS()
   const location = useLocation()
   const navigate = useNavigate()
 
-  const [tab, setTab] = useState<FinancialHubTab>(() => getTabFromSearch(location.search))
+  const { activeTab: tab, setActiveTab: setFinanceTab } = useFinancialStore()
   const [period, setPeriod] = useState<Period>('30D')
   const [txs, setTxs] = useState<Tx[]>(MOCK_TXS)
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
 
   useEffect(() => {
-    const nextTab = getTabFromSearch(location.search)
-    setTab((current) => (current === nextTab ? current : nextTab))
-  }, [location.search])
-
-  const setFinanceTab = useCallback((nextTab: FinancialHubTab) => {
-    setTab(nextTab)
-    navigate(`/financial?tab=${nextTab}`)
-  }, [navigate])
+    if (location.search) navigate('/financial', { replace: true })
+  }, [location.search, navigate])
 
   useEffect(() => {
     let dead = false
@@ -153,31 +133,27 @@ const FinancialHub: React.FC = () => {
 
       <div ref={scrollRef} style={{ ...campusPanel.scrollMain, ...campusPanel.thinScroll }}>
         {tab === 'overview' && (
-          <Suspense fallback={<OverviewSkeleton />}>
-            <OverviewTab txs={txs} period={period} />
-          </Suspense>
+          <OverviewTab txs={txs} period={period} />
         )}
 
         {tab === 'transactions' && (
           <div style={{ display: 'flex', flexDirection: 'column', minHeight: 'min(70vh, 100%)' }}>
-            <Suspense fallback={<TransactionsSkeleton />}>
-              <TransactionsTab txs={txs} period={period} />
-            </Suspense>
+            <TransactionsTab txs={txs} period={period} />
           </div>
         )}
 
         {tab === 'members' && (
           <div style={{ display: 'flex', flexDirection: 'column', minHeight: 'min(70vh, 100%)' }}>
-            <Suspense fallback={<MembersSkeleton />}>
-              <MembersTab txs={txs} />
-            </Suspense>
+            <MembersTab txs={txs} />
           </div>
         )}
 
         {tab === 'reports' && (
-          <Suspense fallback={<ReportsSkeleton />}>
-            <ReportsTab txs={txs} />
-          </Suspense>
+          <ReportsTab txs={txs} />
+        )}
+
+        {tab === 'payouts' && (
+          <PayoutsTab />
         )}
 
         {loading && tab === 'overview' && (
