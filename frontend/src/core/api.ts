@@ -4,6 +4,22 @@ import { clearTokens, getAccessToken, getRefreshToken, setTokens } from './token
 const rawBase = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8002/api/v1'
 const BASE_URL = rawBase.endsWith('/') ? rawBase : `${rawBase}/`
 
+const AUTH_PUBLIC_PATHS = [
+  'auth/login/',
+  'auth/register/',
+  'auth/otp/',
+  'auth/otp/verify/',
+  'auth/password/reset/',
+  'auth/token/refresh/',
+]
+
+const normalizeApiPath = (url?: string) => (url || '').replace(/^\/+/, '')
+
+const isPublicAuthPath = (url?: string) => {
+  const path = normalizeApiPath(url).split('?')[0]
+  return AUTH_PUBLIC_PATHS.some((prefix) => path.startsWith(prefix))
+}
+
 export const getMediaUrl = (url?: string | null) => {
   if (!url) return '';
   if (url.startsWith('http')) return url;
@@ -25,9 +41,11 @@ api.interceptors.request.use(
       config.url = config.url.slice(1)
     }
     
-    const token = getAccessToken()
+    const token = isPublicAuthPath(config.url) ? null : getAccessToken()
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
+    } else if (config.headers && isPublicAuthPath(config.url)) {
+      delete config.headers.Authorization
     }
     return config
   },
@@ -38,12 +56,12 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const original = error.config as any
-    if (error.response?.status === 401 && !original._retry) {
+    if (error.response?.status === 401 && !original._retry && !isPublicAuthPath(original?.url)) {
       original._retry = true
       const refresh = getRefreshToken()
       if (refresh) {
         try {
-          const res = await axios.post(`${BASE_URL}/auth/token/refresh/`, { refresh })
+          const res = await axios.post(`${BASE_URL}auth/token/refresh/`, { refresh })
           const token = res.data.access
           setTokens(token, refresh)
           if (original.headers) original.headers.Authorization = `Bearer ${token}`

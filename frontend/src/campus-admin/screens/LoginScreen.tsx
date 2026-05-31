@@ -7,6 +7,7 @@ import toast from 'react-hot-toast'
 import { Building2 } from 'lucide-react'
 import api from '../../core/api'
 import { useAuthStore } from '../../core/authStore'
+import { clearTokens } from '../../core/tokenStorage'
 import { useNavigate } from 'react-router-dom'
 
 const schema = z.object({
@@ -52,6 +53,7 @@ export default function LoginPage() {
 
   const mutation = useMutation({
     mutationFn: async (data: FormData) => {
+      clearTokens()
       let phone = data.phone_number.trim()
       if (phone.startsWith('0') && phone.length === 11) phone = '+234' + phone.slice(1)
       const res = await api.post('/auth/login/', { ...data, phone_number: phone })
@@ -69,10 +71,11 @@ export default function LoginPage() {
       navigate('/')
     },
     onError: (error: any) => {
-      const apiError = error?.response?.data?.error
+      const body = error?.response?.data
+      const apiError = body?.error
       const message = typeof apiError === 'string'
         ? apiError
-        : apiError?.message || 'Invalid credentials.'
+        : apiError?.message || body?.detail || body?.message || 'Invalid credentials.'
       toast.error(message)
     },
   })

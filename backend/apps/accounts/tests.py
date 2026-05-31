@@ -3,6 +3,9 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework import status
 from .models import User, StudentProfile, DriverProfile, OTPVerification, StudentSignupVerificationSession, UserRole
+from django.core.management import call_command
+from django.test import override_settings
+from django.utils import timezone
 
 
 class UserRegistrationTestCase(TestCase):
@@ -274,6 +277,34 @@ class IntegrationSettingsTestCase(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
         res = self.client.post(reverse('auth-logout'), {'refresh': refresh}, format='json')
         self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+
+class SeedAdminAccountsTestCase(TestCase):
+    def test_seed_command_can_repair_campus_admin_password_and_unlock(self):
+        user = User.objects.create_user(
+            phone_number='+2348000000004',
+            email='campus.admin@lrride.com',
+            password='WrongStoredPass123!',
+            first_name='Old',
+            last_name='Admin',
+            role=UserRole.CAMPUS_ADMIN,
+            failed_login_attempts=5,
+        )
+        user.locked_until = timezone.now() + timezone.timedelta(minutes=15)
+        user.save(update_fields=['locked_until'])
+
+        with override_settings(
+            RESET_SEEDED_ADMIN_PASSWORDS=True,
+            CAMPUS_ADMIN_SEED_PASSWORD='CampusAdminPass123!',
+        ):
+            call_command('seed_admin_accounts', verbosity=0)
+
+        user.refresh_from_db()
+        self.assertTrue(user.check_password('CampusAdminPass123!'))
+        self.assertEqual(user.failed_login_attempts, 0)
+        self.assertIsNone(user.locked_until)
+        self.assertEqual(user.first_name, 'Campus')
+        self.assertTrue(hasattr(user, 'campus_admin_profile'))
 
 
 class OTPTestCase(TestCase):
