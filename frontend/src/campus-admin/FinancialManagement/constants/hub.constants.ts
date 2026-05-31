@@ -98,47 +98,37 @@ export const PANEL_W = 420;
 // ─── Light-mode CSS ───────────────────────────────────────────────────────────
 
 export const FH_CSS = `
-:not(.dark) .fh {
-  --fh-bg:        #f8fafc;
-  --fh-surface:   #ffffff;
-  --fh-surface2:  #f1f5f9;
-  --fh-surface3:  #e2e8f0;
-  --fh-border:    #e2e8f0;
-  --fh-border2:   #cbd5e1;
-  --fh-text1:     #0f172a;
-  --fh-text2:     #334155;
-  --fh-text3:     #64748b;
-  --fh-text4:     #94a3b8;
-  --fh-input-bg:  #f8fafc;
-  --fh-row-even:  #ffffff;
-  --fh-row-odd:   #f8fafc;
-  --fh-row-hover: #f1f5f9;
-  --fh-row-sel:   rgba(16,185,129,0.06);
-  --fh-row-sel-border: rgba(16,185,129,0.2);
+.campus-theme-dark .fh,
+.campus-theme-light .fh {
+  --fh-bg:        var(--theme-bg, #0b0f19);
+  --fh-surface:   var(--theme-bgPanel, #111827);
+  --fh-surface2:  var(--theme-bgCard, #151c2c);
+  --fh-surface3:  var(--theme-bgCardHover, #1a2236);
+  --fh-border:    var(--theme-border, #1e293b);
+  --fh-border2:   var(--theme-borderLight, #263045);
+  --fh-text1:     var(--theme-textPrimary, #e2e8f0);
+  --fh-text2:     var(--theme-textSecondary, #94a3b8);
+  --fh-text3:     var(--theme-textMuted, #64748b);
+  --fh-text4:     var(--theme-textMuted, #64748b);
+  --fh-input-bg:  var(--theme-bgInput, #0f1525);
+  --fh-accent:    var(--theme-accent, #a855f7);
+  --fh-accent-bg: var(--theme-accentBg, rgba(168,85,247,0.12));
+  --fh-row-even:  var(--theme-bg, #0b0f19);
+  --fh-row-odd:   var(--theme-bgCard, #151c2c);
+  --fh-row-hover: var(--theme-bgCardHover, #1a2236);
+  --fh-row-sel:   var(--theme-accentBg, rgba(168,85,247,0.12));
+  --fh-row-sel-border: var(--theme-borderLight, #263045);
 }
-.dark .fh {
-  --fh-bg:        #020617;
-  --fh-surface:   #0f172a;
-  --fh-surface2:  #1e293b;
-  --fh-surface3:  #334155;
-  --fh-border:    #1e293b;
-  --fh-border2:   #334155;
-  --fh-text1:     #f1f5f9;
-  --fh-text2:     #cbd5e1;
-  --fh-text3:     #64748b;
-  --fh-text4:     #475569;
-  --fh-input-bg:  rgba(30,41,59,0.8);
-  --fh-row-even:  #020617;
-  --fh-row-odd:   rgba(15,23,42,.3);
-  --fh-row-hover: rgba(30,41,59,0.6);
-  --fh-row-sel:   rgba(6,78,59,.2);
-  --fh-row-sel-border: rgba(6,78,59,.4);
-}
-.fh { background: var(--fh-bg); }
+.fh { background: var(--fh-bg); font-family: var(--font-sans, system-ui, sans-serif); }
 .fh-bar { background: var(--fh-surface); border-bottom: 1px solid var(--fh-border); }
 .fh-tabs { border-top: 1px solid var(--fh-border); }
-.fh-card { background: var(--fh-surface) !important; border-color: var(--fh-border) !important; }
-.fh-bar-track { background: var(--fh-surface2) !important; }
+.fh-card {
+  background: var(--fh-surface) !important;
+  border: 1px solid var(--fh-border) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.05) !important;
+}
+.fh-bar-track { background: var(--fh-surface2) !important; border-radius: 8px !important; }
 .fh-toolbar { background: var(--fh-surface) !important; border-bottom: 1px solid var(--fh-border) !important; }
 .fh-thead { background: var(--fh-surface2) !important; border-bottom: 1px solid var(--fh-border2) !important; }
 .fh-row-even { background: var(--fh-row-even) !important; border-color: var(--fh-border) !important; }
@@ -147,16 +137,17 @@ export const FH_CSS = `
 .fh-row-sel  { background: var(--fh-row-sel)  !important; border-color: var(--fh-row-sel-border) !important; }
 .fh-input {
   background: var(--fh-input-bg) !important;
-  border-color: var(--fh-border2) !important;
-  color: var(--fh-text2) !important;
+  border: 1px solid var(--fh-border2) !important;
+  color: var(--fh-text1) !important;
+  border-radius: 6px !important;
 }
 .fh-input::placeholder { color: var(--fh-text4) !important; }
-.fh-input:focus { border-color: #10b981 !important; }
-.fh-panel { background: var(--fh-surface) !important; border-left-color: var(--fh-border) !important; }
-.fh-panel-inner { background: var(--fh-surface2) !important; border-color: var(--fh-border) !important; }
-:not(.dark) .fh table thead tr { background: var(--fh-surface2) !important; }
-:not(.dark) .fh .fh-divider { border-color: var(--fh-border) !important; }
-:not(.dark) .fh { scrollbar-color: #cbd5e1 transparent; }
+.fh-input:focus { border-color: var(--fh-accent) !important; outline: none !important; box-shadow: 0 0 0 1px var(--fh-accent-bg) !important; }
+.fh-panel { background: var(--fh-surface) !important; border-left: 1px solid var(--fh-border) !important; }
+.fh-panel-inner { background: var(--fh-surface2) !important; border-color: var(--fh-border) !important; border-radius: 12px !important; }
+.fh table thead tr { background: var(--fh-surface2) !important; }
+.fh .fh-divider { border-color: var(--fh-border) !important; }
+.fh { scrollbar-color: var(--fh-border2) transparent; }
 @keyframes fh-spin { to { transform: rotate(360deg); } }
 @keyframes fh-ping { 0%,100%{opacity:.2;transform:scale(1)} 50%{opacity:.4;transform:scale(1.15)} }
 @keyframes fh-bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }

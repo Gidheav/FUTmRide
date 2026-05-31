@@ -15,7 +15,10 @@ import { Avatar }     from '../../components/Avatar';
 import { StatusPill } from '../../components/StatusBadge';
 import Icon from '../../../../components/common/Icon';
 
-const THIN: React.CSSProperties = { scrollbarWidth: 'thin', scrollbarColor: '#1e293b transparent' };
+import { T } from '../../../theme';
+import { campusPanel } from '../../../shared/campusPanelStyles';
+
+const THIN = campusPanel.thinScroll;
 
 export const OverviewTab = memo(({ txs, period }: { txs: Tx[]; period: Period }) => {
   const start      = useMemo(() => periodStart(period), [period]);
@@ -81,32 +84,32 @@ export const OverviewTab = memo(({ txs, period }: { txs: Tx[]; period: Period })
   const pendCount = current.filter(t => t.status === 'PENDING' || t.status === 'PROCESSING').length;
 
   return (
-    <div className="p-4 sm:p-6 space-y-5">
+    <div className="space-y-5">
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
-        <KPICard label="Total Revenue"  value={Math.round(revenue/100)}     sub={`vs ${compact(prevRevenue)} prev period`}  spark={revSpark.map(v=>v/100)} color="#10b981" icon="payments"       delta={revDelta}          prefix="₦" />
-        <KPICard label="Transactions"   value={current.length}              sub={`${success.length} successful`}            spark={txnSpark}               color="#3b82f6" icon="receipt_long"   delta={txDelta}                />
-        <KPICard label="Success Rate"   value={sucRate}                     sub={`was ${prevSucRate}% prev period`}          spark={[prevSucRate,sucRate]}   color="#a78bfa" icon="verified"       delta={sucRate-prevSucRate} prefix="%" />
-        <KPICard label="Failed"         value={failCount}                   sub="need attention"                             spark={[prevFail,failCount]}    color="#f87171" icon="cancel"         delta={failDelta}               />
-        <KPICard label="Avg Gift"       value={Math.round(avgGift/100)}     sub={`${success.length} unique donors`}          spark={revSpark.map((v,i)=>v/(revChart[i]?.value||1)||0)} color="#fbbf24" icon="star" prefix="₦" />
-        <KPICard label="Pending"        value={pendCount}                   sub="awaiting confirmation"                      spark={Array(10).fill(pendCount)} color="#94a3b8" icon="hourglass_top" />
+        <KPICard label="Total Revenue"  value={Math.round(revenue/100)}     sub={`vs ${compact(prevRevenue)} prev period`}  spark={revSpark.map(v=>v/100)} color={T.accent} icon="payments"       delta={revDelta}          prefix="₦" />
+        <KPICard label="Transactions"   value={current.length}              sub={`${success.length} successful`}            spark={txnSpark}               color={T.blue} icon="receipt_long"   delta={txDelta}                />
+        <KPICard label="Success Rate"   value={sucRate}                     sub={`was ${prevSucRate}% prev period`}          spark={[prevSucRate,sucRate]}   color={T.purple} icon="verified"       delta={sucRate-prevSucRate} prefix="%" />
+        <KPICard label="Failed"         value={failCount}                   sub="need attention"                             spark={[prevFail,failCount]}    color={T.error} icon="cancel"         delta={failDelta}               />
+        <KPICard label="Avg Gift"       value={Math.round(avgGift/100)}     sub={`${success.length} unique donors`}          spark={revSpark.map((v,i)=>v/(revChart[i]?.value||1)||0)} color={T.warn} icon="star" prefix="₦" />
+        <KPICard label="Pending"        value={pendCount}                   sub="awaiting confirmation"                      spark={Array(10).fill(pendCount)} color={T.textMuted} icon="hourglass_top" />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <Card className="xl:col-span-2 p-5" glow="#10b981">
+        <Card className="xl:col-span-2 p-5" glow={T.accent}>
           <div className="flex items-start justify-between mb-4">
             <div>
-              <p className="text-[10px] font-sans font-semibold text-slate-500 uppercase tracking-widest">Revenue Trend</p>
-              <p className="text-2xl font-mono font-bold text-emerald-400 mt-1">{compact(revenue)}</p>
+              <p className="text-[10px] font-sans font-semibold uppercase tracking-widest" style={{ color: T.textMuted }}>Revenue Trend</p>
+              <p className="text-2xl font-mono font-bold mt-1" style={{ color: T.accent }}>{compact(revenue)}</p>
             </div>
             <div className="flex items-center gap-2">
               <TrendBadge delta={revDelta} />
-              <span className="text-[10px] font-sans text-slate-600">vs prev period</span>
+              <span className="text-[10px] font-sans" style={{ color: T.textMuted }}>vs prev period</span>
             </div>
           </div>
-          <AreaChart data={revChart} color="#10b981" h={160} />
+          <AreaChart data={revChart} color={T.accent} h={160} />
         </Card>
         <Card className="p-5">
-          <p className="text-[10px] font-sans font-semibold text-slate-500 uppercase tracking-widest mb-4">Giving Breakdown</p>
+          <p className="text-[10px] font-sans font-semibold uppercase tracking-widest mb-4" style={{ color: T.textMuted }}>Giving Breakdown</p>
           <div className="flex flex-col items-center gap-4">
             <Donut segs={catData.length > 0 ? catData : [{ label: 'None', value: 1, color: '#1e293b' }]} size={140} thick={24} />
             <div className="w-full space-y-2">

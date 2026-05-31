@@ -11,6 +11,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import type { CSSProperties } from 'react'
 import api from '../../core/api'
 import { useAuthStore } from '../../core/authStore'
+import { getRefreshToken } from '../../core/tokenStorage'
 import { T, useCampusThemeStore } from '../theme'
 import { useDispatchStore } from '../dispatchStore'
 import { useSettingsStore } from '../settingsStore'
@@ -66,7 +67,7 @@ export default function CampusAdminTopNav() {
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      const refresh = localStorage.getItem('refresh_token')
+      const refresh = getRefreshToken()
       if (refresh) await api.post('/auth/logout/', { refresh })
     },
     onSettled: () => {

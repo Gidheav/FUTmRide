@@ -23,3 +23,12 @@ export function clearTokens(): void {
   localStorage.removeItem(ACCESS_KEY)
   localStorage.removeItem(REFRESH_KEY)
 }
+
+/** Move tokens left in localStorage (pre-migration logins) into sessionStorage. */
+export function migrateLegacyTokens(): void {
+  const legacyAccess = localStorage.getItem(ACCESS_KEY)
+  const legacyRefresh = localStorage.getItem(REFRESH_KEY)
+  if (legacyAccess && legacyRefresh && !sessionStorage.getItem(ACCESS_KEY)) {
+    setTokens(legacyAccess, legacyRefresh)
+  }
+}

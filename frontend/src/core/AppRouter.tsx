@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { Routes, Route, Navigate } from "react-router-dom"
 import { useAuthStore } from "./authStore"
 import api from "./api"
-import { getAccessToken, getRefreshToken } from "./tokenStorage"
+import { getAccessToken, getRefreshToken, migrateLegacyTokens } from "./tokenStorage"
 
 import AdminLoginPage from "../admin/pages/LoginPage"
 import AdminDashboard from "../admin/pages/DashboardPage"
@@ -80,6 +80,7 @@ export default function AppRouter() {
 
   useEffect(() => {
     const hydrate = async () => {
+      migrateLegacyTokens()
       const access = getAccessToken()
       const refresh = getRefreshToken()
       

@@ -12,7 +12,8 @@ import { Spark }      from './Charts';
 import { ObsSpark }   from './Charts';
 import { TrendBadge } from './TrendBadge';
 import { Card }       from './Card';
-import Icon from '../../../components/common/Icon'; // adjust path to project Icon component
+import Icon from '../../../components/common/Icon';
+import { T } from '../../theme';
 
 // ─── KPICard (Hub — animated counter, uses Spark + TrendBadge) ───────────────
 
@@ -27,11 +28,12 @@ export const KPICard = memo(({
   const display  = prefix === '₦' ? compact(animated * 100)
     : prefix === '%' ? `${animated}%`
     : animated.toLocaleString();
+  const accent = color || T.accent;
   return (
-    <Card className="p-4 flex flex-col gap-3" glow={color}>
+    <Card className="p-4 flex flex-col gap-3" glow={accent}>
       <div className="flex items-start justify-between">
         <span className="text-[10px] font-sans font-semibold uppercase tracking-widest"
-          style={{ color: 'var(--fh-text3)' }}>
+          style={{ color: T.textMuted }}>
           {label}
         </span>
         <div className="flex items-center gap-2">
@@ -39,19 +41,19 @@ export const KPICard = memo(({
             <TrendBadge delta={delta} inverted={label.toLowerCase().includes('fail')} />
           )}
           <div className="w-7 h-7 rounded-lg flex items-center justify-center"
-            style={{ background: `${color}22` }}>
-            <Icon name={icon} size={14} style={{ color }} />
+            style={{ background: T.accentBg }}>
+            <Icon name={icon} size={14} style={{ color: accent }} />
           </div>
         </div>
       </div>
       <div>
         <p className="text-2xl font-mono font-bold tracking-tight"
-          style={{ color: 'var(--fh-text1)' }}>
+          style={{ color: T.textPrimary }}>
           {display}
         </p>
-        <p className="text-[10px] mt-0.5 font-sans" style={{ color: 'var(--fh-text3)' }}>{sub}</p>
+        <p className="text-[10px] mt-0.5 font-sans" style={{ color: T.textMuted }}>{sub}</p>
       </div>
-      <Spark pts={spark} color={color} w={80} h={24} />
+      <Spark pts={spark} color={accent} w={80} h={24} />
     </Card>
   );
 });
