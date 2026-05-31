@@ -22,6 +22,67 @@ export type SortDir = 'asc' | 'desc';
 export type Period  = '1D' | '7D' | '30D' | '90D' | 'YTD' | '1Y' | 'ALL';
 export type HubTab  = 'overview' | 'transactions' | 'giving' | 'budget' | 'members' | 'reports' | 'payouts';
 
+/** Privacy-safe finance overview from GET /payments/admin/finance/overview/ */
+export interface FinanceOverviewKpis {
+  platform_revenue_kobo: number;
+  ride_fare_total_kobo: number;
+  transaction_count: number;
+  success_count: number;
+  success_rate: number;
+  failed_count: number;
+  avg_ride_fare_kobo: number;
+  pending_count: number;
+  ride_count: number;
+  prev_platform_revenue_kobo: number;
+  prev_transaction_count: number;
+  prev_success_rate: number;
+  prev_failed_count: number;
+  prev_avg_ride_fare_kobo: number;
+  revenue_delta_pct: number;
+  transaction_delta_pct: number;
+  success_rate_delta: number;
+  failed_delta_pct: number;
+}
+
+export interface FinanceOverviewBreakdown {
+  label: string;
+  value_kobo: number;
+  pct: number;
+  color: string;
+}
+
+export interface FinanceOverviewTrendPoint {
+  label: string;
+  value_kobo: number;
+  ride_count: number;
+}
+
+export interface FinanceOverviewActivity {
+  id: string;
+  type: 'ride_completed' | 'wallet_topup' | 'driver_withdrawal';
+  reference_masked: string;
+  status: string;
+  amount_kobo: number;
+  meta: Record<string, string>;
+}
+
+export interface FinanceOverviewRoute {
+  label: string;
+  ride_count: number;
+  revenue_kobo: number;
+}
+
+export interface FinanceOverview {
+  period: Period;
+  campus_scoped: boolean;
+  kpis: FinanceOverviewKpis;
+  revenue_trend: FinanceOverviewTrendPoint[];
+  source_breakdown: FinanceOverviewBreakdown[];
+  top_routes: FinanceOverviewRoute[];
+  recent_activity: FinanceOverviewActivity[];
+  volume_by_period: FinanceOverviewTrendPoint[];
+}
+
 /** Withdrawal wizard step */
 export type WStep  = 'form' | 'initiating' | 'otp' | 'verifying' | 'done';
 /** Withdrawal final outcome */

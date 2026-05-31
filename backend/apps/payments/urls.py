@@ -1,4 +1,5 @@
 from django.urls import path
+from .admin_finance import FinanceOverviewView
 from .views import (
     DriverPayoutMethodView,
     DriverWalletSummaryView,
@@ -15,6 +16,7 @@ from .views import (
 )
 
 urlpatterns = [
+    path('admin/finance/overview/', FinanceOverviewView.as_view(), name='finance-overview'),
     path('wallet/transactions/', WalletTransactionListView.as_view(), name='wallet-transactions'),
     path('wallet/driver/summary/', DriverWalletSummaryView.as_view(), name='wallet-driver-summary'),
     path('wallet/driver/payout-method/', DriverPayoutMethodView.as_view(), name='wallet-driver-payout-method'),

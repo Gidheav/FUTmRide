@@ -73,8 +73,14 @@ const mockReserves = [
   { id: 'reserve-growth', name: 'Growth Pool', balance: 36000000, icon: 'target', color: '#8b5cf6', note: 'New campus launches' },
 ]
 
+const FINANCE_LIVE_PREFIXES = ['payments/admin/finance/']
+
+const isFinanceLivePath = (path: string) =>
+  FINANCE_LIVE_PREFIXES.some((prefix) => path === prefix || path.startsWith(prefix))
+
 const getMock = (url: string): unknown | undefined => {
   const path = normalizeUrl(url)
+  if (isFinanceLivePath(path)) return undefined
 
   if (path === 'payments/admin/transactions/' || path.startsWith('payments/admin/transactions/?')) return []
   if (path === 'payments/admin/paystack-balance/') return { balance: 482000000 }

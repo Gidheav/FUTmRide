@@ -1,11 +1,11 @@
 // FinancialHub — campus admin finance shell (styled like Settings)
 import React, {
   useState, useEffect, useRef,
-  useCallback, useMemo,
+  useCallback,
 } from 'react'
 import { Download, RefreshCw, Search, X } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import type { Period, Tx } from '../types/financial.types'
+import type { FinanceOverview, Period, Tx } from '../types/financial.types'
 import { injectFHCSS } from '../helpers/hub.helpers'
 import { compact, exportCSV, periodLabel } from '../helpers/hub.helpers'
 import { MOCK_TXS } from '../constants/hub.constants'
@@ -28,16 +28,38 @@ const FinancialHub: React.FC = () => {
   const { activeTab: tab, setActiveTab: setFinanceTab } = useFinancialStore()
   const [period, setPeriod] = useState<Period>('30D')
   const [txs, setTxs] = useState<Tx[]>(MOCK_TXS)
-  const [loading, setLoading] = useState(false)
+  const [overview, setOverview] = useState<FinanceOverview | null>(null)
+  const [loadingOverview, setLoadingOverview] = useState(true)
+  const [loadingTxs, setLoadingTxs] = useState(false)
   const [search, setSearch] = useState('')
 
   useEffect(() => {
     if (location.search) navigate('/financial', { replace: true })
   }, [location.search, navigate])
 
+  const fetchOverview = useCallback(async () => {
+    setLoadingOverview(true)
+    try {
+      const res = await apiService.get<FinanceOverview>(
+        `payments/admin/finance/overview/?period=${period}`,
+      )
+      setOverview(res)
+    } catch {
+      setOverview(null)
+    } finally {
+      setLoadingOverview(false)
+    }
+  }, [period])
+
   useEffect(() => {
+    fetchOverview()
+  }, [fetchOverview])
+
+  useEffect(() => {
+    if (tab === 'overview') return
     let dead = false
     ;(async () => {
+      setLoadingTxs(true)
       try {
         const res = await apiService.get<any>('payments/admin/transactions/')
         if (!dead) {
@@ -45,29 +67,36 @@ const FinancialHub: React.FC = () => {
           if (list.length > 0) setTxs(list)
         }
       } catch {
-        /* use mock */
+        /* use mock for legacy tabs until wired */
       } finally {
-        if (!dead) setLoading(false)
+        if (!dead) setLoadingTxs(false)
       }
     })()
     return () => { dead = true }
-  }, [])
+  }, [tab])
 
   const handleSearch = useCallback((q: string) => {
     setSearch(q)
     if (q) setFinanceTab('transactions')
   }, [setFinanceTab])
 
-  const success = useMemo(() => txs.filter(t => t.status === 'SUCCESS'), [txs])
-  const revenue = useMemo(() => success.reduce((s, t) => s + t.amount, 0), [success])
-  const failed = useMemo(() => txs.filter(t => t.status === 'FAILED').length, [txs])
+  const toolbarRevenue = overview?.kpis.platform_revenue_kobo ?? 0
+  const toolbarTxCount = overview?.kpis.transaction_count ?? txs.length
+  const toolbarFailed = overview?.kpis.failed_count ?? txs.filter(t => t.status === 'FAILED').length
 
   const scrollRef = useRef<HTMLDivElement>(null)
   useEffect(() => { scrollRef.current?.scrollTo(0, 0) }, [tab])
 
+  const handleRefresh = useCallback(() => {
+    if (tab === 'overview') {
+      fetchOverview()
+    } else {
+      window.location.reload()
+    }
+  }, [tab, fetchOverview])
+
   return (
     <div className="fh" style={campusPanel.shell}>
-      {/* Toolbar — matches Settings card / topNav button patterns */}
       <div style={campusPanel.toolbar}>
         <PeriodSelector value={period} onChange={setPeriod} />
 
@@ -104,9 +133,9 @@ const FinancialHub: React.FC = () => {
 
         <div style={{ display: 'flex', alignItems: 'stretch', flexShrink: 0 }}>
           {[
-            { label: 'Revenue', value: compact(revenue), color: T.accent },
-            { label: 'Transactions', value: txs.length.toString(), color: T.textPrimary },
-            { label: 'Failed', value: failed.toString(), color: failed > 0 ? T.error : T.textMuted },
+            { label: 'Revenue', value: compact(toolbarRevenue), color: T.accent },
+            { label: 'Transactions', value: toolbarTxCount.toString(), color: T.textPrimary },
+            { label: 'Failed', value: toolbarFailed.toString(), color: toolbarFailed > 0 ? T.error : T.textMuted },
           ].map((k, i) => (
             <div key={k.label} style={{ ...campusPanel.kpiBlock, borderLeft: i === 0 ? 'none' : campusPanel.kpiBlock.borderLeft }}>
               <p style={{ fontSize: 10, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, margin: 0 }}>
@@ -124,7 +153,7 @@ const FinancialHub: React.FC = () => {
             <Download size={13} />
             Export
           </button>
-          <button type="button" onClick={() => window.location.reload()} style={campusPanel.btnPrimary}>
+          <button type="button" onClick={handleRefresh} style={campusPanel.btnPrimary}>
             <RefreshCw size={13} />
             Refresh
           </button>
@@ -133,7 +162,7 @@ const FinancialHub: React.FC = () => {
 
       <div ref={scrollRef} style={{ ...campusPanel.scrollMain, ...campusPanel.thinScroll }}>
         {tab === 'overview' && (
-          <OverviewTab txs={txs} period={period} />
+          <OverviewTab overview={overview} loading={loadingOverview} />
         )}
 
         {tab === 'transactions' && (
@@ -156,8 +185,8 @@ const FinancialHub: React.FC = () => {
           <PayoutsTab />
         )}
 
-        {loading && tab === 'overview' && (
-          <p style={{ fontSize: 12, color: T.textMuted, marginTop: 12 }}>Loading live transactions…</p>
+        {loadingTxs && tab !== 'overview' && (
+          <p style={{ fontSize: 12, color: T.textMuted, marginTop: 12 }}>Loading transactions…</p>
         )}
       </div>
     </div>

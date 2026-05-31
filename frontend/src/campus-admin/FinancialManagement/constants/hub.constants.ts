@@ -44,11 +44,18 @@ export const BUDGET_LINES: BudgetLine[] = [
 // ─── Category colors ──────────────────────────────────────────────────────────
 
 export const CAT_COLORS: Record<string, { stroke: string; fill: string; badge: string; dot: string }> = {
+  'Ride Payments':       { stroke: '#10b981', fill: 'rgba(16,185,129,0.15)',  badge: 'bg-emerald-50 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-700', dot: '#10b981' },
+  'Wallet Top-ups':      { stroke: '#3b82f6', fill: 'rgba(59,130,246,0.15)',  badge: 'bg-blue-50 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700',                  dot: '#3b82f6' },
+  'Platform Commission': { stroke: '#8b5cf6', fill: 'rgba(139,92,246,0.15)',  badge: 'bg-violet-50 dark:bg-violet-900/60 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-700',        dot: '#8b5cf6' },
+  Refunds:               { stroke: '#f59e0b', fill: 'rgba(245,158,11,0.15)',  badge: 'bg-amber-50 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-700',             dot: '#f59e0b' },
+  'Driver Withdrawals':  { stroke: '#64748b', fill: 'rgba(100,116,139,0.15)', badge: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-600',               dot: '#64748b' },
+  Promotions:            { stroke: '#ec4899', fill: 'rgba(236,72,153,0.15)',  badge: 'bg-pink-50 dark:bg-pink-900/60 text-pink-700 dark:text-pink-300 border-pink-200 dark:border-pink-700',                   dot: '#ec4899' },
+  General:               { stroke: '#64748b', fill: 'rgba(100,116,139,0.15)', badge: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-600',               dot: '#64748b' },
+  // Legacy church categories (Reports / mock data)
   Tithes:      { stroke: '#10b981', fill: 'rgba(16,185,129,0.15)',  badge: 'bg-emerald-50 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-700', dot: '#10b981' },
   Offerings:   { stroke: '#3b82f6', fill: 'rgba(59,130,246,0.15)',  badge: 'bg-blue-50 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700',                  dot: '#3b82f6' },
   Projects:    { stroke: '#8b5cf6', fill: 'rgba(139,92,246,0.15)',  badge: 'bg-violet-50 dark:bg-violet-900/60 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-700',        dot: '#8b5cf6' },
   Fundraising: { stroke: '#f59e0b', fill: 'rgba(245,158,11,0.15)',  badge: 'bg-amber-50 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-700',             dot: '#f59e0b' },
-  General:     { stroke: '#64748b', fill: 'rgba(100,116,139,0.15)', badge: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-600',               dot: '#64748b' },
 };
 
 // ─── Transaction status meta ──────────────────────────────────────────────────
