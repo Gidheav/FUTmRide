@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { GoogleMap, useJsApiLoader, DrawingManager, Polyline, Marker, InfoWindow } from '@react-google-maps/api'
 import { T, useCampusThemeStore } from '../theme'
+import { createAuthenticatedWebSocket } from '../../core/ws'
 
 const GMAP_LIBS: ('drawing' | 'geometry' | 'places')[] = ['drawing', 'geometry', 'places']
 
@@ -188,11 +189,8 @@ export default function DashboardPage() {
   const [activeGarageRides, setActiveGarageRides] = useState<GarageRide[]>([])
 
   useEffect(() => {
-    const token = localStorage.getItem('access_token')
-    if (!token) return
-
-    const wsUrl = (import.meta.env.VITE_WS_BASE_URL || 'ws://127.0.0.1:8002') + `/ws/campus-admin/rides/?token=${token}`
-    const ws = new WebSocket(wsUrl)
+    const ws = createAuthenticatedWebSocket('/ws/campus-admin/rides/')
+    if (!ws) return
 
     ws.onmessage = (event) => {
       try {

@@ -668,7 +668,7 @@ export default function StudentWalletPage() {
             <WebView
               style={{ flex: 1 }}
               source={{ uri: webviewUrl }}
-              originWhitelist={['https://*', 'http://*']}
+              originWhitelist={['https://checkout.paystack.com', 'https://standard.paystack.com']}
               javaScriptEnabled={true}
               domStorageEnabled={true}
               injectedJavaScript={`

@@ -75,6 +75,54 @@ class WalletService:
 
     @staticmethod
     @transaction.atomic
+    def credit_gateway_topup(gateway_tx: GatewayTransaction) -> WalletTransaction | None:
+        """Idempotent wallet credit for a successful gateway top-up."""
+        locked = GatewayTransaction.objects.select_for_update().get(pk=gateway_tx.pk)
+        if locked.wallet_credited:
+            return WalletTransaction.objects.filter(
+                metadata__gateway_internal_reference=locked.internal_reference,
+            ).first()
+
+        if locked.gateway_status != GatewayTransaction.GatewayStatus.SUCCESS:
+            return None
+
+        source_map = {
+            GatewayTransaction.Gateway.PAYSTACK: WalletTransaction.Source.TOPUP_PAYSTACK,
+            GatewayTransaction.Gateway.FLUTTERWAVE: WalletTransaction.Source.TOPUP_FLUTTERWAVE,
+        }
+        source = source_map.get(locked.gateway)
+        if not source:
+            return None
+
+        meta = {
+            'gateway_internal_reference': locked.internal_reference,
+            'gateway_reference': locked.gateway_reference,
+        }
+        wallet_tx = WalletService.credit(
+            user=locked.user,
+            amount=locked.amount,
+            source=source,
+            narration=f'Wallet top-up via {locked.gateway} — {locked.internal_reference}',
+            metadata=meta,
+        )
+        locked.wallet_credited = True
+        locked.save(update_fields=['wallet_credited', 'updated_at'])
+        try:
+            from apps.accounts.audit import log_audit
+            log_audit(
+                None,
+                'wallet_credit',
+                actor=locked.user,
+                target_type='gateway_transaction',
+                target_id=str(locked.id),
+                metadata={'internal_reference': locked.internal_reference, 'amount': str(locked.amount)},
+            )
+        except Exception:
+            pass
+        return wallet_tx
+
+    @staticmethod
+    @transaction.atomic
     def debit(user, amount: Decimal, source: str, narration: str, ride=None, metadata: dict = None) -> WalletTransaction:
         if user.role == 'student':
             try:
@@ -205,7 +253,7 @@ class PaystackService:
     def is_allowed_webhook_ip(cls, ip_address: str) -> bool:
         allowlist = getattr(settings, 'PAYSTACK_WEBHOOK_IP_ALLOWLIST', [])
         if not allowlist:
-            return True
+            return settings.DEBUG
         return ip_address in allowlist
 
     @classmethod
@@ -305,7 +353,7 @@ class FlutterwaveService:
     def is_allowed_webhook_ip(cls, ip_address: str) -> bool:
         allowlist = getattr(settings, 'FLUTTERWAVE_WEBHOOK_IP_ALLOWLIST', [])
         if not allowlist:
-            return True
+            return settings.DEBUG
         return ip_address in allowlist
 
     @classmethod

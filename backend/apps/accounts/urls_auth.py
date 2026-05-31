@@ -11,6 +11,7 @@ from .views import (
     PinSetView, PinVerifyView,
     TwoFactorStartView, TwoFactorConfirmView, TwoFactorDisableView,
     TwoFactorChallengeRequestView, TwoFactorChallengeVerifyView,
+    MapSettingsView,
 )
 
 urlpatterns = [
@@ -39,4 +40,5 @@ urlpatterns = [
     path('settings/password-change/confirm/', ConfirmPasswordChangeView.as_view(), name='auth-password-change-confirm'),
     path('settings/integrations/status/', IntegrationStatusView.as_view(), name='auth-integrations-status'),
     path('settings/integrations/config/', IntegrationConfigView.as_view(), name='auth-integrations-config'),
+    path('settings/map/', MapSettingsView.as_view(), name='auth-settings-map'),
 ]

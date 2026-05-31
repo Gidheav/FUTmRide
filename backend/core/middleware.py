@@ -4,19 +4,53 @@ from django.conf import settings
 from django.core.cache import cache
 from django.http import JsonResponse, HttpResponse
 
+from core.security_utils import get_client_ip
+
 logger = logging.getLogger("apps.security")
 
 RATE_LIMIT_RULES = {
-    "/api/v1/auth/login/": (100, 300),
+    "/api/v1/auth/login/": (10, 300),
     "/api/v1/auth/register/": (5, 300),
     "/api/v1/auth/otp/": (5, 300),
+    "/api/v1/auth/otp/verify/": (10, 300),
+    "/api/v1/auth/pin/verify/": (10, 300),
+    "/api/v1/auth/password/reset/": (5, 300),
     "/api/v1/rides/request/": (20, 60),
     "/api/v1/payments/webhooks/": (30, 60),
 }
 DEFAULT_RATE = (120, 60)
 
+# Paths that must reject requests when rate-limit cache is unavailable.
+AUTH_RATE_LIMIT_PREFIXES = (
+    "/api/v1/auth/login/",
+    "/api/v1/auth/otp/",
+    "/api/v1/auth/pin/",
+    "/api/v1/auth/register/",
+    "/api/v1/auth/password/",
+)
+
 MOBILE_UA_RE = re.compile(r"Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile", re.IGNORECASE)
 DESKTOP_ONLY_EXEMPT_PATH_PREFIXES = ("/health/",)
+
+
+class SecurityHeadersMiddleware:
+    """Apply Content-Security-Policy and related headers."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        if getattr(settings, 'DEBUG', False):
+            return response
+        csp = getattr(
+            settings,
+            'CONTENT_SECURITY_POLICY',
+            "default-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+        )
+        response['Content-Security-Policy'] = csp
+        response['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
+        return response
 
 
 class DesktopOnlyMiddleware:
@@ -67,7 +101,8 @@ class RateLimitMiddleware:
             return self.get_response(request)
         limit, window = self._get_rule(request.path)
         key = self._build_key(request)
-        result = self._check(key, limit, window)
+        fail_closed = self._is_auth_path(request.path)
+        result = self._check(key, limit, window, fail_closed=fail_closed)
         if not result["allowed"]:
             logger.warning("rate_limit_exceeded path=%s ip=%s", request.path, self._get_ip(request))
             resp = JsonResponse({"error": {"code": "RATE_LIMIT_EXCEEDED", "message": "Too many requests."}}, status=429)
@@ -87,20 +122,22 @@ class RateLimitMiddleware:
         return f"rl:{ip}:{uid}:{request.path}"
 
     def _get_ip(self, request):
-        fwd = request.META.get("HTTP_X_FORWARDED_FOR")
-        return fwd.split(",")[0].strip() if fwd else request.META.get("REMOTE_ADDR", "0.0.0.0")
+        return get_client_ip(request)
 
-    def _check(self, key, limit, window):
+    def _is_auth_path(self, path: str) -> bool:
+        return any(path.startswith(prefix) for prefix in AUTH_RATE_LIMIT_PREFIXES)
+
+    def _check(self, key, limit, window, fail_closed: bool = False):
         try:
             count = cache.get(key, 0)
         except Exception:
             logger.error("rate_limit_cache_get_failed key=%s", key, exc_info=True)
-            return {"allowed": True}
+            return {"allowed": not fail_closed}
         if count >= limit:
             return {"allowed": False}
         try:
             cache.set(key, count + 1, timeout=window)
         except Exception:
             logger.error("rate_limit_cache_set_failed key=%s", key, exc_info=True)
-            return {"allowed": True}
+            return {"allowed": not fail_closed}
         return {"allowed": True}

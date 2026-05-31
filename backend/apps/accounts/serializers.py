@@ -7,7 +7,7 @@ from django.core import signing
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import DriverProfile, StudentProfile, User, UserRole, Campus, CampusAdminProfile, UserSettings, IntegrationSettings
+from .models import DriverProfile, StudentProfile, User, UserRole, Campus, CampusAdminProfile, UserSettings, IntegrationSettings, MapSettings
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -38,8 +38,10 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         ]
 
     def validate_role(self, value):
-        if value == UserRole.ADMIN:
-            raise serializers.ValidationError("Admin accounts cannot be created via registration.")
+        if value != UserRole.STUDENT:
+            raise serializers.ValidationError(
+                "Only student accounts can be created via public registration."
+            )
         return value
 
     def validate_phone_number(self, value):
@@ -631,3 +633,25 @@ class ConfirmPasswordChangeSerializer(serializers.Serializer):
         if attrs['new_password'] != attrs.pop('confirm_password'):
             raise serializers.ValidationError({'confirm_password': 'Passwords do not match.'})
         return attrs
+
+
+class MapSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MapSettings
+        fields = [
+            'active_provider',
+            'custom_style_json',
+            'live_traffic_enabled',
+            'demand_heatmaps_enabled',
+            'driver_clustering_enabled',
+            'refresh_interval_seconds',
+            'prefer_main_roads_weight',
+            'avoid_pedestrian_weight',
+            'speed_limit_enforcement_weight',
+            'geofence_buffer_meters',
+            'pois',
+            'idle_driver_icon',
+            'cluster_threshold_zoom',
+            'updated_at',
+        ]
+        read_only_fields = ['updated_at']

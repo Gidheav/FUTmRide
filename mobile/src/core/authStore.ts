@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { clearAuthTokens, setAuthTokens } from '../../utils/storage'
+import { clearAuthTokens, setAuthTokens } from '../../utils/secureStorage'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
 export type UserRole = 'student' | 'driver'
@@ -67,6 +67,10 @@ export const useAuthStore = create<AuthStore>()(
     {
       name: 'auth-store',
       storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({
+        user: state.user,
+        isAuthenticated: state.isAuthenticated,
+      }),
     }
   )
 )

@@ -67,6 +67,10 @@ class AccountVerificationStatusSerializer(serializers.ModelSerializer):
 #  DRIVER-FACING: Vehicle Documents
 # ──────────────────────────────────────────────────────────────────────────────
 
+ALLOWED_DOCUMENT_EXTENSIONS = {'.pdf', '.jpg', '.jpeg', '.png', '.webp'}
+MAX_DOCUMENT_BYTES = 5 * 1024 * 1024
+
+
 class DriverDocumentSerializer(serializers.ModelSerializer):
     """Driver uploads a vehicle document."""
 
@@ -74,6 +78,17 @@ class DriverDocumentSerializer(serializers.ModelSerializer):
         model = DriverDocument
         fields = ['id', 'document_type', 'file', 'status', 'rejection_reason', 'uploaded_at']
         read_only_fields = ['id', 'status', 'rejection_reason', 'uploaded_at']
+
+    def validate_file(self, value):
+        import os
+        ext = os.path.splitext(value.name)[1].lower()
+        if ext not in ALLOWED_DOCUMENT_EXTENSIONS:
+            raise serializers.ValidationError(
+                f'Unsupported file type. Allowed: {", ".join(sorted(ALLOWED_DOCUMENT_EXTENSIONS))}'
+            )
+        if value.size > MAX_DOCUMENT_BYTES:
+            raise serializers.ValidationError('File must be 5 MB or smaller.')
+        return value
 
     def create(self, validated_data):
         validated_data['driver'] = self.context['request'].user

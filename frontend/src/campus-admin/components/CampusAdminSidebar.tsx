@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Navigation, Users, Truck, CalendarClock, BarChart3, Bell, User, Settings, Calculator } from 'lucide-react'
+import { LayoutDashboard, Navigation, Users, Truck, CalendarClock, BarChart3, Banknote, Bell, Settings, Calculator } from 'lucide-react'
 import { type CSSProperties } from 'react'
 import { T } from '../theme'
 
@@ -10,6 +10,7 @@ const SIDEBAR_ICONS = [
   { icon: Truck, path: '/fleet' },
   { icon: CalendarClock, path: '/schedule' },
   { icon: BarChart3, path: '/analytics' },
+  { icon: Banknote, path: '/financial' },
   { icon: Calculator, path: '/engine' },
   { icon: Bell, path: '/notifications' },
   { icon: Settings, path: '/settings' },

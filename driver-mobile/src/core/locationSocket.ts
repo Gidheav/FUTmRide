@@ -1,6 +1,5 @@
 import * as Location from 'expo-location'
-import { WS_BASE_URL } from '../../config/apiConfig'
-import { useAuthStore } from './authStore'
+import { createAuthenticatedWebSocket } from '../../utils/ws'
 
 let socket: WebSocket | null = null
 let subscription: Location.LocationSubscription | null = null
@@ -23,9 +22,6 @@ export const startDriverLocationTracking = async () => {
   isStarting = true
 
   try {
-    const accessToken = useAuthStore.getState().accessToken
-    if (!accessToken) return
-
     const existing = await Location.getForegroundPermissionsAsync()
     if (!existing.granted) {
       const request = await Location.requestForegroundPermissionsAsync()
@@ -34,8 +30,8 @@ export const startDriverLocationTracking = async () => {
       }
     }
 
-    const wsUrl = `${WS_BASE_URL}/ws/driver/location/?token=${accessToken}`
-    socket = new WebSocket(wsUrl)
+    socket = await createAuthenticatedWebSocket('/ws/driver/location/')
+    if (!socket) return
 
     socket.onclose = () => {
       socket = null

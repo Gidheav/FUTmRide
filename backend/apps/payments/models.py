@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 from django.db import models
 from apps.accounts.models import User
 from apps.rides.models import Ride
@@ -85,6 +85,7 @@ class GatewayTransaction(models.Model):
     channel = models.CharField(max_length=40, blank=True)
     gateway_response = models.JSONField(default=dict, blank=True)
     webhook_received_at = models.DateTimeField(null=True, blank=True)
+    wallet_credited = models.BooleanField(default=False, db_index=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

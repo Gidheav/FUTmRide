@@ -52,9 +52,21 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "core.middleware.SecurityHeadersMiddleware",
     "core.middleware.DesktopOnlyMiddleware",
     "core.middleware.RateLimitMiddleware",
 ]
+
+CONTENT_SECURITY_POLICY = env(
+    'CONTENT_SECURITY_POLICY',
+    default="default-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+)
+
+SENTRY_DSN = env('SENTRY_DSN', default='')
+if SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+    sentry_sdk.init(dsn=SENTRY_DSN, integrations=[DjangoIntegration()], traces_sample_rate=0.1)
 
 ROOT_URLCONF = "core.urls"
 WSGI_APPLICATION = "core.wsgi.application"
@@ -100,7 +112,16 @@ REST_FRAMEWORK = {
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
     ],
-    "DEFAULT_THROTTLE_CLASSES": [],
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "120/min",
+        "user": "300/min",
+        "auth_anon": "30/min",
+        "auth_user": "60/min",
+    },
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "EXCEPTION_HANDLER": "core.exceptions.custom_exception_handler",
 }
@@ -209,6 +230,9 @@ LOGIN_ATTEMPT_LIMIT = 5
 LOGIN_LOCKOUT_DURATION_MINUTES = 30
 OTP_EXPIRY_MINUTES = 10
 OTP_MAX_ATTEMPTS = 3
+PIN_ATTEMPT_LIMIT = 5
+PIN_LOCKOUT_MINUTES = 15
+ALLOW_DEV_OTP_BYPASS = env.bool("ALLOW_DEV_OTP_BYPASS", default=False)
 
 # ── Email Configuration ─────────────────────────────────────────────────────────
 BREVO_API_KEY = env('BREVO_API_KEY', default='')

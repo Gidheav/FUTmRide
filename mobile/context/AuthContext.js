@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import api from '../services/api'
-import { clearAuthTokens, getAuthTokens, setAuthTokens } from '../utils/storage'
+import { clearAuthTokens, getAuthTokens, setAuthTokens } from '../utils/secureStorage'
 
 const AuthContext = createContext({
   user: null,

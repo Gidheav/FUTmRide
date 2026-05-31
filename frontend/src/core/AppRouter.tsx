@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { Routes, Route, Navigate } from "react-router-dom"
 import { useAuthStore } from "./authStore"
 import api from "./api"
+import { getAccessToken, getRefreshToken } from "./tokenStorage"
 
 import AdminLoginPage from "../admin/pages/LoginPage"
 import AdminDashboard from "../admin/pages/DashboardPage"
@@ -24,6 +25,7 @@ import CampusAdminAnalytics from "../campus-admin/pages/AnalyticsPage"
 import CampusAdminSettings from "../campus-admin/pages/SettingsPage"
 import CampusAdminNotifications from "../campus-admin/pages/NotificationsPage"
 import CampusAdminEngine from "../campus-admin/pages/EngineCalculationPage"
+import CampusAdminFinancialHub from "../campus-admin/FinancialManagement/hub/FinancialHub"
 import CampusAdminLayout from "../campus-admin/layout/CampusAdminLayout"
 
 const MOBILE_UA_RE = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i
@@ -78,8 +80,8 @@ export default function AppRouter() {
 
   useEffect(() => {
     const hydrate = async () => {
-      const access = localStorage.getItem("access_token")
-      const refresh = localStorage.getItem("refresh_token")
+      const access = getAccessToken()
+      const refresh = getRefreshToken()
       
       if (access && refresh) {
         try {
@@ -122,6 +124,7 @@ export default function AppRouter() {
         <Route path="/fleet" element={<CampusAdminFleet />} />
         <Route path="/schedule" element={<CampusAdminSchedule />} />
         <Route path="/analytics" element={<CampusAdminAnalytics />} />
+        <Route path="/financial" element={<CampusAdminFinancialHub />} />
         <Route path="/engine" element={<CampusAdminEngine />} />
         <Route path="/settings" element={<CampusAdminSettings />} />
         <Route path="/notifications" element={<CampusAdminNotifications />} />

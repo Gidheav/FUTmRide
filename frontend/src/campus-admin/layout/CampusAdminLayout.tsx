@@ -12,6 +12,7 @@ export default function CampusAdminLayout() {
   const location = useLocation()
   const isDashboard = location.pathname === '/'
   const isDispatch = location.pathname === '/dispatch'
+  const isFinancial = location.pathname === '/financial'
 
   const s: Record<string, CSSProperties> = {
     root: {
@@ -24,7 +25,7 @@ export default function CampusAdminLayout() {
   return (
     <>
       <style>{themeCss}</style>
-      <div style={s.root} className={`campus-theme-${mode}`}>
+      <div style={s.root} className={`campus-theme-${mode} ${mode === 'dark' ? 'dark' : ''}`}>
         <CampusAdminSidebar />
         <div style={s.body}>
           <CampusAdminTopNav />
@@ -34,7 +35,7 @@ export default function CampusAdminLayout() {
           <div style={{ display: isDispatch ? 'flex' : 'none', flex: 1, overflow: 'hidden' }}>
             <CampusAdminDispatch />
           </div>
-          <div style={{ display: (!isDashboard && !isDispatch) ? 'flex' : 'none', flexDirection: 'column', flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
+          <div style={{ display: (!isDashboard && !isDispatch) ? 'flex' : 'none', flexDirection: 'column', flex: 1, overflowY: isFinancial ? 'hidden' : 'auto', overflowX: 'hidden' }}>
             <Outlet />
           </div>
         </div>

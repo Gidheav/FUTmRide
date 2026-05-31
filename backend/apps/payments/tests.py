@@ -7,7 +7,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User, StudentProfile, UserRole
-from .models import WalletTransaction
+from .models import GatewayTransaction, WalletTransaction
 from .services import WalletService
 
 
@@ -70,6 +70,25 @@ class WalletServiceTestCase(TestCase):
         WalletService.debit(self.user, Decimal('1000.00'), WalletTransaction.Source.RIDE_PAYMENT, 'Full debit')
         self.user.student_profile.refresh_from_db()
         self.assertEqual(self.user.student_profile.wallet_balance, Decimal('0.00'))
+
+    def test_gateway_topup_credit_is_idempotent(self):
+        gateway_tx = GatewayTransaction.objects.create(
+            internal_reference='TX-IDEMPOTENT-TEST',
+            user=self.user,
+            gateway=GatewayTransaction.Gateway.PAYSTACK,
+            gateway_status=GatewayTransaction.GatewayStatus.SUCCESS,
+            amount=Decimal('2500.00'),
+        )
+        WalletService.credit_gateway_topup(gateway_tx)
+        WalletService.credit_gateway_topup(gateway_tx)
+        self.user.student_profile.refresh_from_db()
+        self.assertEqual(self.user.student_profile.wallet_balance, Decimal('2500.00'))
+        self.assertEqual(
+            WalletTransaction.objects.filter(user=self.user, source=WalletTransaction.Source.TOPUP_PAYSTACK).count(),
+            1,
+        )
+        gateway_tx.refresh_from_db()
+        self.assertTrue(gateway_tx.wallet_credited)
 
 
 class WalletTransferApiTestCase(TestCase):

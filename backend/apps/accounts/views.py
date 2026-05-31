@@ -1,6 +1,7 @@
 import logging
 import secrets
 from django.conf import settings
+from django.db import models
 from django.utils import timezone
 from django.core import signing
 from django.contrib.auth.hashers import check_password, make_password
@@ -12,8 +13,12 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import Campus, CampusAdminProfile, DriverProfile, IntegrationSettings, OTPVerification, StudentProfile, User, UserRole, UserSettings
+from .models import Campus, CampusAdminProfile, DriverProfile, IntegrationSettings, OTPVerification, StudentProfile, User, UserRole, UserSettings, MapSettings
 from .permissions import IsAdminUser, IsAdminOrCampusAdmin
+from .audit import log_audit
+from core.throttles import AuthAnonRateThrottle
+
+AUTH_THROTTLE_CLASSES = [AuthAnonRateThrottle]
 from .serializers import (
     ChangePasswordSerializer,
     ChangeEmailSerializer,
@@ -43,6 +48,7 @@ from .serializers import (
     UserProfileSerializer,
     UserRegistrationSerializer,
     CampusSerializer,
+    MapSettingsSerializer,
 )
 from .services import OTPService, EmailOTPService, StudentSignupVerificationService
 from apps.pricing.models import PlatformSettings
@@ -105,6 +111,7 @@ def _unsign_login_challenge(token: str) -> User | None:
 class RegisterView(generics.CreateAPIView):
     serializer_class = UserRegistrationSerializer
     permission_classes = [permissions.AllowAny]
+    throttle_classes = AUTH_THROTTLE_CLASSES
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -212,6 +219,7 @@ class StudentSignupVerifyEmailOTPView(APIView):
 class LoginView(TokenObtainPairView):
     serializer_class = FutminnaTokenObtainPairSerializer
     permission_classes = [permissions.AllowAny]
+    throttle_classes = AUTH_THROTTLE_CLASSES
 
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)
@@ -255,6 +263,7 @@ class LogoutView(APIView):
 
 class OTPRequestView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_classes = AUTH_THROTTLE_CLASSES
 
     def post(self, request):
         serializer = OTPRequestSerializer(data=request.data)
@@ -265,15 +274,17 @@ class OTPRequestView(APIView):
             user = User.objects.get(phone_number=phone_number)
         except User.DoesNotExist:
             return Response(
-                {'error': {'code': 'USER_NOT_FOUND', 'message': 'No account found with this phone number.'}},
-                status=status.HTTP_404_NOT_FOUND,
+                {'message': 'If an account exists for this phone number, a verification code has been sent.'},
             )
         OTPService.create_and_send(user, purpose)
-        return Response({'message': f'Verification code sent to {phone_number}.'})
+        return Response(
+            {'message': 'If an account exists for this phone number, a verification code has been sent.'},
+        )
 
 
 class OTPVerifyView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_classes = AUTH_THROTTLE_CLASSES
 
     def post(self, request):
         serializer = OTPVerifySerializer(data=request.data)
@@ -282,8 +293,13 @@ class OTPVerifyView(APIView):
         code = serializer.validated_data['code']
         purpose = serializer.validated_data['purpose']
         
-        if code == '123456':
-            success, message = True, 'Verification successful (Bypass).'
+        allow_dev_bypass = (
+            settings.DEBUG
+            and getattr(settings, 'ALLOW_DEV_OTP_BYPASS', False)
+            and code == '123456'
+        )
+        if allow_dev_bypass:
+            success, message = True, 'Verification successful (dev bypass).'
         else:
             success, message = OTPService.verify(phone_number, code, purpose)
             
@@ -319,6 +335,7 @@ class ChangePasswordView(APIView):
         serializer.is_valid(raise_exception=True)
         request.user.set_password(serializer.validated_data['new_password'])
         request.user.save(update_fields=['password'])
+        log_audit(request, 'password_change', target_type='user', target_id=str(request.user.id))
         # Invalidate all existing refresh tokens for this user
         try:
             from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
@@ -515,8 +532,22 @@ class AdminUserListView(generics.ListAPIView):
 class AdminUserDetailView(generics.RetrieveUpdateAPIView):
     serializer_class = UserProfileSerializer
     permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
-    queryset = User.objects.all()
     lookup_field = 'id'
+
+    def get_queryset(self):
+        qs = User.objects.exclude(
+            role__in=[UserRole.ADMIN, UserRole.CAMPUS_ADMIN]
+        ).select_related('student_profile', 'driver_profile')
+        if self.request.user.role == UserRole.CAMPUS_ADMIN:
+            try:
+                campus = self.request.user.campus_admin_profile.campus
+            except CampusAdminProfile.DoesNotExist:
+                return User.objects.none()
+            qs = qs.filter(
+                models.Q(student_profile__campus=campus)
+                | models.Q(driver_profile__campus=campus)
+            )
+        return qs
 
 
 class AdminDriverListView(generics.ListAPIView):
@@ -797,17 +828,36 @@ class PinSetView(APIView):
 
 class PinVerifyView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    throttle_classes = []  # uses custom cache lockout below
 
     def post(self, request):
+        from django.core.cache import cache
+
+        lock_key = f'pin_lock:{request.user.id}'
+        locked_until = cache.get(lock_key)
+        if locked_until:
+            return Response(
+                {'error': {'code': 'PIN_LOCKED', 'message': 'Too many failed PIN attempts. Try again later.'}},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
         serializer = PinVerifySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         settings_obj = _get_user_settings(request.user)
         pin = serializer.validated_data['pin']
         if not settings_obj.pin_hash or not check_password(pin, settings_obj.pin_hash):
+            fail_key = f'pin_fail:{request.user.id}'
+            attempts = cache.get(fail_key, 0) + 1
+            cache.set(fail_key, attempts, timeout=settings.PIN_LOCKOUT_MINUTES * 60)
+            if attempts >= settings.PIN_ATTEMPT_LIMIT:
+                cache.set(lock_key, True, timeout=settings.PIN_LOCKOUT_MINUTES * 60)
+                cache.delete(fail_key)
             return Response(
                 {'error': {'code': 'PIN_INVALID', 'message': 'PIN is incorrect.'}},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        cache.delete(f'pin_fail:{request.user.id}')
+        cache.delete(lock_key)
         return Response({'verified': True})
 
 
@@ -1108,3 +1158,19 @@ class ConfirmPasswordChangeView(APIView):
 
         logger.info('password_changed_via_otp user_id=%s', str(user.id))
         return Response({'message': 'Password changed successfully. Please log in again.'})
+
+
+class MapSettingsView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
+
+    def get(self, request):
+        settings_obj = MapSettings.load()
+        serializer = MapSettingsSerializer(settings_obj)
+        return Response(serializer.data)
+
+    def patch(self, request):
+        settings_obj = MapSettings.load()
+        serializer = MapSettingsSerializer(settings_obj, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)

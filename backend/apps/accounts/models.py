@@ -396,3 +396,97 @@ class StudentSignupVerificationSession(models.Model):
     @property
     def is_code_valid(self):
         return self.code_expires_at > timezone.now() and self.attempts < 3
+
+
+class MapSettings(models.Model):
+    """
+    Singleton model for Map and GIS configurations.
+    """
+    class MapProvider(models.TextChoices):
+        GOOGLE = 'google', 'Google Maps'
+        MAPBOX = 'mapbox', 'Mapbox GL'
+        OSRM = 'osrm', 'OSRM Self-Hosted'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    # Map Provider
+    active_provider = models.CharField(max_length=20, choices=MapProvider.choices, default=MapProvider.GOOGLE)
+    custom_style_json = models.TextField(
+        default='[\n  {\n    "featureType": "landscape.man_made",\n    "elementType": "geometry.fill",\n    "stylers": [{"color": "#f9f9f9"}]\n  },\n  {\n    "featureType": "poi.business",\n    "stylers": [{"visibility": "off"}]\n  }\n]', 
+        blank=True
+    )
+    
+    # Real-time Layers
+    live_traffic_enabled = models.BooleanField(default=True)
+    demand_heatmaps_enabled = models.BooleanField(default=True)
+    driver_clustering_enabled = models.BooleanField(default=False)
+    
+    # Refresh Interval
+    refresh_interval_seconds = models.IntegerField(default=15)
+    
+    # Routing Engine Weights
+    prefer_main_roads_weight = models.IntegerField(default=85)
+    avoid_pedestrian_weight = models.IntegerField(default=95)
+    speed_limit_enforcement_weight = models.IntegerField(default=50)
+    
+    # Buffer Zones
+    geofence_buffer_meters = models.IntegerField(default=50)
+    
+    # POI
+    pois = models.JSONField(default=list, blank=True)
+    
+    # Visual Marker Customization
+    idle_driver_icon = models.CharField(max_length=50, default='Standard Car (Green)')
+    cluster_threshold_zoom = models.IntegerField(default=14)
+    
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'map_settings'
+        verbose_name = 'Map Settings'
+        verbose_name_plural = 'Map Settings'
+
+    def __str__(self):
+        return 'MapSettings'
+
+    @classmethod
+    def load(cls):
+        obj, _created = cls.objects.get_or_create(defaults={})
+        return obj
+
+
+class AuditLog(models.Model):
+    """Immutable record of sensitive admin and payment actions."""
+
+    class Action(models.TextChoices):
+        LOGIN = 'login', 'Login'
+        LOGOUT = 'logout', 'Logout'
+        PASSWORD_CHANGE = 'password_change', 'Password Change'
+        ROLE_CHANGE = 'role_change', 'Role Change'
+        WALLET_CREDIT = 'wallet_credit', 'Wallet Credit'
+        WALLET_DEBIT = 'wallet_debit', 'Wallet Debit'
+        PAYMENT_WEBHOOK = 'payment_webhook', 'Payment Webhook'
+        INTEGRATION_UPDATE = 'integration_update', 'Integration Update'
+        USER_UPDATE = 'user_update', 'User Update'
+        OTHER = 'other', 'Other'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    actor = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='audit_logs',
+    )
+    action = models.CharField(max_length=40, choices=Action.choices, db_index=True)
+    target_type = models.CharField(max_length=80, blank=True)
+    target_id = models.CharField(max_length=64, blank=True, db_index=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'audit_logs'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['action', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f'AuditLog({self.action} {self.created_at})'

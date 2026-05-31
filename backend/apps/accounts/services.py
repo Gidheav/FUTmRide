@@ -1,5 +1,4 @@
 import logging
-import random
 import secrets
 import string
 from django.conf import settings
@@ -43,7 +42,7 @@ class SMSService:
 class OTPService:
     @staticmethod
     def generate_code(length: int = 6) -> str:
-        return ''.join(random.choices(string.digits, k=length))
+        return ''.join(secrets.choice(string.digits) for _ in range(length))
 
     @classmethod
     def create_and_send(cls, user: User, purpose: str) -> OTPVerification:
@@ -123,7 +122,7 @@ class OTPService:
 class StudentSignupVerificationService:
     @staticmethod
     def generate_code(length: int = 6) -> str:
-        return ''.join(random.choices(string.digits, k=length))
+        return ''.join(secrets.choice(string.digits) for _ in range(length))
 
     @staticmethod
     def generate_token() -> str:
@@ -236,7 +235,7 @@ class EmailOTPService:
 
     @staticmethod
     def generate_code(length: int = 6) -> str:
-        return ''.join(random.choices(string.digits, k=length))
+        return ''.join(secrets.choice(string.digits) for _ in range(length))
 
     @classmethod
     def create_and_send(cls, user: 'User', purpose: str, email: str = None) -> 'OTPVerification':

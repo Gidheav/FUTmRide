@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { createJSONStorage, persist } from 'zustand/middleware'
+import { clearAuthTokens, setAuthTokens } from '../../utils/secureStorage'
 
 export type UserRole = 'driver' | 'student' | 'campus_admin' | 'admin'
 
@@ -42,8 +43,10 @@ export const useAuthStore = create<AuthStore>()(
       refreshToken: null,
       isAuthenticated: false,
 
-      setAuth: (user, accessToken, refreshToken) =>
-        set({ user, accessToken, refreshToken, isAuthenticated: true }),
+      setAuth: (user, accessToken, refreshToken) => {
+        void setAuthTokens({ accessToken, refreshToken })
+        return set({ user, accessToken, refreshToken, isAuthenticated: true })
+      },
 
       setUser: (user) => set({ user }),
 
@@ -52,20 +55,28 @@ export const useAuthStore = create<AuthStore>()(
         if (current) set({ user: { ...current, ...patch } })
       },
 
-      setTokens: (accessToken, refreshToken) =>
-        set({ accessToken, refreshToken, isAuthenticated: true }),
+      setTokens: (accessToken, refreshToken) => {
+        void setAuthTokens({ accessToken, refreshToken })
+        return set({ accessToken, refreshToken, isAuthenticated: true })
+      },
 
-      logout: () =>
-        set({
+      logout: () => {
+        void clearAuthTokens()
+        return set({
           user: null,
           accessToken: null,
           refreshToken: null,
           isAuthenticated: false,
-        }),
+        })
+      },
     }),
     {
       name: 'driver-auth-store',
       storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({
+        user: state.user,
+        isAuthenticated: state.isAuthenticated,
+      }),
     }
   )
 )

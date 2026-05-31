@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { clearTokens, getAccessToken, getRefreshToken, setTokens } from './tokenStorage'
 
 const rawBase = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8002/api/v1'
 const BASE_URL = rawBase.endsWith('/') ? rawBase : `${rawBase}/`
@@ -24,7 +25,7 @@ api.interceptors.request.use(
       config.url = config.url.slice(1)
     }
     
-    const token = localStorage.getItem('access_token')
+    const token = getAccessToken()
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -39,16 +40,16 @@ api.interceptors.response.use(
     const original = error.config as any
     if (error.response?.status === 401 && !original._retry) {
       original._retry = true
-      const refresh = localStorage.getItem('refresh_token')
+      const refresh = getRefreshToken()
       if (refresh) {
         try {
           const res = await axios.post(`${BASE_URL}/auth/token/refresh/`, { refresh })
           const token = res.data.access
-          localStorage.setItem('access_token', token)
+          setTokens(token, refresh)
           if (original.headers) original.headers.Authorization = `Bearer ${token}`
           return api(original)
         } catch {
-          localStorage.clear()
+          clearTokens()
           window.location.href = '/login'
         }
       } else {

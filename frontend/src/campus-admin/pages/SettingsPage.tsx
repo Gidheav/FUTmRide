@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import {
   Mail, Lock, Eye, EyeOff, CheckCircle, AlertCircle,
   Shield, KeyRound, Loader2, Sparkles, ArrowRight, ShieldCheck, CircleAlert,
@@ -99,7 +99,8 @@ function EmailChangeSectionReplica() {
       setStatus({ msg: res.data.message || 'Email updated successfully.', type: 'success' })
       setCurrentPassword(''); setNewEmail('')
       if (user) {
-        setAuth({ ...user, email: res.data.email }, localStorage.getItem('access_token') || '', localStorage.getItem('refresh_token') || '')
+        const { getAccessToken, getRefreshToken } = await import('../../core/tokenStorage')
+        setAuth({ ...user, email: res.data.email }, getAccessToken() || '', getRefreshToken() || '')
       }
     } catch (err: any) {
       setStatus({ msg: err.response?.data?.error?.message || 'Failed to update email.', type: 'error' })
@@ -353,6 +354,54 @@ function SettingsRightSidebarReplica() {
 
 function MapGisSettingsReplica() {
   const { mode } = useCampusThemeStore()
+  const [settings, setSettings] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [actionMsg, setActionMsg] = useState<{ text: string; ok: boolean } | null>(null)
+
+  const loadData = async () => {
+    setLoading(true)
+    try {
+      const res = await api.get('/auth/settings/map/')
+      setSettings(res.data)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleUpdate = (updates: any) => {
+    setSettings((prev: any) => ({ ...prev, ...updates }))
+  }
+
+  const handleSave = async () => {
+    if (!settings) return
+    setSaving(true)
+    setActionMsg(null)
+    try {
+      await api.patch('/auth/settings/map/', settings)
+      setActionMsg({ text: 'Map settings saved successfully.', ok: true })
+    } catch (err: any) {
+      setActionMsg({ text: err.response?.data?.error?.message || 'Failed to save settings.', ok: false })
+    } finally {
+      setSaving(false)
+      setTimeout(() => setActionMsg(null), 3000)
+    }
+  }
+
+  const handleAddPOI = () => {
+    const name = window.prompt('Enter POI Name:')
+    if (name && name.trim()) {
+      handleUpdate({ pois: [...(settings.pois || []), name.trim()] })
+    }
+  }
+
+  const handleRemovePOI = (index: number) => {
+    const newPois = [...(settings.pois || [])]
+    newPois.splice(index, 1)
+    handleUpdate({ pois: newPois })
+  }
 
   const panelStyle = {
     background: T.bgPanel,
@@ -373,9 +422,20 @@ function MapGisSettingsReplica() {
     fontSize: 13,
   }
 
+  if (loading || !settings) {
+    return <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}><Loader2 size={24} className="spin" color={T.accent} /></div>
+  }
+
+  const providerNames: Record<string, string> = {
+    'google': 'Google Maps',
+    'mapbox': 'Mapbox GL',
+    'osrm': 'OSRM Self-Hosted'
+  }
+
   return (
     <div style={{ width: '100%', maxWidth: 1600, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 32 }}>
 
+      {actionMsg && <StatusBanner msg={actionMsg.text} type={actionMsg.ok ? 'success' : 'error'} />}
 
       {/* Grid Layout */}
       <div className="gis-grid">
@@ -388,21 +448,32 @@ function MapGisSettingsReplica() {
               Map Provider Details
             </h3>
             <span style={{ background: `${T.accent}1a`, color: T.accent, padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600, border: `1px solid ${T.accent}4d` }}>
-              Active: Google Maps
+              Active: {providerNames[settings.active_provider] || settings.active_provider}
             </span>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 20 }}>
-            <div style={{ border: `2px solid ${T.accent}`, background: `${T.accent}0d`, borderRadius: 8, padding: 16, cursor: 'pointer', position: 'relative' }}>
-              <CheckCircle size={18} color={T.accent} fill={`${T.accent}33`} style={{ position: 'absolute', top: 12, right: 12 }} />
+            <div 
+              onClick={() => handleUpdate({ active_provider: 'google' })}
+              style={{ border: settings.active_provider === 'google' ? `2px solid ${T.accent}` : `1px solid ${T.borderLight}`, background: settings.active_provider === 'google' ? `${T.accent}0d` : T.bgCard, borderRadius: 8, padding: 16, cursor: 'pointer', position: 'relative' }}
+            >
+              {settings.active_provider === 'google' && <CheckCircle size={18} color={T.accent} fill={`${T.accent}33`} style={{ position: 'absolute', top: 12, right: 12 }} />}
               <h4 style={{ fontSize: 13, fontWeight: 700, color: T.textPrimary, marginBottom: 4 }}>Google Maps API</h4>
               <p style={{ fontSize: 12, color: T.textSecondary }}>High-fidelity campus roads, standard latency.</p>
             </div>
-            <div style={{ border: `1px solid ${T.borderLight}`, background: T.bgCard, borderRadius: 8, padding: 16, cursor: 'pointer' }}>
+            <div 
+              onClick={() => handleUpdate({ active_provider: 'mapbox' })}
+              style={{ border: settings.active_provider === 'mapbox' ? `2px solid ${T.accent}` : `1px solid ${T.borderLight}`, background: settings.active_provider === 'mapbox' ? `${T.accent}0d` : T.bgCard, borderRadius: 8, padding: 16, cursor: 'pointer', position: 'relative' }}
+            >
+              {settings.active_provider === 'mapbox' && <CheckCircle size={18} color={T.accent} fill={`${T.accent}33`} style={{ position: 'absolute', top: 12, right: 12 }} />}
               <h4 style={{ fontSize: 13, fontWeight: 700, color: T.textPrimary, marginBottom: 4 }}>Mapbox GL</h4>
               <p style={{ fontSize: 12, color: T.textSecondary }}>Custom vector tiles, high performance.</p>
             </div>
-            <div style={{ border: `1px solid ${T.borderLight}`, background: T.bgCard, borderRadius: 8, padding: 16, cursor: 'pointer' }}>
+            <div 
+              onClick={() => handleUpdate({ active_provider: 'osrm' })}
+              style={{ border: settings.active_provider === 'osrm' ? `2px solid ${T.accent}` : `1px solid ${T.borderLight}`, background: settings.active_provider === 'osrm' ? `${T.accent}0d` : T.bgCard, borderRadius: 8, padding: 16, cursor: 'pointer', position: 'relative' }}
+            >
+              {settings.active_provider === 'osrm' && <CheckCircle size={18} color={T.accent} fill={`${T.accent}33`} style={{ position: 'absolute', top: 12, right: 12 }} />}
               <h4 style={{ fontSize: 13, fontWeight: 700, color: T.textPrimary, marginBottom: 4 }}>OSRM Self-Hosted</h4>
               <p style={{ fontSize: 12, color: T.textSecondary }}>Zero API costs, local routing focus.</p>
             </div>
@@ -411,8 +482,9 @@ function MapGisSettingsReplica() {
           <div style={{ flex: 1 }}>
             <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: T.textMuted, marginBottom: 8 }}>Custom Style JSON (Day Theme)</label>
             <textarea 
+              value={settings.custom_style_json}
+              onChange={e => handleUpdate({ custom_style_json: e.target.value })}
               style={{ ...inputStyle, width: '100%', height: 120, fontFamily: 'monospace', fontSize: 12, resize: 'none' }} 
-              defaultValue={`[\n  {\n    "featureType": "landscape.man_made",\n    "elementType": "geometry.fill",\n    "stylers": [{"color": "#f9f9f9"}]\n  },\n  {\n    "featureType": "poi.business",\n    "stylers": [{"visibility": "off"}]\n  }\n]`}
             />
           </div>
         </section>
@@ -430,31 +502,35 @@ function MapGisSettingsReplica() {
                 <p style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary }}>Live Traffic Conditions</p>
                 <p style={{ fontSize: 12, color: T.textSecondary }}>Overlay red/yellow congestion lines</p>
               </div>
-              <input type="checkbox" defaultChecked style={{ width: 40, height: 20 }} />
+              <input type="checkbox" checked={settings.live_traffic_enabled} onChange={e => handleUpdate({ live_traffic_enabled: e.target.checked })} style={{ width: 40, height: 20, cursor: 'pointer' }} />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <p style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary }}>Demand Heatmaps</p>
                 <p style={{ fontSize: 12, color: T.textSecondary }}>Show rider request density</p>
               </div>
-              <input type="checkbox" defaultChecked style={{ width: 40, height: 20 }} />
+              <input type="checkbox" checked={settings.demand_heatmaps_enabled} onChange={e => handleUpdate({ demand_heatmaps_enabled: e.target.checked })} style={{ width: 40, height: 20, cursor: 'pointer' }} />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <p style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary }}>Driver Clustering</p>
                 <p style={{ fontSize: 12, color: T.textSecondary }}>Group idle drivers on zoom out</p>
               </div>
-              <input type="checkbox" style={{ width: 40, height: 20 }} />
+              <input type="checkbox" checked={settings.driver_clustering_enabled} onChange={e => handleUpdate({ driver_clustering_enabled: e.target.checked })} style={{ width: 40, height: 20, cursor: 'pointer' }} />
             </div>
           </div>
 
           <div style={{ marginTop: 'auto', paddingTop: 24 }}>
             <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: T.textMuted, marginBottom: 8 }}>Refresh Interval (Seconds)</label>
-            <select style={{ ...inputStyle, width: '100%' }}>
-              <option>5s (High Battery Drain)</option>
-              <option selected>15s (Balanced)</option>
-              <option>30s (Eco Mode)</option>
-              <option>60s (Static Map)</option>
+            <select 
+              value={settings.refresh_interval_seconds}
+              onChange={e => handleUpdate({ refresh_interval_seconds: parseInt(e.target.value) })}
+              style={{ ...inputStyle, width: '100%', cursor: 'pointer' }}
+            >
+              <option value={5}>5s (High Battery Drain)</option>
+              <option value={15}>15s (Balanced)</option>
+              <option value={30}>30s (Eco Mode)</option>
+              <option value={60}>60s (Static Map)</option>
             </select>
           </div>
         </section>
@@ -466,41 +542,59 @@ function MapGisSettingsReplica() {
             <h3 style={{ fontSize: 16, fontWeight: 700, color: T.textPrimary }}>Routing Engine Weights</h3>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, fontWeight: 600, marginBottom: 8 }}>
                 <span style={{ color: T.textPrimary }}>Prefer Main Campus Roads</span>
-                <span style={{ color: T.accent }}>High (85%)</span>
+                <span style={{ color: T.accent }}>{settings.prefer_main_roads_weight}%</span>
               </div>
-              <div style={{ width: '100%', height: 8, background: mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', borderRadius: 999 }}>
-                <div style={{ width: '85%', height: '100%', background: T.accent, borderRadius: 999 }} />
-              </div>
+              <input 
+                type="range" min="0" max="100" 
+                value={settings.prefer_main_roads_weight} 
+                onChange={e => handleUpdate({ prefer_main_roads_weight: parseInt(e.target.value) })}
+                style={{ width: '100%', accentColor: T.accent, cursor: 'pointer' }} 
+              />
             </div>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, fontWeight: 600, marginBottom: 8 }}>
                 <span style={{ color: T.textPrimary }}>Avoid Pedestrian Walkways</span>
-                <span style={{ color: T.error }}>Strict (95%)</span>
+                <span style={{ color: '#ef4444' }}>{settings.avoid_pedestrian_weight}%</span>
               </div>
-              <div style={{ width: '100%', height: 8, background: mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', borderRadius: 999 }}>
-                <div style={{ width: '95%', height: '100%', background: T.error, borderRadius: 999 }} />
-              </div>
+              <input 
+                type="range" min="0" max="100" 
+                value={settings.avoid_pedestrian_weight} 
+                onChange={e => handleUpdate({ avoid_pedestrian_weight: parseInt(e.target.value) })}
+                style={{ width: '100%', accentColor: '#ef4444', cursor: 'pointer' }} 
+              />
             </div>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, fontWeight: 600, marginBottom: 8 }}>
                 <span style={{ color: T.textPrimary }}>Speed Limit Enforcement</span>
-                <span style={{ color: T.warn }}>Moderate (50%)</span>
+                <span style={{ color: '#f59e0b' }}>{settings.speed_limit_enforcement_weight}%</span>
               </div>
-              <div style={{ width: '100%', height: 8, background: mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', borderRadius: 999 }}>
-                <div style={{ width: '50%', height: '100%', background: T.warn, borderRadius: 999 }} />
-              </div>
+              <input 
+                type="range" min="0" max="100" 
+                value={settings.speed_limit_enforcement_weight} 
+                onChange={e => handleUpdate({ speed_limit_enforcement_weight: parseInt(e.target.value) })}
+                style={{ width: '100%', accentColor: '#f59e0b', cursor: 'pointer' }} 
+              />
             </div>
           </div>
 
           <div style={{ marginTop: 24, padding: 16, background: mode === 'dark' ? '#111' : '#fff', border: `1px solid ${mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`, borderRadius: 8 }}>
-            <h4 style={{ fontSize: 13, fontWeight: 700, color: T.textPrimary, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <h4 style={{ fontSize: 13, fontWeight: 700, color: T.textPrimary, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
               <Info size={14} /> Buffer Zones
             </h4>
-            <p style={{ fontSize: 12, color: T.textSecondary, lineHeight: 1.5 }}>Current geofence buffer for ride requests is set to <strong style={{ color: T.textPrimary }}>50 meters</strong> from designated pickup points.</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 12, color: T.textSecondary }}>Geofence buffer for ride requests:</span>
+              <input 
+                type="number" 
+                value={settings.geofence_buffer_meters}
+                onChange={e => handleUpdate({ geofence_buffer_meters: parseInt(e.target.value) || 0 })}
+                style={{ ...inputStyle, width: 80 }}
+              />
+              <span style={{ fontSize: 12, color: T.textSecondary }}>meters</span>
+            </div>
           </div>
         </section>
 
@@ -514,23 +608,15 @@ function MapGisSettingsReplica() {
             <button style={{ background: 'none', border: 'none', color: T.accent, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>Manage All</button>
           </div>
 
-          <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 12, marginBottom: 20 }} className="no-scrollbar">
-            <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, background: mode === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.03)', padding: '6px 12px', borderRadius: 999, border: `1px solid ${mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}` }}>
-              <BookOpen size={14} color={T.accent} />
-              <span style={{ fontSize: 11, fontWeight: 600, color: T.textPrimary }}>Library Main</span>
-              <X size={12} color={T.textMuted} style={{ cursor: 'pointer', marginLeft: 4 }} />
-            </div>
-            <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, background: mode === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.03)', padding: '6px 12px', borderRadius: 999, border: `1px solid ${mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}` }}>
-              <Coffee size={14} color={T.accent} />
-              <span style={{ fontSize: 11, fontWeight: 600, color: T.textPrimary }}>Student Union</span>
-              <X size={12} color={T.textMuted} style={{ cursor: 'pointer', marginLeft: 4 }} />
-            </div>
-            <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, background: mode === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.03)', padding: '6px 12px', borderRadius: 999, border: `1px solid ${mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}` }}>
-              <Bus size={14} color={T.accent} />
-              <span style={{ fontSize: 11, fontWeight: 600, color: T.textPrimary }}>North Gate Hub</span>
-              <X size={12} color={T.textMuted} style={{ cursor: 'pointer', marginLeft: 4 }} />
-            </div>
-            <button style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, background: mode === 'dark' ? '#2f3131' : '#e2e2e2', padding: '6px 12px', borderRadius: 999, border: 'none', cursor: 'pointer' }}>
+          <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 12, marginBottom: 20, flexWrap: 'wrap' }} className="no-scrollbar">
+            {(settings.pois || []).map((poi: string, i: number) => (
+              <div key={i} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, background: mode === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.03)', padding: '6px 12px', borderRadius: 999, border: `1px solid ${mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}` }}>
+                <MapPin size={14} color={T.accent} />
+                <span style={{ fontSize: 11, fontWeight: 600, color: T.textPrimary }}>{poi}</span>
+                <X size={12} color={T.textMuted} style={{ cursor: 'pointer', marginLeft: 4 }} onClick={() => handleRemovePOI(i)} />
+              </div>
+            ))}
+            <button onClick={handleAddPOI} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, background: mode === 'dark' ? '#2f3131' : '#e2e2e2', padding: '6px 12px', borderRadius: 999, border: 'none', cursor: 'pointer' }}>
               <Plus size={14} color={T.textPrimary} />
               <span style={{ fontSize: 11, fontWeight: 600, color: T.textPrimary }}>Add POI</span>
             </button>
@@ -541,25 +627,45 @@ function MapGisSettingsReplica() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: T.textMuted, marginBottom: 8 }}>Idle Driver Icon</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, background: T.bgCard, border: `1px solid ${T.borderLight}`, borderRadius: 8 }}>
-                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: T.accent, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Car size={16} color="#fff" />
-                  </div>
-                  <span style={{ fontSize: 12, color: T.textPrimary }}>Standard Car (Green)</span>
-                </div>
+                <select 
+                  value={settings.idle_driver_icon}
+                  onChange={e => handleUpdate({ idle_driver_icon: e.target.value })}
+                  style={{ ...inputStyle, width: '100%', height: 44, cursor: 'pointer' }}
+                >
+                  <option value="Standard Car (Green)">Standard Car (Green)</option>
+                  <option value="SUV (Blue)">SUV (Blue)</option>
+                  <option value="Van (Orange)">Van (Orange)</option>
+                </select>
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: T.textMuted, marginBottom: 8 }}>Cluster Threshold</label>
-                <select style={{ ...inputStyle, width: '100%', height: 54 }}>
-                  <option>Zoom Level 12</option>
-                  <option selected>Zoom Level 14</option>
-                  <option>Zoom Level 16</option>
+                <select 
+                  value={settings.cluster_threshold_zoom}
+                  onChange={e => handleUpdate({ cluster_threshold_zoom: parseInt(e.target.value) })}
+                  style={{ ...inputStyle, width: '100%', height: 44, cursor: 'pointer' }}
+                >
+                  <option value={12}>Zoom Level 12</option>
+                  <option value={14}>Zoom Level 14</option>
+                  <option value={16}>Zoom Level 16</option>
                 </select>
               </div>
             </div>
           </div>
         </section>
+
       </div>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+        <button 
+          onClick={handleSave} 
+          disabled={saving} 
+          style={{ background: T.accent, color: T.textWhite, padding: '10px 24px', borderRadius: 0, fontSize: 13, fontWeight: 700, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, opacity: saving ? 0.7 : 1 }}
+        >
+          {saving ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
+          Save Configuration
+        </button>
+      </div>
+
     </div>
   )
 }
@@ -1227,26 +1333,16 @@ function IntegrationsReplica() {
                           </div>
                         </div>
                       </div>
-                      {/* Secret Key */}
+                      {/* Secret Key — masked by API; never shown or copied in UI */}
                       <div>
                         <label style={{ fontSize: 11, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>Secret Key</label>
-                        <div style={{ background: T.bgCard, padding: '10px 12px', border: `1px solid ${T.borderLight}`, marginTop: 5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                          <span style={{ fontSize: 12, color: T.textPrimary, fontFamily: 'monospace', flex: 1 }}>
-                            {revealedKeys[revealKey] ? secretKey : '••••••••••••••••'}
+                        <div style={{ background: T.bgCard, padding: '10px 12px', border: `1px solid ${T.borderLight}`, marginTop: 5 }}>
+                          <span style={{ fontSize: 12, color: T.textSecondary, fontFamily: 'monospace' }}>
+                            {secretKey && secretKey !== '—' ? secretKey : 'Not configured — set in server environment'}
                           </span>
-                          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                            <button
-                              onClick={() => setRevealedKeys(prev => ({ ...prev, [revealKey]: !prev[revealKey] }))}
-                              style={{ background: 'none', border: 'none', color: T.accent, fontSize: 11, cursor: 'pointer', fontWeight: 600, padding: '2px 4px' }}
-                            >{revealedKeys[revealKey] ? 'Hide' : 'Reveal'}</button>
-                            <button
-                              onClick={() => handleCopy(secretKey, revealKey)}
-                              style={{ background: 'none', border: 'none', color: copied === revealKey ? T.accent : T.textMuted, cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
-                              title="Copy to clipboard"
-                            >
-                              {copied === revealKey ? <CheckCircle size={13} /> : <Copy size={13} />}
-                            </button>
-                          </div>
+                          <p style={{ fontSize: 11, color: T.textMuted, margin: '8px 0 0' }}>
+                            Full secrets are managed in Render/env only, not in the admin panel.
+                          </p>
                         </div>
                       </div>
                     </div>

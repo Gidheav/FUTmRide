@@ -5,7 +5,7 @@ import {
   Download, Megaphone, UserPlus,
   ArrowLeft, ChevronRight, History, ShieldAlert, UserX,
   Radio, Crosshair, Activity, Zap, Route, Monitor, Bell, Sliders, ShieldCheck,
-  Wrench, Ticket, Plug, Flag, LifeBuoy
+  Wrench, Ticket, Plug, Flag, LifeBuoy, Banknote
 } from 'lucide-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { CSSProperties } from 'react'
@@ -21,7 +21,15 @@ const NAV_ITEMS = [
   { label: 'Open Requests', icon: FolderOpen, path: '/rides' },
   { label: 'Scheduled Rides', icon: CalendarClock, path: '/schedule' },
   { label: 'Analytics', icon: BarChart3, path: '/analytics' },
+  { label: 'Finance', icon: Banknote, path: '/financial' },
   { label: 'Settings', icon: Settings, path: '/settings' },
+]
+
+const FINANCIAL_NAV_ITEMS = [
+  { label: 'OVERVIEW', tab: 'overview' },
+  { label: 'TRANSACTIONS', tab: 'transactions' },
+  { label: 'MEMBERS', tab: 'members' },
+  { label: 'REPORTS', tab: 'reports' },
 ]
 
 export default function CampusAdminTopNav() {
@@ -36,7 +44,10 @@ export default function CampusAdminTopNav() {
 
   const verifyMatch = location.pathname.match(/\/users\/(.*)\/verify/)
   const verifyDriverId = verifyMatch ? verifyMatch[1] : null
-  const activeTab = new URLSearchParams(location.search).get('tab') || 'personal'
+  const searchParams = new URLSearchParams(location.search)
+  const activeTab = searchParams.get('tab') || 'personal'
+  const financeTabParam = searchParams.get('tab')
+  const financeTab = financeTabParam && FINANCIAL_NAV_ITEMS.some((item) => item.tab === financeTabParam) ? financeTabParam : 'overview'
 
   const { data: unifiedDetail } = useQuery<any>({
     queryKey: ['admin-unified-detail', verifyDriverId],
@@ -152,6 +163,16 @@ export default function CampusAdminTopNav() {
             </div>
             <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
               Monitor system performance and operational intelligence
+            </div>
+          </div>
+        ) : location.pathname === '/financial' ? (
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3, display: 'flex', alignItems: 'center' }}>
+              <Banknote size={16} color={T.accent} style={{ marginRight: 8 }} />
+              Financial Management
+            </div>
+            <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
+              Frontend finance hub for revenue, transactions, members, and reporting
             </div>
           </div>
         ) : (
@@ -274,6 +295,26 @@ export default function CampusAdminTopNav() {
             <Crosshair size={13} strokeWidth={1.8} />
             <span>Intelligence Ops</span>
           </button>
+        </nav>
+      ) : location.pathname === '/financial' ? (
+        <nav style={s.topNav}>
+          {FINANCIAL_NAV_ITEMS.map((item) => {
+            const isActive = financeTab === item.tab
+            return (
+              <button
+                key={item.tab}
+                style={{
+                  ...s.topNavBtn,
+                  color: isActive ? T.accent : T.textSecondary,
+                  background: isActive ? T.accentBg : 'transparent',
+                  letterSpacing: 0.4,
+                }}
+                onClick={() => navigate(`/financial?tab=${item.tab}`)}
+              >
+                <span>{item.label}</span>
+              </button>
+            )
+          })}
         </nav>
       ) : (
         <nav style={s.topNav}>

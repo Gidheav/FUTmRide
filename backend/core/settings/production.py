@@ -35,8 +35,8 @@ DATABASES = {
     'default': env.db('DATABASE_URL'),
 }
 
-# Redis Configuration
-REDIS_URL = env('REDIS_URL', default='redis://red-d84s0m4vikkc739cn740:6379')
+# Redis Configuration (required in production)
+REDIS_URL = env('REDIS_URL')
 REDIS_PASSWORD = env('REDIS_PASSWORD', default='')
 if REDIS_PASSWORD and '@' not in REDIS_URL:
     parsed = urlparse(REDIS_URL)
@@ -101,5 +101,15 @@ LOGGING = {
     },
 }
 
-# CORS — allow all origins in production (mobile apps + web admin)
-CORS_ALLOW_ALL_ORIGINS = True
+# CORS — explicit web origins only (native mobile apps do not use CORS)
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = env.list(
+    'CORS_ALLOWED_ORIGINS',
+    default=['https://lrride.ng', 'https://www.lrride.ng', 'https://admin.lrride.ng'],
+)
+CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=CORS_ALLOWED_ORIGINS)
+
+# Additional security headers
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'
+SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'

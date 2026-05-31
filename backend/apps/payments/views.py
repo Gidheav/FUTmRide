@@ -40,10 +40,8 @@ QR_CODE_PAYLOAD_KEYS = ('recipient_id', 'user_id', 'matric_number', 'recipient_c
 
 
 def _get_client_ip(request):
-    forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
-    if forwarded:
-        return forwarded.split(',')[0].strip()
-    return request.META.get('REMOTE_ADDR', '0.0.0.0')
+    from core.security_utils import get_client_ip
+    return get_client_ip(request)
 
 
 def _is_timestamp_valid(timestamp_value, replay_window_minutes, max_skew_minutes):
@@ -759,13 +757,7 @@ class TopUpStatusView(APIView):
                             t_tx.gateway_reference = str(res_data.get('id', ''))
                             t_tx.gateway_response = res_data
                             t_tx.save()
-                            WalletService.credit(
-                                user=t_tx.user,
-                                amount=t_tx.amount,
-                                source=WalletTransaction.Source.TOPUP_PAYSTACK,
-                                narration=f'Wallet top-up via Paystack — {t_tx.internal_reference}',
-                                metadata={'gateway_reference': t_tx.gateway_reference, 'verified_via': 'api'},
-                            )
+                            WalletService.credit_gateway_topup(t_tx)
                             tx.gateway_status = GatewayTransaction.GatewayStatus.SUCCESS
                 elif status_str == 'failed':
                     with transaction.atomic():
@@ -788,13 +780,7 @@ class TopUpStatusView(APIView):
                             t_tx.gateway_reference = str(res_data.get('id', ''))
                             t_tx.gateway_response = res_data
                             t_tx.save()
-                            WalletService.credit(
-                                user=t_tx.user,
-                                amount=t_tx.amount,
-                                source=WalletTransaction.Source.TOPUP_FLUTTERWAVE,
-                                narration=f'Wallet top-up via Flutterwave — {t_tx.internal_reference}',
-                                metadata={'gateway_reference': t_tx.gateway_reference, 'verified_via': 'api'},
-                            )
+                            WalletService.credit_gateway_topup(t_tx)
                             tx.gateway_status = GatewayTransaction.GatewayStatus.SUCCESS
                 elif status_str == 'failed':
                     with transaction.atomic():
@@ -865,7 +851,7 @@ class PaystackWebhookView(APIView):
                     expected_kobo = tx.amount * 100
                     if amount_kobo != expected_kobo:
                         logger.error('paystack_amount_mismatch ref=%s expected=%s got=%s', reference, expected_kobo, amount_kobo)
-                        return Response(status=status.HTTP_200_OK)
+                        return Response(status=status.HTTP_400_BAD_REQUEST)
                     if data.get('currency') and data.get('currency') != tx.currency:
                         logger.error('paystack_currency_mismatch ref=%s expected=%s got=%s', reference, tx.currency, data.get('currency'))
                         return Response(status=status.HTTP_200_OK)
@@ -876,13 +862,7 @@ class PaystackWebhookView(APIView):
                     tx.webhook_received_at = timezone.now()
                     tx.ip_address = ip_address
                     tx.save()
-                    WalletService.credit(
-                        user=tx.user,
-                        amount=tx.amount,
-                        source=WalletTransaction.Source.TOPUP_PAYSTACK,
-                        narration=f'Wallet top-up via Paystack — {reference}',
-                        metadata={'gateway_reference': tx.gateway_reference, 'event_id': event_id},
-                    )
+                    WalletService.credit_gateway_topup(tx)
                     logger.info('paystack_topup_success ref=%s user=%s amount=%s', reference, str(tx.user.id), tx.amount)
             except GatewayTransaction.DoesNotExist:
                 logger.warning('paystack_webhook_unknown_ref ref=%s', reference)
@@ -946,7 +926,7 @@ class FlutterwaveWebhookView(APIView):
                     amount_naira = Decimal(str(data.get('amount', 0)))
                     if amount_naira != tx.amount:
                         logger.error('flutterwave_amount_mismatch ref=%s expected=%s got=%s', reference, tx.amount, amount_naira)
-                        return Response(status=status.HTTP_200_OK)
+                        return Response(status=status.HTTP_400_BAD_REQUEST)
                     tx.gateway_status = GatewayTransaction.GatewayStatus.SUCCESS
                     tx.gateway_reference = str(data.get('id'))
                     tx.channel = data.get('payment_type', '')
@@ -954,13 +934,7 @@ class FlutterwaveWebhookView(APIView):
                     tx.webhook_received_at = timezone.now()
                     tx.ip_address = ip_address
                     tx.save()
-                    WalletService.credit(
-                        user=tx.user,
-                        amount=tx.amount,
-                        source=WalletTransaction.Source.TOPUP_FLUTTERWAVE,
-                        narration=f'Wallet top-up via Flutterwave — {reference}',
-                        metadata={'gateway_reference': tx.gateway_reference, 'event_id': event_id},
-                    )
+                    WalletService.credit_gateway_topup(tx)
                     logger.info('flutterwave_topup_success ref=%s user=%s amount=%s', reference, str(tx.user.id), tx.amount)
             except GatewayTransaction.DoesNotExist:
                 logger.warning('flutterwave_webhook_unknown_ref ref=%s', reference)

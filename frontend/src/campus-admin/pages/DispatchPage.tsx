@@ -6,6 +6,7 @@ import { Circle, GoogleMap, InfoWindow, Marker, Polyline, useJsApiLoader } from 
 import { T, useCampusThemeStore } from '../theme'
 import { useDispatchStore } from '../dispatchStore'
 import api from '../../core/api'
+import { createAuthenticatedWebSocket } from '../../core/ws'
 
 const MAP_CENTER = { lat: 9.5323, lng: 6.4526 }
 const DEFAULT_ZOOM = 14
@@ -115,11 +116,8 @@ export default function DispatchPage() {
   })
 
   useEffect(() => {
-    const token = localStorage.getItem('access_token')
-    if (!token) return
-
-    const wsUrl = (import.meta.env.VITE_WS_BASE_URL || 'ws://127.0.0.1:8002') + `/ws/campus-admin/rides/?token=${token}`
-    const ws = new WebSocket(wsUrl)
+    const ws = createAuthenticatedWebSocket('/ws/campus-admin/rides/')
+    if (!ws) return
 
     ws.onopen = () => setRideWsConnected(true)
     ws.onclose = () => setRideWsConnected(false)
@@ -148,11 +146,8 @@ export default function DispatchPage() {
   }, [])
 
   useEffect(() => {
-    const token = localStorage.getItem('access_token')
-    if (!token) return
-
-    const wsUrl = (import.meta.env.VITE_WS_BASE_URL || 'ws://127.0.0.1:8002') + `/ws/campus-admin/incidents/?token=${token}`
-    const ws = new WebSocket(wsUrl)
+    const ws = createAuthenticatedWebSocket('/ws/campus-admin/incidents/')
+    if (!ws) return
     incidentWsRef.current = ws
 
     ws.onopen = () => setIncidentWsConnected(true)
@@ -178,11 +173,8 @@ export default function DispatchPage() {
   }, [])
 
   useEffect(() => {
-    const token = localStorage.getItem('access_token')
-    if (!token) return
-
-    const wsUrl = (import.meta.env.VITE_WS_BASE_URL || 'ws://127.0.0.1:8002') + `/ws/campus-admin/fleet/?token=${token}`
-    const ws = new WebSocket(wsUrl)
+    const ws = createAuthenticatedWebSocket('/ws/campus-admin/fleet/')
+    if (!ws) return
     fleetWsRef.current = ws
 
     ws.onopen = () => setFleetWsConnected(true)
@@ -253,8 +245,7 @@ export default function DispatchPage() {
   const selectedRideDriverId = selectedRide?.driver?.id || null
 
   useEffect(() => {
-    const token = localStorage.getItem('access_token')
-    if (!token || !selectedRideId) {
+    if (!selectedRideId) {
       if (driverWsRef.current) driverWsRef.current.close()
       driverWsRef.current = null
       setDriverLocation(null)
@@ -266,8 +257,11 @@ export default function DispatchPage() {
       driverWsRef.current = null
     }
 
-    const wsUrl = (import.meta.env.VITE_WS_BASE_URL || 'ws://127.0.0.1:8002') + `/ws/ride/${selectedRideId}/track/?token=${token}`
-    const socket = new WebSocket(wsUrl)
+    const socket = createAuthenticatedWebSocket(`/ws/ride/${selectedRideId}/track/`)
+    if (!socket) {
+      setDriverLocation(null)
+      return
+    }
     driverWsRef.current = socket
     setDriverLocation(null)
 

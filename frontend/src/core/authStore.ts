@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { clearTokens, setTokens } from './tokenStorage'
 
 export type UserRole = 'student' | 'driver' | 'admin' | 'campus_admin'
 
@@ -46,8 +47,7 @@ export const useAuthStore = create<AuthState>()(
         })),
 
       clearAuth: () => {
-        localStorage.removeItem('access_token')
-        localStorage.removeItem('refresh_token')
+        clearTokens()
         set({ user: null, accessToken: null, refreshToken: null, isAuthenticated: false })
       },
     }),
@@ -55,8 +55,6 @@ export const useAuthStore = create<AuthState>()(
       name: 'futminna-ride-auth',
       partialize: (state) => ({
         user: state.user,
-        accessToken: state.accessToken,
-        refreshToken: state.refreshToken,
         isAuthenticated: state.isAuthenticated,
       }),
     }

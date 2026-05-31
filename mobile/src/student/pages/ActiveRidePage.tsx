@@ -19,7 +19,7 @@ import api from '../../core/api'
 import useWalletStore from '../../core/walletStore'
 import { showRideStatusNotification } from '../../core/pushNotifications'
 import { WS_BASE_URL } from '../../../config/apiConfig'
-import { getAuthTokens } from '../../../utils/storage'
+import { createAuthenticatedWebSocket } from '../../../utils/ws'
 
 type ActiveRidePageProps = {
   rideId?: string | null
@@ -112,12 +112,8 @@ export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRi
 
     const connectWs = async () => {
       if (!rideId) return
-      const tokens = await getAuthTokens()
-      const accessToken = tokens?.accessToken
-      if (!accessToken) return
-
-      const wsUrl = `${WS_BASE_URL}/ws/ride/${rideId}/track/?token=${accessToken}`
-      const socket = new WebSocket(wsUrl)
+      const socket = await createAuthenticatedWebSocket(`/ws/ride/${rideId}/track/`)
+      if (!socket) return
       wsRef.current = socket
 
       socket.onmessage = (event) => {
