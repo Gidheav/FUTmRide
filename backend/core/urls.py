@@ -26,6 +26,7 @@ urlpatterns = [
     path("api/v1/verification/", include("apps.verification.urls")),
     path("api/v1/analytics/", include("apps.analytics.urls")),
     path("api/v1/support/", include("apps.support.urls")),
+    path("api/v1/reports/", include("apps.reports.urls")),
 ]
 
 if settings.DEBUG:

@@ -20,7 +20,7 @@ export type SortDir = 'asc' | 'desc';
 // ═══════════════════════════════════════════════════════════════════════════
 
 export type Period  = '1D' | '7D' | '30D' | '90D' | 'YTD' | '1Y' | 'ALL';
-export type HubTab  = 'overview' | 'transactions' | 'giving' | 'budget' | 'members' | 'reports' | 'payouts';
+export type HubTab  = 'overview' | 'transactions' | 'reports' | 'payouts';
 
 /** Privacy-safe finance overview from GET /payments/admin/finance/overview/ */
 export interface FinanceOverviewKpis {
@@ -378,3 +378,90 @@ export type NavSection =
   | 'analytics'
   | 'pulse'
   | 'risk';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ENTERPRISE REPORTS  (ReportsTab → reports API)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export type ReportFormat = 'csv' | 'pdf' | 'xlsx' | 'zip';
+
+export interface ReportCategory {
+  key: string;
+  label: string;
+  icon: string;
+}
+
+export interface ReportDefinition {
+  key: string;
+  title: string;
+  category: string;
+  description: string;
+  formats: ReportFormat[];
+  consent_required: boolean;
+}
+
+export interface ReportCatalogResponse {
+  categories: ReportCategory[];
+  reports: ReportDefinition[];
+  packages: Record<string, string[]>;
+}
+
+export type ReportRunStatus = 'pending' | 'running' | 'success' | 'failed';
+
+export interface ReportRun {
+  id: string;
+  report_key: string;
+  report_title: string;
+  category: string;
+  format: ReportFormat;
+  period: Period;
+  status: ReportRunStatus;
+  row_count: number;
+  file_size: number;
+  error_message: string;
+  created_at: string | null;
+  completed_at: string | null;
+  has_file: boolean;
+}
+
+export type ScheduleFrequency = 'daily' | 'weekly' | 'monthly' | 'quarterly';
+
+export interface ScheduledReport {
+  id: string;
+  name: string;
+  report_key: string;
+  format: ReportFormat;
+  period: Period;
+  frequency: ScheduleFrequency;
+  day_of_week: number;
+  day_of_month: number;
+  hour: number;
+  minute: number;
+  recipients: string[];
+  is_active: boolean;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  last_status: string;
+  last_error: string;
+  created_at: string | null;
+}
+
+export type ConsentScope = 'driver_earnings' | 'student_wallet' | 'single_ride';
+export type ConsentStatus = 'pending' | 'approved' | 'denied' | 'expired' | 'revoked';
+
+export interface StatementAccessRequest {
+  id: string;
+  subject_id: string;
+  subject_name: string;
+  scope: ConsentScope;
+  period_start: string;
+  period_end: string;
+  status: ConsentStatus;
+  consent_method: string;
+  approved_at: string | null;
+  expires_at: string | null;
+  download_count: number;
+  notes: string;
+  created_at: string;
+  ride_id: string | null;
+}

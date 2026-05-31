@@ -1,6 +1,16 @@
 import api from '../core/api'
 import type { AxiosRequestConfig } from 'axios'
-import type { LedgerQueryParams } from '../campus-admin/FinancialManagement/types/financial.types'
+import type {
+  LedgerQueryParams,
+  Period,
+  ReportCatalogResponse,
+  ReportFormat,
+  ReportRun,
+  ScheduledReport,
+  ScheduleFrequency,
+  StatementAccessRequest,
+  ConsentScope,
+} from '../campus-admin/FinancialManagement/types/financial.types'
 
 type MockBank = { code: string; name: string }
 
@@ -74,7 +84,7 @@ const mockReserves = [
   { id: 'reserve-growth', name: 'Growth Pool', balance: 36000000, icon: 'target', color: '#8b5cf6', note: 'New campus launches' },
 ]
 
-const FINANCE_LIVE_PREFIXES = ['payments/admin/finance/']
+const FINANCE_LIVE_PREFIXES = ['payments/admin/finance/', 'reports/']
 
 const isFinanceLivePath = (path: string) =>
   FINANCE_LIVE_PREFIXES.some((prefix) => path === prefix || path.startsWith(prefix))
@@ -184,6 +194,94 @@ class ApiService {
     link.download = `lr_ride_ledger_${params.period.toLowerCase()}.csv`
     link.click()
     URL.revokeObjectURL(url)
+  }
+
+  async getReportsCatalog(): Promise<ReportCatalogResponse> {
+    return this.get<ReportCatalogResponse>('reports/catalog/')
+  }
+
+  async generateReport(body: {
+    report_key: string
+    format?: ReportFormat
+    period?: Period
+    filters?: Record<string, string>
+    async?: boolean
+  }): Promise<ReportRun> {
+    return this.post<ReportRun>('reports/generate/', body)
+  }
+
+  async listReportRuns(limit = 50): Promise<{ results: ReportRun[] }> {
+    return this.get<{ results: ReportRun[] }>(`reports/runs/?limit=${limit}`)
+  }
+
+  async getReportRun(runId: string): Promise<ReportRun> {
+    return this.get<ReportRun>(`reports/runs/${runId}/`)
+  }
+
+  async downloadReportRun(runId: string, filename?: string): Promise<void> {
+    const response = await api.get(`reports/runs/${runId}/download/`, { responseType: 'blob' })
+    const blob = new Blob([response.data])
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename || `lr_ride_report_${runId.slice(0, 8)}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  async listScheduledReports(): Promise<{ results: ScheduledReport[] }> {
+    return this.get<{ results: ScheduledReport[] }>('reports/schedules/')
+  }
+
+  async createScheduledReport(body: {
+    name: string
+    report_key: string
+    format?: ReportFormat
+    period?: Period
+    frequency?: ScheduleFrequency
+    day_of_week?: number
+    day_of_month?: number
+    hour?: number
+    minute?: number
+    recipients?: string[]
+  }): Promise<ScheduledReport> {
+    return this.post<ScheduledReport>('reports/schedules/', body)
+  }
+
+  async updateScheduledReport(id: string, body: Partial<ScheduledReport>): Promise<ScheduledReport> {
+    return this.patch<ScheduledReport>(`reports/schedules/${id}/`, body)
+  }
+
+  async deleteScheduledReport(id: string): Promise<void> {
+    await this.delete(`reports/schedules/${id}/`)
+  }
+
+  async listConsentRequests(status?: string): Promise<{ results: StatementAccessRequest[] }> {
+    const qs = status ? `?status=${status}` : ''
+    return this.get<{ results: StatementAccessRequest[] }>(`reports/consent/${qs}`)
+  }
+
+  async createConsentRequest(body: {
+    subject_id: string
+    scope: ConsentScope
+    period_start: string
+    period_end: string
+    ride_id?: string
+    notes?: string
+  }): Promise<StatementAccessRequest> {
+    return this.post<StatementAccessRequest>('reports/consent/', body)
+  }
+
+  async approveConsentRequest(id: string, notes?: string): Promise<StatementAccessRequest> {
+    return this.post<StatementAccessRequest>(`reports/consent/${id}/approve/`, { notes })
+  }
+
+  async denyConsentRequest(id: string, notes?: string): Promise<StatementAccessRequest> {
+    return this.post<StatementAccessRequest>(`reports/consent/${id}/deny/`, { notes })
+  }
+
+  async generateConsentStatement(id: string, format: ReportFormat = 'pdf'): Promise<ReportRun> {
+    return this.post<ReportRun>(`reports/consent/${id}/generate/`, { format })
   }
 }
 

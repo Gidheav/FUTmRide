@@ -5,10 +5,9 @@ import React, {
 } from 'react'
 import { Download, RefreshCw, Search, X } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import type { FinanceOverview, Period, Tx } from '../types/financial.types'
+import type { FinanceOverview, Period } from '../types/financial.types'
 import { injectFHCSS } from '../helpers/hub.helpers'
-import { compact, exportCSV, periodLabel } from '../helpers/hub.helpers'
-import { MOCK_TXS } from '../constants/hub.constants'
+import { compact, periodLabel } from '../helpers/hub.helpers'
 import { PeriodSelector } from '../components/PeriodSelector'
 import { campusPanel } from '../../shared/campusPanelStyles'
 import { T } from '../../theme'
@@ -16,7 +15,6 @@ import apiService from '../../../services/api.service'
 import { useFinancialStore } from '../../financialStore'
 import { OverviewTab } from './tabs/OverviewTab'
 import { TransactionsTab } from './tabs/TransactionsTab'
-import { MembersTab } from './tabs/MembersTab'
 import { ReportsTab } from './tabs/ReportsTab'
 import { PayoutsTab } from './tabs/PayoutsTab'
 
@@ -27,7 +25,6 @@ const FinancialHub: React.FC = () => {
 
   const { activeTab: tab, setActiveTab: setFinanceTab } = useFinancialStore()
   const [period, setPeriod] = useState<Period>('30D')
-  const [txs, setTxs] = useState<Tx[]>(MOCK_TXS)
   const [overview, setOverview] = useState<FinanceOverview | null>(null)
   const [loadingOverview, setLoadingOverview] = useState(true)
   const [search, setSearch] = useState('')
@@ -53,10 +50,8 @@ const FinancialHub: React.FC = () => {
   }, [period])
 
   useEffect(() => {
-    if (tab === 'overview' || tab === 'transactions') {
-      fetchOverview()
-    }
-  }, [fetchOverview, tab])
+    fetchOverview()
+  }, [fetchOverview])
 
   const handleSearch = useCallback((q: string) => {
     setSearch(q)
@@ -75,13 +70,17 @@ const FinancialHub: React.FC = () => {
     setRefreshKey((k) => k + 1)
   }, [fetchOverview])
 
-  const handleExport = useCallback(() => {
+  const handleExport = useCallback(async () => {
     if (tab === 'transactions' && ledgerExportRef.current) {
       ledgerExportRef.current()
       return
     }
-    exportCSV(txs)
-  }, [tab, txs])
+    try {
+      await apiService.downloadLedgerExport({ period })
+    } catch {
+      /* silent */
+    }
+  }, [tab, period])
 
   const registerLedgerExport = useCallback((fn: () => void) => {
     ledgerExportRef.current = fn
@@ -168,14 +167,8 @@ const FinancialHub: React.FC = () => {
           </div>
         )}
 
-        {tab === 'members' && (
-          <div style={{ display: 'flex', flexDirection: 'column', minHeight: 'min(70vh, 100%)' }}>
-            <MembersTab txs={txs} />
-          </div>
-        )}
-
         {tab === 'reports' && (
-          <ReportsTab txs={txs} />
+          <ReportsTab period={period} />
         )}
 
         {tab === 'payouts' && (

@@ -30,7 +30,6 @@ const NAV_ITEMS = [
 const FINANCIAL_NAV_ITEMS: Array<{ label: string; tab: FinancialTab }> = [
   { label: 'OVERVIEW', tab: 'overview' },
   { label: 'TRANSACTIONS', tab: 'transactions' },
-  { label: 'MEMBERS', tab: 'members' },
   { label: 'REPORTS', tab: 'reports' },
   { label: 'PAYOUTS', tab: 'payouts' },
 ]
@@ -174,7 +173,7 @@ export default function CampusAdminTopNav() {
               Financial Management
             </div>
             <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
-              Frontend finance hub for revenue, transactions, members, and reporting
+              Platform treasury — revenue, ledger, reports, and payouts
             </div>
           </div>
         ) : (

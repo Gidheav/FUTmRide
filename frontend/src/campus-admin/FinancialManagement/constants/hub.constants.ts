@@ -23,9 +23,6 @@ export const PERIODS: { key: Period; label: string }[] = [
 export const TABS: { key: HubTab; icon: string; label: string }[] = [
   { key: 'overview',     icon: 'dashboard',          label: 'Overview'     },
   { key: 'transactions', icon: 'receipt_long',        label: 'Transactions' },
-  // { key: 'giving',       icon: 'volunteer_activism',  label: 'Giving'       }, // HIDDEN FOR PRODUCTION | Will be restored in v2.0
-  // { key: 'budget',       icon: 'account_balance',     label: 'Budget'       }, // HIDDEN FOR PRODUCTION | Will be restored in v2.0
-  { key: 'members',      icon: 'groups',              label: 'Members'      },
   { key: 'reports',      icon: 'summarize',           label: 'Reports'      },
   { key: 'payouts',      icon: 'send',                label: 'Payouts'      },
 ];
