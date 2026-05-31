@@ -1,8 +1,14 @@
+from django.conf import settings
 from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 
 
 class AuthAnonRateThrottle(AnonRateThrottle):
     scope = 'auth_anon'
+
+    def allow_request(self, request, view):
+        if not getattr(settings, "AUTH_THROTTLE_ENABLED", False):
+            return True
+        return super().allow_request(request, view)
 
     def get_cache_key(self, request, view):
         ident = self.get_ident(request)
@@ -24,3 +30,8 @@ class AuthAnonRateThrottle(AnonRateThrottle):
 
 class AuthUserRateThrottle(UserRateThrottle):
     scope = 'auth_user'
+
+    def allow_request(self, request, view):
+        if not getattr(settings, "AUTH_THROTTLE_ENABLED", False):
+            return True
+        return super().allow_request(request, view)

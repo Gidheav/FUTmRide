@@ -20,6 +20,13 @@ RATE_LIMIT_RULES = {
     "/api/v1/payments/webhooks/": (300, 60),
 }
 DEFAULT_RATE = None
+AUTH_RATE_LIMIT_PREFIXES = (
+    "/api/v1/auth/login/",
+    "/api/v1/auth/register/",
+    "/api/v1/auth/otp/",
+    "/api/v1/auth/otp/verify/",
+    "/api/v1/auth/password/reset/",
+)
 
 MOBILE_UA_RE = re.compile(r"Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile", re.IGNORECASE)
 DESKTOP_ONLY_EXEMPT_PATH_PREFIXES = ("/health/",)
@@ -89,6 +96,8 @@ class RateLimitMiddleware:
         if not getattr(settings, "RATE_LIMIT_ENABLED", True):
             return self.get_response(request)
         if not request.path.startswith("/api/"):
+            return self.get_response(request)
+        if request.path.startswith(AUTH_RATE_LIMIT_PREFIXES) and not getattr(settings, "AUTH_THROTTLE_ENABLED", False):
             return self.get_response(request)
         rule = self._get_rule(request.path)
         if not rule:

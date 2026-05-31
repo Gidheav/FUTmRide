@@ -97,6 +97,15 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
+RATE_LIMIT_ENABLED = env.bool("RATE_LIMIT_ENABLED", default=False)
+DRF_THROTTLE_ENABLED = env.bool("DRF_THROTTLE_ENABLED", default=False)
+AUTH_THROTTLE_ENABLED = env.bool("AUTH_THROTTLE_ENABLED", default=False)
+
+DRF_DEFAULT_THROTTLE_CLASSES = [
+    "rest_framework.throttling.AnonRateThrottle",
+    "rest_framework.throttling.UserRateThrottle",
+] if DRF_THROTTLE_ENABLED else []
+
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": ["rest_framework_simplejwt.authentication.JWTAuthentication"],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
@@ -112,10 +121,7 @@ REST_FRAMEWORK = {
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
     ],
-    "DEFAULT_THROTTLE_CLASSES": [
-        "rest_framework.throttling.AnonRateThrottle",
-        "rest_framework.throttling.UserRateThrottle",
-    ],
+    "DEFAULT_THROTTLE_CLASSES": DRF_DEFAULT_THROTTLE_CLASSES,
     "DEFAULT_THROTTLE_RATES": {
         "anon": "600/min",
         "user": "1200/min",
@@ -140,7 +146,6 @@ SIMPLE_JWT = {
 }
 
 SESSION_MAX_AGE_DAYS = 14
-RATE_LIMIT_ENABLED = env.bool("RATE_LIMIT_ENABLED", default=True)
 
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[
     "http://localhost:5174",

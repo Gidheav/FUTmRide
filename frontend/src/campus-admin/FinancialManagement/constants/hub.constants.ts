@@ -128,6 +128,84 @@ export const FH_CSS = `
   border-radius: 0 !important;
   box-shadow: none !important;
 }
+/* Tailwind v4 utilities are layered, while the app reset is unlayered.
+   Re-apply the Finance spacing utilities so card content does not touch borders. */
+.fh .p-1 { padding: 0.25rem !important; }
+.fh .p-1\\.5 { padding: 0.375rem !important; }
+.fh .p-2 { padding: 0.5rem !important; }
+.fh .p-2\\.5 { padding: 0.625rem !important; }
+.fh .p-3 { padding: 0.75rem !important; }
+.fh .p-4 { padding: 1rem !important; }
+.fh .p-5 { padding: 1.25rem !important; }
+.fh .p-6 { padding: 1.5rem !important; }
+.fh .p-8 { padding: 2rem !important; }
+.fh .p-10 { padding: 2.5rem !important; }
+.fh .p-12 { padding: 3rem !important; }
+.fh .p-16 { padding: 4rem !important; }
+
+.fh .px-0\\.5 { padding-left: 0.125rem !important; padding-right: 0.125rem !important; }
+.fh .px-1 { padding-left: 0.25rem !important; padding-right: 0.25rem !important; }
+.fh .px-1\\.5 { padding-left: 0.375rem !important; padding-right: 0.375rem !important; }
+.fh .px-2 { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+.fh .px-2\\.5 { padding-left: 0.625rem !important; padding-right: 0.625rem !important; }
+.fh .px-3 { padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+.fh .px-4 { padding-left: 1rem !important; padding-right: 1rem !important; }
+.fh .px-5 { padding-left: 1.25rem !important; padding-right: 1.25rem !important; }
+.fh .px-6 { padding-left: 1.5rem !important; padding-right: 1.5rem !important; }
+.fh .px-8 { padding-left: 2rem !important; padding-right: 2rem !important; }
+.fh .px-10 { padding-left: 2.5rem !important; padding-right: 2.5rem !important; }
+
+.fh .py-0\\.5 { padding-top: 0.125rem !important; padding-bottom: 0.125rem !important; }
+.fh .py-1 { padding-top: 0.25rem !important; padding-bottom: 0.25rem !important; }
+.fh .py-1\\.5 { padding-top: 0.375rem !important; padding-bottom: 0.375rem !important; }
+.fh .py-2 { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
+.fh .py-2\\.5 { padding-top: 0.625rem !important; padding-bottom: 0.625rem !important; }
+.fh .py-3 { padding-top: 0.75rem !important; padding-bottom: 0.75rem !important; }
+.fh .py-3\\.5 { padding-top: 0.875rem !important; padding-bottom: 0.875rem !important; }
+.fh .py-4 { padding-top: 1rem !important; padding-bottom: 1rem !important; }
+.fh .py-5 { padding-top: 1.25rem !important; padding-bottom: 1.25rem !important; }
+.fh .py-6 { padding-top: 1.5rem !important; padding-bottom: 1.5rem !important; }
+.fh .py-8 { padding-top: 2rem !important; padding-bottom: 2rem !important; }
+.fh .py-10 { padding-top: 2.5rem !important; padding-bottom: 2.5rem !important; }
+.fh .py-12 { padding-top: 3rem !important; padding-bottom: 3rem !important; }
+.fh .py-16 { padding-top: 4rem !important; padding-bottom: 4rem !important; }
+.fh .py-20 { padding-top: 5rem !important; padding-bottom: 5rem !important; }
+
+.fh .pt-1 { padding-top: 0.25rem !important; }
+.fh .pt-2 { padding-top: 0.5rem !important; }
+.fh .pb-3 { padding-bottom: 0.75rem !important; }
+.fh .pl-4 { padding-left: 1rem !important; }
+.fh .pl-5 { padding-left: 1.25rem !important; }
+.fh .pl-8 { padding-left: 2rem !important; }
+.fh .pr-2 { padding-right: 0.5rem !important; }
+.fh .pr-3 { padding-right: 0.75rem !important; }
+.fh .pr-4 { padding-right: 1rem !important; }
+.fh .pr-6 { padding-right: 1.5rem !important; }
+
+.fh .mt-0\\.5 { margin-top: 0.125rem !important; }
+.fh .mt-1 { margin-top: 0.25rem !important; }
+.fh .mt-1\\.5 { margin-top: 0.375rem !important; }
+.fh .mt-2 { margin-top: 0.5rem !important; }
+.fh .mt-3 { margin-top: 0.75rem !important; }
+.fh .mt-4 { margin-top: 1rem !important; }
+.fh .mt-5 { margin-top: 1.25rem !important; }
+.fh .mb-1 { margin-bottom: 0.25rem !important; }
+.fh .mb-1\\.5 { margin-bottom: 0.375rem !important; }
+.fh .mb-2 { margin-bottom: 0.5rem !important; }
+.fh .mb-3 { margin-bottom: 0.75rem !important; }
+.fh .mb-4 { margin-bottom: 1rem !important; }
+.fh .mb-5 { margin-bottom: 1.25rem !important; }
+.fh .ml-auto { margin-left: auto !important; }
+.fh .ml-2 { margin-left: 0.5rem !important; }
+.fh .mx-auto { margin-left: auto !important; margin-right: auto !important; }
+.fh .my-0\\.5 { margin-top: 0.125rem !important; margin-bottom: 0.125rem !important; }
+
+.fh .space-y-1 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.25rem !important; }
+.fh .space-y-1\\.5 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.375rem !important; }
+.fh .space-y-2 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.5rem !important; }
+.fh .space-y-3 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.75rem !important; }
+.fh .space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-top: 1rem !important; }
+.fh .space-y-5 > :not([hidden]) ~ :not([hidden]) { margin-top: 1.25rem !important; }
 .fh-bar-track { background: var(--fh-surface2) !important; border-radius: 0 !important; }
 .fh-toolbar { background: var(--fh-surface) !important; border-bottom: 1px solid var(--fh-border) !important; }
 .fh-thead { background: var(--fh-surface2) !important; border-bottom: 1px solid var(--fh-border2) !important; }
