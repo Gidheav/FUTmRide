@@ -60,11 +60,15 @@ export default function LoginPage() {
         toast.error('Super admin access only.')
         return
       }
-      const userRes = await api.get('/users/me/', {
-        headers: { Authorization: `Bearer ${data.access}` },
-      })
-      setAuth(userRes.data, data.access, data.refresh)
+      setAuth(data.user, data.access, data.refresh)
       navigate('/admin')
+      api.get('/users/me/', {
+        headers: { Authorization: `Bearer ${data.access}` },
+      }).then((userRes) => {
+        setAuth(userRes.data, data.access, data.refresh)
+      }).catch(() => {
+        // The login payload is enough to enter the app; profile refresh can retry later.
+      })
     },
     onError: (error: any) => {
       if (!error?.response) {
