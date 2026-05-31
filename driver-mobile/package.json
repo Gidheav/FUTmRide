@@ -15,7 +15,7 @@
     "expo": "^54.0.0",
     "expo-av": "~16.0.8",
     "expo-camera": "~17.0.10",
-    "expo-constants": "~17.0.8",
+    "expo-constants": "~56.0.16",
     "expo-dev-client": "~6.0.21",
     "expo-device": "~8.0.10",
     "expo-image-picker": "~17.0.11",
