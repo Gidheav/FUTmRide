@@ -67,6 +67,10 @@ export default function LoginPage() {
       navigate('/admin')
     },
     onError: (error: any) => {
+      if (!error?.response) {
+        toast.error('Cannot reach backend. Check deployment/CORS settings.')
+        return
+      }
       const body = error?.response?.data
       const apiError = body?.error
       const message = typeof apiError === 'string'
