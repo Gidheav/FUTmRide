@@ -713,8 +713,14 @@ class IntegrationStatusView(APIView):
                 'provider': platform_settings.distance_provider,
                 'providers': {
                     'haversine': {'available': True},
-                    'osrm': {'available': bool(osrm_base_url)},
-                    'google': {'available': bool(google_maps_key)},
+                    'osrm': {
+                        'available': bool(osrm_base_url),
+                        'base_url': osrm_base_url,
+                    },
+                    'google': {
+                        'available': bool(google_maps_key),
+                        'api_key': _mask_secret(google_maps_key),
+                    },
                 },
             },
             'auth': {

@@ -976,6 +976,7 @@ function IntegrationsReplica() {
   const [testing, setTesting] = useState(false)
   const [savingPrimary, setSavingPrimary] = useState(false)
   const [actionMsg, setActionMsg] = useState<{ text: string; ok: boolean } | null>(null)
+  const [savingRouting, setSavingRouting] = useState(false)
 
   // Fetch live data on mount
   const loadData = async () => {
@@ -1059,6 +1060,21 @@ function IntegrationsReplica() {
       setActionMsg({ text: err.response?.data?.error?.message || 'Failed to update gateway.', ok: false })
     } finally {
       setSavingPrimary(false)
+    }
+  }
+
+  const handleSetRoutingProvider = async (provider: string) => {
+    if (savingRouting) return
+    setSavingRouting(true)
+    try {
+      await api.patch('/auth/settings/integrations/config/', {
+        routing_provider: provider,
+      })
+      await loadData()
+    } catch (err: any) {
+      alert(err.response?.data?.error?.message || 'Failed to update routing provider.')
+    } finally {
+      setSavingRouting(false)
     }
   }
 
@@ -1381,22 +1397,33 @@ function IntegrationsReplica() {
                 <h4 style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <MapPin size={14} color="#4285F4" /> Google Maps Platform
                 </h4>
-                <span style={{ fontSize: 10, padding: '2px 6px', background: 'transparent', color: T.textSecondary, borderRadius: 0 }}>
-                  {loadingData ? '…' : statusData?.routing?.providers?.google?.available ? 'Configured' : 'Not Configured'}
-                </span>
+                {config?.routing_provider === 'google' ? (
+                  <span style={{ fontSize: 10, padding: '2px 6px', background: `${T.accent}1a`, color: T.accent, borderRadius: 4, fontWeight: 700 }}>Active</span>
+                ) : (
+                  <span style={{ fontSize: 10, padding: '2px 6px', background: 'transparent', color: T.textSecondary, borderRadius: 0 }}>
+                    {loadingData ? '…' : statusData?.routing?.providers?.google?.available ? 'Configured' : 'Not Configured'}
+                  </span>
+                )}
               </div>
               <div style={{ background: T.bgCard, border: `1px solid ${T.borderLight}`, padding: 12, borderRadius: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                   <span style={{ fontSize: 11, color: T.textSecondary }}>API Key</span>
-                  <Copy size={12} color={T.textMuted} style={{ cursor: 'pointer' }} />
+                  {statusData?.routing?.providers?.google?.available && (
+                    <Copy size={12} color={T.textMuted} style={{ cursor: 'pointer' }} onClick={() => handleCopy(statusData.routing.providers.google.api_key, 'google_maps')} />
+                  )}
                 </div>
                 <div style={{ background: 'transparent', padding: '4px 8px', fontSize: 11, fontFamily: 'monospace', color: T.textPrimary, marginBottom: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {loadingData ? '…' : statusData?.routing?.providers?.google?.available ? 'AIzaSyD-*************************' : 'Not set'}
+                  {loadingData ? '…' : statusData?.routing?.providers?.google?.available ? (copied === 'google_maps' ? 'Copied!' : statusData.routing.providers.google.api_key) : 'Not set'}
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: T.textSecondary }}>
-                  <span>Active routing provider:</span>
-                  <span style={{ fontWeight: 700, color: T.textPrimary, textTransform: 'capitalize' }}>{loadingData ? '…' : config?.routing_provider || 'haversine'}</span>
-                </div>
+                {!loadingData && statusData?.routing?.providers?.google?.available && config?.routing_provider !== 'google' && (
+                  <button 
+                    onClick={() => handleSetRoutingProvider('google')}
+                    disabled={savingRouting}
+                    style={{ width: '100%', padding: '6px 12px', background: 'transparent', border: `1px solid ${T.border}`, color: T.textPrimary, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    {savingRouting ? 'Saving...' : 'Set as Active'}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1406,14 +1433,57 @@ function IntegrationsReplica() {
                 <h4 style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <Route size={14} color="#EB6E4B" /> OSRM (Open Routing)
                 </h4>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: loadingData ? T.textMuted : statusData?.routing?.providers?.osrm?.available ? T.accent : T.textMuted }} />
+                {config?.routing_provider === 'osrm' ? (
+                  <span style={{ fontSize: 10, padding: '2px 6px', background: `${T.accent}1a`, color: T.accent, borderRadius: 4, fontWeight: 700 }}>Active</span>
+                ) : (
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: loadingData ? T.textMuted : statusData?.routing?.providers?.osrm?.available ? T.accent : T.textMuted }} />
+                )}
               </div>
               <div style={{ background: T.bgCard, border: `1px solid ${T.borderLight}`, padding: 12, borderRadius: 0 }}>
-                <p style={{ fontSize: 11, color: T.textSecondary, marginBottom: 8 }}>Open-source routing engine for campus geofencing.</p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: T.textMuted }}>
-                  <Signal size={12} />
-                  {loadingData ? 'Checking…' : statusData?.routing?.providers?.osrm?.available ? 'OSRM endpoint configured' : 'OSRM not configured — using Haversine'}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <span style={{ fontSize: 11, color: T.textSecondary }}>Base URL</span>
+                  {statusData?.routing?.providers?.osrm?.available && (
+                    <Copy size={12} color={T.textMuted} style={{ cursor: 'pointer' }} onClick={() => handleCopy(statusData.routing.providers.osrm.base_url, 'osrm')} />
+                  )}
                 </div>
+                <div style={{ background: 'transparent', padding: '4px 8px', fontSize: 11, fontFamily: 'monospace', color: T.textPrimary, marginBottom: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {loadingData ? '…' : statusData?.routing?.providers?.osrm?.available ? (copied === 'osrm' ? 'Copied!' : statusData.routing.providers.osrm.base_url) : 'Not configured'}
+                </div>
+                {!loadingData && statusData?.routing?.providers?.osrm?.available && config?.routing_provider !== 'osrm' && (
+                  <button 
+                    onClick={() => handleSetRoutingProvider('osrm')}
+                    disabled={savingRouting}
+                    style={{ width: '100%', padding: '6px 12px', background: 'transparent', border: `1px solid ${T.border}`, color: T.textPrimary, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    {savingRouting ? 'Saving...' : 'Set as Active'}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Haversine Fallback */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <h4 style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Globe size={14} color={T.textMuted} /> Haversine Fallback
+                </h4>
+                {config?.routing_provider === 'haversine' && (
+                  <span style={{ fontSize: 10, padding: '2px 6px', background: `${T.accent}1a`, color: T.accent, borderRadius: 4, fontWeight: 700 }}>Active</span>
+                )}
+              </div>
+              <div style={{ background: T.bgCard, border: `1px solid ${T.borderLight}`, padding: 12, borderRadius: 0 }}>
+                <p style={{ fontSize: 11, color: T.textSecondary, marginBottom: config?.routing_provider !== 'haversine' ? 12 : 0 }}>
+                  Basic straight-line distance calculation. Requires no API keys.
+                </p>
+                {!loadingData && config?.routing_provider !== 'haversine' && (
+                  <button 
+                    onClick={() => handleSetRoutingProvider('haversine')}
+                    disabled={savingRouting}
+                    style={{ width: '100%', padding: '6px 12px', background: 'transparent', border: `1px solid ${T.border}`, color: T.textPrimary, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    {savingRouting ? 'Saving...' : 'Set as Active'}
+                  </button>
+                )}
               </div>
             </div>
           </div>
