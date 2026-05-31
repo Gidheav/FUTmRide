@@ -1,5 +1,11 @@
 from django.urls import path
+from .admin_dispute import AdminResolveDisputeView, AdminRideRefundView
 from .admin_finance import FinanceOverviewView
+from .admin_finance_ledger import (
+    FinanceLedgerDetailView,
+    FinanceLedgerExportView,
+    FinanceLedgerListView,
+)
 from .views import (
     DriverPayoutMethodView,
     DriverWalletSummaryView,
@@ -17,6 +23,11 @@ from .views import (
 
 urlpatterns = [
     path('admin/finance/overview/', FinanceOverviewView.as_view(), name='finance-overview'),
+    path('admin/finance/ledger/', FinanceLedgerListView.as_view(), name='finance-ledger-list'),
+    path('admin/finance/ledger/export/', FinanceLedgerExportView.as_view(), name='finance-ledger-export'),
+    path('admin/finance/ledger/<str:event_id>/', FinanceLedgerDetailView.as_view(), name='finance-ledger-detail'),
+    path('admin/rides/<uuid:ride_id>/refund/', AdminRideRefundView.as_view(), name='admin-ride-refund'),
+    path('admin/rides/<uuid:ride_id>/resolve-dispute/', AdminResolveDisputeView.as_view(), name='admin-resolve-dispute'),
     path('wallet/transactions/', WalletTransactionListView.as_view(), name='wallet-transactions'),
     path('wallet/driver/summary/', DriverWalletSummaryView.as_view(), name='wallet-driver-summary'),
     path('wallet/driver/payout-method/', DriverPayoutMethodView.as_view(), name='wallet-driver-payout-method'),

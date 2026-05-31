@@ -1,5 +1,6 @@
 import api from '../core/api'
 import type { AxiosRequestConfig } from 'axios'
+import type { LedgerQueryParams } from '../campus-admin/FinancialManagement/types/financial.types'
 
 type MockBank = { code: string; name: string }
 
@@ -156,6 +157,33 @@ class ApiService {
   async delete<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<T> {
     const response = await api.delete<T>(url, config)
     return response.data
+  }
+
+  buildLedgerQuery(params: LedgerQueryParams): string {
+    const qs = new URLSearchParams()
+    qs.set('period', params.period)
+    if (params.page) qs.set('page', String(params.page))
+    if (params.page_size) qs.set('page_size', String(params.page_size))
+    if (params.status && params.status !== 'ALL') qs.set('status', params.status)
+    if (params.source && params.source !== 'ALL') qs.set('source', params.source)
+    if (params.search) qs.set('search', params.search)
+    if (params.needs_action) qs.set('needs_action', 'true')
+    if (params.ordering) qs.set('ordering', params.ordering)
+    return qs.toString()
+  }
+
+  async downloadLedgerExport(params: LedgerQueryParams): Promise<void> {
+    const query = this.buildLedgerQuery(params)
+    const response = await api.get(`payments/admin/finance/ledger/export/?${query}`, {
+      responseType: 'blob',
+    })
+    const blob = new Blob([response.data], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `lr_ride_ledger_${params.period.toLowerCase()}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
   }
 }
 

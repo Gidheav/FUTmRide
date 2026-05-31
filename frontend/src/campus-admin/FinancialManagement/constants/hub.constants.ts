@@ -65,6 +65,7 @@ export const STATUS_META: Record<string, { dot: string; text: string; bg: string
   FAILED:     { dot: '#ef4444', text: 'text-red-400',     bg: 'bg-red-900/40',     border: 'border-red-700/60',     label: 'Failed'     },
   PROCESSING: { dot: '#f59e0b', text: 'text-amber-400',   bg: 'bg-amber-900/40',   border: 'border-amber-700/60',   label: 'Processing' },
   PENDING:    { dot: '#60a5fa', text: 'text-blue-400',    bg: 'bg-blue-900/40',    border: 'border-blue-700/60',    label: 'Pending'    },
+  DISPUTED:   { dot: '#f97316', text: 'text-orange-400',  bg: 'bg-orange-900/40',  border: 'border-orange-700/60',  label: 'Disputed'   },
 };
 
 export const DEF_STATUS = {

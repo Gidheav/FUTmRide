@@ -83,6 +83,76 @@ export interface FinanceOverview {
   volume_by_period: FinanceOverviewTrendPoint[];
 }
 
+/** Platform ledger event — privacy-safe, no user PII */
+export type PlatformEventType =
+  | 'ride_settlement'
+  | 'gateway_topup'
+  | 'gateway_failure'
+  | 'driver_withdrawal'
+  | 'ride_refund'
+  | 'dispute_case';
+
+export type LedgerSourceFilter = 'ALL' | 'RIDE' | 'GATEWAY' | 'WITHDRAWAL' | 'REFUND' | 'DISPUTE';
+export type LedgerStatusFilter = 'ALL' | 'SUCCESS' | 'FAILED' | 'PENDING' | 'PROCESSING' | 'DISPUTED' | 'NEEDS_ACTION';
+
+export interface LedgerTimelineStep {
+  label: string;
+  time: string | null;
+  done: boolean;
+}
+
+export interface LedgerDisputeInfo {
+  ride_id: string;
+  ride_reference: string;
+  dispute_opened_at: string;
+  can_refund: boolean;
+  can_resolve: boolean;
+  party_hint?: string;
+  fare_kobo: number;
+  commission_kobo: number;
+  driver_earnings_kobo: number;
+}
+
+export interface PlatformLedgerEvent {
+  id: string;
+  event_type: PlatformEventType;
+  event_label: string;
+  event_icon: string;
+  reference_masked: string;
+  reference_full?: string | null;
+  amount_kobo: number;
+  status: string;
+  source_label: string;
+  source_key: string;
+  channel?: string;
+  created_at: string;
+  completed_at?: string | null;
+  needs_action: boolean;
+  context: Record<string, string | number | boolean>;
+  dispute?: LedgerDisputeInfo | null;
+  timeline?: LedgerTimelineStep[];
+}
+
+export interface LedgerListResponse {
+  period: Period;
+  count: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  results: PlatformLedgerEvent[];
+}
+
+export interface LedgerQueryParams {
+  period: Period;
+  page?: number;
+  page_size?: number;
+  status?: LedgerStatusFilter;
+  source?: LedgerSourceFilter;
+  search?: string;
+  needs_action?: boolean;
+  ordering?: string;
+}
+
 /** Withdrawal wizard step */
 export type WStep  = 'form' | 'initiating' | 'otp' | 'verifying' | 'done';
 /** Withdrawal final outcome */

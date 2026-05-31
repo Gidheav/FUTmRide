@@ -17,6 +17,7 @@ const PILL_LIGHT: Record<string, { bg: string; text: string; border: string }> =
   FAILED:     { bg: 'bg-red-50 dark:bg-red-900/40',          text: 'text-red-600 dark:text-red-400',         border: 'border-red-200 dark:border-red-700/60'         },
   PROCESSING: { bg: 'bg-amber-50 dark:bg-amber-900/40',      text: 'text-amber-700 dark:text-amber-400',     border: 'border-amber-200 dark:border-amber-700/60'     },
   PENDING:    { bg: 'bg-blue-50 dark:bg-blue-900/40',        text: 'text-blue-700 dark:text-blue-400',       border: 'border-blue-200 dark:border-blue-700/60'       },
+  DISPUTED:   { bg: 'bg-orange-50 dark:bg-orange-900/40',    text: 'text-orange-700 dark:text-orange-400',   border: 'border-orange-200 dark:border-orange-700/60'   },
 };
 const PILL_DEFAULT = { bg: 'bg-slate-100 dark:bg-slate-800', text: 'text-slate-600 dark:text-slate-400', border: 'border-slate-200 dark:border-slate-600' };
 

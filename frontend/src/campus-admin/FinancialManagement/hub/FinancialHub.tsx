@@ -30,8 +30,9 @@ const FinancialHub: React.FC = () => {
   const [txs, setTxs] = useState<Tx[]>(MOCK_TXS)
   const [overview, setOverview] = useState<FinanceOverview | null>(null)
   const [loadingOverview, setLoadingOverview] = useState(true)
-  const [loadingTxs, setLoadingTxs] = useState(false)
   const [search, setSearch] = useState('')
+  const ledgerExportRef = useRef<(() => void) | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     if (location.search) navigate('/financial', { replace: true })
@@ -52,28 +53,10 @@ const FinancialHub: React.FC = () => {
   }, [period])
 
   useEffect(() => {
-    fetchOverview()
-  }, [fetchOverview])
-
-  useEffect(() => {
-    if (tab === 'overview') return
-    let dead = false
-    ;(async () => {
-      setLoadingTxs(true)
-      try {
-        const res = await apiService.get<any>('payments/admin/transactions/')
-        if (!dead) {
-          const list: Tx[] = Array.isArray(res) ? res : (res?.results ?? res?.data ?? [])
-          if (list.length > 0) setTxs(list)
-        }
-      } catch {
-        /* use mock for legacy tabs until wired */
-      } finally {
-        if (!dead) setLoadingTxs(false)
-      }
-    })()
-    return () => { dead = true }
-  }, [tab])
+    if (tab === 'overview' || tab === 'transactions') {
+      fetchOverview()
+    }
+  }, [fetchOverview, tab])
 
   const handleSearch = useCallback((q: string) => {
     setSearch(q)
@@ -81,19 +64,28 @@ const FinancialHub: React.FC = () => {
   }, [setFinanceTab])
 
   const toolbarRevenue = overview?.kpis.platform_revenue_kobo ?? 0
-  const toolbarTxCount = overview?.kpis.transaction_count ?? txs.length
-  const toolbarFailed = overview?.kpis.failed_count ?? txs.filter(t => t.status === 'FAILED').length
+  const toolbarTxCount = overview?.kpis.transaction_count ?? 0
+  const toolbarFailed = overview?.kpis.failed_count ?? 0
 
   const scrollRef = useRef<HTMLDivElement>(null)
   useEffect(() => { scrollRef.current?.scrollTo(0, 0) }, [tab])
 
   const handleRefresh = useCallback(() => {
-    if (tab === 'overview') {
-      fetchOverview()
-    } else {
-      window.location.reload()
+    fetchOverview()
+    setRefreshKey((k) => k + 1)
+  }, [fetchOverview])
+
+  const handleExport = useCallback(() => {
+    if (tab === 'transactions' && ledgerExportRef.current) {
+      ledgerExportRef.current()
+      return
     }
-  }, [tab, fetchOverview])
+    exportCSV(txs)
+  }, [tab, txs])
+
+  const registerLedgerExport = useCallback((fn: () => void) => {
+    ledgerExportRef.current = fn
+  }, [])
 
   return (
     <div className="fh" style={campusPanel.shell}>
@@ -112,7 +104,7 @@ const FinancialHub: React.FC = () => {
           <input
             type="text"
             className="fh-input"
-            placeholder="Search transactions…"
+            placeholder="Search ledger…"
             value={search}
             onChange={(e) => handleSearch(e.target.value)}
             style={{ ...campusPanel.input, paddingLeft: 32, paddingRight: search ? 28 : 12 }}
@@ -149,7 +141,7 @@ const FinancialHub: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-          <button type="button" onClick={() => exportCSV(txs)} style={campusPanel.btnSecondary}>
+          <button type="button" onClick={handleExport} style={campusPanel.btnSecondary}>
             <Download size={13} />
             Export
           </button>
@@ -167,7 +159,12 @@ const FinancialHub: React.FC = () => {
 
         {tab === 'transactions' && (
           <div style={{ display: 'flex', flexDirection: 'column', minHeight: 'min(70vh, 100%)' }}>
-            <TransactionsTab txs={txs} period={period} />
+            <TransactionsTab
+              key={refreshKey}
+              period={period}
+              externalSearch={search}
+              onExportReady={registerLedgerExport}
+            />
           </div>
         )}
 
@@ -183,10 +180,6 @@ const FinancialHub: React.FC = () => {
 
         {tab === 'payouts' && (
           <PayoutsTab />
-        )}
-
-        {loadingTxs && tab !== 'overview' && (
-          <p style={{ fontSize: 12, color: T.textMuted, marginTop: 12 }}>Loading transactions…</p>
         )}
       </div>
     </div>
