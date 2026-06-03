@@ -5,9 +5,11 @@ from .views import (
     FareEstimateView,
     PlatformSettingsView,
     FareConfigDeactivateView,
+    ActiveFareConfigsView,
 )
 
 urlpatterns = [
+    path('config/active/', ActiveFareConfigsView.as_view(), name='fare-config-active'),
     path('config/', FareConfigListView.as_view(), name='fare-config-list'),
     path('config/<uuid:pk>/', FareConfigDetailView.as_view(), name='fare-config-detail'),
     path('config/<uuid:pk>/deactivate/', FareConfigDeactivateView.as_view(), name='fare-config-deactivate'),

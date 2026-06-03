@@ -12,7 +12,7 @@ class FareConfigListView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
 
     def get_queryset(self):
-        qs = FareConfiguration.objects.all().order_by('-created_at')
+        qs = FareConfiguration.objects.all().order_by('-effective_from', '-created_at')
         vehicle_type = self.request.query_params.get('vehicle_type')
         active_only = self.request.query_params.get('active_only', 'true').lower()
         if vehicle_type:
@@ -35,12 +35,49 @@ class FareEstimateView(APIView):
     def post(self, request):
         serializer = FareEstimateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
         result = FareCalculator.calculate(
-            vehicle_type=serializer.validated_data['vehicle_type'],
-            distance_km=serializer.validated_data['distance_km'],
-            surge_multiplier=serializer.validated_data.get('surge_multiplier', 1.0),
+            vehicle_type=data['vehicle_type'],
+            distance_km=data['distance_km'],
+            surge_multiplier=data.get('surge_multiplier', 1.0),
+            config_override=data.get('config_override'),
+            settings_override=data.get('settings_override'),
         )
         return Response(result)
+
+
+class ActiveFareConfigsView(APIView):
+    """Live + scheduled fare configs per vehicle (matches FareCalculator.get_active)."""
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
+
+    def get(self, request):
+        from django.utils import timezone
+
+        now = timezone.now()
+        live = {}
+        scheduled = {}
+        for vt, _ in FareConfiguration.VehicleType.choices:
+            active = FareConfiguration.get_active(vt)
+            if active:
+                live[vt] = FareConfigSerializer(active).data
+            pending = (
+                FareConfiguration.objects.filter(
+                    vehicle_type=vt,
+                    is_active=True,
+                    effective_from__gt=now,
+                )
+                .order_by('effective_from')
+                .first()
+            )
+            if pending:
+                scheduled[vt] = FareConfigSerializer(pending).data
+
+        platform = PlatformSettings.load()
+        return Response({
+            'live': live,
+            'scheduled': scheduled,
+            'settings': PlatformSettingsSerializer(platform).data,
+        })
 
 
 class PlatformSettingsView(APIView):

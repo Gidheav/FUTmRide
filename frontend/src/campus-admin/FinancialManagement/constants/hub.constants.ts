@@ -344,7 +344,29 @@ export const FH_CSS = `
 }
 .fh .fh-report-card.is-expanded .fh-report-card-btn { cursor: pointer; }
 .fh-report-card-accent { height: 2px; width: 100%; flex-shrink: 0; }
-.fh-report-card-body { padding: 10px 12px; flex: 1; display: flex; flex-direction: column; }
+.fh-report-card-body {
+  padding: 10px 12px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.fh-report-card-clickable {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.fh-report-card-more-hint {
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 4px 0 0;
+  color: var(--fh-text3, #64748b) !important;
+  flex-shrink: 0;
+}
 .fh-report-card-head {
   display: flex; align-items: flex-start; justify-content: space-between;
   gap: 6px; margin-bottom: 8px;

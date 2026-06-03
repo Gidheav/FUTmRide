@@ -29,35 +29,57 @@ class FareCalculator:
     }
 
     @classmethod
-    def calculate(cls, vehicle_type: str, distance_km: float, surge_multiplier: float = 1.0) -> dict:
+    def calculate(
+        cls,
+        vehicle_type: str,
+        distance_km: float,
+        surge_multiplier: float = 1.0,
+        config_override: dict | None = None,
+        settings_override: dict | None = None,
+    ) -> dict:
         from apps.pricing.models import FareConfiguration, PlatformSettings
 
         vt = vehicle_type.lower()
         config = FareConfiguration.get_active(vt)
         platform = PlatformSettings.load()
 
-        if config:
+        if config_override:
+            base = float(config_override.get('base_fare', 0))
+            per_km = float(config_override.get('per_km_rate', 0))
+            minimum = float(config_override.get('minimum_fare', 0))
+            booking_fee = float(config_override.get('booking_fee', 0))
+            surge_enabled = bool(config_override.get('surge_enabled', True))
+            max_surge = float(config_override.get('max_surge_multiplier', 2.5))
+            source = 'draft_preview'
+        elif config:
             base = float(config.base_fare)
             per_km = float(config.per_km_rate)
             minimum = float(config.minimum_fare)
             booking_fee = float(config.booking_fee)
             surge_enabled = config.surge_enabled
             max_surge = float(config.max_surge_multiplier)
+            source = 'database'
         else:
-            # Legacy fallback
             base = cls._LEGACY_BASE.get(vt, 500)
             per_km = cls._LEGACY_PER_KM.get(vt, 150)
             minimum = cls._LEGACY_MIN.get(vt, 600)
             booking_fee = 0
             surge_enabled = True
             max_surge = 2.5
+            source = 'legacy_fallback'
 
-        # Enforce max-distance policy
-        max_distance = float(platform.max_distance_km)
+        commission_rate = float(
+            settings_override.get('commission_rate', platform.commission_rate)
+            if settings_override else platform.commission_rate
+        )
+        max_distance = float(
+            settings_override.get('max_distance_km', platform.max_distance_km)
+            if settings_override else platform.max_distance_km
+        )
+
         clamped = min(distance_km, max_distance) if max_distance > 0 else distance_km
         distance_clamped = distance_km > max_distance if max_distance > 0 else False
 
-        # Apply surge cap
         effective_surge = surge_multiplier
         if surge_enabled:
             effective_surge = min(surge_multiplier, max_surge)
@@ -68,8 +90,8 @@ class FareCalculator:
         subtotal = base + distance_charge + booking_fee
         surged_fare = subtotal * effective_surge
         final_fare = max(surged_fare, minimum)
+        minimum_adjustment = round(max(0, minimum - surged_fare), 2)
 
-        commission_rate = float(platform.commission_rate)
         commission = final_fare * commission_rate
         driver_earnings = final_fare - commission
 
@@ -78,20 +100,23 @@ class FareCalculator:
             'per_km_rate': round(per_km, 2),
             'booking_fee': round(booking_fee, 2),
             'distance_km': round(clamped, 2),
+            'input_distance_km': round(distance_km, 2),
             'distance_charge': round(distance_charge, 2),
             'subtotal': round(subtotal, 2),
             'surge_multiplier': round(effective_surge, 2),
+            'requested_surge_multiplier': round(surge_multiplier, 2),
             'surge_enabled': surge_enabled,
             'max_surge_multiplier': round(max_surge, 2),
             'surged_amount': round(surged_fare - subtotal, 2) if effective_surge > 1 else 0,
             'minimum_fare': round(minimum, 2),
+            'minimum_adjustment': minimum_adjustment,
             'total_fare': round(final_fare, 2),
             'commission_rate': round(commission_rate, 4),
             'platform_commission': round(commission, 2),
             'driver_earnings': round(driver_earnings, 2),
             'distance_clamped': distance_clamped,
             'max_distance_km': round(max_distance, 2),
-            'config_source': 'database' if config else 'legacy_fallback',
+            'config_source': source,
         }
 
 

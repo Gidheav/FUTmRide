@@ -68,10 +68,21 @@ class FareConfigSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
+class FareConfigOverrideSerializer(serializers.Serializer):
+    base_fare = serializers.FloatField(min_value=0)
+    per_km_rate = serializers.FloatField(min_value=0)
+    minimum_fare = serializers.FloatField(min_value=0)
+    booking_fee = serializers.FloatField(min_value=0, default=0)
+    surge_enabled = serializers.BooleanField(default=True)
+    max_surge_multiplier = serializers.FloatField(min_value=1.0, max_value=5.0, default=2.5)
+
+
 class FareEstimateSerializer(serializers.Serializer):
     vehicle_type = serializers.ChoiceField(choices=FareConfiguration.VehicleType.choices)
     distance_km = serializers.FloatField(min_value=0.1)
     surge_multiplier = serializers.FloatField(min_value=1.0, max_value=5.0, default=1.0, required=False)
+    config_override = FareConfigOverrideSerializer(required=False)
+    settings_override = serializers.DictField(required=False)
 
 
 class PlatformSettingsSerializer(serializers.ModelSerializer):

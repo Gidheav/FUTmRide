@@ -5,7 +5,7 @@ import {
   Download, Megaphone, UserPlus,
   ArrowLeft, ChevronRight, History, ShieldAlert, UserX,
   Radio, Crosshair, Activity, Zap, Route, Monitor, Bell, Sliders, ShieldCheck,
-  Wrench, Ticket, Plug, Flag, LifeBuoy, Banknote
+  Wrench, Ticket, Plug, Flag, LifeBuoy, Banknote, Calculator
 } from 'lucide-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { CSSProperties } from 'react'
@@ -17,6 +17,7 @@ import { useDispatchStore } from '../dispatchStore'
 import { useSettingsStore } from '../settingsStore'
 import { useAnalyticsStore } from '../analyticsStore'
 import { type FinancialTab, useFinancialStore } from '../financialStore'
+import { ENGINE_NAV_ITEMS, useEngineStore } from '../engineStore'
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/' },
@@ -44,6 +45,7 @@ export default function CampusAdminTopNav() {
   const { activeTab: settingsTab, setActiveTab: setSettingsTab } = useSettingsStore()
   const { activeTab: analyticsTab, setActiveTab: setAnalyticsTab } = useAnalyticsStore()
   const { activeTab: financeTab, setActiveTab: setFinanceTab } = useFinancialStore()
+  const { activeTab: engineTab, setActiveTab: setEngineTab } = useEngineStore()
 
   const verifyMatch = location.pathname.match(/\/users\/(.*)\/verify/)
   const verifyDriverId = verifyMatch ? verifyMatch[1] : null
@@ -174,6 +176,16 @@ export default function CampusAdminTopNav() {
             </div>
             <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
               Platform treasury — revenue, ledger, reports, and payouts
+            </div>
+          </div>
+        ) : location.pathname === '/engine' ? (
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3, display: 'flex', alignItems: 'center' }}>
+              <Calculator size={16} color={T.accent} style={{ marginRight: 8 }} />
+              Pricing Engine
+            </div>
+            <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
+              Tariffs, simulation, and platform fare rules
             </div>
           </div>
         ) : (
@@ -311,6 +323,27 @@ export default function CampusAdminTopNav() {
                   letterSpacing: 0.4,
                 }}
                 onClick={() => setFinanceTab(item.tab)}
+              >
+                <span>{item.label}</span>
+              </button>
+            )
+          })}
+        </nav>
+      ) : location.pathname === '/engine' ? (
+        <nav style={s.topNav}>
+          {ENGINE_NAV_ITEMS.map((item) => {
+            const isActive = engineTab === item.tab
+            return (
+              <button
+                key={item.tab}
+                type="button"
+                style={{
+                  ...s.topNavBtn,
+                  color: isActive ? T.accent : T.textSecondary,
+                  background: isActive ? T.accentBg : 'transparent',
+                  letterSpacing: 0.4,
+                }}
+                onClick={() => setEngineTab(item.tab)}
               >
                 <span>{item.label}</span>
               </button>
