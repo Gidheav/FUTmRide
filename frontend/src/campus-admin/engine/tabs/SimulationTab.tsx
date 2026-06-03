@@ -1,14 +1,20 @@
-import { useState, useCallback, useMemo, useEffect, type CSSProperties } from 'react'
+import { useState, useCallback, useMemo, useEffect, type CSSProperties, type ReactNode } from 'react'
 import {
-  Play, Activity, Copy, RotateCcw, SlidersHorizontal, Grid3X3,
-  TrendingUp, TrendingDown, Minus, Shield,
+  Play, Activity, Copy, RotateCcw, SlidersHorizontal, Shield,
 } from 'lucide-react'
 import api from '../../../core/api'
 import { campusPanel } from '../../shared/campusPanelStyles'
 import { T } from '../../theme'
 import { VEHICLE_TYPES, TRIP_PRESETS, SENSITIVITY_DISTANCES } from '../constants'
 import { calculateFare, configToDraft, defaultFareDraft } from '../fareCalculator'
-import { FareHero, FareWaterfall, CompactTrace } from '../components/FareBreakdown'
+import { CompactTrace } from '../components/FareBreakdown'
+import {
+  TotalsComparisonChart,
+  SensitivityLineChart,
+  FleetBarChart,
+  ComponentSplitChart,
+  DeltaInsightStrip,
+} from '../components/FareCharts'
 import type { FareConfig, FareDraft, PlatformSettings, SimulationResult } from '../types'
 
 const inp: CSSProperties = {
@@ -23,7 +29,7 @@ const inp: CSSProperties = {
   outline: 'none',
 }
 
-function Label({ children }: { children: React.ReactNode }) {
+function Label({ children }: { children: ReactNode }) {
   return (
     <span style={{
       fontSize: 9,
@@ -38,6 +44,44 @@ function Label({ children }: { children: React.ReactNode }) {
       {children}
     </span>
   )
+}
+
+function MetricTile({
+  label,
+  value,
+  sub,
+  accent,
+}: {
+  label: string
+  value: string
+  sub?: string
+  accent: string
+}) {
+  return (
+    <div style={{
+      background: T.bgPanel,
+      border: `1px solid ${T.border}`,
+      borderTop: `2px solid ${accent}`,
+      padding: '10px 12px',
+      minWidth: 0,
+    }}
+    >
+      <div style={{ fontSize: 9, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 800, color: accent, fontFamily: 'monospace', marginTop: 4, lineHeight: 1 }}>{value}</div>
+      {sub && <div style={{ fontSize: 9, color: T.textMuted, marginTop: 4 }}>{sub}</div>}
+    </div>
+  )
+}
+
+function resultParts(r: SimulationResult | null) {
+  if (!r) return null
+  return {
+    base: r.base_fare,
+    distance: r.distance_charge,
+    booking: r.booking_fee,
+    surge: r.surged_amount,
+    minAdj: r.minimum_adjustment ?? 0,
+  }
 }
 
 export function SimulationTab({
@@ -65,8 +109,10 @@ export function SimulationTab({
   const [liveResult, setLiveResult] = useState<SimulationResult | null>(null)
   const [whatIfResult, setWhatIfResult] = useState<SimulationResult | null>(null)
   const [running, setRunning] = useState(false)
-  const [showFleet, setShowFleet] = useState(false)
+  const [chartAnimKey, setChartAnimKey] = useState(0)
   const [activeTrace, setActiveTrace] = useState<'live' | 'whatif'>('whatif')
+
+  const vehicleLabel = VEHICLE_TYPES.find((v) => v.id === vehicle)?.label ?? vehicle
 
   const loadFromLive = useCallback((vt?: string) => {
     const id = vt ?? vehicle
@@ -91,15 +137,14 @@ export function SimulationTab({
   const run = useCallback(async () => {
     setRunning(true)
     try {
-      const [liveRes] = await Promise.all([
-        api.post('/pricing/estimate/', {
-          vehicle_type: vehicle,
-          distance_km: distance,
-          surge_multiplier: surge,
-        }),
-      ])
+      const liveRes = await api.post('/pricing/estimate/', {
+        vehicle_type: vehicle,
+        distance_km: distance,
+        surge_multiplier: surge,
+      })
       setLiveResult(liveRes.data)
       setWhatIfResult(calculateFare(vehicle, distance, surge, settings, tariff, 'custom_sandbox'))
+      setChartAnimKey((k) => k + 1)
     } catch {
       alert('Could not reach pricing API for live baseline.')
     } finally {
@@ -131,116 +176,138 @@ export function SimulationTab({
   }, [vehicle, surge, settings, tariff, liveConfigs])
 
   const fleetRows = useMemo(() => {
-    if (!showFleet) return []
     return VEHICLE_TYPES.map((vt) => {
-      const live = liveConfigs[vt.id]
-      const draft = live ? configToDraft(live) : defaultFareDraft(vt.id)
+      const liveCfg = liveConfigs[vt.id]
+      const draft = liveCfg ? configToDraft(liveCfg) : defaultFareDraft(vt.id)
       const r = calculateFare(vt.id, distance, surge, settings, draft, 'database')
-      return { id: vt.id, label: vt.label, total: r.total_fare, hasLive: !!live }
+      return { id: vt.id, label: vt.label, total: r.total_fare, hasLive: !!liveCfg }
     }).sort((a, b) => b.total - a.total)
-  }, [showFleet, distance, surge, settings, liveConfigs])
+  }, [distance, surge, settings, liveConfigs])
 
   const traceResult = activeTrace === 'live' ? liveResult : whatIfResult
   const scheduled = scheduledConfigs[vehicle]
+  const hasResults = !!(liveResult && whatIfResult)
 
   const copySummary = () => {
     if (!liveResult || !whatIfResult) return
-    const text = [
+    navigator.clipboard.writeText([
       `LR-Ride Fare Lab`,
-      `Vehicle: ${vehicle} · ${distance} km · surge ${surge}×`,
+      `${vehicleLabel} · ${distance} km · surge ${surge}×`,
       `Live: ₦${liveResult.total_fare}`,
       `What-if: ₦${whatIfResult.total_fare}`,
       delta ? `Delta: ${delta.amount >= 0 ? '+' : ''}₦${delta.amount}` : '',
-    ].filter(Boolean).join('\n')
-    navigator.clipboard.writeText(text)
+    ].filter(Boolean).join('\n'))
   }
 
   return (
     <>
       <style>{`
-        .fare-lab {
+        .fare-lab-shell {
           display: grid;
           grid-template-columns: 1fr;
           gap: 2px;
-          min-height: 480px;
+          align-items: start;
         }
-        @media (min-width: 1100px) {
-          .fare-lab { grid-template-columns: minmax(300px, 340px) 1fr; }
+        @media (min-width: 1080px) {
+          .fare-lab-shell { grid-template-columns: 268px 1fr; }
         }
-        .fare-lab-presets {
+        .fare-lab-sidebar {
           display: flex;
-          flex-wrap: wrap;
-          gap: 4px;
+          flex-direction: column;
+          gap: 0;
+          align-self: start;
+          position: sticky;
+          top: 8px;
+          max-height: calc(100vh - 96px);
+          min-width: 0;
         }
-        .fare-lab-preset {
-          padding: 5px 10px;
-          font-size: 10px;
-          font-weight: 600;
-          border: 1px solid var(--theme-border, #1e293b);
-          background: transparent;
-          color: var(--theme-textSecondary, #94a3b8);
-          cursor: pointer;
+        .fare-lab-sidebar-body {
+          flex: 1;
+          min-height: 0;
+          overflow-y: auto;
+          overflow-x: hidden;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          padding-bottom: 4px;
         }
-        .fare-lab-preset:hover { border-color: var(--theme-accent, #a855f7); color: var(--theme-textPrimary, #e2e8f0); }
-        .fare-lab-tariff-grid {
+        .fare-lab-sidebar-footer {
+          flex-shrink: 0;
+          padding: 10px 0 4px;
+          margin-top: 2px;
+          background: ${T.bgPanel};
+          border-top: 1px solid ${T.border};
+          box-shadow: 0 -12px 20px rgba(0, 0, 0, 0.35);
+          z-index: 2;
+        }
+        .fare-lab-dashboard {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          min-width: 0;
+        }
+        .fare-lab-kpi-row {
           display: grid;
-          grid-template-columns: repeat(2, 1fr);
-          gap: 8px;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 2px;
         }
-        .fare-lab-chip {
-          padding: 5px 10px;
-          font-size: 10px;
-          font-weight: 600;
-          border: 1px solid var(--theme-border, #1e293b);
-          background: var(--theme-bgInput, #0f1525);
-          color: var(--theme-textSecondary, #94a3b8);
-          cursor: pointer;
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
+        @media (max-width: 900px) {
+          .fare-lab-kpi-row { grid-template-columns: repeat(2, 1fr); }
         }
-        .fare-lab-chip:hover { color: var(--theme-accent, #a855f7); border-color: var(--theme-accent, #a855f7); }
-        .fare-lab-heroes { display: flex; flex-wrap: wrap; gap: 2px; }
-        .fare-lab-results-grid {
+        .fare-lab-chart-row-2 {
           display: grid;
           grid-template-columns: 1fr;
           gap: 2px;
         }
         @media (min-width: 900px) {
-          .fare-lab-results-grid { grid-template-columns: 1fr 1fr; }
+          .fare-lab-chart-row-2 { grid-template-columns: 1fr 1fr; }
         }
+        .fare-lab-chart-row-bottom {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 2px;
+        }
+        @media (min-width: 960px) {
+          .fare-lab-chart-row-bottom { grid-template-columns: 1fr 1fr; }
+        }
+        .fare-lab-presets { display: flex; flex-wrap: wrap; gap: 4px; }
+        .fare-lab-preset {
+          padding: 4px 8px; font-size: 9px; font-weight: 600;
+          border: 1px solid ${T.border}; background: transparent;
+          color: ${T.textMuted}; cursor: pointer;
+        }
+        .fare-lab-preset:hover { border-color: ${T.accent}; color: ${T.textPrimary}; }
+        .fare-lab-tariff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        .fare-lab-chip {
+          padding: 4px 8px; font-size: 9px; font-weight: 600;
+          border: 1px solid ${T.border}; background: ${T.bgInput};
+          color: ${T.textSecondary}; cursor: pointer;
+          display: inline-flex; align-items: center; gap: 4px;
+        }
+        .fare-lab-chip:hover { color: ${T.accent}; border-color: ${T.accent}; }
       `}</style>
 
-      <div className="fare-lab">
-        {/* ── Left: controls ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <div style={{ ...campusPanel.card, padding: '14px 16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <Shield size={14} color={T.accent} />
-              <span style={{ fontSize: 11, fontWeight: 700, color: T.accent, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                Read-only lab
-              </span>
+      <div className="fare-lab-shell">
+        {/* Sidebar */}
+        <aside className="fare-lab-sidebar">
+          <div className="fare-lab-sidebar-body">
+          <div style={{ ...campusPanel.card, padding: '10px 12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Shield size={12} color={T.accent} />
+              <span style={{ fontSize: 10, fontWeight: 700, color: T.accent, textTransform: 'uppercase' }}>Read-only</span>
             </div>
-            <p style={{ fontSize: 11, color: T.textSecondary, margin: 0, lineHeight: 1.5 }}>
-              Compare production fares against custom tariff inputs. Nothing on this page writes to the database.
-            </p>
           </div>
 
           <div style={campusPanel.card}>
-            <div style={{ padding: '12px 16px', borderBottom: `1px solid ${T.border}`, background: T.bgCard }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary }}>Trip</span>
+            <div style={{ padding: '10px 12px', borderBottom: `1px solid ${T.border}`, background: T.bgCard, fontSize: 11, fontWeight: 700, color: T.textPrimary }}>
+              Trip
             </div>
-            <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div>
-                <Label>Quick presets</Label>
+                <Label>Presets</Label>
                 <div className="fare-lab-presets">
                   {TRIP_PRESETS.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      className="fare-lab-preset"
-                      onClick={() => { setDistance(p.distance); setSurge(p.surge) }}
-                    >
+                    <button key={p.id} type="button" className="fare-lab-preset" onClick={() => { setDistance(p.distance); setSurge(p.surge) }}>
                       {p.label}
                     </button>
                   ))}
@@ -249,190 +316,125 @@ export function SimulationTab({
               <div>
                 <Label>Vehicle</Label>
                 <select style={{ ...inp, fontFamily: T.fontFamily }} value={vehicle} onChange={(e) => setVehicle(e.target.value)}>
-                  {VEHICLE_TYPES.map((v) => (
-                    <option key={v.id} value={v.id}>{v.label}</option>
-                  ))}
+                  {VEHICLE_TYPES.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
                 </select>
               </div>
               <div>
-                <Label>Distance — {distance} km</Label>
-                <input
-                  type="range"
-                  min={1}
-                  max={50}
-                  step={0.5}
-                  value={distance}
-                  onChange={(e) => setDistance(Number(e.target.value))}
-                  style={{ width: '100%', accentColor: T.accent }}
-                />
-                <input
-                  type="number"
-                  min={0.1}
-                  step={0.1}
-                  style={{ ...inp, marginTop: 6 }}
-                  value={distance}
-                  onChange={(e) => setDistance(Number(e.target.value))}
-                />
+                <Label>Distance · {distance} km</Label>
+                <input type="range" min={1} max={50} step={0.5} value={distance} onChange={(e) => setDistance(Number(e.target.value))} style={{ width: '100%', accentColor: T.accent }} />
+                <input type="number" min={0.1} step={0.1} style={{ ...inp, marginTop: 4 }} value={distance} onChange={(e) => setDistance(Number(e.target.value))} />
               </div>
               <div>
-                <Label>Surge multiplier</Label>
+                <Label>Surge</Label>
                 <select style={inp} value={surge} onChange={(e) => setSurge(Number(e.target.value))}>
-                  {[1, 1.25, 1.5, 1.75, 2, 2.5, 3].map((s) => (
-                    <option key={s} value={s}>{s}×</option>
-                  ))}
+                  {[1, 1.25, 1.5, 1.75, 2, 2.5, 3].map((s) => <option key={s} value={s}>{s}×</option>)}
                 </select>
               </div>
             </div>
           </div>
 
           <div style={campusPanel.card}>
-            <div style={{
-              padding: '12px 16px',
-              borderBottom: `1px solid ${T.border}`,
-              background: T.bgCard,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-            >
-              <span style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary }}>What-if tariff</span>
-              <span style={{ fontSize: 9, color: T.textMuted }}>editable</span>
+            <div style={{ padding: '10px 12px', borderBottom: `1px solid ${T.border}`, background: T.bgCard, fontSize: 11, fontWeight: 700, color: T.textPrimary }}>
+              What-if tariff
             </div>
-            <div style={{ padding: 14 }}>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 12 }}>
-                <button type="button" className="fare-lab-chip" onClick={loadFromLive}>
-                  <Copy size={11} /> Live rates
-                </button>
-                <button type="button" className="fare-lab-chip" onClick={loadFromTariffs}>
-                  <SlidersHorizontal size={11} /> Tariffs tab
-                </button>
-                <button type="button" className="fare-lab-chip" onClick={() => setTariff(defaultFareDraft(vehicle))}>
-                  <RotateCcw size={11} /> Reset
-                </button>
+            <div style={{ padding: 10 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+                <button type="button" className="fare-lab-chip" onClick={() => loadFromLive()}><Copy size={10} /> Live</button>
+                <button type="button" className="fare-lab-chip" onClick={loadFromTariffs}><SlidersHorizontal size={10} /> Tariffs</button>
+                <button type="button" className="fare-lab-chip" onClick={() => setTariff(defaultFareDraft(vehicle))}><RotateCcw size={10} /> Reset</button>
               </div>
               <div className="fare-lab-tariff-grid">
                 {([
-                  ['base_fare', 'Base ₦'],
-                  ['per_km_rate', 'Per km ₦'],
-                  ['minimum_fare', 'Minimum ₦'],
-                  ['booking_fee', 'Booking ₦'],
-                  ['max_surge_multiplier', 'Max surge'],
+                  ['base_fare', 'Base'],
+                  ['per_km_rate', '/km'],
+                  ['minimum_fare', 'Min'],
+                  ['booking_fee', 'Book'],
+                  ['max_surge_multiplier', 'Cap'],
                 ] as const).map(([key, lbl]) => (
                   <div key={key}>
                     <Label>{lbl}</Label>
-                    <input
-                      type="number"
-                      style={inp}
-                      value={tariff[key]}
-                      min={0}
-                      step={key === 'max_surge_multiplier' ? 0.1 : 1}
-                      onChange={(e) => setTariff({ ...tariff, [key]: Number(e.target.value) })}
-                    />
+                    <input type="number" style={inp} value={tariff[key]} min={0} step={key === 'max_surge_multiplier' ? 0.1 : 1} onChange={(e) => setTariff({ ...tariff, [key]: Number(e.target.value) })} />
                   </div>
                 ))}
               </div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 11, color: T.textPrimary, cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={tariff.surge_enabled}
-                  onChange={(e) => setTariff({ ...tariff, surge_enabled: e.target.checked })}
-                  style={{ accentColor: T.accent }}
-                />
-                Surge guardrails enabled
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 10, color: T.textPrimary, cursor: 'pointer' }}>
+                <input type="checkbox" checked={tariff.surge_enabled} onChange={(e) => setTariff({ ...tariff, surge_enabled: e.target.checked })} style={{ accentColor: T.accent }} />
+                Surge cap on
               </label>
             </div>
           </div>
-
-          <button
-            type="button"
-            style={{ ...campusPanel.btnPrimary, justifyContent: 'center', padding: '12px 16px', width: '100%' }}
-            onClick={run}
-            disabled={running}
-          >
-            {running ? <Activity size={16} /> : <Play size={16} />}
-            Calculate comparison
-          </button>
-        </div>
-
-        {/* ── Right: results ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-          {scheduled && (
-            <div style={{
-              padding: '8px 12px',
-              fontSize: 11,
-              color: T.warn,
-              background: 'rgba(245,158,11,0.08)',
-              border: `1px solid ${T.border}`,
-            }}
-            >
-              Scheduled tariff deploy pending for this vehicle — live column reflects today&apos;s production rates only.
-            </div>
-          )}
-
-          <div className="fare-lab-heroes">
-            <FareHero
-              label="Live production"
-              sublabel="API · ride booking"
-              result={liveResult}
-              accent="#10b981"
-            />
-            <FareHero
-              label="What-if"
-              sublabel="your inputs · no save"
-              result={whatIfResult}
-              accent={T.purple}
-            />
-            {delta && (
-              <div style={{
-                minWidth: 120,
-                padding: '14px 16px',
-                background: T.bgPanel,
-                border: `1px solid ${T.border}`,
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-              }}
-              >
-                <div style={{ fontSize: 9, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase' }}>Delta</div>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  marginTop: 8,
-                  fontSize: 18,
-                  fontWeight: 800,
-                  fontFamily: 'monospace',
-                  color: delta.amount > 0 ? T.error : delta.amount < 0 ? '#10b981' : T.textMuted,
-                }}
-                >
-                  {delta.amount > 0 ? <TrendingUp size={18} /> : delta.amount < 0 ? <TrendingDown size={18} /> : <Minus size={18} />}
-                  {delta.amount >= 0 ? '+' : ''}₦{Math.abs(delta.amount).toLocaleString()}
-                </div>
-                <div style={{ fontSize: 10, color: T.textMuted, marginTop: 4 }}>
-                  {delta.pct >= 0 ? '+' : ''}{delta.pct.toFixed(1)}% vs live
-                </div>
-              </div>
-            )}
           </div>
 
-          {(liveResult || whatIfResult) && (
-            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-              <button type="button" className="fare-lab-chip" onClick={copySummary} disabled={!liveResult || !whatIfResult}>
-                <Copy size={11} /> Copy summary
-              </button>
-              <button
-                type="button"
-                className="fare-lab-chip"
-                onClick={() => setShowFleet((f) => !f)}
-              >
-                <Grid3X3 size={11} /> {showFleet ? 'Hide' : 'Show'} fleet matrix
-              </button>
+          <div className="fare-lab-sidebar-footer">
+            <button type="button" style={{ ...campusPanel.btnPrimary, justifyContent: 'center', padding: 12, width: '100%' }} onClick={run} disabled={running}>
+              {running ? <Activity size={15} /> : <Play size={15} />}
+              Calculate comparison
+            </button>
+          </div>
+        </aside>
+
+        {/* Dashboard */}
+        <main className="fare-lab-dashboard">
+          {scheduled && (
+            <div style={{ padding: '8px 12px', fontSize: 10, color: T.warn, background: 'rgba(245,158,11,0.08)', border: `1px solid ${T.border}` }}>
+              Scheduled deploy pending — live uses production rates only until effective date.
             </div>
           )}
 
-          <div className="fare-lab-results-grid">
-            <div style={{ ...campusPanel.card, padding: 16 }}>
-              <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
+          <div className="fare-lab-kpi-row">
+            <MetricTile
+              label="Live"
+              value={liveResult ? `₦${liveResult.total_fare.toLocaleString()}` : '—'}
+              sub={liveResult ? `Drv ₦${liveResult.driver_earnings.toLocaleString()}` : 'Not calculated'}
+              accent="#10b981"
+            />
+            <MetricTile
+              label="What-if"
+              value={whatIfResult ? `₦${whatIfResult.total_fare.toLocaleString()}` : '—'}
+              sub={whatIfResult ? `Drv ₦${whatIfResult.driver_earnings.toLocaleString()}` : 'Not calculated'}
+              accent={T.purple}
+            />
+            <MetricTile
+              label="Delta"
+              value={delta ? `${delta.amount >= 0 ? '+' : ''}₦${Math.abs(delta.amount).toLocaleString()}` : '—'}
+              sub={delta ? `${delta.pct >= 0 ? '+' : ''}${delta.pct.toFixed(1)}% vs live` : '—'}
+              accent={delta && delta.amount > 0 ? T.error : delta && delta.amount < 0 ? '#10b981' : T.textMuted}
+            />
+            <MetricTile
+              label="Commission"
+              value={whatIfResult ? `${(whatIfResult.commission_rate * 100).toFixed(1)}%` : `${(settings.commission_rate * 100).toFixed(1)}%`}
+              sub={whatIfResult ? `₦${whatIfResult.platform_commission.toLocaleString()} platform` : 'From global settings'}
+              accent={T.accent}
+            />
+          </div>
+
+          <DeltaInsightStrip
+            delta={delta}
+            distance={distance}
+            surge={surge}
+            vehicleLabel={vehicleLabel}
+            hasResults={hasResults}
+          />
+
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', padding: '0 0 0' }}>
+            <button type="button" className="fare-lab-chip" onClick={copySummary} disabled={!hasResults}>
+              <Copy size={10} /> Copy report
+            </button>
+          </div>
+
+          <div className="fare-lab-chart-row-2">
+            <TotalsComparisonChart
+              live={liveResult ? { total: liveResult.total_fare, platform: liveResult.platform_commission, driver: liveResult.driver_earnings } : null}
+              whatIf={whatIfResult ? { total: whatIfResult.total_fare, platform: whatIfResult.platform_commission, driver: whatIfResult.driver_earnings } : null}
+            />
+            <ComponentSplitChart live={resultParts(liveResult)} whatIf={resultParts(whatIfResult)} />
+          </div>
+
+          <SensitivityLineChart rows={sensitivity} highlightKm={distance} animKey={chartAnimKey} />
+
+          <div className="fare-lab-chart-row-bottom">
+            <div style={{ ...campusPanel.card, padding: 12 }}>
+              <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
                 {(['live', 'whatif'] as const).map((t) => (
                   <button
                     key={t}
@@ -440,7 +442,7 @@ export function SimulationTab({
                     onClick={() => setActiveTrace(t)}
                     style={{
                       padding: '4px 10px',
-                      fontSize: 10,
+                      fontSize: 9,
                       fontWeight: 700,
                       textTransform: 'uppercase',
                       border: `1px solid ${activeTrace === t ? T.accent : T.border}`,
@@ -449,103 +451,18 @@ export function SimulationTab({
                       cursor: 'pointer',
                     }}
                   >
-                    {t === 'live' ? 'Live breakdown' : 'What-if breakdown'}
+                    {t === 'live' ? 'Live detail' : 'What-if detail'}
                   </button>
                 ))}
               </div>
-              {traceResult ? (
-                <>
-                  <FareWaterfall result={traceResult} />
-                  <div style={{ marginTop: 14 }}>
-                    <CompactTrace result={traceResult} />
-                  </div>
-                </>
-              ) : (
-                <p style={{ fontSize: 12, color: T.textMuted, fontStyle: 'italic', margin: 0 }}>
-                  Run calculation to see fare composition.
-                </p>
+              {traceResult ? <CompactTrace result={traceResult} /> : (
+                <p style={{ fontSize: 11, color: T.textMuted, margin: 0 }}>Calculation breakdown appears here.</p>
               )}
             </div>
 
-            <div style={{ ...campusPanel.card, padding: 16 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: T.textPrimary, marginBottom: 10 }}>
-                Distance sensitivity
-              </div>
-              <p style={{ fontSize: 10, color: T.textMuted, margin: '0 0 10px', lineHeight: 1.45 }}>
-                Total fare at common distances using current what-if tariff vs live config.
-              </p>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, fontFamily: 'monospace' }}>
-                <thead>
-                  <tr style={{ color: T.textMuted, textAlign: 'left', borderBottom: `1px solid ${T.border}` }}>
-                    <th style={{ padding: '6px 8px', fontWeight: 700, fontSize: 9 }}>KM</th>
-                    <th style={{ padding: '6px 8px', fontWeight: 700, fontSize: 9 }}>LIVE</th>
-                    <th style={{ padding: '6px 8px', fontWeight: 700, fontSize: 9 }}>WHAT-IF</th>
-                    <th style={{ padding: '6px 8px', fontWeight: 700, fontSize: 9 }}>Δ</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sensitivity.map((row) => (
-                    <tr
-                      key={row.km}
-                      style={{
-                        borderBottom: `1px solid ${T.border}`,
-                        background: row.km === distance ? 'rgba(168,85,247,0.08)' : 'transparent',
-                      }}
-                    >
-                      <td style={{ padding: '6px 8px', color: T.textPrimary }}>{row.km}</td>
-                      <td style={{ padding: '6px 8px', color: T.textSecondary }}>
-                        {row.live != null ? `₦${row.live.toLocaleString()}` : '—'}
-                      </td>
-                      <td style={{ padding: '6px 8px', color: T.purple }}>₦{row.whatIf.toLocaleString()}</td>
-                      <td style={{
-                        padding: '6px 8px',
-                        color: row.delta == null ? T.textMuted : row.delta > 0 ? T.error : row.delta < 0 ? '#10b981' : T.textMuted,
-                      }}
-                      >
-                        {row.delta == null ? '—' : `${row.delta >= 0 ? '+' : ''}₦${row.delta.toLocaleString()}`}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <FleetBarChart rows={fleetRows} activeId={vehicle} onSelect={setVehicle} />
           </div>
-
-          {showFleet && (
-            <div style={{ ...campusPanel.card, padding: 16 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: T.textPrimary, marginBottom: 8 }}>
-                Fleet matrix · {distance} km · {surge}× surge
-              </div>
-              <p style={{ fontSize: 10, color: T.textMuted, margin: '0 0 12px' }}>
-                Live tariff per vehicle class (client-side, same rules as production).
-              </p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 2 }}>
-                {fleetRows.map((row) => (
-                  <button
-                    key={row.id}
-                    type="button"
-                    onClick={() => setVehicle(row.id)}
-                    style={{
-                      padding: '10px 12px',
-                      textAlign: 'left',
-                      border: `1px solid ${vehicle === row.id ? T.accent : T.border}`,
-                      background: vehicle === row.id ? T.accentBg : T.bgInput,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <div style={{ fontSize: 10, fontWeight: 700, color: T.textPrimary }}>{row.label}</div>
-                    <div style={{ fontSize: 14, fontWeight: 800, fontFamily: 'monospace', color: '#10b981', marginTop: 4 }}>
-                      ₦{row.total.toLocaleString()}
-                    </div>
-                    {!row.hasLive && (
-                      <div style={{ fontSize: 9, color: T.warn, marginTop: 2 }}>legacy default</div>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+        </main>
       </div>
     </>
   )
