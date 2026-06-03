@@ -15,13 +15,30 @@ REPORT_CATEGORIES = [
 ]
 
 
+CSV_FIRST_KEYS = frozenset({
+    'platform_ledger', 'completed_rides_register', 'failed_topups',
+    'failed_transactions_master', 'webhook_log', 'gateway_settlement_lag',
+    'duplicate_idempotency', 'refunds_issued', 'admin_refund_actions',
+    'report_generation_log', 'statement_access_log', 'peak_hours', 'route_performance',
+})
+
+
 def _r(key, title, category, desc, formats=None, consent=False):
+    if formats is None:
+        if key.endswith('_pack'):
+            formats = ['zip']
+        elif consent:
+            formats = ['pdf', 'csv']
+        elif key in CSV_FIRST_KEYS:
+            formats = ['csv', 'xlsx', 'pdf']
+        else:
+            formats = ['pdf', 'csv', 'xlsx']
     return {
         'key': key,
         'title': title,
         'category': category,
         'description': desc,
-        'formats': formats or ['csv', 'pdf', 'xlsx'],
+        'formats': formats,
         'consent_required': consent,
     }
 

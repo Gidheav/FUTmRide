@@ -100,7 +100,19 @@ export const FS_CSS = `
 .fs.light .fs-col-sep { border-left: 1px solid #d1fae5; }
 
 /* ── SHARED ── */
-.fs { font-family: 'Roboto Mono', monospace; transition: background 0.25s; }
+.fs {
+  font-family: var(--font-sans, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  transition: background 0.25s;
+}
+.fs,
+.fs *:not(svg):not(path):not(circle):not(rect):not(line):not(polyline):not(polygon),
+.fs svg text,
+.fs input,
+.fs button,
+.fs select,
+.fs textarea {
+  font-family: var(--font-sans, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif) !important;
+}
 .fs-input:focus { border-color: #10b981 !important; box-shadow: 0 0 0 2px rgba(16,185,129,0.18) !important; outline: none !important; }
 .fs-green { color: #10b981; }
 .fs.dark .fs-subtlebg { background: rgba(16,185,129,0.07); border: 1px solid rgba(16,185,129,0.18); }

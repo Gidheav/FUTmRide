@@ -10,7 +10,10 @@ import type {
   ScheduleFrequency,
   StatementAccessRequest,
   ConsentScope,
+  PayoutListResponse,
+  PayoutStatusFilter,
 } from '../campus-admin/FinancialManagement/types/financial.types'
+import { enrichCatalog, REPORT_CATALOG_FALLBACK } from '../campus-admin/FinancialManagement/constants/reportsCatalog'
 
 type MockBank = { code: string; name: string }
 
@@ -196,8 +199,16 @@ class ApiService {
     URL.revokeObjectURL(url)
   }
 
-  async getReportsCatalog(): Promise<ReportCatalogResponse> {
-    return this.get<ReportCatalogResponse>('reports/catalog/')
+  async getReportsCatalog(): Promise<ReportCatalogResponse & { fromApi?: boolean }> {
+    try {
+      const data = await this.get<ReportCatalogResponse>('reports/catalog/')
+      if (data?.reports?.length) {
+        return { ...enrichCatalog(data), fromApi: true }
+      }
+    } catch {
+      /* use embedded catalog when API unavailable */
+    }
+    return { ...REPORT_CATALOG_FALLBACK, fromApi: false }
   }
 
   async generateReport(body: {
@@ -282,6 +293,48 @@ class ApiService {
 
   async generateConsentStatement(id: string, format: ReportFormat = 'pdf'): Promise<ReportRun> {
     return this.post<ReportRun>(`reports/consent/${id}/generate/`, { format })
+  }
+
+  buildPayoutQuery(params: {
+    period: Period
+    page?: number
+    page_size?: number
+    status?: PayoutStatusFilter
+    search?: string
+    needs_action?: boolean
+  }): string {
+    const qs = new URLSearchParams()
+    qs.set('period', params.period)
+    if (params.page) qs.set('page', String(params.page))
+    if (params.page_size) qs.set('page_size', String(params.page_size))
+    if (params.status && params.status !== 'ALL') qs.set('status', params.status)
+    if (params.search) qs.set('search', params.search)
+    if (params.needs_action) qs.set('needs_action', 'true')
+    return qs.toString()
+  }
+
+  async getFinancePayouts(params: {
+    period: Period
+    page?: number
+    status?: PayoutStatusFilter
+    search?: string
+    needs_action?: boolean
+  }): Promise<PayoutListResponse> {
+    const query = this.buildPayoutQuery(params)
+    return this.get<PayoutListResponse>(`payments/admin/finance/payouts/?${query}`)
+  }
+
+  async downloadPayoutsExport(period: Period): Promise<void> {
+    const response = await api.get(`payments/admin/finance/payouts/export/?period=${period}`, {
+      responseType: 'blob',
+    })
+    const blob = new Blob([response.data], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `lr_ride_payouts_${period.toLowerCase()}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
   }
 }
 

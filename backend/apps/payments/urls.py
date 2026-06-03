@@ -1,6 +1,7 @@
 from django.urls import path
 from .admin_dispute import AdminResolveDisputeView, AdminRideRefundView
 from .admin_finance import FinanceOverviewView
+from .admin_finance_payouts import FinancePayoutsExportView, FinancePayoutsView
 from .admin_finance_ledger import (
     FinanceLedgerDetailView,
     FinanceLedgerExportView,
@@ -23,6 +24,8 @@ from .views import (
 
 urlpatterns = [
     path('admin/finance/overview/', FinanceOverviewView.as_view(), name='finance-overview'),
+    path('admin/finance/payouts/', FinancePayoutsView.as_view(), name='finance-payouts'),
+    path('admin/finance/payouts/export/', FinancePayoutsExportView.as_view(), name='finance-payouts-export'),
     path('admin/finance/ledger/', FinanceLedgerListView.as_view(), name='finance-ledger-list'),
     path('admin/finance/ledger/export/', FinanceLedgerExportView.as_view(), name='finance-ledger-export'),
     path('admin/finance/ledger/<str:event_id>/', FinanceLedgerDetailView.as_view(), name='finance-ledger-detail'),

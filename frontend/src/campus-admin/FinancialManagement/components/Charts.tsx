@@ -69,7 +69,7 @@ export const AreaChart = memo(({ data, color = '#10b981', h = 160, showGrid = tr
           <g key={i}>
             <line x1={PAD.l} y1={y} x2={PAD.l + cw} y2={y} stroke="currentColor" strokeWidth="1"
               style={{ color: 'var(--fh-border,#1e293b)' }} />
-            <text x={PAD.l - 6} y={y + 4} textAnchor="end" fontSize={9} fontFamily="monospace"
+            <text x={PAD.l - 6} y={y + 4} textAnchor="end" fontSize={9} fontFamily="var(--font-sans)"
               style={{ fill: 'var(--fh-text3,#475569)' }}>
               {compact(v * 100)}
             </text>
@@ -85,7 +85,7 @@ export const AreaChart = memo(({ data, color = '#10b981', h = 160, showGrid = tr
             <circle cx={xOf(i)} cy={yOf(d.value)} r="3" fill={color} stroke="#0f172a" strokeWidth="1.5" />
           )}
           <text x={xOf(i)} y={PAD.t + ch + 18} textAnchor="middle" fontSize={8}
-            fill="var(--fh-text3,#64748b)" fontFamily="monospace">
+            fill="var(--fh-text3,#64748b)" fontFamily="var(--font-sans)">
             {d.label}
           </text>
         </g>
@@ -118,7 +118,7 @@ export const BarViz = memo(({ data, color = '#10b981', h = 120 }: {
             <rect x={x} y={y} width={bw} height={bh} rx={2}
               fill={color} opacity={0.7 + 0.3 * (d.value / max)} />
             <text x={x + bw / 2} y={PAD.t + ch + 14} textAnchor="middle" fontSize={8}
-              fill="var(--fh-text3,#475569)" fontFamily="monospace">
+              fill="var(--fh-text3,#475569)" fontFamily="var(--font-sans)">
               {d.label}
             </text>
           </g>
@@ -156,11 +156,11 @@ export const Donut = memo(({ segs, size = 140, thick = 26 }: {
         return el;
       })}
       <text x={cx} y={cx - 4} textAnchor="middle" fontSize={13} fontWeight="700"
-        fill="var(--fh-text1,#f1f5f9)" fontFamily="monospace">
+        fill="var(--fh-text1,#f1f5f9)" fontFamily="var(--font-sans)">
         {segs.length}
       </text>
       <text x={cx} y={cx + 12} textAnchor="middle" fontSize={8}
-        fill="var(--fh-text3,#475569)" fontFamily="monospace">
+        fill="var(--fh-text3,#475569)" fontFamily="var(--font-sans)">
         CATEGORIES
       </text>
     </svg>

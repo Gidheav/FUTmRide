@@ -16,6 +16,8 @@ import { fmtD } from '../../helpers/hub.helpers';
 import { Card } from '../../components/Card';
 import Icon from '../../../../components/common/Icon';
 import apiService from '../../../../services/api.service';
+import { pickPrimaryFormat, REPORT_CATALOG_FALLBACK } from '../../constants/reportsCatalog';
+import { T } from '../../../theme';
 
 type Panel = 'reports' | 'queue' | 'schedules' | 'consent';
 
@@ -56,15 +58,24 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export const ReportsTab = memo(({ period }: { period: Period }) => {
+export const ReportsTab = memo(({
+  period,
+  onMetaChange,
+  onRefreshReady,
+}: {
+  period: Period;
+  onMetaChange?: (meta: { count: number; catalogLive: boolean }) => void;
+  onRefreshReady?: (fn: () => void) => void;
+}) => {
   const [panel, setPanel] = useState<Panel>('reports');
   const [category, setCategory] = useState<string>('all');
-  const [catalog, setCatalog] = useState<ReportCategory[]>([]);
-  const [reports, setReports] = useState<ReportDefinition[]>([]);
+  const [catalog, setCatalog] = useState<ReportCategory[]>(REPORT_CATALOG_FALLBACK.categories);
+  const [reports, setReports] = useState<ReportDefinition[]>(REPORT_CATALOG_FALLBACK.reports);
   const [runs, setRuns] = useState<ReportRun[]>([]);
   const [schedules, setSchedules] = useState<ScheduledReport[]>([]);
   const [consents, setConsents] = useState<StatementAccessRequest[]>([]);
   const [generating, setGenerating] = useState<string | null>(null);
+  const [expandedCardKey, setExpandedCardKey] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [showScheduleForm, setShowScheduleForm] = useState(false);
   const [showConsentForm, setShowConsentForm] = useState(false);
@@ -87,15 +98,11 @@ export const ReportsTab = memo(({ period }: { period: Period }) => {
   });
 
   const loadCatalog = useCallback(async () => {
-    try {
-      const res = await apiService.getReportsCatalog();
-      setCatalog(res.categories);
-      setReports(res.reports);
-    } catch {
-      setCatalog([]);
-      setReports([]);
-    }
-  }, []);
+    const res = await apiService.getReportsCatalog();
+    setCatalog(res.categories);
+    setReports(res.reports);
+    onMetaChange?.({ count: res.reports.length, catalogLive: Boolean(res.fromApi) });
+  }, [onMetaChange]);
 
   const loadRuns = useCallback(async () => {
     try {
@@ -124,12 +131,24 @@ export const ReportsTab = memo(({ period }: { period: Period }) => {
     }
   }, []);
 
-  useEffect(() => {
+  const refreshAll = useCallback(() => {
     loadCatalog();
     loadRuns();
     loadSchedules();
     loadConsents();
   }, [loadCatalog, loadRuns, loadSchedules, loadConsents]);
+
+  useEffect(() => {
+    onRefreshReady?.(refreshAll);
+  }, [onRefreshReady, refreshAll]);
+
+  useEffect(() => {
+    onMetaChange?.({ count: REPORT_CATALOG_FALLBACK.reports.length, catalogLive: false });
+  }, [onMetaChange]);
+
+  useEffect(() => {
+    refreshAll();
+  }, [refreshAll]);
 
   const hasActiveRuns = runs.some((r) => r.status === 'pending' || r.status === 'running');
 
@@ -157,10 +176,31 @@ export const ReportsTab = memo(({ period }: { period: Period }) => {
     return list;
   }, [reports, category, search]);
 
+  useEffect(() => {
+    setExpandedCardKey(null);
+  }, [category, search, panel]);
+
   const handleGenerate = useCallback(async (report: ReportDefinition, format: ReportFormat) => {
     const key = `${report.key}:${format}`;
     setGenerating(key);
     try {
+      if (report.key === 'platform_ledger' && format === 'csv') {
+        await apiService.downloadLedgerExport({ period });
+        return;
+      }
+      if (report.key === 'failed_topups' && format === 'csv') {
+        await apiService.downloadLedgerExport({ period, status: 'FAILED' });
+        return;
+      }
+      if (report.key === 'dispute_register' && format === 'csv') {
+        await apiService.downloadLedgerExport({ period, source: 'DISPUTE' });
+        return;
+      }
+      if (report.key === 'commission_summary' && format === 'csv') {
+        await apiService.downloadLedgerExport({ period, source: 'RIDE' });
+        return;
+      }
+
       const run = await apiService.generateReport({
         report_key: report.key,
         format,
@@ -230,52 +270,36 @@ export const ReportsTab = memo(({ period }: { period: Period }) => {
   ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h2 className="text-sm font-display font-semibold text-slate-800 dark:text-slate-300">Reporting Center</h2>
-          <p className="text-[10px] font-sans text-slate-600 mt-0.5">
-            {reports.length} platform reports · banking-style privacy · consent for personal statements
-          </p>
-        </div>
-        <div className="flex items-center gap-1.5 text-[10px] font-sans text-slate-600">
-          <Icon name="schedule" size={12} />
-          <span>Period: {period} · {fmtD(new Date().toISOString())}</span>
-        </div>
-      </div>
-
-      <div className="flex flex-col lg:flex-row gap-2 min-h-[520px]">
+    <div className="fh-reports-layout">
         {/* Sidebar */}
-        <Card className="lg:w-52 shrink-0 p-3">
-          <nav className="flex flex-col gap-1">
+        <Card className="fh-reports-sidebar p-3">
+          <nav className="fh-reports-nav">
             {sidebarItems.map((item) => (
               <button
                 key={item.key}
                 type="button"
                 onClick={() => setPanel(item.key)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-[10px] font-sans font-semibold transition-all text-left ${
-                  panel === item.key
-                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                    : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'
-                }`}
+                className={`fh-reports-nav-btn${panel === item.key ? ' is-active' : ''}`}
               >
-                <Icon name={item.icon} size={14} />
-                {item.label}
+                <Icon name={item.icon} size={14} color={panel === item.key ? '#34d399' : '#64748b'} />
+                <span style={{ flex: 1 }}>{item.label}</span>
                 {item.key === 'queue' && hasActiveRuns && (
-                  <span className="ml-auto w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#60a5fa' }} />
                 )}
               </button>
             ))}
           </nav>
 
           {panel === 'reports' && (
-            <div className="mt-4 pt-3 border-t border-slate-800">
-              <p className="text-[9px] font-sans font-semibold text-slate-600 uppercase tracking-widest mb-2">Categories</p>
-              <div className="flex flex-col gap-0.5">
+            <div style={{ marginTop: 16, paddingTop: 12, borderTop: `1px solid ${T.border}` }}>
+              <p style={{ fontSize: 9, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 8px' }}>
+                Categories
+              </p>
+              <div className="fh-reports-nav">
                 <button
                   type="button"
                   onClick={() => setCategory('all')}
-                  className={`text-left px-2 py-1.5 rounded text-[10px] font-sans ${category === 'all' ? 'text-emerald-400 bg-slate-800/60' : 'text-slate-500 hover:text-slate-300'}`}
+                  className={`fh-reports-cat-btn${category === 'all' ? ' is-active' : ''}`}
                 >
                   All Reports
                 </button>
@@ -284,10 +308,10 @@ export const ReportsTab = memo(({ period }: { period: Period }) => {
                     key={c.key}
                     type="button"
                     onClick={() => setCategory(c.key)}
-                    className={`text-left px-2 py-1.5 rounded text-[10px] font-sans flex items-center gap-1.5 ${category === c.key ? 'text-emerald-400 bg-slate-800/60' : 'text-slate-500 hover:text-slate-300'}`}
+                    className={`fh-reports-cat-btn${category === c.key ? ' is-active' : ''}`}
                   >
-                    <Icon name={c.icon} size={12} style={{ color: CATEGORY_COLORS[c.key] }} />
-                    {c.label}
+                    <Icon name={c.icon} size={12} color={CATEGORY_COLORS[c.key]} />
+                    <span>{c.label}</span>
                   </button>
                 ))}
               </div>
@@ -296,66 +320,156 @@ export const ReportsTab = memo(({ period }: { period: Period }) => {
         </Card>
 
         {/* Main panel */}
-        <div className="flex-1 min-w-0 flex flex-col gap-2">
+        <div className="fh-reports-main">
           {panel === 'reports' && (
             <>
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1">
-                  <Icon name="search" size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" />
+              <div className="fh-report-search-bar">
+                <div className="fh-report-search-wrap">
+                  <span className="fh-report-search-icon" aria-hidden>
+                    <Icon name="search" size={16} color="#64748b" />
+                  </span>
                   <input
-                    type="text"
+                    type="search"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search reports…"
-                    className="w-full h-9 pl-9 pr-3 rounded-lg bg-slate-900/60 border border-slate-800 text-[11px] font-sans text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500/40"
+                    placeholder="Search by report name or description…"
+                    className="fh-report-search-input"
+                    aria-label="Search reports"
                   />
+                  {search ? (
+                    <button
+                      type="button"
+                      className="fh-report-search-clear"
+                      onClick={() => setSearch('')}
+                      aria-label="Clear search"
+                    >
+                      <Icon name="close" size={14} color="#94a3b8" />
+                    </button>
+                  ) : null}
                 </div>
-                <span className="text-[10px] font-sans text-slate-600 shrink-0">{filteredReports.length} reports</span>
+                <span className="fh-report-search-meta">
+                  {filteredReports.length} of {reports.length} reports
+                </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2 max-h-[560px] overflow-y-auto pr-1">
-                {filteredReports.map((r) => {
+              <div className="fh-reports-grid">
+                {filteredReports.length === 0 ? (
+                  <div style={{ gridColumn: '1 / -1', padding: '4rem 1rem', textAlign: 'center' }}>
+                    <p style={{ fontSize: 13, color: '#94a3b8', margin: 0 }}>No reports match your search</p>
+                    {search ? (
+                      <button
+                        type="button"
+                        onClick={() => setSearch('')}
+                        style={{ marginTop: 12, fontSize: 11, color: '#34d399', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                      >
+                        Clear search
+                      </button>
+                    ) : null}
+                  </div>
+                ) : filteredReports.map((r) => {
                   const color = CATEGORY_COLORS[r.category] || '#64748b';
-                  const primaryFmt = r.formats[0] || 'csv';
+                  const primaryFmt = pickPrimaryFormat(r);
+                  const altFormats = r.formats.filter((f) => f !== primaryFmt);
                   const genKey = `${r.key}:${primaryFmt}`;
+                  const icon = r.icon || 'description';
+                  const isLedgerCsv =
+                    (r.key === 'platform_ledger' || r.key === 'commission_summary' || r.key === 'failed_topups' || r.key === 'dispute_register')
+                    && primaryFmt === 'csv';
+                  const isExpanded = expandedCardKey === r.key;
+                  const showAltFormats = !r.consent_required && altFormats.length > 0;
+
+                  const handleCardBodyClick = (e: React.MouseEvent<HTMLDivElement>) => {
+                    if ((e.target as HTMLElement).closest('button')) return;
+                    if (!showAltFormats) return;
+                    setExpandedCardKey((k) => (k === r.key ? null : r.key));
+                  };
+
                   return (
-                    <Card key={r.key} className="overflow-hidden hover:border-slate-700 transition-all group" glow={color}>
-                      <div className="h-0.5 w-full" style={{ background: `linear-gradient(90deg, ${color}80, ${color}20)` }} />
-                      <div className="p-4">
-                        <div className="flex items-start justify-between mb-2">
-                          <h3 className="text-[11px] font-sans font-semibold text-slate-200 leading-snug pr-2">{r.title}</h3>
-                          {r.consent_required && (
-                            <span className="text-[8px] font-sans font-semibold text-amber-400 border border-amber-500/30 rounded px-1 py-0.5 shrink-0">CONSENT</span>
-                          )}
+                    <Card
+                      key={r.key}
+                      className={`fh-report-card${isExpanded ? ' is-expanded' : ''}${showAltFormats ? ' is-selectable' : ''}`}
+                      glow={color}
+                    >
+                      <div
+                        className="fh-report-card-accent"
+                        style={{ background: `linear-gradient(90deg, ${color}cc, ${color}33)` }}
+                      />
+                      <div
+                        className="fh-report-card-body"
+                        onClick={handleCardBodyClick}
+                        onKeyDown={(e) => {
+                          if (e.key !== 'Enter' && e.key !== ' ') return;
+                          if ((e.target as HTMLElement).closest('button')) return;
+                          if (!showAltFormats) return;
+                          e.preventDefault();
+                          setExpandedCardKey((k) => (k === r.key ? null : r.key));
+                        }}
+                        role={showAltFormats ? 'button' : undefined}
+                        tabIndex={showAltFormats ? 0 : undefined}
+                        aria-expanded={showAltFormats ? isExpanded : undefined}
+                      >
+                        <div className="fh-report-card-head">
+                          <div className="fh-report-card-iconbox" style={{ background: `${color}22` }}>
+                            <Icon name={icon} size={18} color={color} />
+                          </div>
+                          <span
+                            className="fh-report-card-badge"
+                            style={{ color, borderColor: `${color}55`, background: `${color}18` }}
+                          >
+                            {FORMAT_LABEL[primaryFmt]}
+                          </span>
                         </div>
-                        <p className="text-[9px] font-sans text-slate-600 leading-relaxed mb-3 line-clamp-2">{r.description}</p>
-                        <div className="flex flex-wrap gap-1 mb-3">
-                          {r.formats.map((fmt) => (
-                            <button
-                              key={fmt}
-                              type="button"
-                              disabled={!!generating || r.consent_required}
-                              onClick={() => !r.consent_required && handleGenerate(r, fmt)}
-                              className="text-[8px] font-sans font-semibold border rounded px-1.5 py-0.5 transition-all hover:opacity-80 disabled:opacity-40"
-                              style={{ color, borderColor: `${color}44`, background: `${color}11` }}
-                            >
-                              {FORMAT_LABEL[fmt]}
-                            </button>
-                          ))}
-                        </div>
+                        <h3 className="fh-report-card-title">{r.title}</h3>
+                        <p className="fh-report-card-desc">{r.description}</p>
+                        {r.consent_required ? (
+                          <p className="fh-report-card-consent">Consent required — use Consent Center</p>
+                        ) : null}
                         <button
                           type="button"
-                          disabled={generating === genKey || r.consent_required}
+                          disabled={!!generating || r.consent_required}
                           onClick={() => !r.consent_required && handleGenerate(r, primaryFmt)}
-                          className="w-full h-7 rounded-lg text-[9px] font-sans font-semibold transition-all flex items-center justify-center gap-1 disabled:opacity-50"
-                          style={{ background: `${color}22`, color, border: `1px solid ${color}44` }}
+                          className="fh-report-card-btn"
+                          style={
+                            generating === genKey
+                              ? { background: '#0f1525', color: '#64748b', borderColor: '#1e293b' }
+                              : r.consent_required
+                                ? { background: '#0f1525', color: '#64748b', borderColor: '#334155' }
+                                : { background: `${color}22`, color, borderColor: `${color}55` }
+                          }
                         >
-                          {generating === genKey
-                            ? <><div className="w-3 h-3 border-2 border-slate-600 border-t-slate-400 rounded-full animate-spin" />GENERATING…</>
-                            : r.consent_required
-                              ? <><Icon name="lock" size={11} />VIA CONSENT CENTER</>
-                              : <><Icon name="play_arrow" size={11} />GENERATE {FORMAT_LABEL[primaryFmt]}</>}
+                          {generating === genKey ? (
+                            <>
+                              <span className="fh-spin" style={{ width: 12, height: 12, border: '2px solid #475569', borderTopColor: '#94a3b8', borderRadius: '50%', display: 'inline-block' }} />
+                              GENERATING…
+                            </>
+                          ) : r.consent_required ? (
+                            <>
+                              <Icon name="lock" size={12} color="#64748b" />
+                              CONSENT CENTER
+                            </>
+                          ) : (
+                            <>
+                              <Icon name={isLedgerCsv ? 'download' : primaryFmt === 'pdf' ? 'description' : 'play_arrow'} size={12} color={color} />
+                              {isLedgerCsv ? 'DOWNLOAD' : 'GENERATE'} {FORMAT_LABEL[primaryFmt]}
+                            </>
+                          )}
                         </button>
+                        {showAltFormats && isExpanded && (
+                          <div className="fh-report-card-alt">
+                            <span className="fh-report-card-alt-label">Also:</span>
+                            {altFormats.map((fmt) => (
+                              <button
+                                key={fmt}
+                                type="button"
+                                disabled={!!generating}
+                                onClick={() => handleGenerate(r, fmt)}
+                                className="fh-report-card-alt-btn"
+                              >
+                                {FORMAT_LABEL[fmt]}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </Card>
                   );
@@ -622,7 +736,6 @@ export const ReportsTab = memo(({ period }: { period: Period }) => {
             </Card>
           )}
         </div>
-      </div>
     </div>
   );
 });

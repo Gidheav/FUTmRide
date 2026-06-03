@@ -398,6 +398,8 @@ export interface ReportDefinition {
   description: string;
   formats: ReportFormat[];
   consent_required: boolean;
+  /** Material icon name for report cards */
+  icon?: string;
 }
 
 export interface ReportCatalogResponse {
@@ -448,6 +450,53 @@ export interface ScheduledReport {
 
 export type ConsentScope = 'driver_earnings' | 'student_wallet' | 'single_ride';
 export type ConsentStatus = 'pending' | 'approved' | 'denied' | 'expired' | 'revoked';
+
+export type PayoutStatusFilter = 'ALL' | 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+
+export interface PayoutKpis {
+  total_paid_kobo: number;
+  completed_count: number;
+  pending_count: number;
+  failed_count: number;
+  total_fees_kobo: number;
+  avg_sla_hours: number | null;
+  prev_total_paid_kobo: number;
+  delta_pct: number;
+}
+
+export interface PayoutBankRow {
+  bank_name: string;
+  count: number;
+  total_kobo: number;
+}
+
+export interface PlatformPayout {
+  id: string;
+  reference_masked: string;
+  amount_kobo: number;
+  fee_kobo: number;
+  status: string;
+  status_label: string;
+  bank_name: string;
+  account_last4: string;
+  driver_hint: string;
+  requested_at: string | null;
+  processed_at: string | null;
+  sla_hours: number | null;
+  needs_action: boolean;
+}
+
+export interface PayoutListResponse {
+  period: Period;
+  campus_scoped: boolean;
+  kpis: PayoutKpis;
+  by_bank: PayoutBankRow[];
+  count: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  results: PlatformPayout[];
+}
 
 export interface StatementAccessRequest {
   id: string;
