@@ -31,3 +31,14 @@ export const DELAY_MS: Record<string, number> = {
   '12h': 12 * 3600000,
   '24h': 24 * 3600000,
 }
+
+/** Quick trip presets for simulation */
+export const TRIP_PRESETS = [
+  { id: 'campus', label: 'Campus hop', distance: 3, surge: 1 },
+  { id: 'standard', label: 'Standard', distance: 12.5, surge: 1 },
+  { id: 'rain', label: 'Rainy peak', distance: 12.5, surge: 1.5 },
+  { id: 'long', label: 'Long haul', distance: 28, surge: 1 },
+  { id: 'extreme', label: 'Surge test', distance: 8, surge: 2.5 },
+] as const
+
+export const SENSITIVITY_DISTANCES = [3, 5, 10, 15, 20, 25, 35] as const

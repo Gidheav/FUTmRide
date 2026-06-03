@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Activity } from 'lucide-react'
 import api from '../../core/api'
 import { campusPanel } from '../shared/campusPanelStyles'
@@ -6,13 +6,13 @@ import { T } from '../theme'
 import { useEngineStore } from '../engineStore'
 import { VEHICLE_TYPES } from './constants'
 import {
-  calculateFare,
   configToDraft,
+  defaultFareDraft,
   draftsEqual,
   resolveEffectiveFrom,
   toDatetimeLocal,
 } from './fareCalculator'
-import type { FareConfig, FareDraft, PlatformSettings, SimulationResult } from './types'
+import type { FareConfig, FareDraft, PlatformSettings } from './types'
 import { OverviewTab } from './tabs/OverviewTab'
 import { TariffsTab } from './tabs/TariffsTab'
 import { SimulationTab } from './tabs/SimulationTab'
@@ -27,15 +27,6 @@ const DEFAULT_SETTINGS: PlatformSettings = {
   no_show_fee_amount: 200,
   no_show_wait_minutes: 5,
 }
-
-const emptyDraft = (vehicle: string): FareDraft => ({
-  base_fare: 500,
-  per_km_rate: 150,
-  minimum_fare: 800,
-  booking_fee: 50,
-  surge_enabled: true,
-  max_surge_multiplier: 2.5,
-})
 
 export default function EngineHub() {
   const { activeTab, activeVehicle, setActiveVehicle, setActiveTab } = useEngineStore()
@@ -52,14 +43,6 @@ export default function EngineHub() {
   const [draftMeta, setDraftMeta] = useState<{ id?: string; effective_from: string }>({ effective_from: '' })
   const [effectiveDelay, setEffectiveDelay] = useState<string>('now')
   const [customEffective, setCustomEffective] = useState('')
-
-  const [simDistance, setSimDistance] = useState(12.5)
-  const [simVehicle, setSimVehicle] = useState('sedan')
-  const [simSurge, setSimSurge] = useState(1.0)
-  const [simMode, setSimMode] = useState<'live' | 'draft'>('live')
-  const [liveResult, setLiveResult] = useState<SimulationResult | null>(null)
-  const [draftResult, setDraftResult] = useState<SimulationResult | null>(null)
-  const [simulating, setSimulating] = useState(false)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -96,10 +79,6 @@ export default function EngineHub() {
     fetchData()
   }, [fetchData])
 
-  useEffect(() => {
-    setSimVehicle(activeVehicle)
-  }, [activeVehicle])
-
   const liveConfig = liveConfigs[activeVehicle]
   const scheduledConfig = scheduledConfigs[activeVehicle]
 
@@ -110,7 +89,7 @@ export default function EngineHub() {
       setEffectiveDelay('existing')
       setCustomEffective(toDatetimeLocal(liveConfig.effective_from))
     } else {
-      setDraft(emptyDraft(activeVehicle))
+      setDraft(defaultFareDraft(activeVehicle))
       setDraftMeta({ effective_from: new Date().toISOString() })
       setEffectiveDelay('now')
       setCustomEffective(toDatetimeLocal(new Date().toISOString()))
@@ -155,7 +134,6 @@ export default function EngineHub() {
         await api.post('/pricing/config/', payload)
       }
       await fetchData()
-      setSimMode('live')
     } catch (err: unknown) {
       const e = err as { response?: { data?: Record<string, unknown> } }
       const msg = (e.response?.data?.effective_from as string[])?.[0]
@@ -166,44 +144,6 @@ export default function EngineHub() {
       setSavingConfig(false)
     }
   }
-
-  const runSimulation = async () => {
-    setSimulating(true)
-    try {
-      const liveRes = await api.post('/pricing/estimate/', {
-        vehicle_type: simVehicle,
-        distance_km: simDistance,
-        surge_multiplier: simSurge,
-      })
-      setLiveResult(liveRes.data)
-
-      const vehicleDraft = simVehicle === activeVehicle && draft
-        ? draft
-        : liveConfigs[simVehicle]
-          ? configToDraft(liveConfigs[simVehicle])
-          : emptyDraft(simVehicle)
-
-      const localDraft = calculateFare(
-        simVehicle,
-        simDistance,
-        simSurge,
-        settings,
-        vehicleDraft,
-        'draft_preview',
-      )
-      setDraftResult(localDraft)
-    } catch {
-      alert('Simulation failed.')
-    } finally {
-      setSimulating(false)
-    }
-  }
-
-  const simResult = simMode === 'draft' ? draftResult : liveResult
-  const simMismatch = useMemo(() => {
-    if (!liveResult || !draftResult) return false
-    return Math.abs(liveResult.total_fare - draftResult.total_fare) > 0.01
-  }, [liveResult, draftResult])
 
   if (loading) {
     return (
@@ -247,30 +187,19 @@ export default function EngineHub() {
                 setDraft(configToDraft(liveConfig))
                 setEffectiveDelay('existing')
               } else {
-                setDraft(emptyDraft(activeVehicle))
+                setDraft(defaultFareDraft(activeVehicle))
                 setEffectiveDelay('now')
               }
             }}
           />
         )}
-        {activeTab === 'simulation' && (
+        {activeTab === 'simulation' && draft && (
           <SimulationTab
-            simDistance={simDistance}
-            setSimDistance={setSimDistance}
-            simVehicle={simVehicle}
-            setSimVehicle={setSimVehicle}
-            simSurge={simSurge}
-            setSimSurge={setSimSurge}
-            simMode={simMode}
-            setSimMode={setSimMode}
-            simResult={simResult}
-            liveResult={liveResult}
-            draftResult={draftResult}
-            simMismatch={simMismatch}
-            isDraftDirty={isDraftDirty}
-            simulating={simulating}
-            onRun={runSimulation}
-            scheduledConfig={scheduledConfigs[simVehicle]}
+            settings={settings}
+            liveConfigs={liveConfigs}
+            scheduledConfigs={scheduledConfigs}
+            tariffsDraft={draft}
+            tariffsVehicle={activeVehicle}
           />
         )}
         {activeTab === 'global' && (

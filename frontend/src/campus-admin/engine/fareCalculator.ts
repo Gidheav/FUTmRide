@@ -125,6 +125,19 @@ export function configToDraft(c: FareConfig): FareDraft {
   }
 }
 
+/** Default / legacy tariff inputs for a vehicle (not persisted). */
+export function defaultFareDraft(vehicle: string): FareDraft {
+  const vt = vehicle.toLowerCase()
+  return {
+    base_fare: LEGACY_BASE[vt] ?? 500,
+    per_km_rate: LEGACY_PER_KM[vt] ?? 150,
+    minimum_fare: LEGACY_MIN[vt] ?? 600,
+    booking_fee: 50,
+    surge_enabled: true,
+    max_surge_multiplier: 2.5,
+  }
+}
+
 export function draftsEqual(a: FareDraft, b: FareDraft): boolean {
   return (
     a.base_fare === b.base_fare
