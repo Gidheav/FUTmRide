@@ -248,14 +248,14 @@ EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
 
 if BREVO_API_KEY:
-    # Production: Use Brevo HTTP API (bypasses Render's SMTP port block)
+    # Production: Use Brevo HTTP API (bypassing Render's SMTP port block)
     EMAIL_BACKEND = 'anymail.backends.brevo.EmailBackend'
     ANYMAIL = {
         'BREVO_API_KEY': BREVO_API_KEY,
     }
     DEFAULT_FROM_EMAIL = f'LR-Ride <{BREVO_SENDER_EMAIL}>'
 elif EMAIL_HOST_PASSWORD:
-    # Fallback: Gmail SMTP (works locally, blocked on Render free tier)
+    # Fallback: Gmail SMTP (configured for developement only)
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
     EMAIL_HOST = 'smtp.gmail.com'
     EMAIL_PORT = 587

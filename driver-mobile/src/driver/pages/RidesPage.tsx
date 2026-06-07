@@ -27,7 +27,35 @@ const FILTERS = [
   { label: 'More', icon: 'tune' as const },
 ];
 
-const SEAT_OPTIONS = [2, 3, 4, 5, 6, 8, 10, 12];
+const VEHICLE_SEAT_OPTIONS: Record<string, number[]> = {
+  bike: [1],
+  motorcycle: [1],
+  tricycle: [2, 3],
+  sedan: [2, 3, 4],
+  hatchback: [2, 3, 4],
+  suv: [4, 5, 6],
+  minivan: [6, 8],
+  van: [6, 8, 10, 12],
+  bus: [10, 12],
+};
+const DEFAULT_SEAT_OPTIONS = [2, 3, 4, 5, 6, 8, 10, 12];
+
+const getSeatOptionsByVehicleType = (vehicleType: string) => {
+  const normalized = String(vehicleType || '').trim().toLowerCase();
+  return VEHICLE_SEAT_OPTIONS[normalized] || DEFAULT_SEAT_OPTIONS;
+};
+
+const haversineKm = (lat1: number, lng1: number, lat2: number, lng2: number) => {
+  const radius = 6371;
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return radius * c;
+};
 
 const DEFAULT_DRIVER_PROFILE = {
   vehicle_type: 'sedan',
@@ -188,10 +216,13 @@ export default function DriverRidesPage() {
 
   const [origin, setOrigin] = useState<LocationOption | null>(null);
   const [destination, setDestination] = useState<LocationOption | null>(null);
-  const [farePerSeat, setFarePerSeat] = useState('');
+  const [estimatedDistanceKm, setEstimatedDistanceKm] = useState<number | null>(null);
+  const [estimatedFarePerSeat, setEstimatedFarePerSeat] = useState<number | null>(null);
+  const [estimatingFare, setEstimatingFare] = useState(false);
   const [totalSeats, setTotalSeats] = useState(4);
   const [driverNote, setDriverNote] = useState('');
-  const [expiryMinutes, setExpiryMinutes] = useState('');
+  const [driverVehicleType, setDriverVehicleType] = useState('sedan');
+  
   const [lastCompletedAt, setLastCompletedAt] = useState<string | null>(null);
   const [locationPickerOpen, setLocationPickerOpen] = useState<null | 'origin' | 'destination'>(null);
   const [locationQuery, setLocationQuery] = useState('');
@@ -202,9 +233,17 @@ export default function DriverRidesPage() {
   const isFetchingRequests = useRef(false);
 
   const filteredLocations = useMemo(() => filterLocations(locationQuery), [locationQuery]);
+  const seatOptions = useMemo(() => getSeatOptionsByVehicleType(driverVehicleType), [driverVehicleType]);
 
   const garageIsActive = garageRide && ['open', 'full', 'departed'].includes(garageRide.status);
   const isOfflineBlocked = Boolean(driverHasActiveRide || garageIsActive);
+
+  useEffect(() => {
+    if (!seatOptions.length) return;
+    if (!seatOptions.includes(totalSeats)) {
+      setTotalSeats(seatOptions[0]);
+    }
+  }, [seatOptions, totalSeats]);
 
   useEffect(() => {
     const shouldTrack = Boolean(isOnline) || Boolean(driverHasActiveRide) || Boolean(garageIsActive);
@@ -239,13 +278,16 @@ export default function DriverRidesPage() {
         const profile = await ensureDriverProfile();
         if (isMounted) {
           const nextStatus = Boolean(profile?.is_online);
+          const nextVehicleType = String(profile?.vehicle_type || '').trim().toLowerCase() || 'sedan';
           setIsOnline(nextStatus);
+          setDriverVehicleType(nextVehicleType);
           setCachedIsOnline(nextStatus);
         }
       } catch (error: any) {
         if (isMounted) {
           // Profile may not exist yet — default to offline so toggle works
           setIsOnline(false);
+          setDriverVehicleType('sedan');
           setCachedIsOnline(false);
         }
       }
@@ -494,16 +536,14 @@ export default function DriverRidesPage() {
       setGarageError('Select both origin and destination.');
       return;
     }
-    if (!farePerSeat) {
-      setGarageError('Enter fare per seat.');
-      return;
-    }
 
     setIsCreatingRide(true);
     setGarageError(null);
 
     try {
-      await ensureDriverProfile();
+      const profile = await ensureDriverProfile();
+      const resolvedVehicleType = String(profile?.vehicle_type || driverVehicleType || 'sedan').trim().toLowerCase();
+      setDriverVehicleType(resolvedVehicleType);
 
       const payload: any = {
         origin_address: origin.label,
@@ -512,18 +552,32 @@ export default function DriverRidesPage() {
         destination_address: destination.label,
         destination_latitude: destination.latitude,
         destination_longitude: destination.longitude,
-        vehicle_type: 'sedan',
-        total_seats: totalSeats,
-        fare_per_seat: Number(farePerSeat),
+        vehicle_type: resolvedVehicleType,
+        total_seats: seatOptions.includes(totalSeats) ? totalSeats : seatOptions[0],
+        fare_per_seat: Number(estimatedFarePerSeat || 0),
         driver_note: driverNote || null,
       };
 
-      if (expiryMinutes) {
-        const minutes = Number(expiryMinutes);
-        if (!Number.isNaN(minutes) && minutes > 0) {
-          const expires = new Date(Date.now() + minutes * 60000).toISOString();
-          payload.expires_at = expires;
+      if (!payload.fare_per_seat || Number.isNaN(payload.fare_per_seat)) {
+        const distance = Number(
+          haversineKm(
+            origin.latitude,
+            origin.longitude,
+            destination.latitude,
+            destination.longitude
+          ).toFixed(2)
+        );
+        const estimate = await driverApi.pricingEstimate({
+          vehicle_type: resolvedVehicleType,
+          distance_km: distance,
+          surge_multiplier: 1.0,
+        });
+        const computed = Number(estimate?.data?.total_fare || 0);
+        if (!computed || Number.isNaN(computed)) {
+          throw new Error('Pricing unavailable. Please try again.');
         }
+        payload.fare_per_seat = computed;
+        setEstimatedFarePerSeat(computed);
       }
 
       const response = await driverApi.createGarageRide(payload);
@@ -541,6 +595,46 @@ export default function DriverRidesPage() {
       setIsCreatingRide(false);
     }
   };
+
+  useEffect(() => {
+    let isMounted = true;
+    const estimateGarageFare = async () => {
+      if (!origin || !destination) {
+        if (isMounted) {
+          setEstimatedDistanceKm(null);
+          setEstimatedFarePerSeat(null);
+        }
+        return;
+      }
+
+      const distance = Number(
+        haversineKm(origin.latitude, origin.longitude, destination.latitude, destination.longitude).toFixed(2)
+      );
+      if (isMounted) setEstimatedDistanceKm(distance);
+
+      try {
+        if (isMounted) setEstimatingFare(true);
+        const estimate = await driverApi.pricingEstimate({
+          vehicle_type: driverVehicleType,
+          distance_km: distance,
+          surge_multiplier: 1.0,
+        });
+        if (isMounted) {
+          const fare = Number(estimate?.data?.total_fare || 0);
+          setEstimatedFarePerSeat(Number.isNaN(fare) ? null : fare);
+        }
+      } catch {
+        if (isMounted) setEstimatedFarePerSeat(null);
+      } finally {
+        if (isMounted) setEstimatingFare(false);
+      }
+    };
+
+    void estimateGarageFare();
+    return () => {
+      isMounted = false;
+    };
+  }, [origin, destination, driverVehicleType]);
 
   const handleDepartGarageRide = async () => {
     if (!garageRide) return;
@@ -596,8 +690,22 @@ export default function DriverRidesPage() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-      <View style={styles.modeToggleWrap}>
-        <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}>Driver Mode</Text>
+      <View style={[styles.modeToggleWrap, AMBIENT_SHADOW]}>
+        <View style={styles.modeHeaderRow}>
+          <View style={styles.onlineStatusLeft}>
+            <View style={[styles.onlineStatusDot, { backgroundColor: isOnline ? COLORS.primaryContainer : COLORS.error }]} />
+            <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}>
+              {isOnline === null ? 'Loading…' : isOnline ? 'Online' : 'Offline'}
+            </Text>
+          </View>
+          <Switch
+            value={Boolean(isOnline)}
+            onValueChange={handleToggleOnline}
+            disabled={Boolean(isUpdatingOnline || isOnline === null || (isOnline && isOfflineBlocked))}
+            trackColor={{ false: COLORS.surfaceContainerLow, true: COLORS.primaryContainer }}
+            thumbColor={COLORS.surface}
+          />
+        </View>
         <View style={styles.modeTabs}>
           <TouchableOpacity
             style={[styles.modeTab, driverMode === 'garage' && styles.modeTabActive]}
@@ -618,22 +726,11 @@ export default function DriverRidesPage() {
         {modeLocked ? (
           <Text style={styles.modeHint}>Garage ride active — complete it before switching.</Text>
         ) : null}
+        <Text style={styles.onlineHintText}>
+          {isOnline ? 'You are visible to students and can receive live requests.' : 'You are offline. Live matching is paused.'}
+        </Text>
       </View>
 
-      {/* Online status */}
-      <View style={styles.onlineStatusRow}>
-        <View style={styles.onlineStatusLeft}>
-          <View style={[styles.onlineStatusDot, { backgroundColor: isOnline ? COLORS.primaryContainer : COLORS.error }]} />
-          <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}> {isOnline === null ? 'Loading…' : isOnline ? 'Online' : 'Offline'} </Text>
-        </View>
-        <Switch
-          value={Boolean(isOnline)}
-          onValueChange={handleToggleOnline}
-          disabled={Boolean(isUpdatingOnline || isOnline === null || (isOnline && isOfflineBlocked))}
-          trackColor={{ false: COLORS.surfaceContainerLow, true: COLORS.primaryContainer }}
-          thumbColor={COLORS.surface}
-        />
-      </View>
       {isOnline && isOfflineBlocked ? (
         <Text style={styles.modeHint}>You cannot go offline while a ride is active.</Text>
       ) : null}
@@ -724,21 +821,40 @@ export default function DriverRidesPage() {
                 <Text style={[FONTS.bodyMd, styles.inputValue]}>{destination?.label || 'Select destination'}</Text>
               </TouchableOpacity>
 
-              <View style={styles.inputRow}>
-                <MaterialIcons name="payments" size={18} color={COLORS.outline} />
-                <TextInput
-                  style={[FONTS.bodyMd, styles.textInput]}
-                  placeholder="Fare per seat (₦)"
-                  keyboardType="numeric"
-                  value={farePerSeat}
-                  onChangeText={setFarePerSeat}
-                />
+              <View style={styles.farePreviewCard}>
+                <View style={styles.farePreviewTop}>
+                  <Text style={styles.farePreviewTitle}>Engine Pricing</Text>
+                  {estimatingFare ? (
+                    <ActivityIndicator size="small" color={COLORS.primary} />
+                  ) : (
+                    <MaterialIcons name="verified" size={16} color={COLORS.primary} />
+                  )}
+                </View>
+                <View style={styles.farePreviewRow}>
+                  <Text style={styles.farePreviewLabel}>Distance</Text>
+                  <Text style={styles.farePreviewValue}>{estimatedDistanceKm ? `${estimatedDistanceKm.toFixed(2)} km` : '—'}</Text>
+                </View>
+                <View style={styles.farePreviewRow}>
+                  <Text style={styles.farePreviewLabel}>Estimated fare / seat</Text>
+                  <Text style={styles.farePreviewValue}>{formatCurrency(estimatedFarePerSeat)}</Text>
+                </View>
               </View>
+
+              <View style={styles.inputRow}>
+                <MaterialIcons name="directions-car" size={18} color={COLORS.outline} />
+                <Text style={[FONTS.bodyMd, styles.inputValue]}>
+                  Vehicle type: {driverVehicleType.replace(/_/g, ' ')} (auto-priced by KM)
+                </Text>
+              </View>
+
+              <Text style={styles.seatHintText}>
+                Seats shown below are matched to your vehicle profile.
+              </Text>
 
               <View style={styles.inputRow}>
                 <MaterialIcons name="groups" size={18} color={COLORS.outline} />
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.seatRow}>
-                  {SEAT_OPTIONS.map((count) => (
+                  {seatOptions.map((count) => (
                     <TouchableOpacity
                       key={count}
                       style={[styles.seatChip, totalSeats === count && styles.seatChipActive]}
@@ -757,17 +873,6 @@ export default function DriverRidesPage() {
                   placeholder="Driver note (optional)"
                   value={driverNote}
                   onChangeText={setDriverNote}
-                />
-              </View>
-
-              <View style={styles.inputRow}>
-                <MaterialIcons name="timer" size={18} color={COLORS.outline} />
-                <TextInput
-                  style={[FONTS.bodyMd, styles.textInput]}
-                  placeholder="Expiry minutes (optional)"
-                  keyboardType="numeric"
-                  value={expiryMinutes}
-                  onChangeText={setExpiryMinutes}
                 />
               </View>
 
@@ -978,15 +1083,23 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 32,
+    paddingBottom: 140,
   },
   modeToggleWrap: {
     marginBottom: 12,
     gap: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 14,
+  },
+  modeHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   modeTabs: {
     flexDirection: 'row',
-    backgroundColor: COLORS.surfaceContainerLow,
+    backgroundColor: '#F1F4F3',
     borderRadius: 12,
     padding: 4,
   },
@@ -1014,11 +1127,10 @@ const styles = StyleSheet.create({
     color: COLORS.onSurfaceVariant,
     fontSize: 12,
   },
-  onlineStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
+  onlineHintText: {
+    ...FONTS.bodySm,
+    color: COLORS.onSurfaceVariant,
+    marginTop: 2,
   },
   onlineStatusLeft: {
     flexDirection: 'row',
@@ -1034,11 +1146,11 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   card: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: COLORS.surfaceContainerLow,
+    borderColor: '#E8ECEA',
     gap: 12,
   },
   qrWrap: {
@@ -1086,6 +1198,36 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
+  farePreviewCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#DCE7E1',
+    backgroundColor: '#F7FBF9',
+    padding: 12,
+    gap: 8,
+  },
+  farePreviewTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  farePreviewTitle: {
+    ...FONTS.labelLg,
+    color: COLORS.onSurface,
+  },
+  farePreviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  farePreviewLabel: {
+    ...FONTS.bodySm,
+    color: COLORS.onSurfaceVariant,
+  },
+  farePreviewValue: {
+    ...FONTS.labelLg,
+    color: COLORS.onSurface,
+  },
   inputValue: {
     flex: 1,
     color: COLORS.onSurface,
@@ -1119,6 +1261,11 @@ const styles = StyleSheet.create({
   seatChipTextActive: {
     color: COLORS.onPrimaryContainer,
     fontWeight: '700',
+  },
+  seatHintText: {
+    ...FONTS.bodySm,
+    color: COLORS.onSurfaceVariant,
+    marginTop: -4,
   },
   errorText: {
     color: COLORS.error,
@@ -1166,7 +1313,7 @@ const styles = StyleSheet.create({
   filterPillActive: {
     borderWidth: 1,
     borderColor: COLORS.primary,
-    backgroundColor: 'rgba(94, 53, 177, 0.08)',
+    backgroundColor: 'rgba(0, 109, 54, 0.10)',
   },
   requestCard: {
     backgroundColor: COLORS.surface,

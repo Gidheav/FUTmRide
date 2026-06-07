@@ -17,6 +17,7 @@ import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
 import { useAuthStore } from '../../core/authStore';
 import { settingsApi } from '../../core/api';
 import { useSettingsStore } from '../../core/settingsStore';
+import { useAppLockStore, type DriverLockTimeoutMinutes } from '../../core/appLockStore';
 
 type Props = {
   onBack: () => void;
@@ -102,6 +103,7 @@ function ValueChevron({ value }: { value: string }) {
 type ModalId =
   | 'language'
   | 'navigationApp'
+  | 'lockTimeout'
   | 'changePin'
   | 'twoFactor'
   | 'terms'
@@ -112,6 +114,7 @@ type ModalId =
 const MODAL_TITLES: Record<ModalId, string> = {
   language: 'Language',
   navigationApp: 'Navigation App',
+  lockTimeout: 'Auto-lock',
   changePin: 'Change PIN',
   twoFactor: 'Two-Factor Auth',
   terms: 'Terms of Service',
@@ -120,6 +123,14 @@ const MODAL_TITLES: Record<ModalId, string> = {
   about: 'About LR Ride',
 };
 
+const LOCK_TIMEOUT_OPTIONS: Array<{ label: string; value: DriverLockTimeoutMinutes }> = [
+  { label: 'Immediate', value: 0 },
+  { label: '1 minute', value: 1 },
+  { label: '5 minutes', value: 5 },
+  { label: '15 minutes', value: 15 },
+  { label: '30 minutes', value: 30 },
+];
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function AccountSettingsPage({ onBack, verificationProgress, onStartAccountVerification, onStartVehicleVerification }: Props) {
@@ -127,6 +138,7 @@ export default function AccountSettingsPage({ onBack, verificationProgress, onSt
   const queryClient = useQueryClient();
   const { logout } = useAuthStore();
   const { settings, hydrateFromApi, updateLocal } = useSettingsStore();
+  const { lockTimeoutMinutes, setLockTimeoutMinutes } = useAppLockStore();
   const [refreshing, setRefreshing] = useState(false);
 
   // ── active sub-page
@@ -189,6 +201,7 @@ export default function AccountSettingsPage({ onBack, verificationProgress, onSt
 
   const languageLabel = settings.language === 'en' ? 'English' : settings.language;
   const navigationLabel = settings.navigationApp === 'google_maps' ? 'Google Maps' : 'Google Maps';
+  const lockTimeoutLabel = LOCK_TIMEOUT_OPTIONS.find((option) => option.value === lockTimeoutMinutes)?.label || '15 minutes';
   const isDarkMode = settings.themeMode === 'dark';
 
   const handlePinSave = async () => {
@@ -486,6 +499,32 @@ export default function AccountSettingsPage({ onBack, verificationProgress, onSt
           </View>
         );
 
+      case 'lockTimeout':
+        return (
+          <View style={styles.formContent}>
+            {LOCK_TIMEOUT_OPTIONS.map((option) => {
+              const selected = option.value === lockTimeoutMinutes;
+              return (
+                <Pressable
+                  key={option.value}
+                  style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed]}
+                  onPress={() => {
+                    setLockTimeoutMinutes(option.value);
+                    setActiveModal(null);
+                  }}
+                >
+                  <View style={styles.optionTextWrap}>
+                    <Text style={[FONTS.bodyMd, { color: COLORS.onSurface }]}>{option.label}</Text>
+                  </View>
+                  {selected ? (
+                    <MaterialIcons name="check" size={20} color={COLORS.primary} />
+                  ) : null}
+                </Pressable>
+              );
+            })}
+          </View>
+        );
+
       case 'terms':
         return (
           <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.formContent}>
@@ -691,6 +730,13 @@ export default function AccountSettingsPage({ onBack, verificationProgress, onSt
         <View style={[styles.card, AMBIENT_SHADOW]}>
           <SettingsRow icon="lock" title="Change PIN" onPress={() => setActiveModal('changePin')} />
           <SettingsRow
+            icon="timer"
+            title="Auto-lock"
+            subtitle="Maximum 30 minutes"
+            trailing={<ValueChevron value={lockTimeoutLabel} />}
+            onPress={() => setActiveModal('lockTimeout')}
+          />
+          <SettingsRow
             icon="verified-user"
             title="Two-Factor Auth"
             onPress={() => setActiveModal('twoFactor')}
@@ -701,10 +747,44 @@ export default function AccountSettingsPage({ onBack, verificationProgress, onSt
             trailing={
               <ToggleSwitch
                 value={settings.biometricEnabled}
-                onValueChange={(value) => updateSetting(
-                  { biometricEnabled: value },
-                  { biometric_enabled: value }
-                )}
+                onValueChange={async (value) => {
+                  if (!value && !settings.hasPin) {
+                    Alert.alert('PIN required', 'Set a PIN before turning off biometric lock.');
+                    return;
+                  }
+
+                  if (value) {
+                    try {
+                      const LocalAuth = await import('expo-local-authentication');
+                      const [hasHardware, enrolled] = await Promise.all([
+                        LocalAuth.hasHardwareAsync(),
+                        LocalAuth.isEnrolledAsync(),
+                      ]);
+
+                      if (!hasHardware || !enrolled) {
+                        Alert.alert('Biometrics unavailable', 'Set up biometrics on this device first.');
+                        return;
+                      }
+
+                      const result = await LocalAuth.authenticateAsync({
+                        promptMessage: 'Enable biometric unlock',
+                        fallbackLabel: settings.hasPin ? 'Use PIN' : undefined,
+                      });
+
+                      if (!result.success) {
+                        return;
+                      }
+                    } catch (error) {
+                      Alert.alert('Biometrics unavailable', 'This device cannot enable biometric unlock.');
+                      return;
+                    }
+                  }
+
+                  updateSetting(
+                    { biometricEnabled: value },
+                    { biometric_enabled: value }
+                  );
+                }}
               />
             }
             isLast

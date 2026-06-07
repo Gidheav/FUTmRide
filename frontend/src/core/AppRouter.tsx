@@ -101,7 +101,7 @@ export default function AppRouter() {
   }, [setAuth, clearAuth])
 
   if (!desktopAllowed) return <DesktopOnlyScreen />
-  if (isHydrating) return null // Or a full page LoadingSpinner if preferred
+  if (isHydrating) return null
 
   return (
     <Routes>

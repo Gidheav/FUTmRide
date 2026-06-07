@@ -1,37 +1,124 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
-import { driverApi } from '../../core/api';
+import { LinearGradient } from 'expo-linear-gradient';
+import { COLORS, FONTS } from '../../core/theme';
+import { driverApi, driverWalletApi } from '../../core/api';
 import { useAuthStore } from '../../core/authStore';
 import { useGarageRideStore } from '../../core/garageRideStore';
 
 const ACTIVE_GARAGE_STATUSES = new Set(['open', 'full', 'departed']);
 
+const MODERN_SHADOW = Platform.select({
+  ios: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+  },
+  android: {
+    elevation: 8,
+  },
+});
+
+const toNumber = (value: any) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const formatCurrency = (amount: number) => `₦${toNumber(amount).toLocaleString()}`;
+
+const getRouteLabel = (ride: any) => {
+  if (!ride) return 'Route unavailable';
+  const from = ride.origin_name || ride.pickup_name || ride.route?.from_name || ride.route_name;
+  const to = ride.destination_name || ride.dropoff_name || ride.route?.to_name;
+  if (from && to) return `${from} -> ${to}`;
+  return from || to || 'Route unavailable';
+};
+
+const getTodayRevenue = (summary: any) => {
+  const dailyGoal = summary?.daily_goal;
+  return toNumber(
+    dailyGoal?.earned ??
+      summary?.today_earnings ??
+      summary?.today_revenue ??
+      summary?.earnings_today
+  );
+};
+
+const getGoalData = (summary: any) => {
+  const target = toNumber(summary?.daily_goal?.target ?? summary?.daily_goal_target);
+  const earned = getTodayRevenue(summary);
+  const progress = target > 0 ? Math.min(100, Math.round((earned / target) * 100)) : 0;
+  return {
+    target,
+    earned,
+    progress,
+    remaining: target > 0 ? Math.max(0, target - earned) : 0,
+  };
+};
+
+const formatTimeAgo = (iso: string) => {
+  if (!iso) return '--';
+  const date = new Date(iso);
+  const diffMs = Date.now() - date.getTime();
+  const diffMin = Math.max(1, Math.floor(diffMs / 60000));
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  return `${diffDay}d ago`;
+};
+
+const getTxnTitle = (tx: any) => {
+  if (tx?.source === 'driver_earning') return tx?.ride_reference ? `Ride ${tx.ride_reference}` : 'Ride Earning';
+  if (tx?.source === 'driver_withdrawal') return 'Wallet Settlement';
+  if (tx?.source === 'promotion') return 'Bonus';
+  return tx?.narration || 'Wallet activity';
+};
+
+const getTxnSubtitle = (tx: any) => {
+  if (tx?.source === 'driver_earning' && (tx?.ride_distance_km || tx?.ride_duration_minutes)) {
+    const distance = tx?.ride_distance_km ? `${tx.ride_distance_km} km` : null;
+    const duration = tx?.ride_duration_minutes ? `${tx.ride_duration_minutes} min` : null;
+    return [distance, duration].filter(Boolean).join(' • ');
+  }
+  if (tx?.metadata?.bank_name) return `${tx.metadata.bank_name} payout`;
+  if (tx?.source === 'driver_withdrawal') return 'Auto-transfer to primary account';
+  return tx?.status ? String(tx.status).toUpperCase() : 'Completed';
+};
+
 const DashboardScreen = ({ onCreateGarageRide }: { onCreateGarageRide?: () => void }) => {
   const { status, setStatus } = useGarageRideStore();
   const { user } = useAuthStore();
+  const [walletSummary, setWalletSummary] = useState<any>(null);
+  const [activeRide, setActiveRide] = useState<any>(null);
 
   useEffect(() => {
     let isMounted = true;
-
     const fetchGarageRide = async () => {
       try {
         const response = await driverApi.getGarageRides();
         const list = Array.isArray(response?.data) ? response.data : response?.data?.results || [];
         const active = list.find((ride: any) => ACTIVE_GARAGE_STATUSES.has(ride.status));
-        if (isMounted) setStatus(active ? 'active' : 'inactive');
+        if (isMounted) {
+          setStatus(active ? 'active' : 'inactive');
+          setActiveRide(active || null);
+        }
       } catch {
-        if (isMounted) setStatus('inactive');
+        if (isMounted) {
+          setStatus('inactive');
+          setActiveRide(null);
+        }
       }
     };
-
     fetchGarageRide();
     const interval = setInterval(fetchGarageRide, 12000);
     return () => {
@@ -40,237 +127,595 @@ const DashboardScreen = ({ onCreateGarageRide }: { onCreateGarageRide?: () => vo
     };
   }, []);
 
-  const actionLabel = status === 'active' ? 'Resume garage ride' : 'Create garage ride';
+  useEffect(() => {
+    let isMounted = true;
+    const fetchWalletSummary = async () => {
+      try {
+        const response = await driverWalletApi.getSummary();
+        if (isMounted) setWalletSummary(response?.data || null);
+      } catch {
+        if (isMounted) setWalletSummary(null);
+      }
+    };
+
+    fetchWalletSummary();
+    const interval = setInterval(fetchWalletSummary, 30000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const goalData = useMemo(() => getGoalData(walletSummary), [walletSummary]);
+  const tripsToday = useMemo(
+    () =>
+      toNumber(
+        walletSummary?.today_trips ??
+          walletSummary?.trips_today ??
+          walletSummary?.stats?.trips_today ??
+          walletSummary?.metrics?.trips_completed
+      ),
+    [walletSummary]
+  );
+  const scoreValue = useMemo(() => {
+    const rating = toNumber(walletSummary?.driver_rating ?? walletSummary?.rating);
+    return rating > 0 ? rating.toFixed(1) : '--';
+  }, [walletSummary]);
+  const onlineHours = useMemo(() => {
+    const hours = toNumber(walletSummary?.online_hours_today ?? walletSummary?.hours_online_today);
+    return hours > 0 ? `${hours.toFixed(1)}h` : '--';
+  }, [walletSummary]);
+  const seatInfo = useMemo(() => {
+    const total = toNumber(activeRide?.total_seats);
+    const booked = toNumber(activeRide?.booked_seats);
+    const available = total > 0 ? Math.max(0, total - booked) : toNumber(activeRide?.available_seats);
+    return {
+      total,
+      booked,
+      available,
+      display: total > 0 ? `${booked}/${total} seats` : `${booked} passengers`,
+    };
+  }, [activeRide]);
+  const recentTransactions = useMemo(() => {
+    const list = Array.isArray(walletSummary?.recent_transactions)
+      ? walletSummary.recent_transactions
+      : Array.isArray(walletSummary?.transactions)
+      ? walletSummary.transactions
+      : [];
+    return list.slice(0, 2);
+  }, [walletSummary]);
+
+  const actionLabel = status === 'active' ? 'Resume Current Session' : 'Start Garage Session';
+  const revenueToday = getTodayRevenue(walletSummary);
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={[styles.heroCard, AMBIENT_SHADOW]}>
-        <View style={styles.heroHeader}>
-          <View style={styles.statusPill}>
-            <View style={styles.statusDot} />
-            <Text style={[FONTS.labelMd, { color: COLORS.onSurface }]}>Status</Text>
-            <Text style={[FONTS.labelMd, { color: COLORS.primary, marginLeft: 6 }]}>Online</Text>
+    <View style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Modern Hero Section with Gradient */}
+        <LinearGradient
+          colors={[COLORS.primary, '#004d26']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.heroCard}
+        >
+          <View style={styles.heroHeader}>
+            <View>
+              <Text style={styles.heroLabel}>Revenue Today</Text>
+              <Text style={styles.heroAmount}>{formatCurrency(revenueToday)}</Text>
+            </View>
+            <TouchableOpacity style={styles.onlineBadge}>
+              <View style={styles.onlineDot} />
+              <Text style={styles.onlineText}>LIVE</Text>
+            </TouchableOpacity>
           </View>
-          <View style={styles.shiftBadge}>
-            <MaterialIcons name="schedule" size={16} color={COLORS.onSurfaceVariant} />
-            <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Shift 02:45</Text>
-          </View>
-        </View>
 
-        <View style={styles.heroBody}>
-          <View>
-            <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Todays earnings</Text>
-            <Text style={[FONTS.headlineXl, { color: COLORS.onSurface }]}>₦12,450</Text>
+          <View style={styles.goalWrap}>
+            <View style={styles.goalMetaRow}>
+              <Text style={styles.goalMetaText}>Daily Goal</Text>
+              {goalData.target > 0 ? (
+                <Text style={styles.goalMetaText}>{goalData.progress}%</Text>
+              ) : (
+                <Text style={styles.goalMetaText}>Not set</Text>
+              )}
+            </View>
+            <View style={styles.goalTrack}>
+              <View style={[styles.goalFill, { width: `${goalData.progress}%` }]} />
+            </View>
+            <Text style={styles.goalHint}>
+              {goalData.target > 0
+                ? `${formatCurrency(goalData.remaining)} remaining`
+                : 'Set a daily goal in wallet settings'}
+            </Text>
           </View>
-          <View style={styles.heroDivider} />
-          <View>
-            <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Trips completed</Text>
-            <Text style={[FONTS.headlineLg, { color: COLORS.onSurface }]}>8</Text>
+
+          <View style={styles.heroFooter}>
+            <View style={styles.heroStat}>
+              <Text style={styles.heroStatValue}>{tripsToday.toString().padStart(2, '0')}</Text>
+              <Text style={styles.heroStatLabel}>Trips</Text>
+            </View>
+            <View style={styles.heroDivider} />
+            <View style={styles.heroStat}>
+              <Text style={styles.heroStatValue}>{scoreValue}</Text>
+              <Text style={styles.heroStatLabel}>Rating</Text>
+            </View>
+            <View style={styles.heroDivider} />
+            <View style={styles.heroStat}>
+              <Text style={styles.heroStatValue}>{onlineHours}</Text>
+              <Text style={styles.heroStatLabel}>Online</Text>
+            </View>
           </View>
-        </View>
-      </View>
+        </LinearGradient>
 
-      <View style={styles.statsGrid}>
-        <View style={[styles.statCard, AMBIENT_SHADOW]}>
-          <MaterialIcons name="star" size={22} color={COLORS.primary} />
-          <Text style={[FONTS.headlineMd, { color: COLORS.onSurface }]}>4.8</Text>
-          <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Rating</Text>
-        </View>
-        <View style={[styles.statCard, AMBIENT_SHADOW]}>
-          <MaterialIcons name="task-alt" size={22} color={COLORS.primary} />
-          <Text style={[FONTS.headlineMd, { color: COLORS.onSurface }]}>92%</Text>
-          <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Acceptance</Text>
-        </View>
-        <View style={[styles.statCard, AMBIENT_SHADOW]}>
-          <MaterialIcons name="cancel" size={22} color={COLORS.error} />
-          <Text style={[FONTS.headlineMd, { color: COLORS.onSurface }]}>3%</Text>
-          <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Cancellation</Text>
-        </View>
-        <View style={[styles.statCard, AMBIENT_SHADOW]}>
-          <MaterialIcons name="account-balance-wallet" size={22} color={COLORS.primary} />
-          <Text style={[FONTS.headlineMd, { color: COLORS.onSurface }]}>
-            {user?.wallet_balance ? `₦${Number(user.wallet_balance).toLocaleString()}` : '₦0'}
-          </Text>
-          <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Wallet balance</Text>
-        </View>
-      </View>
+        {/* Primary Action */}
+        {status === 'active' && activeRide ? (
+          <View style={styles.activeSessionCard}>
+            <View style={styles.activeSessionHeader}>
+              <Text style={styles.activeSessionTitle}>Active Garage Session</Text>
+              <View style={styles.activeSessionBadge}>
+                <MaterialIcons name="event-seat" size={14} color={COLORS.primary} />
+                <Text style={styles.activeSessionBadgeText}>{seatInfo.display}</Text>
+              </View>
+            </View>
 
-        <View style={styles.sectionWrap}>
-        <Text style={styles.sectionTitle}>Quick actions</Text>
-        <View style={styles.actionRow}>
+            <Text style={styles.activeRouteLabel}>{getRouteLabel(activeRide)}</Text>
+
+            <View style={styles.activeSessionMetaRow}>
+              <View style={styles.metaPill}>
+                <MaterialIcons name="people" size={14} color={COLORS.onSurfaceVariant} />
+                <Text style={styles.metaPillText}>{seatInfo.available} seats left</Text>
+              </View>
+              <View style={styles.metaPill}>
+                <MaterialIcons name="schedule" size={14} color={COLORS.onSurfaceVariant} />
+                <Text style={styles.metaPillText}>{String(activeRide?.status || 'open').toUpperCase()}</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity style={styles.resumeSessionBtn} onPress={onCreateGarageRide} activeOpacity={0.85}>
+              <MaterialIcons name="qr-code-scanner" size={18} color={COLORS.onPrimary} />
+              <Text style={styles.resumeSessionBtnText}>Resume Session</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
           <TouchableOpacity
-            style={styles.actionButton}
+            style={styles.mainAction}
             onPress={onCreateGarageRide}
-            activeOpacity={0.85}
+            activeOpacity={0.9}
           >
-            <MaterialIcons name="qr-code-scanner" size={20} color={COLORS.onPrimary} />
-            <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>{actionLabel}</Text>
+            <LinearGradient
+              colors={['#ffffff', '#f8f9fa']}
+              style={styles.mainActionGradient}
+            >
+              <View style={styles.actionIconBg}>
+                <MaterialIcons
+                  name={status === 'active' ? 'play-circle-filled' : 'add-circle'}
+                  size={32}
+                  color={COLORS.primary}
+                />
+              </View>
+              <View style={styles.actionTextContent}>
+                <Text style={styles.actionTitle}>{actionLabel}</Text>
+                <Text style={styles.actionSub}>Enable QR scanning and passenger boarding</Text>
+              </View>
+              <MaterialIcons name="chevron-right" size={24} color={COLORS.outline} />
+            </LinearGradient>
           </TouchableOpacity>
-        </View>
-        <View style={styles.actionRow}>
-          <TouchableOpacity style={styles.actionGhost} activeOpacity={0.85}>
-            <MaterialIcons name="support-agent" size={20} color={COLORS.primary} />
-            <Text style={[FONTS.labelMd, { color: COLORS.primary }]}>Support</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionGhost} activeOpacity={0.85}>
-            <MaterialIcons name="directions-car" size={20} color={COLORS.primary} />
-            <Text style={[FONTS.labelMd, { color: COLORS.primary }]}>Vehicle</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionGhost} activeOpacity={0.85}>
-            <MaterialIcons name="insights" size={20} color={COLORS.primary} />
-            <Text style={[FONTS.labelMd, { color: COLORS.primary }]}>Earnings</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+        )}
 
-      <View style={styles.sectionWrap}>
-        <Text style={styles.sectionTitle}>Recent activity</Text>
-        <View style={[styles.activityCard, AMBIENT_SHADOW]}>
-          <View style={styles.activityRow}>
-            <View>
-              <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}>Last trip</Text>
-              <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant }]}>Engineering Block  South Gate</Text>
+        {/* Stats Grid */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Performance Insights</Text>
+        </View>
+        <View style={styles.statsGrid}>
+          <View style={styles.statBox}>
+            <View style={[styles.statIconWrap, { backgroundColor: '#e8f5e9' }]}>
+              <MaterialIcons name="star" size={20} color="#2e7d32" />
             </View>
-            <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}>₦850</Text>
+            <Text style={styles.statValue}>{scoreValue}</Text>
+            <Text style={styles.statLabel}>Avg Rating</Text>
           </View>
-          <View style={styles.activityDivider} />
-          <View style={styles.activityRow}>
-            <View>
-              <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}>Next payout</Text>
-              <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant }]}>Friday, 5:00 PM</Text>
+          <View style={styles.statBox}>
+            <View style={[styles.statIconWrap, { backgroundColor: '#e3f2fd' }]}>
+              <MaterialIcons name="account-balance-wallet" size={20} color="#1565c0" />
             </View>
-            <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}>₦12,450</Text>
+            <Text style={styles.statValue}>
+              {user?.wallet_balance ? `₦${Number(user.wallet_balance).toLocaleString()}` : '₦0'}
+            </Text>
+            <Text style={styles.statLabel}>Wallet</Text>
           </View>
         </View>
-      </View>
-    </ScrollView>
+
+        {/* Quick Utilities */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Quick Utilities</Text>
+        </View>
+        <View style={styles.utilsRow}>
+          {[
+            { icon: 'insights', label: 'Analytics', color: '#6A1B9A' },
+            { icon: 'support-agent', label: 'Support', color: '#C62828' },
+            { icon: 'directions-car', label: 'Vehicle', color: '#1565C0' },
+          ].map((item, idx) => (
+            <TouchableOpacity key={idx} style={styles.utilBtn}>
+              <View style={[styles.utilIcon, { backgroundColor: item.color + '15' }]}>
+                <MaterialIcons name={item.icon as any} size={22} color={item.color} />
+              </View>
+              <Text style={styles.utilLabel}>{item.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Recent Activity */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Recent Registry</Text>
+          <TouchableOpacity><Text style={styles.seeAll}>History</Text></TouchableOpacity>
+        </View>
+        <View style={styles.activityCard}>
+          {recentTransactions.length === 0 ? (
+            <View style={styles.emptyActivityWrap}>
+              <MaterialIcons name="history" size={18} color={COLORS.onSurfaceVariant} />
+              <Text style={styles.emptyActivityText}>No recent wallet activity yet</Text>
+            </View>
+          ) : (
+            recentTransactions.map((tx: any, idx: number) => {
+              const color = tx?.source === 'driver_withdrawal' ? '#1565c0' : COLORS.primary;
+              return (
+                <React.Fragment key={tx?.id || `${tx?.source}-${idx}`}>
+                  <View style={styles.activityItem}>
+                    <View style={[styles.activityIndicator, { backgroundColor: color }]} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.activityName}>{getTxnTitle(tx)}</Text>
+                      <Text style={styles.activityLoc}>{getTxnSubtitle(tx)}</Text>
+                    </View>
+                    <Text style={styles.activityTime}>{formatTimeAgo(tx?.created_at)}</Text>
+                  </View>
+                  {idx < recentTransactions.length - 1 ? <View style={styles.historyDivider} /> : null}
+                </React.Fragment>
+              );
+            })
+          )}
+        </View>
+      </ScrollView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: '#F8F9FA',
   },
   scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 120,
-    gap: 20,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 100,
   },
   heroCard: {
-    backgroundColor: COLORS.surfaceContainerLowest,
-    borderRadius: 18,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: COLORS.surfaceContainerLow,
-    gap: 16,
+    borderRadius: 24,
+    padding: 24,
+    marginVertical: 10,
+    ...MODERN_SHADOW,
   },
   heroHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    marginBottom: 32,
   },
-  statusPill: {
+  heroLabel: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  heroAmount: {
+    color: '#FFFFFF',
+    fontSize: 36,
+    fontWeight: '800',
+    marginTop: 4,
+  },
+  onlineBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: COLORS.surfaceContainerHigh,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.primary,
-  },
-  shiftBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    borderRadius: 12,
     gap: 6,
   },
-  heroBody: {
+  onlineDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#4ade80',
+  },
+  onlineText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  heroFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 16,
+    padding: 16,
+  },
+  goalWrap: {
+    marginTop: -8,
+    marginBottom: 16,
+    gap: 6,
+  },
+  goalMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  goalMetaText: {
+    ...FONTS.labelMd,
+    color: 'rgba(255,255,255,0.85)',
+  },
+  goalTrack: {
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    overflow: 'hidden',
+  },
+  goalFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#B9FFD0',
+  },
+  goalHint: {
+    ...FONTS.bodySm,
+    color: 'rgba(255,255,255,0.78)',
+  },
+  heroStat: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  heroStatValue: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  heroStatLabel: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 11,
+    marginTop: 2,
+    fontWeight: '500',
   },
   heroDivider: {
     width: 1,
-    height: 36,
-    backgroundColor: COLORS.surfaceContainerHigh,
+    height: 24,
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
-  statsGrid: {
+  mainAction: {
+    marginVertical: 12,
+    borderRadius: 20,
+    ...MODERN_SHADOW,
+    overflow: 'hidden',
+  },
+  mainActionGradient: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
+    alignItems: 'center',
+    padding: 16,
+    gap: 16,
   },
-  statCard: {
-    width: '48%',
-    flexGrow: 1,
-    backgroundColor: COLORS.surfaceContainerLowest,
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: COLORS.surfaceContainerLow,
+  activeSessionCard: {
+    marginVertical: 12,
+    borderRadius: 20,
+    backgroundColor: '#ffffff',
+    padding: 16,
+    gap: 12,
+    ...MODERN_SHADOW,
+  },
+  activeSessionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  activeSessionTitle: {
+    ...FONTS.labelLg,
+    color: '#1A1C1C',
+  },
+  activeSessionBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 6,
+    borderRadius: 999,
+    backgroundColor: COLORS.surfaceContainer,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
-  sectionWrap: {
-    gap: 12,
+  activeSessionBadgeText: {
+    ...FONTS.labelMd,
+    color: COLORS.primary,
   },
-  sectionTitle: {
-    fontSize: 14,
+  activeRouteLabel: {
+    ...FONTS.bodyMd,
+    color: COLORS.onSurface,
     fontWeight: '600',
-    letterSpacing: 0.6,
-    color: COLORS.onSurfaceVariant,
-    textTransform: 'uppercase',
   },
-  actionRow: {
+  activeSessionMetaRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
   },
-  actionButton: {
-    flex: 1,
+  metaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    backgroundColor: COLORS.surfaceContainerLow,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  metaPillText: {
+    ...FONTS.labelMd,
+    color: COLORS.onSurfaceVariant,
+  },
+  resumeSessionBtn: {
+    marginTop: 4,
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: COLORS.primary,
   },
-  actionGhost: {
-    flex: 1,
+  resumeSessionBtnText: {
+    ...FONTS.labelLg,
+    color: COLORS.onPrimary,
+  },
+  actionIconBg: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: '#e8f5e9',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.surfaceContainerHigh,
-    backgroundColor: COLORS.surfaceContainerLowest,
   },
-  activityCard: {
-    backgroundColor: COLORS.surfaceContainerLowest,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: COLORS.surfaceContainerLow,
-    gap: 14,
+  actionTextContent: {
+    flex: 1,
   },
-  activityRow: {
+  actionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1A1C1C',
+  },
+  actionSub: {
+    fontSize: 12,
+    color: COLORS.onSurfaceVariant,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginTop: 24,
+    marginBottom: 12,
   },
-  activityDivider: {
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#1A1C1C',
+    letterSpacing: -0.3,
+  },
+  seeAll: {
+    fontSize: 13,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  statBox: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    ...MODERN_SHADOW,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  statIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1A1C1C',
+  },
+  statLabel: {
+    fontSize: 12,
+    color: COLORS.onSurfaceVariant,
+    marginTop: 4,
+    fontWeight: '500',
+  },
+  utilsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  utilBtn: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    ...MODERN_SHADOW,
+    shadowRadius: 8,
+  },
+  utilIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  utilLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1A1C1C',
+  },
+  activityCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 12,
+    ...MODERN_SHADOW,
+  },
+  activityItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    gap: 12,
+  },
+  activityIndicator: {
+    width: 4,
+    height: 32,
+    borderRadius: 2,
+    backgroundColor: COLORS.primary,
+  },
+  activityName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1A1C1C',
+  },
+  activityLoc: {
+    fontSize: 12,
+    color: COLORS.onSurfaceVariant,
+    marginTop: 2,
+  },
+  activityTime: {
+    fontSize: 11,
+    color: COLORS.outline,
+    fontWeight: '500',
+  },
+  emptyActivityWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 14,
+  },
+  emptyActivityText: {
+    ...FONTS.bodySm,
+    color: COLORS.onSurfaceVariant,
+  },
+  historyDivider: {
     height: 1,
-    backgroundColor: COLORS.surfaceContainerHigh,
+    backgroundColor: '#F1F3F5',
+    marginHorizontal: 12,
   },
 });
 

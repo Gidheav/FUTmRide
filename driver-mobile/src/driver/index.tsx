@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Alert, AppState, BackHandler, Platform, StyleSheet, Text, ToastAndroid, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, AppState, BackHandler, Platform, StyleSheet, Text, ToastAndroid, TouchableOpacity, View } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { useQuery } from '@tanstack/react-query'
 import { MaterialIcons } from '@expo/vector-icons'
@@ -7,7 +7,15 @@ import { useAuthStore } from '../core/authStore'
 import { authApi, settingsApi, verificationApi } from '../core/api'
 import { COLORS, FONTS } from '../core/theme'
 import { useSettingsStore } from '../core/settingsStore'
-import { useAppLockStore } from '../core/appLockStore'
+import { isDriverUnlockFresh, useAppLockStore } from '../core/appLockStore'
+import {
+  fetchDriverSessionSnapshot,
+  getSessionErrorMessage,
+  pingDriverSession,
+  prefetchDriverEssentials,
+  refreshAndFetchDriverSession,
+  refreshDriverSessionTokens,
+} from '../core/session'
 import {
   addNotificationReceivedListener,
   addNotificationResponseListener,
@@ -30,6 +38,7 @@ import EditProfilePage from './pages/EditProfilePage'
 import AccountSettingsPage from './pages/AccountSettingsPage'
 import CreateGarageRideScreen from './screens/CreateGarageRideScreen'
 import AppLockScreen from './screens/AppLockScreen'
+import PinSetupScreen from './screens/PinSetupScreen'
 import DriverLayout from './layout/DriverLayout'
 import type { DriverTab } from './types'
 
@@ -44,17 +53,55 @@ const GARAGE_STATUS_LABELS: Record<string, string> = {
 }
 
 export default function DriverApp() {
-  const { isAuthenticated, user, logout, patchUser } = useAuthStore()
+  const {
+    isAuthenticated,
+    user,
+    logout,
+    patchUser,
+    hydrateTokens,
+    hasHydrated: authHasHydrated,
+  } = useAuthStore()
   const { setSummary } = useDriverWalletStore()
   const { garageRide, garagePassengers } = useDriverRidesStore()
-  const { settings, hydrateFromApi } = useSettingsStore()
-  const { isLocked, setLocked, setUnlocked, reset: resetLock } = useAppLockStore()
+  const { settings } = useSettingsStore()
+  const {
+    isLocked,
+    lastUnlockedAt,
+    lockTimeoutMinutes,
+    setLocked,
+    setUnlocked,
+    reset: resetLock,
+  } = useAppLockStore()
   const [activeTab, setActiveTab] = useState<DriverTab>('home')
   const [subPage, setSubPage] = useState<SubPage>(null)
   const [lockBusy, setLockBusy] = useState(false)
+  const [sessionBooting, setSessionBooting] = useState(true)
+  const [lockError, setLockError] = useState('')
+  const [lockStatus, setLockStatus] = useState('')
+  const [sessionWarning, setSessionWarning] = useState('')
+  const [pinSetupRequired, setPinSetupRequired] = useState(false)
   const lastBackPressRef = useRef(0)
   const lastRideNotificationKey = useRef<string | null>(null)
   const rideClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const sessionActive = isAuthenticated && user?.role === 'driver' && !isLocked && !pinSetupRequired
+
+  const endDriverSession = () => {
+    logout()
+    resetLock()
+    setPinSetupRequired(false)
+    setLockError('')
+    setLockStatus('')
+    setSessionWarning('')
+  }
+
+  const completeUnlock = async () => {
+    setUnlocked()
+    setPinSetupRequired(false)
+    setLockError('')
+    setLockStatus('')
+    setSessionWarning('')
+    void prefetchDriverEssentials()
+  }
 
   useEffect(() => {
     if (Platform.OS !== 'android') {
@@ -87,37 +134,117 @@ export default function DriverApp() {
   }, [activeTab, subPage])
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      resetLock()
+    if (!authHasHydrated) {
       return
     }
-    settingsApi
-      .getPreferences()
-      .then((res) => {
-        if (res?.data) {
-          hydrateFromApi(res.data)
-        }
-      })
-      .catch(() => null)
-  }, [hydrateFromApi, isAuthenticated, resetLock])
 
-  useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !user) {
+      resetLock()
+      setSessionBooting(false)
+      setPinSetupRequired(false)
       return
     }
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'background') {
-        if (settings.biometricEnabled || settings.hasPin) {
-          setLocked(true)
+
+    let isMounted = true
+    const bootLockedSession = async () => {
+      setSessionBooting(true)
+      setLockStatus('Checking secure driver session...')
+      setLockError('')
+      setSessionWarning('')
+      setLocked(true)
+
+      try {
+        await hydrateTokens()
+        const snapshot = await refreshAndFetchDriverSession()
+        if (!isMounted) return
+
+        if (!snapshot.settings.has_pin && !snapshot.settings.biometric_enabled) {
+          setPinSetupRequired(true)
+        } else {
+          setPinSetupRequired(false)
+        }
+      } catch (error) {
+        if (!isMounted) return
+        setPinSetupRequired(false)
+        setLockError(getSessionErrorMessage(error, 'Unable to verify your saved driver session.'))
+      } finally {
+        if (isMounted) {
+          setLockStatus('')
+          setSessionBooting(false)
         }
       }
-    })
-    return () => subscription.remove()
-  }, [isAuthenticated, setLocked, settings.biometricEnabled, settings.hasPin])
+    }
+
+    void bootLockedSession()
+    return () => {
+      isMounted = false
+    }
+  }, [authHasHydrated, hydrateTokens, isAuthenticated, resetLock, setLocked, user?.id])
 
   useEffect(() => {
-    if (!isAuthenticated || !settings.pushEnabled) {
-      if (isAuthenticated) {
+    if (!sessionActive) {
+      return
+    }
+
+    if (!isDriverUnlockFresh(lastUnlockedAt, lockTimeoutMinutes)) {
+      setLocked(true)
+      setLockStatus('Unlock window expired. Please unlock again.')
+      return
+    }
+
+    const timeoutMs = lockTimeoutMinutes === 0
+      ? null
+      : Math.max(0, Math.min(lockTimeoutMinutes, 30) * 60 * 1000 - (Date.now() - (lastUnlockedAt || 0)))
+
+    if (timeoutMs === null) {
+      return
+    }
+
+    const timer = setTimeout(() => {
+      setLocked(true)
+      setLockStatus('Unlock window expired. Please unlock again.')
+    }, timeoutMs)
+
+    return () => clearTimeout(timer)
+  }, [lastUnlockedAt, lockTimeoutMinutes, sessionActive, setLocked])
+
+  useEffect(() => {
+    if (!isAuthenticated || user?.role !== 'driver') {
+      return
+    }
+
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'background' || state === 'inactive') {
+        if (lockTimeoutMinutes === 0 && sessionActive) {
+          setLocked(true)
+          setLockStatus('Unlock the app to continue.')
+        }
+        return
+      }
+
+      if (state === 'active' && sessionActive) {
+        if (!isDriverUnlockFresh(lastUnlockedAt, lockTimeoutMinutes)) {
+          setLocked(true)
+          setLockStatus('Unlock window expired. Please unlock again.')
+          return
+        }
+
+        pingDriverSession()
+          .then(() => setSessionWarning(''))
+          .catch((error) => {
+            if (!error?.response) {
+              setSessionWarning('You are offline. Live driver actions may fail until internet returns.')
+            }
+          })
+      }
+    })
+
+    return () => subscription.remove()
+  }, [isAuthenticated, lastUnlockedAt, lockTimeoutMinutes, sessionActive, setLocked, user?.role])
+
+  useEffect(() => {
+    if (!sessionActive || !settings.pushEnabled) {
+      if (sessionActive) {
         authApi.updateMe({ fcm_token: null }).catch(() => null)
       }
       return
@@ -135,7 +262,7 @@ export default function DriverApp() {
     return () => {
       isMounted = false
     }
-  }, [isAuthenticated, settings.pushEnabled, user?.fcm_token])
+  }, [sessionActive, settings.pushEnabled, user?.fcm_token])
 
   const handleWalletNotification = (data: Record<string, any>) => {
     if (!data) return
@@ -154,7 +281,7 @@ export default function DriverApp() {
   }
 
   useEffect(() => {
-    if (!isAuthenticated) return
+    if (!sessionActive) return
     const cleanup = addNotificationResponseListener((data) => {
       handleWalletNotification(data)
       const rideId = data?.ride_id as string | undefined
@@ -175,15 +302,15 @@ export default function DriverApp() {
       }
     })
     return cleanup
-  }, [isAuthenticated])
+  }, [sessionActive])
 
   useEffect(() => {
-    if (!isAuthenticated) return
+    if (!sessionActive) return
     const cleanup = addNotificationReceivedListener((data) => {
       handleWalletNotification(data)
     })
     return cleanup
-  }, [isAuthenticated])
+  }, [sessionActive])
 
   useEffect(() => {
     if (rideClearTimer.current) {
@@ -191,7 +318,7 @@ export default function DriverApp() {
       rideClearTimer.current = null
     }
 
-    if (!garageRide) {
+    if (!sessionActive || !garageRide) {
       lastRideNotificationKey.current = null
       void clearRideStatusNotification()
       return
@@ -226,15 +353,128 @@ export default function DriverApp() {
         void clearRideStatusNotification()
       }, 1500)
     }
-  }, [garageRide, garagePassengers.length])
+  }, [garageRide, garagePassengers.length, sessionActive])
 
   // Fetch verification progress for the banner
   const { data: progressData } = useQuery({
     queryKey: ['verification-progress'],
     queryFn: () => verificationApi.getProgress().then(r => r.data),
-    enabled: isAuthenticated && user?.role === 'driver',
+    enabled: sessionActive,
     staleTime: 30000,
   })
+
+  const handleRetrySecureSession = async () => {
+    setLockBusy(true)
+    setLockError('')
+    setLockStatus('Connecting to LR Ride...')
+    try {
+      await hydrateTokens()
+      const snapshot = await refreshAndFetchDriverSession()
+      const hasUnlockMethod = Boolean(snapshot.settings.has_pin || snapshot.settings.biometric_enabled)
+      setPinSetupRequired(!hasUnlockMethod)
+      setLocked(true)
+      setLockError('')
+    } catch (error) {
+      setLockError(getSessionErrorMessage(error, 'Unable to verify your driver session.'))
+    } finally {
+      setLockStatus('')
+      setLockBusy(false)
+    }
+  }
+
+  const handleUnlockPin = async (pin: string) => {
+    if (!pin) {
+      setLockError('Enter your PIN to unlock.')
+      return
+    }
+
+    setLockBusy(true)
+    setLockError('')
+    setLockStatus('Verifying with server...')
+    try {
+      await refreshDriverSessionTokens()
+      await settingsApi.verifyPin({ pin })
+      const snapshot = await fetchDriverSessionSnapshot()
+      const hasUnlockMethod = Boolean(snapshot.settings.has_pin || snapshot.settings.biometric_enabled)
+
+      if (!hasUnlockMethod) {
+        setPinSetupRequired(true)
+        setLocked(true)
+        return
+      }
+
+      await completeUnlock()
+    } catch (error) {
+      setLockError(getSessionErrorMessage(error, 'Invalid PIN or unable to unlock. Please try again.'))
+    } finally {
+      setLockStatus('')
+      setLockBusy(false)
+    }
+  }
+
+  const handleUnlockBiometric = async () => {
+    setLockError('')
+    try {
+      const LocalAuth = await import('expo-local-authentication')
+      const result = await LocalAuth.authenticateAsync({
+        promptMessage: 'Unlock LR Ride Driver',
+        fallbackLabel: settings.hasPin ? 'Use PIN' : undefined,
+      })
+
+      if (!result.success) {
+        return
+      }
+    } catch {
+      setLockError('Biometric unlock is not available on this device.')
+      return
+    }
+
+    setLockBusy(true)
+    setLockStatus('Verifying with server...')
+    try {
+      const snapshot = await refreshAndFetchDriverSession()
+      const hasUnlockMethod = Boolean(snapshot.settings.has_pin || snapshot.settings.biometric_enabled)
+
+      if (!hasUnlockMethod) {
+        setPinSetupRequired(true)
+        setLocked(true)
+        return
+      }
+
+      await completeUnlock()
+    } catch (error) {
+      setLockError(getSessionErrorMessage(error, 'Unable to unlock with biometrics.'))
+    } finally {
+      setLockStatus('')
+      setLockBusy(false)
+    }
+  }
+
+  const handleSetRequiredPin = async (pin: string) => {
+    setLockBusy(true)
+    setLockError('')
+    try {
+      await refreshDriverSessionTokens()
+      await settingsApi.setPin({ new_pin: pin })
+      await fetchDriverSessionSnapshot()
+      await completeUnlock()
+    } catch (error) {
+      setLockError(getSessionErrorMessage(error, 'Unable to save PIN. Please try again.'))
+    } finally {
+      setLockBusy(false)
+    }
+  }
+
+  if (!authHasHydrated || sessionBooting) {
+    return (
+      <SafeAreaProvider>
+        <View style={s.loadingRoot}>
+          <ActivityIndicator size="small" color={COLORS.primary} />
+          <Text style={s.loadingText}>{lockStatus || 'Preparing secure driver app...'}</Text>
+        </View>
+      </SafeAreaProvider>
+    )
+  }
 
   if (!isAuthenticated || !user) {
     if (Platform.OS === 'android') {
@@ -257,56 +497,32 @@ export default function DriverApp() {
     )
   }
 
-  if ((settings.biometricEnabled || settings.hasPin) && isLocked) {
+  if (pinSetupRequired) {
+    return (
+      <SafeAreaProvider>
+        <PinSetupScreen
+          busy={lockBusy}
+          errorMessage={lockError}
+          onSetPin={handleSetRequiredPin}
+          onLogout={endDriverSession}
+        />
+      </SafeAreaProvider>
+    )
+  }
+
+  if (isLocked) {
     return (
       <SafeAreaProvider>
         <AppLockScreen
           hasPin={settings.hasPin}
           biometricEnabled={settings.biometricEnabled}
           busy={lockBusy}
-          onUnlockPin={async (pin) => {
-            if (!pin) {
-              return
-            }
-            setLockBusy(true)
-            try {
-              await settingsApi.verifyPin({ pin })
-              setUnlocked()
-            } catch (error) {
-              if (Platform.OS === 'android') {
-                ToastAndroid.show('Invalid PIN', ToastAndroid.SHORT)
-              } else {
-                Alert.alert('Invalid PIN', 'Please try again.')
-              }
-            } finally {
-              setLockBusy(false)
-            }
-          }}
-          onUnlockBiometric={async () => {
-            setLockBusy(true)
-            try {
-              const LocalAuth = await import('expo-local-authentication')
-              const result = await LocalAuth.authenticateAsync({
-                promptMessage: 'Unlock LR Ride',
-                fallbackLabel: 'Use PIN',
-              })
-              if (result.success) {
-                setUnlocked()
-              }
-            } catch (error) {
-              if (Platform.OS === 'android') {
-                ToastAndroid.show('Biometric failed', ToastAndroid.SHORT)
-              } else {
-                Alert.alert('Biometric failed', 'Please try again.')
-              }
-            } finally {
-              setLockBusy(false)
-            }
-          }}
-          onLogout={() => {
-            logout()
-            resetLock()
-          }}
+          errorMessage={lockError}
+          statusMessage={lockStatus || 'Internet is required to unlock driver app.'}
+          onUnlockPin={handleUnlockPin}
+          onUnlockBiometric={handleUnlockBiometric}
+          onRetry={handleRetrySecureSession}
+          onLogout={endDriverSession}
         />
       </SafeAreaProvider>
     )
@@ -424,9 +640,19 @@ export default function DriverApp() {
 
   const banner = getBannerConfig()
 
+  const handleCreateGarageRide = () => {
+    if (sessionWarning) {
+      if (Platform.OS === 'android') {
+        ToastAndroid.show('Internet is required for live driver actions.', ToastAndroid.SHORT)
+      }
+      return
+    }
+    setSubPage('garage-ride')
+  }
+
   const renderPage = () => {
     switch (activeTab) {
-      case 'home':  return <DriverDashboardScreen onCreateGarageRide={() => setSubPage('garage-ride')} />
+      case 'home':  return <DriverDashboardScreen onCreateGarageRide={handleCreateGarageRide} />
       case 'rides': return <DriverRidesPage />
       case 'wallet': return <DriverWalletPage />
       case 'profile':
@@ -443,6 +669,12 @@ export default function DriverApp() {
   return (
     <SafeAreaProvider>
       <DriverLayout activeTab={activeTab} onTabChange={setActiveTab}>
+        {sessionWarning ? (
+          <View style={s.sessionWarning}>
+            <MaterialIcons name="wifi-off" size={16} color="#B45309" />
+            <Text style={s.sessionWarningText}>{sessionWarning}</Text>
+          </View>
+        ) : null}
         {renderPage()}
       </DriverLayout>
     </SafeAreaProvider>
@@ -469,6 +701,36 @@ function VerificationSuccessScreen({ onContinue }: { onContinue: () => void }) {
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
+  loadingRoot: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: COLORS.background,
+    padding: 24,
+  },
+  loadingText: {
+    ...FONTS.bodySm,
+    color: COLORS.tertiary,
+    textAlign: 'center',
+  },
+  sessionWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FEF3C7',
+    borderBottomWidth: 1,
+    borderBottomColor: '#FCD34D',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  sessionWarningText: {
+    flex: 1,
+    color: '#92400E',
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 16,
+  },
   banner: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     paddingHorizontal: 16, paddingVertical: 12,

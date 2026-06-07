@@ -1,6 +1,8 @@
 import axios from 'axios'
 import { useAuthStore } from './authStore'
+import { useAppLockStore } from './appLockStore'
 import { API_BASE_URL } from '../../config/apiConfig'
+import { getAuthTokens, setAuthTokens } from '../../utils/secureStorage'
 
 const normalizeBaseUrl = (rawUrl: string) => {
   try {
@@ -22,21 +24,75 @@ const normalizeBaseUrl = (rawUrl: string) => {
   }
 }
 
-const NORMALIZED_API_BASE_URL = normalizeBaseUrl(API_BASE_URL)
+export const API_ROOT_URL = normalizeBaseUrl(API_BASE_URL)
 
 const api = axios.create({
-  baseURL: NORMALIZED_API_BASE_URL,
+  baseURL: API_ROOT_URL,
   timeout: 25000,
 })
 
-api.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().accessToken
+api.interceptors.request.use(async (config) => {
+  let token = useAuthStore.getState().accessToken
+  if (!token) {
+    const tokens = await getAuthTokens()
+    token = tokens.accessToken
+  }
   if (token) {
     config.headers = config.headers ?? {}
     config.headers.Authorization = `Bearer ${token}`
   }
   return config
 })
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error?.config
+    const status = error?.response?.status
+
+    if (
+      status !== 401 ||
+      !originalRequest ||
+      (originalRequest as any)._retry ||
+      String(originalRequest.url || '').includes('auth/token/refresh/')
+    ) {
+      throw error
+    }
+
+    ;(originalRequest as any)._retry = true
+
+    try {
+      const stored = await getAuthTokens()
+      const refreshToken = useAuthStore.getState().refreshToken || stored.refreshToken
+
+      if (!refreshToken) {
+        throw error
+      }
+
+      const response = await axios.post(
+        `${API_ROOT_URL}auth/token/refresh/`,
+        { refresh: refreshToken },
+        { timeout: 25000 },
+      )
+      const accessToken = response.data?.access
+      const nextRefreshToken = response.data?.refresh || refreshToken
+
+      if (!accessToken) {
+        throw error
+      }
+
+      await setAuthTokens({ accessToken, refreshToken: nextRefreshToken })
+      useAuthStore.getState().setTokens(accessToken, nextRefreshToken)
+      originalRequest.headers = originalRequest.headers ?? {}
+      originalRequest.headers.Authorization = `Bearer ${accessToken}`
+
+      return api(originalRequest)
+    } catch (refreshError) {
+      useAppLockStore.getState().setLocked(true)
+      throw refreshError
+    }
+  },
+)
 
 export const authApi = {
   getMe: () => api.get('users/me/'),

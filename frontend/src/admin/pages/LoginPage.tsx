@@ -20,11 +20,11 @@ const css = '' +
   '*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }' +
   'body { background: #0a0a0a; font-family: system-ui, -apple-system, sans-serif; }' +
   '.page { min-height: 100vh; background: #0a0a0a; display: flex; align-items: center; justify-content: center; padding: 24px; }' +
-  '.card { background: #141414; border: 1px solid #222; border-radius: 2px; padding: 48px 40px; width: 100%; max-width: 400px; }' +
+  '.card { background: #141414; border: 1px solid #222; border-radius: 2px; padding: 48px 40px; width: 100%; max-width: 430px; }' +
   '.card-top { text-align: center; margin-bottom: 36px; }' +
   '.admin-badge { width: 52px; height: 52px; background: #007A47; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }' +
   '.card-title { font-family: ui-serif, Georgia, serif; font-size: 28px; color: #fff; letter-spacing: -0.8px; margin-bottom: 6px; }' +
-  '.card-sub { font-size: 13px; color: #555; }' +
+  '.card-sub { font-size: 13px; color: #555; }' +  '.card-sub-2 { font-size: 13px; color: #555; }' +
   '.field { margin-bottom: 18px; }' +
   '.field-label { font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: #555; margin-bottom: 8px; display: block; }' +
   '.field-input { width: 100%; height: 48px; padding: 0 42px 0 14px; background: #1a1a1a; border: 1.5px solid #2a2a2a; border-radius: 10px; font-family: system-ui, -apple-system, sans-serif; font-size: 14px; color: #fff; outline: none; transition: border-color 0.15s; box-sizing: border-box; }' +
@@ -92,7 +92,8 @@ export default function LoginPage() {
           <div className="card-top">
             <div className="admin-badge"><ShieldCheck size={24} color="#fff" /></div>
             <h1 className="card-title">Super Admin Portal</h1>
-            <p className="card-sub">LR Ride global management console</p>
+            <p className="card-sub">Global management console</p>
+            <p className="card-sub">Restricted Portal</p>
           </div>
           <form onSubmit={handleSubmit(d => mutation.mutate(d))}>
             <div className="field">

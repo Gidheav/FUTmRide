@@ -336,6 +336,35 @@ class ApiService {
     link.click()
     URL.revokeObjectURL(url)
   }
+
+  // ── Scheduled Rides ────────────────────────────────────────────────────────
+  
+  async createScheduledRide(data: any): Promise<any> {
+    return this.post('rides/scheduled/create/', data)
+  }
+
+  async getScheduledRides(params?: { status?: string; date?: string }): Promise<any[]> {
+    const qs = new URLSearchParams()
+    if (params?.status) qs.set('status', params.status)
+    if (params?.date) qs.set('date', params.date)
+    return this.get<any[]>(`rides/scheduled/?${qs.toString()}`)
+  }
+
+  async getScheduledRideDetail(id: string): Promise<any> {
+    return this.get(`rides/scheduled/${id}/`)
+  }
+
+  async cancelScheduledRide(id: string): Promise<any> {
+    return this.post(`rides/scheduled/${id}/cancel/`)
+  }
+
+  async departScheduledRide(id: string): Promise<any> {
+    return this.post(`rides/scheduled/${id}/depart/`)
+  }
+
+  async completeScheduledRide(id: string): Promise<any> {
+    return this.post(`rides/scheduled/${id}/complete/`)
+  }
 }
 
 export const apiService = new ApiService()

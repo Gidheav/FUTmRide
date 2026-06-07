@@ -5,9 +5,6 @@ import * as ImagePicker from 'expo-image-picker'
 import { useAuthStore } from '../../core/authStore'
 import api from '../../core/api'
 
-const PROFILE_IMAGE_URI =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuBrKWSN2TzBECNjdNXg6cw1aNilC_cpK7SOO0SaUYrlM29ESyY5TpRzqC0foFH6ftkS_6PquBE-k7iysH9hhlDOKFVgw51uhms_KktqBZJEY1QTev4oBn3k4NQQJ_6SNrHFfzBLkAEIjf13ObFRRLWEQ_7pt3joCG9z-J_MITcT1UB24RTc6SQZG8-B2JbpJc5IFSWl01nVIZXP1mHG0YjESCk9j3A09H1_XpYYl4vOMEohek-ZTSa1604_omN0qmA2YcK_tG0IeVE'
-
 type AccountPageProps = {
   onEditProfile: () => void
   onOpenNotifications: () => void
@@ -18,6 +15,16 @@ type AccountPageProps = {
 
 export default function StudentAccountPage({ onEditProfile, onOpenNotifications, onOpenSecurity, onLogout, refreshKey }: AccountPageProps) {
   const { user, setUser } = useAuthStore()
+
+  const getInitials = () => {
+    if (!user?.full_name) return '?'
+    const parts = user.full_name.trim().split(/\s+/)
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    }
+    return parts[0][0].toUpperCase()
+  }
+
   const [profile, setProfile] = useState<any>(null)
   const [userProfile, setUserProfile] = useState<any>(null)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
@@ -119,7 +126,13 @@ export default function StudentAccountPage({ onEditProfile, onOpenNotifications,
     <ScrollView style={styles.page} contentContainerStyle={styles.pageContent}>
       <View style={styles.profileHeader}>
         <View style={styles.avatarWrap}>
-          <Image source={{ uri: userProfile?.profile_photo || user?.profile_photo || PROFILE_IMAGE_URI }} style={styles.avatar} />
+          {userProfile?.profile_photo || user?.profile_photo ? (
+            <Image source={{ uri: userProfile?.profile_photo || user?.profile_photo }} style={styles.avatar} />
+          ) : (
+            <View style={styles.initialsContainer}>
+              <Text style={styles.initialsText}>{getInitials()}</Text>
+            </View>
+          )}
           <TouchableOpacity style={styles.editBadge} activeOpacity={0.85} onPress={handlePickPhoto}>
             {uploadingPhoto ? (
               <ActivityIndicator size="small" color="#ffffff" />
@@ -221,6 +234,18 @@ const styles = StyleSheet.create({
   avatar: {
     width: '100%',
     height: '100%',
+  },
+  initialsContainer: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#f3e5f5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  initialsText: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#6A1B9A',
   },
   editBadge: {
     position: 'absolute',

@@ -51,6 +51,20 @@ export default function CampusAdminTopNav() {
   const verifyDriverId = verifyMatch ? verifyMatch[1] : null
   const searchParams = new URLSearchParams(location.search)
   const activeTab = searchParams.get('tab') || 'personal'
+  const isOpenRequestsPanel = location.pathname === '/' && searchParams.get('panel') === 'open'
+
+  const dashboardNavItems = NAV_ITEMS.filter((item) => item.path === '/' || item.path === '/rides')
+
+  const toggleOpenRequestsPanel = () => {
+    const params = new URLSearchParams(location.search)
+    if (params.get('panel') === 'open') {
+      params.delete('panel')
+    } else {
+      params.set('panel', 'open')
+    }
+    const search = params.toString()
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : '' })
+  }
 
   const { data: unifiedDetail } = useQuery<any>({
     queryKey: ['admin-unified-detail', verifyDriverId],
@@ -352,8 +366,26 @@ export default function CampusAdminTopNav() {
         </nav>
       ) : (
         <nav style={s.topNav}>
-          {NAV_ITEMS.map((t) => {
+          {(location.pathname === '/' ? dashboardNavItems : NAV_ITEMS).map((t) => {
             const Icon = t.icon
+            if (t.path === '/rides' && location.pathname === '/') {
+              return (
+                <button
+                  key={t.label}
+                  type="button"
+                  onClick={toggleOpenRequestsPanel}
+                  style={{
+                    ...s.topNavBtn,
+                    color: isOpenRequestsPanel ? T.accent : T.textSecondary,
+                    background: isOpenRequestsPanel ? T.accentBg : 'transparent',
+                  }}
+                >
+                  <Icon size={13} strokeWidth={1.8} />
+                  <span>{t.label}</span>
+                </button>
+              )
+            }
+
             const isActive = location.pathname === t.path
             return (
               <Link

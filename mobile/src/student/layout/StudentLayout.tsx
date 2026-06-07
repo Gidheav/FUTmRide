@@ -14,9 +14,6 @@ type LayoutProps = {
   children: ReactNode
 }
 
-const PROFILE_IMAGE_URI =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuClMVoh7zmBg2OcDmJVqaJGaFf7OijZawkSK47wT4QxqSO21IVyKq0kUlmIcilMRCKoy9O07xvZlFSeuy98ovJDxs3v9ZNVcjHrmfAXN02bOqYRpbKqNDhuNIern7HbnwLpYMeqI5I0Tc8b9uz4sKhP3FP4yN6N_Jq89CC6X6u67nwdBwNAiFauHc4mGw5lxlVJyazxdmbsgFZfq6jrlSXmWHNikXliNOTjUgGdIrAmiSndbopWWqvyqzl7LgrUm6fpw3I9tSeEVHY'
-
 const NAV_ITEMS: Array<{ key: StudentTab; label: string; icon: keyof typeof MaterialIcons.glyphMap }> = [
   { key: 'home', label: 'Home', icon: 'home' },
   { key: 'rides', label: 'Rides', icon: 'directions-car' },
@@ -26,7 +23,16 @@ const NAV_ITEMS: Array<{ key: StudentTab; label: string; icon: keyof typeof Mate
 
 export default function StudentLayout({ activeTab, onTabChange, onMenuPress, onNotificationPress, unreadCount = 0, children }: LayoutProps) {
   const { user } = useAuthStore()
-  const avatarUri = user?.profile_photo || PROFILE_IMAGE_URI
+  
+  const getInitials = () => {
+    if (!user?.full_name) return '?'
+    const parts = user.full_name.trim().split(/\s+/)
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    }
+    return parts[0][0].toUpperCase()
+  }
+
   const insets = useSafeAreaInsets()
 
   return (
@@ -54,7 +60,13 @@ export default function StudentLayout({ activeTab, onTabChange, onMenuPress, onN
             )}
           </TouchableOpacity>
           <TouchableOpacity style={styles.avatarButton} activeOpacity={0.85}>
-            <Image source={{ uri: avatarUri }} style={styles.avatar} />
+            {user?.profile_photo ? (
+              <Image source={{ uri: user.profile_photo }} style={styles.avatar} />
+            ) : (
+              <View style={styles.initialsContainer}>
+                <Text style={styles.initialsText}>{getInitials()}</Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -145,6 +157,18 @@ const styles = StyleSheet.create({
   avatar: {
     width: '100%',
     height: '100%',
+  },
+  initialsContainer: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#f0e6ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  initialsText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6A1B9A',
   },
   content: {
     flex: 1,

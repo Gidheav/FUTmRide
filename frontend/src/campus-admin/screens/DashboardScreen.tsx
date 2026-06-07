@@ -6,8 +6,10 @@ import {
   ZoomIn, ZoomOut, Crosshair, Maximize2, Undo2, Redo2, Trash2,
 } from 'lucide-react'
 import { GoogleMap, useJsApiLoader, DrawingManager, Polyline, Marker, InfoWindow } from '@react-google-maps/api'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { T, useCampusThemeStore } from '../theme'
 import { createAuthenticatedWebSocket } from '../../core/ws'
+import { apiService } from '../../services/api.service'
 
 const GMAP_LIBS: ('drawing' | 'geometry' | 'places')[] = ['drawing', 'geometry', 'places']
 
@@ -148,11 +150,32 @@ const DEFAULT_ZOOM = 15
 export default function DashboardPage() {
   const { mode } = useCampusThemeStore()
   const feedRef = useRef<HTMLDivElement>(null)
+  const location = useLocation()
+  const navigate = useNavigate()
+  const searchParams = new URLSearchParams(location.search)
+  const isOpenRequestsPanelParam = searchParams.get('panel') === 'open'
 
   // Panel collapsed states (collapsed by default)
   const [isLeftPanelOpen, setIsLeftPanelOpen] = useState(false)
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(false)
   const [isDataFeedOpen, setIsDataFeedOpen] = useState(false)
+
+  const setOpenRequestsPanel = (open: boolean) => {
+    const params = new URLSearchParams(location.search)
+    if (open) {
+      params.set('panel', 'open')
+    } else {
+      params.delete('panel')
+    }
+
+    const search = params.toString()
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : '' }, { replace: true })
+  }
+
+  useEffect(() => {
+    if (location.pathname !== '/') return
+    setIsLeftPanelOpen(isOpenRequestsPanelParam)
+  }, [location.pathname, location.search, isOpenRequestsPanelParam])
 
   // Toggles for traffic layers
   const [layers, setLayers] = useState({
@@ -166,12 +189,70 @@ export default function DashboardPage() {
   const [activeLayersOpen, setActiveLayersOpen] = useState(false)
   const [dataControlsOpen, setDataControlsOpen] = useState(false)
 
-  // Route creation
-  const [waypoints, setWaypoints] = useState(['', ''])
-  const [vehicleConstraints, setVehicleConstraints] = useState({
-    xlOnly: true, cargoSpace: false, liftgate: false,
+  // ── Scheduled Route Creation State ──
+  const [departureDate, setDepartureDate] = useState(new Date().toISOString().split('T')[0])
+  const [windowStart, setWindowStart] = useState('07:00')
+  const [windowEnd, setWindowEnd] = useState('07:30')
+  const [waypoints, setWaypoints] = useState([{ name: '', address: '' }, { name: '', address: '' }])
+  const [vehicleSize, setVehicleSize] = useState('bus')
+  const [cargoCapacity, setCargoCapacity] = useState('0')
+  const [accessibility, setAccessibility] = useState<Record<string, boolean>>({
+    wheelchair_ramp: false, liftgate: false, low_floor: false, air_conditioning: true,
   })
-  const [pricingTemplate, setPricingTemplate] = useState('standard')
+  
+  const [pricingTiers, setPricingTiers] = useState<Record<string, boolean>>({
+    standard: true, standing: false, premium: false, freight: false,
+  })
+  const [pricingValues, setPricingValues] = useState<Record<string, string>>({
+    standard: '100', standing: '50', premium: '250', freight: '500',
+  })
+  const [isCreatingRide, setIsCreatingRide] = useState(false)
+
+  const handleCreateScheduledRide = async () => {
+    try {
+      setIsCreatingRide(true)
+      const payload = {
+        departure_date: departureDate,
+        window_start: windowStart,
+        window_end: windowEnd,
+        origin_address: waypoints[0]?.address || 'Campus Gate',
+        origin_latitude: 9.5323,
+        origin_longitude: 6.4526,
+        destination_address: waypoints[waypoints.length - 1]?.address || 'Library',
+        destination_latitude: 9.5350,
+        destination_longitude: 6.4550,
+        vehicle_size: vehicleSize,
+        cargo_capacity_kg: parseInt(cargoCapacity, 10) || 0,
+        accessibility_features: Object.entries(accessibility).filter(([_, v]) => v).map(([k]) => k),
+        standard_enabled: pricingTiers.standard,
+        standard_price: pricingValues.standard,
+        standing_enabled: pricingTiers.standing,
+        standing_price: pricingValues.standing,
+        premium_enabled: pricingTiers.premium,
+        premium_price: pricingValues.premium,
+        freight_enabled: pricingTiers.freight,
+        freight_price: pricingValues.freight,
+        stops: waypoints.map((w, i) => ({
+          order: i + 1,
+          name: w.name || `Stop ${i + 1}`,
+          address: w.address,
+          latitude: 9.5323 + (i * 0.001),
+          longitude: 6.4526 + (i * 0.001),
+          is_pickup: true,
+          is_dropoff: true,
+        })),
+      }
+      
+      await apiService.createScheduledRide(payload)
+      alert('Scheduled Ride created successfully!')
+      // Reset form or handle success UI
+    } catch (error: any) {
+      console.error('Failed to create scheduled ride', error)
+      alert(`Error creating ride: ${error.response?.data?.detail || error.message || 'Validation failed'}`)
+    } finally {
+      setIsCreatingRide(false)
+    }
+  }
 
   // Map controls state
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -818,7 +899,7 @@ export default function DashboardPage() {
             <div style={s.leftPanel}>
               <div style={s.panelHeader}>
                 <span style={s.panelTitle}>Open Requests</span>
-                <button style={s.moreBtn} onClick={() => setIsLeftPanelOpen(false)}>
+                <button style={s.moreBtn} onClick={() => setOpenRequestsPanel(false)}>
                   <ChevronLeft size={16} />
                 </button>
               </div>
@@ -1312,105 +1393,199 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* ────────────────── RIGHT: Quick Route Creation ──────────────── */}
+        {/* ────────────────── RIGHT: Quick Ride Creation ──────────────── */}
         {!isFullscreen && (
           isRightPanelOpen ? (
             <div style={s.rightPanel}>
               <div style={s.rpHeader}>
-                <span style={s.panelTitle}>Quick Route Creation</span>
+                <span style={s.panelTitle}>Quick Ride Creation</span>
                 <button style={{ ...s.moreBtn, fontSize: 16 }} onClick={() => setIsRightPanelOpen(false)}><ChevronRight size={16} /></button>
               </div>
-
-              {/* Departure Window */}
-              <div style={s.rpSection}>
-                <div style={s.rpLabel}>Departure Window</div>
-                <div style={s.rpInputRow}>
-                  <div style={s.rpInputIcon}>
-                    <CalendarClock size={13} />
+              <div style={{ flex: 1, overflowY: 'auto' }}>
+                {/* Departure Window */}
+                <div style={s.rpSection}>
+                  <div style={s.rpLabel}>Departure Window</div>
+                  <div style={s.rpInputRow}>
+                    <div style={s.rpInputIcon}>
+                      <CalendarClock size={13} />
+                    </div>
+                    <input 
+                      type="date" 
+                      style={s.rpInput} 
+                      value={departureDate}
+                      onChange={e => setDepartureDate(e.target.value)}
+                    />
                   </div>
-                  <input style={s.rpInput} defaultValue="Date/2023" readOnly />
+                  <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                    <div style={{ ...s.rpInputRow, flex: 1 }}>
+                      <input 
+                        type="time" 
+                        style={s.rpInput} 
+                        value={windowStart}
+                        onChange={e => setWindowStart(e.target.value)}
+                      />
+                    </div>
+                    <span style={{ color: T.textMuted, alignSelf: 'center', fontSize: 12 }}>-</span>
+                    <div style={{ ...s.rpInputRow, flex: 1 }}>
+                      <input 
+                        type="time" 
+                        style={s.rpInput} 
+                        value={windowEnd}
+                        onChange={e => setWindowEnd(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  {/* Join deadline logic indicator */}
+                  <div style={{ fontSize: 9, color: T.textMuted, marginTop: 6, lineHeight: 1.3 }}>
+                    Students can join up to 5 minutes before the window closes.
+                  </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-                  <div style={{ ...s.rpInputRow, flex: 1 }}>
-                    <input style={s.rpInput} defaultValue="11:00 AM" readOnly />
-                  </div>
-                  <span style={{ color: T.textMuted, alignSelf: 'center', fontSize: 12 }}>-</span>
-                  <div style={{ ...s.rpInputRow, flex: 1 }}>
-                    <input style={s.rpInput} defaultValue="11:00 PM" readOnly />
-                  </div>
-                </div>
-              </div>
 
-              {/* Multi-Stop Route */}
-              <div style={s.rpSection}>
-                <div style={s.rpLabel}>Multi-Stop Route</div>
-                {waypoints.map((_, i) => (
-                  <div key={i} style={{ ...s.rpInputRow, marginBottom: 6 }}>
-                    <div style={s.rpInputIcon}><Plus size={12} /></div>
-                    <input style={s.rpInput} placeholder="Add Waypoint" />
-                    <button style={s.rpRemoveBtn}><X size={12} /></button>
-                  </div>
-                ))}
-                <button
-                  style={s.addWaypointBtn}
-                  onClick={() => setWaypoints(p => [...p, ''])}
-                >
-                  Add waypoint
-                </button>
-              </div>
-
-              {/* Vehicle Constraints */}
-              <div style={s.rpSection}>
-                <div style={s.rpLabel}>Vehicle Constraints</div>
-                {[
-                  { key: 'xlOnly' as const, label: 'XL Only' },
-                  { key: 'cargoSpace' as const, label: 'Cargo Space > 500kg' },
-                  { key: 'liftgate' as const, label: 'Liftgate' },
-                ].map((item) => (
-                  <div key={item.key} style={s.rpCheckRow}>
-                    <div style={{
-                      ...s.rpCheckbox,
-                      background: vehicleConstraints[item.key] ? T.accent : 'transparent',
-                      borderColor: vehicleConstraints[item.key] ? T.accent : T.border,
+                {/* Multi-Stop Route */}
+                <div style={s.rpSection}>
+                  <div style={s.rpLabel}>Route & Stops</div>
+                  {waypoints.map((waypoint, i) => (
+                    <div key={i} style={{ ...s.rpInputRow, marginBottom: 6 }}>
+                      <div style={s.rpInputIcon}>
+                        <span style={{ fontSize: 10, fontWeight: 700 }}>{i === 0 ? 'O' : i === waypoints.length - 1 ? 'D' : i}</span>
+                      </div>
+                      <input 
+                        style={{ ...s.rpInput, flex: 1 }} 
+                        placeholder={i === 0 ? "Origin Address" : i === waypoints.length - 1 ? "Destination Address" : "Stop Address"} 
+                        value={waypoint.address}
+                        onChange={(e) => {
+                          const newWaypoints = [...waypoints]
+                          newWaypoints[i].address = e.target.value
+                          setWaypoints(newWaypoints)
+                        }}
+                      />
+                      {waypoints.length > 2 && (
+                        <button 
+                          style={s.rpRemoveBtn}
+                          onClick={() => setWaypoints(waypoints.filter((_, idx) => idx !== i))}
+                        ><X size={12} /></button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    style={s.addWaypointBtn}
+                    onClick={() => {
+                      const newWaypoints = [...waypoints]
+                      newWaypoints.splice(newWaypoints.length - 1, 0, { name: '', address: '' })
+                      setWaypoints(newWaypoints)
                     }}
-                      onClick={() => setVehicleConstraints(p => ({ ...p, [item.key]: !p[item.key] }))}
-                    >
-                      {vehicleConstraints[item.key] && (
-                        <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                          <path d="M1 4L3.5 6.5L9 1" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      )}
-                    </div>
-                    <span style={s.rpCheckLabel}>{item.label}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Pricing Templates */}
-              <div style={s.rpSection}>
-                <div style={s.rpLabel}>Pricing Templates</div>
-                {['Standard', 'Premium', 'Freight'].map((tmpl) => (
-                  <div
-                    key={tmpl}
-                    style={s.rpRadioRow}
-                    onClick={() => setPricingTemplate(tmpl.toLowerCase())}
                   >
-                    <div style={{
-                      ...s.rpRadio,
-                      borderColor: pricingTemplate === tmpl.toLowerCase() ? T.accent : T.border,
-                    }}>
-                      {pricingTemplate === tmpl.toLowerCase() && (
-                        <div style={s.rpRadioDot} />
+                    + Add Stop
+                  </button>
+                </div>
+
+                {/* Vehicle Constraints */}
+                <div style={s.rpSection}>
+                  <div style={s.rpLabel}>Vehicle Constraints</div>
+                  <div style={{ ...s.rpInputRow, marginBottom: 8 }}>
+                    <select 
+                      style={{ ...s.rpInput, paddingLeft: 8, width: '100%', appearance: 'none' }}
+                      value={vehicleSize}
+                      onChange={e => setVehicleSize(e.target.value)}
+                    >
+                      <option value="sedan">Sedan (4 seats)</option>
+                      <option value="suv">SUV (6 seats)</option>
+                      <option value="minivan">Minivan (7-8 seats)</option>
+                      <option value="minibus">Minibus (14-18 seats)</option>
+                      <option value="bus">Bus (30+ seats)</option>
+                    </select>
+                  </div>
+
+                  {pricingTiers.freight && (
+                    <div style={{ ...s.rpInputRow, marginBottom: 8 }}>
+                      <input 
+                        type="number" 
+                        style={{ ...s.rpInput, paddingLeft: 8 }} 
+                        placeholder="Cargo Capacity (kg)" 
+                        value={cargoCapacity}
+                        onChange={e => setCargoCapacity(e.target.value)}
+                      />
+                      <span style={{ fontSize: 10, color: T.textMuted, paddingRight: 8 }}>kg</span>
+                    </div>
+                  )}
+
+                  {[
+                    { key: 'wheelchair_ramp', label: 'Wheelchair Ramp' },
+                    { key: 'liftgate', label: 'Liftgate' },
+                    { key: 'low_floor', label: 'Low Floor' },
+                    { key: 'air_conditioning', label: 'Air Conditioning' },
+                  ].map((item) => (
+                    <div key={item.key} style={s.rpCheckRow} onClick={() => setAccessibility(p => ({ ...p, [item.key]: !p[item.key] }))}>
+                      <div style={{
+                        ...s.rpCheckbox,
+                        background: accessibility[item.key] ? T.accent : 'transparent',
+                        borderColor: accessibility[item.key] ? T.accent : T.border,
+                      }}>
+                        {accessibility[item.key] && (
+                          <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                            <path d="M1 4L3.5 6.5L9 1" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                      </div>
+                      <span style={s.rpCheckLabel}>{item.label}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Pricing Templates */}
+                <div style={s.rpSection}>
+                  <div style={s.rpLabel}>Pricing Tiers (Multi-select)</div>
+                  {[
+                    { key: 'standard', label: 'Standard (Seated)' },
+                    { key: 'standing', label: 'Standing (Bus/Minibus)', disabled: !['bus', 'minibus'].includes(vehicleSize) },
+                    { key: 'premium', label: 'Premium (Comfort)' },
+                    { key: 'freight', label: 'Freight (Cargo)' },
+                  ].map((tier) => (
+                    <div key={tier.key} style={{ marginBottom: 6 }}>
+                      <div 
+                        style={{ ...s.rpCheckRow, opacity: tier.disabled ? 0.5 : 1, pointerEvents: tier.disabled ? 'none' : 'auto' }} 
+                        onClick={() => {
+                          if (tier.disabled) return
+                          setPricingTiers(p => ({ ...p, [tier.key]: !p[tier.key] }))
+                        }}
+                      >
+                        <div style={{
+                          ...s.rpCheckbox,
+                          background: pricingTiers[tier.key] && !tier.disabled ? T.accent : 'transparent',
+                          borderColor: pricingTiers[tier.key] && !tier.disabled ? T.accent : T.border,
+                        }}>
+                          {pricingTiers[tier.key] && !tier.disabled && (
+                            <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                              <path d="M1 4L3.5 6.5L9 1" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          )}
+                        </div>
+                        <span style={s.rpCheckLabel}>{tier.label}</span>
+                      </div>
+                      
+                      {pricingTiers[tier.key] && !tier.disabled && (
+                        <div style={{ ...s.rpInputRow, marginLeft: 24, marginBottom: 8, height: 26, width: 100 }}>
+                          <span style={{ padding: '0 8px', color: T.textMuted, fontSize: 11 }}>₦</span>
+                          <input 
+                            type="number"
+                            style={s.rpInput}
+                            value={pricingValues[tier.key]}
+                            onChange={e => setPricingValues(p => ({ ...p, [tier.key]: e.target.value }))}
+                          />
+                        </div>
                       )}
                     </div>
-                    <span style={s.rpCheckLabel}>{tmpl}</span>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
 
               {/* Schedule Route button */}
-              <button style={s.scheduleBtn}>
-                Schedule Route
+              <button 
+                style={{ ...s.scheduleBtn, opacity: isCreatingRide ? 0.7 : 1 }} 
+                onClick={handleCreateScheduledRide}
+                disabled={isCreatingRide}
+              >
+                {isCreatingRide ? 'Creating...' : 'Create Scheduled Ride'}
               </button>
             </div>
           ) : (
@@ -1419,7 +1594,7 @@ export default function DashboardPage() {
                 <ChevronLeft size={16} color={T.textMuted} />
               </div>
               <div style={{ writingMode: 'vertical-rl', padding: '16px 0', fontSize: 11, fontWeight: 600, color: T.textSecondary, letterSpacing: 1 }}>
-                Quick Route Creation
+                Quick Ride Creation
               </div>
             </div>
           )

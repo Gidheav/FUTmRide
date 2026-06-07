@@ -10,7 +10,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import type { DriverTab } from '../types';
-import { COLORS, FONTS } from '../../core/theme';
+import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
 import DriverSidebar from '../components/DriverSidebar';
 import { useAuthStore } from '../../core/authStore';
 
@@ -20,14 +20,17 @@ interface LayoutProps {
   children: ReactNode;
 }
 
-const IMAGES = {
-  avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuAJaTBlqu2p2DpDpc1cfUyzepdPCe0atBoLkWh1Mf96LvvZGuIm-cSYwvg-XPZkAUf6j6jhGhksPyx1To2U20s6_3B8lC9ErpMh5oaRzqp5umPAs0UMVnUPnViAmjr6SeLggYz5p05vMeydMBF-lPviBBg65ouMg5OXIZNwy4h-si_iN1ZZY0XWM_yXduOl3wLE47d62SGc3OJd2j_VRgsIZg1xS7Hpjk9oWX5H6dY4rHFr0C2a6rhe-9w2CfJ4L2UpDfBmB2OpjH8",
-};
-
 export default function DriverLayout({ activeTab, onTabChange, children }: LayoutProps) {
   const insets = useSafeAreaInsets();
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
-  const { logout } = useAuthStore();
+  const { user, logout } = useAuthStore();
+
+  const getInitials = () => {
+    if (!user) return '?';
+    const first = user.first_name?.[0] || '';
+    const last = user.last_name?.[0] || '';
+    return (first + last).toUpperCase() || user.phone_number?.slice(-2) || 'D';
+  };
 
   return (
     <View style={styles.container}>
@@ -58,7 +61,13 @@ export default function DriverLayout({ activeTab, onTabChange, children }: Layou
               <MaterialIcons name="notifications" size={24} color={COLORS.onSurfaceVariant} />
               <View style={styles.notificationDot} />
             </View>
-            <Image source={{ uri: IMAGES.avatar }} style={styles.avatar} />
+            {user?.profile_photo ? (
+              <Image source={{ uri: user.profile_photo }} style={styles.avatar} />
+            ) : (
+              <View style={[styles.avatar, styles.initialsContainer]}>
+                <Text style={styles.initialsText}>{getInitials()}</Text>
+              </View>
+            )}
           </View>
         </View>
       </View>
@@ -83,29 +92,29 @@ export default function DriverLayout({ activeTab, onTabChange, children }: Layou
             style={activeTab === 'home' ? styles.navItemActive : styles.navItem}
             onPress={() => onTabChange('home')}
           >
-            <MaterialIcons name="home" size={24} color={activeTab === 'home' ? COLORS.onPrimaryContainer : COLORS.onSurfaceVariant} />
-            <Text style={[FONTS.labelMd, { color: activeTab === 'home' ? COLORS.onPrimaryContainer : COLORS.onSurfaceVariant, marginTop: 4 }]}>Home</Text>
+            <MaterialIcons name="home" size={24} color={activeTab === 'home' ? '#ffffff' : COLORS.onSurfaceVariant} />
+            <Text style={[FONTS.labelMd, { color: activeTab === 'home' ? '#ffffff' : COLORS.onSurfaceVariant, marginTop: 4 }]}>Home</Text>
           </TouchableOpacity>
           <TouchableOpacity 
             style={activeTab === 'rides' ? styles.navItemActive : styles.navItem}
             onPress={() => onTabChange('rides')}
           >
-            <MaterialIcons name="directions-car" size={24} color={activeTab === 'rides' ? COLORS.onPrimaryContainer : COLORS.onSurfaceVariant} />
-            <Text style={[FONTS.labelMd, { color: activeTab === 'rides' ? COLORS.onPrimaryContainer : COLORS.onSurfaceVariant, marginTop: 4 }]}>Rides</Text>
+            <MaterialIcons name="directions-car" size={24} color={activeTab === 'rides' ? '#ffffff' : COLORS.onSurfaceVariant} />
+            <Text style={[FONTS.labelMd, { color: activeTab === 'rides' ? '#ffffff' : COLORS.onSurfaceVariant, marginTop: 4 }]}>Rides</Text>
           </TouchableOpacity>
           <TouchableOpacity 
             style={activeTab === 'wallet' ? styles.navItemActive : styles.navItem}
             onPress={() => onTabChange('wallet')}
           >
-            <MaterialIcons name="account-balance-wallet" size={24} color={activeTab === 'wallet' ? COLORS.onPrimaryContainer : COLORS.onSurfaceVariant} />
-            <Text style={[FONTS.labelMd, { color: activeTab === 'wallet' ? COLORS.onPrimaryContainer : COLORS.onSurfaceVariant, marginTop: 4 }]}>Wallet</Text>
+            <MaterialIcons name="account-balance-wallet" size={24} color={activeTab === 'wallet' ? '#ffffff' : COLORS.onSurfaceVariant} />
+            <Text style={[FONTS.labelMd, { color: activeTab === 'wallet' ? '#ffffff' : COLORS.onSurfaceVariant, marginTop: 4 }]}>Wallet</Text>
           </TouchableOpacity>
           <TouchableOpacity 
             style={activeTab === 'profile' ? styles.navItemActive : styles.navItem}
             onPress={() => onTabChange('profile')}
           >
-            <MaterialIcons name="person" size={24} color={activeTab === 'profile' ? COLORS.onPrimaryContainer : COLORS.onSurfaceVariant} />
-            <Text style={[FONTS.labelMd, { color: activeTab === 'profile' ? COLORS.onPrimaryContainer : COLORS.onSurfaceVariant, marginTop: 4 }]}>Profile</Text>
+            <MaterialIcons name="person" size={24} color={activeTab === 'profile' ? '#ffffff' : COLORS.onSurfaceVariant} />
+            <Text style={[FONTS.labelMd, { color: activeTab === 'profile' ? '#ffffff' : COLORS.onSurfaceVariant, marginTop: 4 }]}>Profile</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -159,11 +168,23 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.error,
   },
   avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: COLORS.primary,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: COLORS.surfaceContainerHigh,
+    ...AMBIENT_SHADOW,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  initialsContainer: {
+    backgroundColor: COLORS.surfaceContainerHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  initialsText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.primary,
   },
   content: {
     flex: 1,
@@ -200,7 +221,7 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.primaryContainer,
+    backgroundColor: '#004d26', // Professional dark green from DashScreen
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 12,

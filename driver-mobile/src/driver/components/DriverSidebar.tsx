@@ -118,6 +118,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.45)', // Fixed backdrop opacity for modal
   },
   sidebar: {
+    marginBlockStart:30,
     backgroundColor: '#ffffff',
     borderTopRightRadius: 0,
     borderBottomRightRadius: 0,

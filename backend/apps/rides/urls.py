@@ -26,6 +26,17 @@ from .garage_views import (
     GarageRidePassengersView,
     CampusAdminActiveGarageRidesView,
 )
+from .scheduled_views import (
+    ScheduledRideCreateView,
+    ScheduledRideListView,
+    ScheduledRideDetailView,
+    ScheduledRideCancelView,
+    ScheduledRideDepartView,
+    ScheduledRideCompleteView,
+    StudentAvailableScheduledRidesView,
+    StudentJoinScheduledRideView,
+    StudentLeaveScheduledRideView,
+)
 
 urlpatterns = [
     path('available/', AvailableRidesView.as_view(), name='ride-available'),
@@ -55,6 +66,19 @@ urlpatterns = [
 
     # Campus Admin: active garage rides
     path('garage/active/', CampusAdminActiveGarageRidesView.as_view(), name='garage-ride-active'),
+
+    # ── Scheduled Rides (Campus Admin) ───────────────────────────────────────
+    path('scheduled/create/', ScheduledRideCreateView.as_view(), name='scheduled-ride-create'),
+    path('scheduled/', ScheduledRideListView.as_view(), name='scheduled-ride-list'),
+    path('scheduled/<uuid:ride_id>/', ScheduledRideDetailView.as_view(), name='scheduled-ride-detail'),
+    path('scheduled/<uuid:ride_id>/cancel/', ScheduledRideCancelView.as_view(), name='scheduled-ride-cancel'),
+    path('scheduled/<uuid:ride_id>/depart/', ScheduledRideDepartView.as_view(), name='scheduled-ride-depart'),
+    path('scheduled/<uuid:ride_id>/complete/', ScheduledRideCompleteView.as_view(), name='scheduled-ride-complete'),
+    
+    # ── Scheduled Rides (Student) ────────────────────────────────────────────
+    path('scheduled/available/', StudentAvailableScheduledRidesView.as_view(), name='scheduled-ride-available'),
+    path('scheduled/<uuid:ride_id>/join/', StudentJoinScheduledRideView.as_view(), name='scheduled-ride-join'),
+    path('scheduled/<uuid:ride_id>/leave/', StudentLeaveScheduledRideView.as_view(), name='scheduled-ride-leave'),
 
     # Admin
     path('', AdminRideListView.as_view(), name='admin-ride-list'),

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { createJSONStorage, persist } from 'zustand/middleware'
-import { clearAuthTokens, setAuthTokens } from '../../utils/secureStorage'
+import { clearAuthTokens, getAuthTokens, setAuthTokens } from '../../utils/secureStorage'
 
 export type UserRole = 'driver' | 'student' | 'campus_admin' | 'admin'
 
@@ -19,6 +19,7 @@ export interface AuthUser {
   is_phone_verified?: boolean
   profile_photo?: string | null
   wallet_balance?: string
+  fcm_token?: string | null
 }
 
 interface AuthStore {
@@ -26,12 +27,15 @@ interface AuthStore {
   accessToken: string | null
   refreshToken: string | null
   isAuthenticated: boolean
+  hasHydrated: boolean
   setAuth: (user: AuthUser, accessToken: string, refreshToken: string) => void
   /** Replace whole user object (from API response) */
   setUser: (user: AuthUser) => void
   /** Merge partial fields into existing user without overwriting others */
   patchUser: (patch: Partial<AuthUser>) => void
   setTokens: (accessToken: string, refreshToken: string) => void
+  hydrateTokens: () => Promise<{ accessToken: string | null; refreshToken: string | null }>
+  setHasHydrated: (value: boolean) => void
   logout: () => void
 }
 
@@ -42,6 +46,7 @@ export const useAuthStore = create<AuthStore>()(
       accessToken: null,
       refreshToken: null,
       isAuthenticated: false,
+      hasHydrated: false,
 
       setAuth: (user, accessToken, refreshToken) => {
         void setAuthTokens({ accessToken, refreshToken })
@@ -60,6 +65,18 @@ export const useAuthStore = create<AuthStore>()(
         return set({ accessToken, refreshToken, isAuthenticated: true })
       },
 
+      hydrateTokens: async () => {
+        const tokens = await getAuthTokens()
+        set({
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+          isAuthenticated: Boolean(get().user && tokens.refreshToken),
+        })
+        return tokens
+      },
+
+      setHasHydrated: (value) => set({ hasHydrated: value }),
+
       logout: () => {
         void clearAuthTokens()
         return set({
@@ -77,6 +94,9 @@ export const useAuthStore = create<AuthStore>()(
         user: state.user,
         isAuthenticated: state.isAuthenticated,
       }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true)
+      },
     }
   )
 )

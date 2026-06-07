@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 from celery import shared_task
 from django.utils import timezone
 from django.db import transaction
@@ -178,3 +178,29 @@ def cleanup_expired_otps(self):
     ).delete()
     logger.info('otp_cleanup deleted=%d', deleted)
     return deleted
+
+
+@shared_task(bind=True, name='rides.auto_close_expired_scheduled_rides')
+def auto_close_expired_scheduled_rides(self):
+    from django.utils import timezone
+    from apps.rides.scheduled_models import ScheduledRide, ScheduledRideStatus
+    
+    cutoff = timezone.now()
+    rides = ScheduledRide.objects.filter(
+        status=ScheduledRideStatus.SCHEDULED,
+        join_deadline__lte=cutoff,
+    )
+    
+    processed = 0
+    for ride in rides:
+        try:
+            ride.transition_to(ScheduledRideStatus.BOARDING)
+            ride.save(update_fields=['status'])
+            # Note: We can add notification logic here to notify passengers that boarding has started
+            processed += 1
+        except Exception as e:
+            logger.error('Failed to close scheduled ride %s: %s', ride.reference, e)
+
+    if processed:
+        logger.info('auto_close_expired_scheduled_rides count=%d', processed)
+    return processed

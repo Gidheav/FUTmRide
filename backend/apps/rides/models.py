@@ -186,3 +186,10 @@ class DriverRideRequest(models.Model):
 
     def __str__(self):
         return f'RideRequest(ride={self.ride.reference} driver={self.driver_id} response={self.response})'
+
+
+# Import split-out model modules so Django discovers them during app loading
+# and migration generation. These imports intentionally live at the end to
+# avoid circular imports with VehicleType.
+from .garage_models import DriverSavedRoute, GarageRide, GarageRidePassenger  # noqa: E402,F401
+from .scheduled_models import ScheduledRide, ScheduledRidePassenger, ScheduledRideStop  # noqa: E402,F401

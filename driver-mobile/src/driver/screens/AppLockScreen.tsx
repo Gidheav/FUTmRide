@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import {
+  ActivityIndicator,
   View,
   Text,
   StyleSheet,
@@ -13,8 +14,11 @@ type AppLockScreenProps = {
   hasPin: boolean
   biometricEnabled: boolean
   busy: boolean
+  errorMessage?: string
+  statusMessage?: string
   onUnlockPin: (pin: string) => void
   onUnlockBiometric: () => void
+  onRetry?: () => void
   onLogout: () => void
 }
 
@@ -22,8 +26,11 @@ export default function AppLockScreen({
   hasPin,
   biometricEnabled,
   busy,
+  errorMessage,
+  statusMessage,
   onUnlockPin,
   onUnlockBiometric,
+  onRetry,
   onLogout,
 }: AppLockScreenProps) {
   const [pin, setPin] = useState('')
@@ -33,7 +40,16 @@ export default function AppLockScreen({
       <View style={[styles.card, AMBIENT_SHADOW]}>
         <MaterialIcons name="lock" size={28} color={COLORS.primary} />
         <Text style={styles.title}>App Locked</Text>
-        <Text style={styles.subtitle}>Unlock to continue</Text>
+        <Text style={styles.subtitle}>
+          {statusMessage || 'Unlock online to continue'}
+        </Text>
+
+        {errorMessage ? (
+          <View style={styles.errorBox}>
+            <MaterialIcons name="wifi-off" size={17} color={COLORS.error} />
+            <Text style={styles.errorText}>{errorMessage}</Text>
+          </View>
+        ) : null}
 
         {hasPin ? (
           <View style={styles.inputGroup}>
@@ -51,7 +67,11 @@ export default function AppLockScreen({
               onPress={() => onUnlockPin(pin)}
               disabled={busy}
             >
-              <Text style={styles.primaryButtonText}>Unlock</Text>
+              {busy ? (
+                <ActivityIndicator size="small" color={COLORS.onPrimary} />
+              ) : (
+                <Text style={styles.primaryButtonText}>Unlock</Text>
+              )}
             </TouchableOpacity>
           </View>
         ) : null}
@@ -64,6 +84,17 @@ export default function AppLockScreen({
           >
             <MaterialIcons name="fingerprint" size={18} color={COLORS.primary} />
             <Text style={styles.secondaryButtonText}>Use Biometrics</Text>
+          </TouchableOpacity>
+        ) : null}
+
+        {onRetry ? (
+          <TouchableOpacity
+            style={[styles.retryButton, busy && styles.buttonDisabled]}
+            onPress={onRetry}
+            disabled={busy}
+          >
+            <MaterialIcons name="refresh" size={17} color={COLORS.primary} />
+            <Text style={styles.secondaryButtonText}>Retry Connection</Text>
           </TouchableOpacity>
         ) : null}
 
@@ -98,6 +129,22 @@ const styles = StyleSheet.create({
   subtitle: {
     ...FONTS.bodySm,
     color: COLORS.tertiary,
+    textAlign: 'center',
+  },
+  errorBox: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 12,
+    backgroundColor: COLORS.errorContainer,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  errorText: {
+    ...FONTS.bodySm,
+    color: COLORS.error,
+    flex: 1,
   },
   inputGroup: {
     width: '100%',
@@ -135,6 +182,16 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.primary,
+  },
+  retryButton: {
+    marginTop: 4,
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: COLORS.surfaceContainerLow,
   },
   secondaryButtonText: {
     ...FONTS.labelLg,

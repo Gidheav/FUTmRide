@@ -22,10 +22,14 @@ const s: Record<string, CSSProperties> = {
     alignItems: 'center', borderRight: `1px solid ${T.border}`, paddingTop: 12,
     flexShrink: 0, height: '100vh'
   },
-  sidebarLogo: { marginBottom: 16 },
+  sidebarLogo: { marginBottom: 8 },
   logoCircle: {
-    width: 32, height: 32, borderRadius: 8, background: T.accentDim,
+    width: 40, height: 40, borderRadius: 8, background: 'transparent',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  logoImg: {
+    width: '100%', height: '100%', objectFit: 'contain', transform: 'scale(2.05)'
   },
   sidebarIcons: { display: 'flex', flexDirection: 'column', gap: 2, width: '100%' },
   sidebarBtn: {
@@ -42,7 +46,7 @@ export default function CampusAdminSidebar() {
     <aside style={s.sidebar}>
       <div style={s.sidebarLogo}>
         <div style={s.logoCircle}>
-          <span style={{ fontWeight: 700, fontSize: 11, color: '#fff', letterSpacing: -0.5 }}>LR</span>
+          <img src="/fut-icon.png" alt="FUT Logo" style={s.logoImg} />
         </div>
       </div>
       <div style={s.sidebarIcons}>

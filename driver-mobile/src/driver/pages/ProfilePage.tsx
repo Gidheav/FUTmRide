@@ -272,8 +272,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.surfaceContainerLow,
+    ...AMBIENT_SHADOW,
     gap: 4,
   },
   statValue: {
@@ -286,8 +285,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surfaceContainerLowest,
     borderRadius: 16,
     padding: 16,
-    borderWidth: 1,
-    borderColor: COLORS.surfaceContainerLow,
+    ...AMBIENT_SHADOW,
     gap: 12,
   },
   cardHeader: {
