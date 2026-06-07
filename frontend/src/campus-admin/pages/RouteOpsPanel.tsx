@@ -205,6 +205,20 @@ export default function RouteOpsPanel() {
     } finally { setActionLoading(null) }
   }
 
+  const handleAutoCheckIn = async () => {
+    if (!selectedRideId || !expandedBus) return
+    setActionLoading('autoCheckIn')
+    try {
+      const res = await apiService.autoCheckInBus(selectedRideId, expandedBus)
+      const busObj = buses.find(b => b.id === expandedBus)
+      addLog(`Auto-checked in ${res.checked_in_count} pax to ${busObj?.bus_label || 'bus'}`, 'success')
+      await fetchRideDetails(selectedRideId)
+      fetchRides(true)
+    } catch (e: any) {
+      addLog(`Auto check-in failed: ${e?.message || 'Error'}`, 'error')
+    } finally { setActionLoading(null) }
+  }
+
   const handleBusAction = async (busId: string, action: 'depart' | 'arrive' | 'complete') => {
     if (!selectedRideId) return
     setActionLoading(busId + action)
@@ -488,7 +502,7 @@ export default function RouteOpsPanel() {
                     const busPax = passengers.filter(p => p.bus_assignment === bus.id)
                     const seatedPct = bus.seated_capacity > 0 ? Math.round((bus.seated_count / bus.seated_capacity) * 100) : 0
                     return (
-                      <div key={bus.id} style={{ ...s.busCard, borderLeftColor: sc.color }}>
+                      <div key={bus.id} style={{ ...s.busCard, borderLeftColor: sc.color, cursor: 'pointer' }} onClick={() => setExpandedBus(isExpanded ? null : bus.id)}>
                         <div style={s.busCardTop}>
                           <div>
                             <div style={s.busLabel}>{bus.bus_label}</div>
@@ -528,7 +542,7 @@ export default function RouteOpsPanel() {
                         </div>
 
                         {/* Bus Actions */}
-                        <div style={s.busActions}>
+                        <div style={s.busActions} onClick={e => e.stopPropagation()}>
                           {bus.status === 'assigned' && (
                             <button style={{ ...s.busActionBtn, color: '#f59e0b', background: 'rgba(245,158,11,0.1)' }}
                               onClick={() => handleBusAction(bus.id, 'depart')} disabled={!!actionLoading}>
@@ -553,42 +567,11 @@ export default function RouteOpsPanel() {
                               <CheckCircle2 size={12} /> Complete
                             </button>
                           )}
-                          <button style={{ ...s.busActionBtn, color: T.textMuted, background: 'transparent' }}
-                            onClick={() => setExpandedBus(isExpanded ? null : bus.id)}>
-                            {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                            {isExpanded ? 'Hide' : `${busPax.length} pax`}
-                          </button>
+                          <span style={{ ...s.busActionBtn, color: T.textMuted, background: 'transparent', border: 'none', pointerEvents: 'none' }}>
+                            <Users size={12} />
+                            {busPax.length} pax
+                          </span>
                         </div>
-
-                        {/* Expanded passenger list */}
-                        {isExpanded && (
-                          <div style={s.busPaxList}>
-                            {busPax.length === 0 ? (
-                              <div style={{ ...s.emptyState, padding: 12, fontSize: 11 }}>No passengers assigned</div>
-                            ) : busPax.map(p => (
-                              <div key={p.id} style={{ ...s.busPaxRow, background: p.status === 'no_show' ? 'rgba(239,68,68,0.06)' : p.checked_in_at ? 'rgba(16,185,129,0.06)' : 'transparent' }}>
-                                <div style={s.busPaxInfo}>
-                                  <span style={s.busPaxName}>{p.student_name}</span>
-                                  <span style={s.busPaxMeta}>{p.pricing_tier} • {p.seat_type}</span>
-                                </div>
-                                <div style={s.busPaxActions}>
-                                  {!p.checked_in_at && p.status !== 'no_show' && p.status !== 'cancelled' && (
-                                    <>
-                                      <button style={{ ...s.miniBtn, color: '#10b981' }} onClick={() => handleCheckIn(p.id)} title="Check In">
-                                        <UserCheck size={12} />
-                                      </button>
-                                      <button style={{ ...s.miniBtn, color: '#ef4444' }} onClick={() => handleNoShow(p.id)} title="No Show">
-                                        <UserX size={12} />
-                                      </button>
-                                    </>
-                                  )}
-                                  {p.checked_in_at && <CheckCircle2 size={13} color='#10b981' />}
-                                  {p.status === 'no_show' && <span style={{ fontSize: 9, color: '#ef4444', fontWeight: 700 }}>NO-SHOW</span>}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
                       </div>
                     )
                   })}
@@ -638,6 +621,14 @@ export default function RouteOpsPanel() {
                     <span style={s.badge}>{passengers.length}</span>
                   </div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <button 
+                      style={{ ...s.actionBtn, background: expandedBus ? '#10b981' : 'transparent', color: expandedBus ? '#fff' : T.textMuted, opacity: expandedBus ? 1 : 0.5 }}
+                      onClick={handleAutoCheckIn}
+                      disabled={!expandedBus || actionLoading === 'autoCheckIn'}
+                      title={expandedBus ? 'Auto check-in passengers to the selected bus' : 'Select a bus in the Bus Assignments section first'}
+                    >
+                      <UserCheck size={13} /> {actionLoading === 'autoCheckIn' ? 'Checking In...' : 'Auto Check-In'}
+                    </button>
                     <div style={s.searchWrap}>
                       <Search size={12} color={T.textMuted} style={{ position: 'absolute', left: 8, top: 8 }} />
                       <input style={s.searchInput} placeholder="Search student..." value={paxSearch}
@@ -716,13 +707,14 @@ export default function RouteOpsPanel() {
         {/* ── RIGHT: Analytics + Activity Log ─────────────────────────── */}
         <div style={s.rightCol}>
           {/* Section 4: Analytics */}
-          <div style={s.rightSection}>
+          <div style={{ ...s.rightSection, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             <div style={s.sectionTitleRow}>
               <TrendingUp size={14} />
               <span style={s.sectionTitle}>Route Analytics</span>
             </div>
-            {selectedRide ? (
-              <div style={s.analyticsGrid}>
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+              {selectedRide ? (
+                <div style={s.analyticsGrid}>
                 <div style={s.analyticTile}>
                   <span style={s.analyticVal}>{passengers.filter(p => !['cancelled', 'no_show'].includes(p.status)).length}</span>
                   <span style={s.analyticLbl}>Active Pax</span>
@@ -776,6 +768,7 @@ export default function RouteOpsPanel() {
                 })}
               </div>
             )}
+            </div>
           </div>
 
           {/* Section 5: Activity Log */}
@@ -931,7 +924,7 @@ const s: Record<string, CSSProperties> = {
 
   // ── Right Column ──
   rightSection: { background: T.bgPanel, border: `1px solid ${T.border}`, padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12, borderRadius: 0 },
-  analyticsGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
+  analyticsGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 },
   analyticTile: { background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 0, padding: '16px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 },
   analyticVal: { fontSize: 16, fontWeight: 800, color: T.textWhite, lineHeight: 1 },
   analyticLbl: { fontSize: 8, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.4 },

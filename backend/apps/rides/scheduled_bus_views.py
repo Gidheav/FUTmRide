@@ -155,6 +155,60 @@ class BusAllocateView(APIView):
         })
 
 
+class BusAutoCheckInView(APIView):
+    """Auto check-in passengers to a specific bus (FIFO by joined_at), allocating if necessary."""
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
+
+    @transaction.atomic
+    def post(self, request, ride_id, bus_id):
+        ride = _get_scoped_ride(request.user, ride_id)
+        bus = _get_bus(ride, bus_id, for_update=True)
+
+        # 1. Check in already assigned but unchecked passengers
+        assigned_unchecked = ScheduledRidePassenger.objects.filter(
+            ride=ride, bus_assignment=bus, checked_in_at__isnull=True,
+        ).exclude(
+            status__in=[PassengerStatus.CANCELLED, PassengerStatus.NO_SHOW]
+        )
+        
+        checked_in_count = 0
+        now = timezone.now()
+        for pax in assigned_unchecked:
+            pax.checked_in_at = now
+            pax.status = PassengerStatus.BOARDED
+            pax.save(update_fields=['checked_in_at', 'status'])
+            checked_in_count += 1
+
+        # 2. Fill remaining capacity from unassigned passengers
+        unassigned = ScheduledRidePassenger.objects.filter(
+            ride=ride, bus_assignment__isnull=True,
+        ).exclude(
+            status__in=[PassengerStatus.CANCELLED, PassengerStatus.NO_SHOW],
+        ).order_by('joined_at')
+
+        allocated_and_checked_in = 0
+        for pax in unassigned:
+            if pax.pricing_tier != 'standing' and bus.seats_available > 0:
+                pax.bus_assignment = bus
+                pax.seat_type = SeatType.SEATED
+                pax.checked_in_at = now
+                pax.status = PassengerStatus.BOARDED
+                pax.save(update_fields=['bus_assignment', 'seat_type', 'checked_in_at', 'status'])
+                allocated_and_checked_in += 1
+            elif pax.pricing_tier == 'standing' and bus.standing_available > 0:
+                pax.bus_assignment = bus
+                pax.seat_type = SeatType.STANDING
+                pax.checked_in_at = now
+                pax.status = PassengerStatus.BOARDED
+                pax.save(update_fields=['bus_assignment', 'seat_type', 'checked_in_at', 'status'])
+                allocated_and_checked_in += 1
+
+        return Response({
+            'bus': BusAssignmentReadSerializer(bus).data,
+            'checked_in_count': checked_in_count + allocated_and_checked_in,
+        })
+
+
 class BusDepartView(APIView):
     """Mark bus as departed; no-show unchecked passengers, refund & auto-promote standby."""
     permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]

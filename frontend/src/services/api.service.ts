@@ -401,6 +401,10 @@ class ApiService {
     return this.post(`rides/scheduled/${rideId}/buses/${busId}/allocate/`)
   }
 
+  async autoCheckInBus(rideId: string, busId: string): Promise<any> {
+    return this.post(`rides/scheduled/${rideId}/buses/${busId}/auto-check-in/`)
+  }
+
   async departBus(rideId: string, busId: string): Promise<any> {
     return this.post(`rides/scheduled/${rideId}/buses/${busId}/depart/`)
   }
