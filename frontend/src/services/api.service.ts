@@ -18,6 +18,7 @@ import { enrichCatalog, REPORT_CATALOG_FALLBACK } from '../campus-admin/Financia
 type MockBank = { code: string; name: string }
 
 const FRONTEND_ONLY_FINANCE = true
+const TEST_TOOL_REQUEST_CONFIG: AxiosRequestConfig = { timeout: 120000 }
 
 const normalizeUrl = (url: string) => url.replace(/^\/+/, '')
 
@@ -344,11 +345,25 @@ class ApiService {
   }
 
   async getScheduledRides(params?: { status?: string; date?: string }): Promise<any[]> {
-    const qs = new URLSearchParams()
-    if (params?.status) qs.set('status', params.status)
-    if (params?.date) qs.set('date', params.date)
-    const res = await this.get<any>(`rides/scheduled/?${qs.toString()}`)
-    return res?.results || res
+    const buildQuery = (page: number) => {
+      const qs = new URLSearchParams()
+      if (params?.status) qs.set('status', params.status)
+      if (params?.date) qs.set('date', params.date)
+      qs.set('page', String(page))
+      qs.set('page_size', '100')
+      return qs.toString()
+    }
+
+    const first = await this.get<any>(`rides/scheduled/?${buildQuery(1)}`)
+    if (!first?.pagination) return first?.results || first
+
+    const all = [...(first.results || [])]
+    const totalPages = Number(first.pagination.total_pages || 1)
+    for (let page = 2; page <= totalPages; page += 1) {
+      const res = await this.get<any>(`rides/scheduled/?${buildQuery(page)}`)
+      all.push(...(res?.results || []))
+    }
+    return all
   }
 
   async getScheduledRideDetail(id: string): Promise<any> {
@@ -422,43 +437,43 @@ class ApiService {
   }
 
   async getTestToolsSummary(): Promise<any> {
-    return this.get('rides/test-tools/summary/')
+    return this.get('rides/test-tools/summary/', TEST_TOOL_REQUEST_CONFIG)
   }
 
   async createTestStudents(count: number): Promise<any> {
-    return this.post('rides/test-tools/accounts/students/create/', { count })
+    return this.post('rides/test-tools/accounts/students/create/', { count }, TEST_TOOL_REQUEST_CONFIG)
   }
 
   async deleteTestStudents(count: number): Promise<any> {
-    return this.post('rides/test-tools/accounts/students/delete/', { count })
+    return this.post('rides/test-tools/accounts/students/delete/', { count }, TEST_TOOL_REQUEST_CONFIG)
   }
 
   async createTestDrivers(count: number): Promise<any> {
-    return this.post('rides/test-tools/accounts/drivers/create/', { count })
+    return this.post('rides/test-tools/accounts/drivers/create/', { count }, TEST_TOOL_REQUEST_CONFIG)
   }
 
   async deleteTestDrivers(count: number): Promise<any> {
-    return this.post('rides/test-tools/accounts/drivers/delete/', { count })
+    return this.post('rides/test-tools/accounts/drivers/delete/', { count }, TEST_TOOL_REQUEST_CONFIG)
   }
 
   async createTestAdmins(count: number): Promise<any> {
-    return this.post('rides/test-tools/accounts/admins/create/', { count })
+    return this.post('rides/test-tools/accounts/admins/create/', { count }, TEST_TOOL_REQUEST_CONFIG)
   }
 
   async deleteTestAdmins(count: number): Promise<any> {
-    return this.post('rides/test-tools/accounts/admins/delete/', { count })
+    return this.post('rides/test-tools/accounts/admins/delete/', { count }, TEST_TOOL_REQUEST_CONFIG)
   }
 
   async createTestScheduledRides(count: number): Promise<any> {
-    return this.post('rides/test-tools/rides/create/', { count })
+    return this.post('rides/test-tools/rides/create/', { count }, TEST_TOOL_REQUEST_CONFIG)
   }
 
   async deleteTestScheduledRides(count: number): Promise<any> {
-    return this.post('rides/test-tools/rides/delete/', { count })
+    return this.post('rides/test-tools/rides/delete/', { count }, TEST_TOOL_REQUEST_CONFIG)
   }
 
   async joinTestScheduledRide(rideId: string, count: number): Promise<any> {
-    return this.post('rides/test-tools/rides/join/', { ride_id: rideId, count })
+    return this.post('rides/test-tools/rides/join/', { ride_id: rideId, count }, TEST_TOOL_REQUEST_CONFIG)
   }
 }
 

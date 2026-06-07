@@ -4,6 +4,7 @@ import uuid
 from decimal import Decimal
 
 from django.conf import settings
+from django.contrib.auth.hashers import make_password
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import permissions, status
@@ -20,7 +21,7 @@ from apps.accounts.models import (
 )
 from apps.accounts.permissions import IsAdminOrCampusAdmin
 from apps.payments.models import WalletTransaction
-from apps.payments.services import WalletService
+from apps.payments.services import generate_reference
 from apps.verification.models import AccountVerification, DriverDocument
 from .scheduled_models import (
     PassengerStatus,
@@ -43,6 +44,7 @@ DRIVER_EMAIL_PREFIX = 'bulktest.driver.'
 ADMIN_EMAIL_PREFIX = 'bulktest.admin.'
 MAX_BULK_COUNT = 500
 DEFAULT_PASSWORD = 'TestPass2026!'
+DEFAULT_PASSWORD_HASH = make_password(DEFAULT_PASSWORD)
 
 ROUTES = [
     (
@@ -222,10 +224,10 @@ def ensure_students(count, campus):
         phone = random_phone('+234708')
         try:
             with transaction.atomic():
-                user = User.objects.create_user(
+                user = User.objects.create(
                     phone_number=phone,
                     email=email,
-                    password=DEFAULT_PASSWORD,
+                    password=DEFAULT_PASSWORD_HASH,
                     first_name='TestStudent',
                     last_name=token[:6].upper(),
                     role=UserRole.STUDENT,
@@ -259,10 +261,10 @@ def ensure_drivers(count, campus, reviewer):
         vehicle_type, make, model, seats = random.choice(DRIVER_VEHICLES)
         try:
             with transaction.atomic():
-                user = User.objects.create_user(
+                user = User.objects.create(
                     phone_number=phone,
                     email=email,
-                    password=DEFAULT_PASSWORD,
+                    password=DEFAULT_PASSWORD_HASH,
                     first_name='TestDriver',
                     last_name=token[:6].upper(),
                     role=UserRole.DRIVER,
@@ -335,10 +337,10 @@ def ensure_admins(count, campus):
         phone = random_phone('+234707')
         try:
             with transaction.atomic():
-                user = User.objects.create_user(
+                user = User.objects.create(
                     phone_number=phone,
                     email=email,
-                    password=DEFAULT_PASSWORD,
+                    password=DEFAULT_PASSWORD_HASH,
                     first_name='TestAdmin',
                     last_name=token[:6].upper(),
                     role=UserRole.CAMPUS_ADMIN,
@@ -519,23 +521,28 @@ def delete_users(queryset, count, current_user=None):
     return deleted, errors
 
 
-def allocate_passenger(passenger):
-    buses = list(
-        ScheduledRideBusAssignment.objects.filter(ride=passenger.ride).exclude(
-            status__in=['departed', 'en_route', 'arrived', 'completed'],
-        ).order_by('order')
-    )
-    for bus in buses:
-        if passenger.pricing_tier == PricingTier.STANDING and bus.standing_available > 0:
-            passenger.bus_assignment = bus
-            passenger.seat_type = SeatType.STANDING
-            passenger.save(update_fields=['bus_assignment', 'seat_type'])
-            return bus
-        if passenger.pricing_tier != PricingTier.STANDING and bus.seats_available > 0:
-            passenger.bus_assignment = bus
-            passenger.seat_type = SeatType.SEATED
-            passenger.save(update_fields=['bus_assignment', 'seat_type'])
-            return bus
+def build_bus_capacity_state(ride):
+    buses = ScheduledRideBusAssignment.objects.filter(ride=ride).exclude(
+        status__in=['departed', 'en_route', 'arrived', 'completed'],
+    ).order_by('order')
+    return [
+        {
+            'bus': bus,
+            'seats': bus.seats_available,
+            'standing': bus.standing_available,
+        }
+        for bus in buses
+    ]
+
+
+def pick_bus_for_tier(tier, bus_state):
+    for state in bus_state:
+        if tier == PricingTier.STANDING and state['standing'] > 0:
+            state['standing'] -= 1
+            return state['bus'], SeatType.STANDING
+        if tier != PricingTier.STANDING and state['seats'] > 0:
+            state['seats'] -= 1
+            return state['bus'], SeatType.SEATED
     return None
 
 
@@ -544,7 +551,7 @@ def serialize_summary(user):
     rides = (
         test_rides_qs(user)
         .select_related('assigned_driver')
-        .order_by('departure_date', 'window_start')[:100]
+        .order_by('departure_date', 'window_start')
     )
     return {
         'enabled': test_tools_enabled(),
@@ -610,7 +617,7 @@ class TestToolCreateStudentsView(TestToolBase):
         if error:
             return error
         created, errors = ensure_students(count, campus)
-        return Response({'created': len(created), 'records': created[:20], 'errors': errors})
+        return Response({'created': len(created), 'records': created, 'errors': errors})
 
 
 class TestToolDeleteStudentsView(TestToolBase):
@@ -634,7 +641,7 @@ class TestToolCreateDriversView(TestToolBase):
         if error:
             return error
         created, errors = ensure_drivers(count, campus, request.user)
-        return Response({'created': len(created), 'records': created[:20], 'errors': errors})
+        return Response({'created': len(created), 'records': created, 'errors': errors})
 
 
 class TestToolDeleteDriversView(TestToolBase):
@@ -658,7 +665,7 @@ class TestToolCreateAdminsView(TestToolBase):
         if error:
             return error
         created, errors = ensure_admins(count, campus)
-        return Response({'created': len(created), 'records': created[:20], 'errors': errors})
+        return Response({'created': len(created), 'records': created, 'errors': errors})
 
 
 class TestToolDeleteAdminsView(TestToolBase):
@@ -682,7 +689,7 @@ class TestToolCreateRidesView(TestToolBase):
         if error:
             return error
         created, errors = ensure_rides(count, campus, request.user)
-        return Response({'created': len(created), 'records': created[:20], 'errors': errors})
+        return Response({'created': len(created), 'records': created, 'errors': errors})
 
 
 class TestToolDeleteRidesView(TestToolBase):
@@ -743,6 +750,7 @@ class TestToolJoinRideView(TestToolBase):
             students = list(test_students_qs(campus).exclude(id__in=existing_ids).order_by('?')[:count])
 
         stops = list(ride.stops.order_by('order'))
+        bus_state = build_bus_capacity_state(ride)
         enabled_tiers = list(ride.enabled_tiers)
         joined = []
         errors = []
@@ -758,11 +766,18 @@ class TestToolJoinRideView(TestToolBase):
                 profile = student.student_profile
                 if profile.wallet_balance < price:
                     profile.wallet_balance = price + Decimal('100000.00')
-                    profile.save(update_fields=['wallet_balance'])
-                tx = WalletService.debit(
+                balance_before = profile.wallet_balance
+                profile.wallet_balance -= price
+                profile.save(update_fields=['wallet_balance'])
+                payment_reference = generate_reference('DR')
+                WalletTransaction.objects.create(
+                    reference=payment_reference,
                     user=student,
-                    amount=price,
+                    transaction_type=WalletTransaction.TransactionType.DEBIT,
                     source=WalletTransaction.Source.RIDE_PAYMENT,
+                    amount=price,
+                    balance_before=balance_before,
+                    balance_after=profile.wallet_balance,
                     narration=f'Scheduled ride ticket - {ride.reference}',
                     metadata={
                         'scheduled_ride_id': str(ride.id),
@@ -771,19 +786,23 @@ class TestToolJoinRideView(TestToolBase):
                         'test_tool': True,
                     },
                 )
+                assignment = pick_bus_for_tier(tier, bus_state)
+                bus = assignment[0] if assignment else None
+                seat_type = assignment[1] if assignment else SeatType.SEATED
                 passenger = ScheduledRidePassenger.objects.create(
                     ride=ride,
                     student=student,
                     pricing_tier=tier,
+                    bus_assignment=bus,
+                    seat_type=seat_type,
                     boarding_stop=stops[0] if stops else None,
                     alighting_stop=stops[-1] if stops else None,
                     amount_paid=price,
-                    payment_reference=tx.reference,
+                    payment_reference=payment_reference,
                     cargo_description=cargo_description,
                     cargo_weight_kg=cargo_weight,
                     status=PassengerStatus.CONFIRMED,
                 )
-                bus = allocate_passenger(passenger)
                 joined.append({
                     'student_id': str(student.id),
                     'passenger_id': str(passenger.id),
@@ -792,4 +811,4 @@ class TestToolJoinRideView(TestToolBase):
                 })
             except Exception as exc:
                 errors.append({'index': index + 1, 'student_id': str(student.id), 'message': str(exc)})
-        return Response({'joined': len(joined), 'auto_created_students': auto_created, 'records': joined[:20], 'errors': errors})
+        return Response({'joined': len(joined), 'auto_created_students': auto_created, 'records': joined, 'errors': errors})
