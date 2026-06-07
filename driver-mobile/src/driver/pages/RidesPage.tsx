@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
   Switch,
+  RefreshControl,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
@@ -738,8 +739,35 @@ export default function DriverRidesPage() {
     }
   };
 
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      if (driverMode === 'garage' && !garageRide) {
+        const res = await driverApi.getAvailableScheduledRides();
+        setAvailableScheduledRides(res?.data || []);
+      } else if (driverMode === 'ondemand') {
+        const res = await driverApi.getMarketplaceRequests();
+        const data = res?.data;
+        const list = Array.isArray(data) ? data : (data?.results ?? []);
+        setMarketplaceRequests(list as RideListItem[]);
+        setCachedRequests(list as RideListItem[]);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+    <ScrollView 
+      style={styles.container} 
+      contentContainerStyle={styles.scrollContent} 
+      showsVerticalScrollIndicator={false}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />}
+    >
       <View style={[styles.modeToggleWrap, AMBIENT_SHADOW]}>
         <View style={styles.modeHeaderRow}>
           <View style={styles.onlineStatusLeft}>
@@ -864,7 +892,7 @@ export default function DriverRidesPage() {
                 </View>
               ) : (
                 availableScheduledRides.map(ride => {
-                  const date = new Date(ride.departure_time);
+                  const date = new Date(`${ride.departure_date}T${ride.window_start}`);
                   const isExpressing = expressingInterestId === ride.id;
                   return (
                     <View key={ride.id} style={[styles.card, AMBIENT_SHADOW, { marginBottom: 12 }]}>

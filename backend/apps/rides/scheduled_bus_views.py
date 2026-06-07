@@ -531,7 +531,7 @@ class DriverAvailableScheduledRidesView(APIView):
             interested_drivers__driver=request.user,
         ).exclude(
             bus_assignments__driver=request.user,
-        ).order_by('departure_time')
+        ).order_by('departure_date', 'window_start')
         
         return Response(ScheduledRideListSerializer(rides, many=True).data)
 
