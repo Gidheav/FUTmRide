@@ -51,6 +51,18 @@ from .scheduled_bus_views import (
     PassengerReassignView,
     RideAutoAllocateView,
 )
+from .test_tools import (
+    TestToolCreateAdminsView,
+    TestToolCreateDriversView,
+    TestToolCreateRidesView,
+    TestToolCreateStudentsView,
+    TestToolDeleteAdminsView,
+    TestToolDeleteDriversView,
+    TestToolDeleteRidesView,
+    TestToolDeleteStudentsView,
+    TestToolJoinRideView,
+    TestToolSummaryView,
+)
 
 urlpatterns = [
     path('available/', AvailableRidesView.as_view(), name='ride-available'),
@@ -107,6 +119,18 @@ urlpatterns = [
     path('scheduled/available/', StudentAvailableScheduledRidesView.as_view(), name='scheduled-ride-available'),
     path('scheduled/<uuid:ride_id>/join/', StudentJoinScheduledRideView.as_view(), name='scheduled-ride-join'),
     path('scheduled/<uuid:ride_id>/leave/', StudentLeaveScheduledRideView.as_view(), name='scheduled-ride-leave'),
+
+    # Test-only bulk tools. Guarded by DEBUG or ENABLE_TEST_TOOLS.
+    path('test-tools/summary/', TestToolSummaryView.as_view(), name='test-tools-summary'),
+    path('test-tools/accounts/students/create/', TestToolCreateStudentsView.as_view(), name='test-tools-students-create'),
+    path('test-tools/accounts/students/delete/', TestToolDeleteStudentsView.as_view(), name='test-tools-students-delete'),
+    path('test-tools/accounts/drivers/create/', TestToolCreateDriversView.as_view(), name='test-tools-drivers-create'),
+    path('test-tools/accounts/drivers/delete/', TestToolDeleteDriversView.as_view(), name='test-tools-drivers-delete'),
+    path('test-tools/accounts/admins/create/', TestToolCreateAdminsView.as_view(), name='test-tools-admins-create'),
+    path('test-tools/accounts/admins/delete/', TestToolDeleteAdminsView.as_view(), name='test-tools-admins-delete'),
+    path('test-tools/rides/create/', TestToolCreateRidesView.as_view(), name='test-tools-rides-create'),
+    path('test-tools/rides/delete/', TestToolDeleteRidesView.as_view(), name='test-tools-rides-delete'),
+    path('test-tools/rides/join/', TestToolJoinRideView.as_view(), name='test-tools-rides-join'),
 
     # Admin
     path('', AdminRideListView.as_view(), name='admin-ride-list'),

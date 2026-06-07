@@ -84,7 +84,7 @@ const toNumber = (value: unknown) => {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-export default function DispatchPage() {
+function LiveFleetPanel() {
   const [activeGarageRides, setActiveGarageRides] = useState<GarageRide[]>([])
   const [selectedRideId, setSelectedRideId] = useState<string | null>(null)
   const [driverLocation, setDriverLocation] = useState<DriverLocation | null>(null)
@@ -102,12 +102,7 @@ export default function DispatchPage() {
   const [fleetFilter, setFleetFilter] = useState<'all' | 'idle' | 'on_trip'>('all')
 
   const { mode } = useCampusThemeStore()
-  const { activeTab: dispatchTab, showTraffic, showHeat, showRoutes, setWsConnected, recenterTrigger } = useDispatchStore()
-
-  // Render Route Ops tab
-  if (dispatchTab === 'route_ops') {
-    return <RouteOpsPanel />
-  }
+  const { showTraffic, showHeat, showRoutes, setWsConnected, recenterTrigger } = useDispatchStore()
 
   const mapRef = useRef<google.maps.Map | null>(null)
   const trafficLayerRef = useRef<google.maps.TrafficLayer | null>(null)
@@ -924,4 +919,14 @@ const s: Record<string, CSSProperties> = {
   infoTitle: { fontSize: 12, fontWeight: 700, marginBottom: 4, color: '#111827' },
   infoText: { fontSize: 10, color: '#4b5563' },
   infoMeta: { fontSize: 9, color: '#6b7280', marginTop: 4 },
+}
+
+export default function DispatchPage() {
+  const { activeTab: dispatchTab } = useDispatchStore()
+  
+  if (dispatchTab === 'route_ops') {
+    return <RouteOpsPanel />
+  }
+  
+  return <LiveFleetPanel />
 }

@@ -5,7 +5,7 @@ import {
   Download, Megaphone, UserPlus,
   ArrowLeft, ChevronRight, History, ShieldAlert, UserX,
   Radio, Crosshair, Activity, Zap, Route, Monitor, Bell, Sliders, ShieldCheck,
-  Wrench, Ticket, Plug, Flag, LifeBuoy, Banknote, Calculator
+  Wrench, Ticket, Plug, Flag, LifeBuoy, Banknote, Calculator, FlaskConical
 } from 'lucide-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { CSSProperties } from 'react'
@@ -52,6 +52,7 @@ export default function CampusAdminTopNav() {
   const searchParams = new URLSearchParams(location.search)
   const activeTab = searchParams.get('tab') || 'personal'
   const isOpenRequestsPanel = location.pathname === '/' && searchParams.get('panel') === 'open'
+  const testArea = searchParams.get('area') === 'rides' ? 'rides' : 'account'
 
   const dashboardNavItems = NAV_ITEMS.filter((item) => item.path === '/' || item.path === '/rides')
 
@@ -64,6 +65,13 @@ export default function CampusAdminTopNav() {
     }
     const search = params.toString()
     navigate({ pathname: location.pathname, search: search ? `?${search}` : '' })
+  }
+
+  const setTestArea = (area: 'account' | 'rides') => {
+    const params = new URLSearchParams()
+    params.set('area', area)
+    params.set('section', area === 'rides' ? 'create' : 'student')
+    navigate({ pathname: location.pathname, search: `?${params.toString()}` })
   }
 
   const { data: unifiedDetail } = useQuery<any>({
@@ -200,6 +208,16 @@ export default function CampusAdminTopNav() {
             </div>
             <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
               Tariffs, simulation, and platform fare rules
+            </div>
+          </div>
+        ) : location.pathname === '/test' ? (
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3, display: 'flex', alignItems: 'center' }}>
+              <FlaskConical size={16} color={T.accent} style={{ marginRight: 8 }} />
+              Test Lab
+            </div>
+            <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
+              Bulk account and ride data tools
             </div>
           </div>
         ) : (
@@ -376,6 +394,25 @@ export default function CampusAdminTopNav() {
             )
           })}
         </nav>
+      ) : location.pathname === '/test' ? (
+        <nav style={s.topNav}>
+          <button
+            type="button"
+            style={{ ...s.topNavBtn, color: testArea === 'account' ? T.accent : T.textSecondary, background: testArea === 'account' ? T.accentBg : 'transparent' }}
+            onClick={() => setTestArea('account')}
+          >
+            <UserIcon size={13} strokeWidth={1.8} />
+            <span>Account</span>
+          </button>
+          <button
+            type="button"
+            style={{ ...s.topNavBtn, color: testArea === 'rides' ? T.accent : T.textSecondary, background: testArea === 'rides' ? T.accentBg : 'transparent' }}
+            onClick={() => setTestArea('rides')}
+          >
+            <CalendarClock size={13} strokeWidth={1.8} />
+            <span>Rides</span>
+          </button>
+        </nav>
       ) : (
         <nav style={s.topNav}>
           {(location.pathname === '/' ? dashboardNavItems : NAV_ITEMS).map((t) => {
@@ -445,17 +482,17 @@ export default function CampusAdminTopNav() {
 const s: Record<string, CSSProperties> = {
   topBar: {
     height: 44, background: T.topBar, display: 'flex', alignItems: 'center',
-    justifyContent: 'space-between', paddingLeft: 16, paddingRight: 12,
+    paddingLeft: 16, paddingRight: 12,
     borderBottom: `1px solid ${T.border}`, flexShrink: 0,
   },
-  topLeft: { display: 'flex', alignItems: 'center', gap: 12 },
+  topLeft: { flex: 1, display: 'flex', alignItems: 'center', gap: 12 },
   topNav: { display: 'flex', alignItems: 'center', gap: 2 },
   topNavBtn: {
     display: 'inline-flex', alignItems: 'center', gap: 5, border: 'none',
     cursor: 'pointer', padding: '5px 10px', borderRadius: 6,
     fontSize: 11, fontWeight: 600, fontFamily: T.fontFamily, transition: 'all 0.15s',
   },
-  topRight: { display: 'flex', alignItems: 'center', gap: 6 },
+  topRight: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 },
   topIconBtn: {
     width: 28, height: 28, borderRadius: 6, border: 'none',
     background: 'transparent', color: T.textSecondary, cursor: 'pointer',

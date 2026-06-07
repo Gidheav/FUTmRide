@@ -1,7 +1,7 @@
 from datetime import timedelta
 from decimal import Decimal
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
@@ -16,6 +16,7 @@ from apps.accounts.models import (
     UserRole,
 )
 from apps.payments.models import WalletTransaction
+from apps.verification.models import AccountVerification, DriverDocument
 from .models import Ride, RideStatus
 from .scheduled_models import (
     PassengerStatus,
@@ -573,3 +574,50 @@ class ScheduledRideTestCase(TestCase):
         ride.refresh_from_db()
         self.assertEqual(processed, 1)
         self.assertEqual(ride.status, ScheduledRideStatus.BOARDING)
+
+
+class TestToolsEndpointTestCase(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.campus = make_campus(code='TESTTOOLS')
+        self.admin = make_campus_admin(
+            self.campus,
+            phone='+2348000099001',
+            email='test-tools-admin@campus.edu.ng',
+        )
+        self.client.force_authenticate(user=self.admin)
+
+    @override_settings(DEBUG=False, ENABLE_TEST_TOOLS=False)
+    def test_mutations_are_blocked_when_test_tools_disabled(self):
+        summary = self.client.get(reverse('test-tools-summary'))
+        self.assertEqual(summary.status_code, status.HTTP_200_OK)
+        self.assertFalse(summary.data['enabled'])
+
+        res = self.client.post(reverse('test-tools-students-create'), {'count': 1}, format='json')
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    @override_settings(DEBUG=True, ENABLE_TEST_TOOLS=False)
+    def test_bulk_create_and_join_flow(self):
+        students = self.client.post(reverse('test-tools-students-create'), {'count': 3}, format='json')
+        self.assertEqual(students.status_code, status.HTTP_200_OK)
+        self.assertEqual(students.data['created'], 3)
+
+        drivers = self.client.post(reverse('test-tools-drivers-create'), {'count': 2}, format='json')
+        self.assertEqual(drivers.status_code, status.HTTP_200_OK)
+        self.assertEqual(drivers.data['created'], 2)
+        self.assertEqual(AccountVerification.objects.filter(status=AccountVerification.Status.APPROVED).count(), 2)
+        self.assertEqual(DriverDocument.objects.filter(status=DriverDocument.DocumentStatus.APPROVED).count(), 10)
+
+        rides = self.client.post(reverse('test-tools-rides-create'), {'count': 2}, format='json')
+        self.assertEqual(rides.status_code, status.HTTP_200_OK)
+        self.assertEqual(rides.data['created'], 2)
+        ride_id = rides.data['records'][0]['id']
+
+        joined = self.client.post(reverse('test-tools-rides-join'), {'ride_id': ride_id, 'count': 2}, format='json')
+        self.assertEqual(joined.status_code, status.HTTP_200_OK)
+        self.assertEqual(joined.data['joined'], 2)
+        self.assertEqual(ScheduledRidePassenger.objects.filter(ride_id=ride_id).count(), 2)
+
+        summary = self.client.get(reverse('test-tools-summary'))
+        self.assertEqual(summary.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(summary.data['counts']['scheduled_rides'], 2)

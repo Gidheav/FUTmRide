@@ -27,6 +27,7 @@ import CampusAdminNotifications from "../campus-admin/pages/NotificationsPage"
 import CampusAdminEngine from "../campus-admin/pages/EngineCalculationPage"
 import CampusAdminFinancialHub from "../campus-admin/FinancialManagement/hub/FinancialHub"
 import CampusAdminLayout from "../campus-admin/layout/CampusAdminLayout"
+import CampusAdminTestPage from "../campus-admin/pages/TestPage"
 
 const MOBILE_UA_RE = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i
 const MIN_DESKTOP_WIDTH = 1024
@@ -129,6 +130,7 @@ export default function AppRouter() {
         <Route path="/engine" element={<CampusAdminEngine />} />
         <Route path="/settings" element={<CampusAdminSettings />} />
         <Route path="/notifications" element={<CampusAdminNotifications />} />
+        <Route path="/test" element={<CampusAdminTestPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/login" replace />} />

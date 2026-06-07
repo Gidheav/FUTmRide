@@ -420,6 +420,46 @@ class ApiService {
   async autoAllocatePassengers(rideId: string): Promise<any> {
     return this.post(`rides/scheduled/${rideId}/auto-allocate/`)
   }
+
+  async getTestToolsSummary(): Promise<any> {
+    return this.get('rides/test-tools/summary/')
+  }
+
+  async createTestStudents(count: number): Promise<any> {
+    return this.post('rides/test-tools/accounts/students/create/', { count })
+  }
+
+  async deleteTestStudents(count: number): Promise<any> {
+    return this.post('rides/test-tools/accounts/students/delete/', { count })
+  }
+
+  async createTestDrivers(count: number): Promise<any> {
+    return this.post('rides/test-tools/accounts/drivers/create/', { count })
+  }
+
+  async deleteTestDrivers(count: number): Promise<any> {
+    return this.post('rides/test-tools/accounts/drivers/delete/', { count })
+  }
+
+  async createTestAdmins(count: number): Promise<any> {
+    return this.post('rides/test-tools/accounts/admins/create/', { count })
+  }
+
+  async deleteTestAdmins(count: number): Promise<any> {
+    return this.post('rides/test-tools/accounts/admins/delete/', { count })
+  }
+
+  async createTestScheduledRides(count: number): Promise<any> {
+    return this.post('rides/test-tools/rides/create/', { count })
+  }
+
+  async deleteTestScheduledRides(count: number): Promise<any> {
+    return this.post('rides/test-tools/rides/delete/', { count })
+  }
+
+  async joinTestScheduledRide(rideId: string, count: number): Promise<any> {
+    return this.post('rides/test-tools/rides/join/', { ride_id: rideId, count })
+  }
 }
 
 export const apiService = new ApiService()

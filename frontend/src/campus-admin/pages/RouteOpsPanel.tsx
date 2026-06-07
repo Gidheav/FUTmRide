@@ -122,19 +122,21 @@ export default function RouteOpsPanel() {
   }, [])
 
   // ── Fetch rides ──
-  const fetchRides = useCallback(async () => {
+  const fetchRides = useCallback(async (isBackground = false) => {
     try {
-      setLoading(true)
+      if (!isBackground) setLoading(true)
       const data = await apiService.getScheduledRides()
       setRides(data)
-    } catch { /* silent */ } finally { setLoading(false) }
+    } catch { /* silent */ } finally {
+      if (!isBackground) setLoading(false)
+    }
   }, [])
 
   useEffect(() => { fetchRides() }, [fetchRides])
 
   // ── Polling every 15s ──
   useEffect(() => {
-    const t = setInterval(fetchRides, 15000)
+    const t = setInterval(() => fetchRides(true), 15000)
     return () => clearInterval(t)
   }, [fetchRides])
 
@@ -197,7 +199,7 @@ export default function RouteOpsPanel() {
       const res = await apiService.autoAllocatePassengers(selectedRideId)
       addLog(`Auto-allocated ${res.allocated} passengers (${res.unallocated} remaining)`, 'success')
       await fetchRideDetails(selectedRideId)
-      fetchRides()
+      fetchRides(true)
     } catch (e: any) {
       addLog(`Auto-allocate failed: ${e?.message || 'Error'}`, 'error')
     } finally { setActionLoading(null) }
@@ -217,7 +219,7 @@ export default function RouteOpsPanel() {
         addLog(`Bus ${bus?.bus_label} → ${action.toUpperCase()}`, 'success')
       }
       await fetchRideDetails(selectedRideId)
-      fetchRides()
+      fetchRides(true)
     } catch (e: any) {
       addLog(`Bus action "${action}" failed: ${e?.message || 'Error'}`, 'error')
     } finally { setActionLoading(null) }
@@ -242,7 +244,7 @@ export default function RouteOpsPanel() {
       const res = await apiService.markNoShow(selectedRideId, paxId)
       addLog(`${res.no_show.student_name} marked NO-SHOW${res.promoted ? ` → ${res.promoted.student_name} promoted` : ''}`, 'warning')
       await fetchRideDetails(selectedRideId)
-      fetchRides()
+      fetchRides(true)
     } catch (e: any) {
       addLog(`No-show failed: ${e?.message || 'Error'}`, 'error')
     } finally { setActionLoading(null) }
@@ -285,11 +287,13 @@ export default function RouteOpsPanel() {
             <span style={s.cmdTime}>{timeStr}</span>
             <span style={s.cmdDate}>{dateStr}</span>
           </div>
-          <div style={s.cmdDivider} />
+        </div>
+        <div style={s.cmdCenter}>
           <div style={s.cmdStat}><span style={s.cmdStatVal}>{rides.length}</span><span style={s.cmdStatLbl}>Routes</span></div>
           <div style={s.cmdStat}><span style={s.cmdStatVal}>{totalPax}</span><span style={s.cmdStatLbl}>Passengers</span></div>
           {selectedRideId && (
             <>
+              <div style={s.cmdDivider} />
               <div style={s.cmdStat}><span style={{ ...s.cmdStatVal, color: '#a855f7' }}>{totalBuses}</span><span style={s.cmdStatLbl}>Buses</span></div>
               <div style={s.cmdStat}><span style={{ ...s.cmdStatVal, color: '#10b981' }}>{busesEnRoute}</span><span style={s.cmdStatLbl}>En Route</span></div>
               <div style={s.cmdStat}><span style={{ ...s.cmdStatVal, color: '#64748b' }}>{busesCompleted}</span><span style={s.cmdStatLbl}>Done</span></div>
@@ -298,7 +302,7 @@ export default function RouteOpsPanel() {
           )}
         </div>
         <div style={s.cmdRight}>
-          <button style={s.cmdBtn} onClick={fetchRides}><RefreshCw size={13} /> Refresh</button>
+          <button style={s.cmdBtn} onClick={() => fetchRides()}><RefreshCw size={13} /> Refresh</button>
         </div>
       </div>
 
@@ -371,10 +375,12 @@ export default function RouteOpsPanel() {
               })}
             </div>
           </div>
+        </div>
 
-          {/* ── SECTION 3: Convoy Command Center ─────────────────────── */}
-          {selectedRide && (
-            <div style={s.section}>
+        {/* ── MIDDLE: Convoy Command Center ─────────────────────── */}
+        <div style={s.midCol}>
+          {selectedRide ? (
+            <div style={{ ...s.section, flex: 1 }}>
               {/* 3A: Ride Overview Strip */}
               <div style={s.overviewStrip}>
                 <div style={s.overviewRoute}>
@@ -472,7 +478,7 @@ export default function RouteOpsPanel() {
                 {/* Bus Cards */}
                 <div style={s.busGrid}>
                   {buses.length === 0 ? (
-                    <div style={s.emptyState}>
+                    <div style={{ ...s.emptyState, gridColumn: '1 / -1' }}>
                       <Bus size={28} style={{ opacity: 0.3 }} />
                       <span>No buses assigned yet. Click "Add Bus" to begin.</span>
                     </div>
@@ -699,6 +705,11 @@ export default function RouteOpsPanel() {
                 </div>
               </div>
             </div>
+          ) : (
+            <div style={{ ...s.emptyState, flex: 1, background: T.bgPanel }}>
+              <Navigation size={48} style={{ opacity: 0.1 }} />
+              <span>Select an active route to view assignments and manifest</span>
+            </div>
           )}
         </div>
 
@@ -801,12 +812,13 @@ export default function RouteOpsPanel() {
 /* ══════════════════════════════════════════════════════════════════════════ */
 
 const s: Record<string, CSSProperties> = {
-  root: { display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', fontFamily: T.fontFamily, background: T.bg },
+  root: { display: 'flex', flexDirection: 'column', flex: 1, width: '100%', height: '100%', overflow: 'hidden', fontFamily: T.fontFamily, background: T.bg, padding: 4, gap: 2, boxSizing: 'border-box' },
 
   // ── Command Header ──
-  cmdHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px', background: T.bgPanel, borderBottom: `1px solid ${T.border}`, flexShrink: 0 },
-  cmdLeft: { display: 'flex', alignItems: 'center', gap: 12 },
-  cmdRight: { display: 'flex', alignItems: 'center', gap: 8 },
+  cmdHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: T.bgPanel, border: `1px solid ${T.border}`, borderRadius: 0, flexShrink: 0 },
+  cmdLeft: { flex: 1, display: 'flex', alignItems: 'center', gap: 12 },
+  cmdCenter: { flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16 },
+  cmdRight: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },
   cmdClock: { display: 'flex', alignItems: 'center', gap: 6, color: T.textWhite },
   cmdTime: { fontSize: 14, fontWeight: 800, letterSpacing: -0.3 },
   cmdDate: { fontSize: 11, color: T.textMuted, marginLeft: 4 },
@@ -814,31 +826,32 @@ const s: Record<string, CSSProperties> = {
   cmdStat: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 },
   cmdStatVal: { fontSize: 16, fontWeight: 800, color: T.textWhite, lineHeight: 1 },
   cmdStatLbl: { fontSize: 8, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
-  cmdBtn: { display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: `1px solid ${T.border}`, background: T.bgCard, color: T.textSecondary, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: T.fontFamily },
+  cmdBtn: { display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 0, border: `1px solid ${T.border}`, background: T.bgCard, color: T.textSecondary, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: T.fontFamily },
 
   // ── Main Layout ──
-  mainLayout: { display: 'flex', flex: 1, overflow: 'hidden' },
-  leftCol: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto', gap: 1, background: T.border },
-  rightCol: { width: 300, display: 'flex', flexDirection: 'column', overflow: 'hidden', gap: 1, background: T.border, flexShrink: 0 },
+  mainLayout: { display: 'flex', flex: 1, overflow: 'hidden', gap: 2 },
+  leftCol: { width: 340, display: 'flex', flexDirection: 'column', overflow: 'auto', gap: 2, flexShrink: 0 },
+  midCol: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto', gap: 2, minWidth: 0 },
+  rightCol: { width: 300, display: 'flex', flexDirection: 'column', overflow: 'hidden', gap: 2, flexShrink: 0 },
 
   // ── Sections ──
-  section: { background: T.bgPanel, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 },
-  subsection: { background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 8, padding: 14, display: 'flex', flexDirection: 'column', gap: 12, margin: '0 16px 16px' },
+  section: { background: T.bgPanel, border: `1px solid ${T.border}`, padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12, borderRadius: 0 },
+  subsection: { background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 0, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12, margin: '0 16px 16px' },
   sectionHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
   subsectionHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
-  sectionTitleRow: { display: 'flex', alignItems: 'center', gap: 8, color: T.textWhite, fontWeight: 700, fontSize: 12 },
-  sectionTitle: { fontSize: 13, fontWeight: 700 },
-  badge: { fontSize: 10, fontWeight: 700, background: T.accentBg, color: '#a855f7', borderRadius: 999, padding: '2px 8px' },
+  sectionTitleRow: { display: 'flex', alignItems: 'center', gap: 8, color: T.textWhite, fontWeight: 700, fontSize: 14 },
+  sectionTitle: { fontSize: 14, fontWeight: 700 },
+  badge: { fontSize: 10, fontWeight: 700, background: T.accentBg, color: '#a855f7', borderRadius: 0, padding: '2px 8px' },
 
   // ── Filters ──
   filterRow: { display: 'flex', gap: 4, flexWrap: 'wrap' },
-  filterChip: { padding: '4px 10px', borderRadius: 999, border: `1px solid ${T.border}`, background: 'transparent', color: T.textMuted, fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: T.fontFamily, transition: 'all 0.15s' },
+  filterChip: { padding: '4px 10px', borderRadius: 0, border: `1px solid ${T.border}`, background: 'transparent', color: T.textMuted, fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: T.fontFamily, transition: 'all 0.15s' },
   filterChipActive: { background: T.accentBg, color: '#a855f7', borderColor: 'rgba(168,85,247,0.3)' },
 
   // ── Ride Cards ──
   rideGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 8 },
-  rideCard: { background: T.bgCard, border: `1px solid ${T.border}`, borderLeft: '3px solid', borderRadius: 8, padding: 12, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 6, transition: 'all 0.15s' },
-  rideCardSelected: { borderColor: '#a855f7', background: 'rgba(168,85,247,0.06)', boxShadow: '0 0 0 1px rgba(168,85,247,0.2)' },
+  rideCard: { background: T.bgCard, border: `1px solid ${T.border}`, borderLeft: '3px solid', borderRadius: 0, padding: 12, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 6, transition: 'all 0.15s' },
+  rideCardSelected: { borderColor: '#a855f7', background: 'rgba(168,85,247,0.06)' },
   rideCardTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   rideRef: { fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: T.textWhite },
   rideRoute: { display: 'flex', alignItems: 'center', gap: 8 },
@@ -847,13 +860,13 @@ const s: Record<string, CSSProperties> = {
   routeAddr: { fontSize: 11, color: T.textSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   rideMeta: { display: 'flex', gap: 12, fontSize: 10, color: T.textMuted, alignItems: 'center' },
   rideTiers: { display: 'flex', gap: 4 },
-  tierChip: { padding: '2px 6px', borderRadius: 4, background: T.bgInput, border: `1px solid ${T.border}`, fontSize: 9, fontWeight: 600, color: T.textSecondary, textTransform: 'capitalize' },
+  tierChip: { padding: '2px 6px', borderRadius: 0, background: T.bgInput, border: `1px solid ${T.border}`, fontSize: 9, fontWeight: 600, color: T.textSecondary, textTransform: 'capitalize' },
 
   // ── Status Badge ──
-  statusBadge: { padding: '3px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700, border: '1px solid', textTransform: 'uppercase', letterSpacing: 0.4 },
+  statusBadge: { padding: '3px 8px', borderRadius: 0, fontSize: 10, fontWeight: 700, border: '1px solid', textTransform: 'uppercase', letterSpacing: 0.4 },
 
   // ── Overview Strip ──
-  overviewStrip: { background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 8, padding: 14, margin: '0 16px', display: 'flex', flexDirection: 'column', gap: 12 },
+  overviewStrip: { background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 0, padding: '16px 20px', margin: '0 16px', display: 'flex', flexDirection: 'column', gap: 12 },
   overviewRoute: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   overviewNode: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: T.textPrimary, fontWeight: 500 },
   overviewStats: { display: 'flex', gap: 16, flexWrap: 'wrap' },
@@ -863,7 +876,7 @@ const s: Record<string, CSSProperties> = {
 
   // ── Bus Cards ──
   busGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 8 },
-  busCard: { background: T.bgPanel, border: `1px solid ${T.border}`, borderLeft: '3px solid', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 },
+  busCard: { background: T.bgPanel, border: `1px solid ${T.border}`, borderLeft: '3px solid', borderRadius: 0, padding: 16, display: 'flex', flexDirection: 'column', gap: 8 },
   busCardTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' },
   busLabel: { fontSize: 14, fontWeight: 800, color: T.textWhite },
   busMeta: { fontSize: 10, color: T.textMuted, marginTop: 2 },
@@ -871,30 +884,30 @@ const s: Record<string, CSSProperties> = {
   capInfo: { display: 'flex', justifyContent: 'space-between', fontSize: 10 },
   capLabel: { color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 600 },
   capVal: { color: T.textPrimary, fontWeight: 700, fontFamily: 'monospace' },
-  capBarBg: { height: 4, borderRadius: 2, background: T.border, overflow: 'hidden' },
-  capBarFill: { height: '100%', borderRadius: 2, transition: 'width 0.3s' },
+  capBarBg: { height: 4, borderRadius: 0, background: T.border, overflow: 'hidden' },
+  capBarFill: { height: '100%', borderRadius: 0, transition: 'width 0.3s' },
   busCheckIn: { display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#10b981', fontWeight: 600 },
-  busActions: { display: 'flex', gap: 4, flexWrap: 'wrap', borderTop: `1px solid ${T.border}`, paddingTop: 8 },
-  busActionBtn: { display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: T.fontFamily, background: 'transparent' },
+  busActions: { display: 'flex', gap: 4, flexWrap: 'wrap', borderTop: `1px solid ${T.border}`, paddingTop: 12, marginTop: 4 },
+  busActionBtn: { display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderRadius: 0, border: `1px solid ${T.border}`, fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: T.fontFamily, background: 'transparent' },
 
   // ── Expanded Bus Passenger List ──
-  busPaxList: { borderTop: `1px solid ${T.border}`, paddingTop: 6, display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 200, overflowY: 'auto' },
-  busPaxRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 6px', borderRadius: 4 },
+  busPaxList: { borderTop: `1px solid ${T.border}`, paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 200, overflowY: 'auto' },
+  busPaxRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', borderRadius: 0 },
   busPaxInfo: { display: 'flex', flexDirection: 'column' },
   busPaxName: { fontSize: 11, fontWeight: 600, color: T.textPrimary },
   busPaxMeta: { fontSize: 9, color: T.textMuted },
   busPaxActions: { display: 'flex', gap: 4, alignItems: 'center' },
-  miniBtn: { width: 24, height: 24, borderRadius: 6, border: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: 'transparent', padding: 0, fontFamily: T.fontFamily },
+  miniBtn: { width: 26, height: 26, borderRadius: 0, border: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: 'transparent', padding: 0, fontFamily: T.fontFamily },
 
   // ── Add Bus Panel ──
-  addBusPanel: { background: T.bgCard, border: `1px solid rgba(168,85,247,0.3)`, borderRadius: 8, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 },
+  addBusPanel: { background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 0, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 },
   addBusHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-  closeBtn: { width: 24, height: 24, borderRadius: 6, border: 'none', background: 'transparent', color: T.textMuted, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  closeBtn: { width: 24, height: 24, borderRadius: 0, border: 'none', background: 'transparent', color: T.textMuted, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
   formGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
-  formGroup: { display: 'flex', flexDirection: 'column', gap: 3 },
+  formGroup: { display: 'flex', flexDirection: 'column', gap: 4 },
   formLabel: { fontSize: 10, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.4 },
-  formInput: { background: T.bgInput, border: `1px solid ${T.border}`, borderRadius: 6, padding: '6px 10px', color: T.textPrimary, fontSize: 12, fontFamily: T.fontFamily, outline: 'none' },
-  actionBtn: { display: 'flex', alignItems: 'center', gap: 5, padding: '6px 14px', borderRadius: 6, border: `1px solid ${T.border}`, background: T.bgCard, color: T.textSecondary, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: T.fontFamily },
+  formInput: { background: T.bgInput, border: `1px solid ${T.border}`, borderRadius: 0, padding: '8px 12px', color: T.textPrimary, fontSize: 12, fontFamily: T.fontFamily, outline: 'none' },
+  actionBtn: { display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 0, border: `1px solid ${T.border}`, background: T.bgCard, color: T.textSecondary, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: T.fontFamily },
 
   // ── Timeline ──
   timeline: { display: 'flex', flexDirection: 'column', gap: 0, position: 'relative' },
@@ -909,17 +922,17 @@ const s: Record<string, CSSProperties> = {
   timelineStep: { width: 16, height: 3, borderRadius: 1.5 },
 
   // ── Passenger Table ──
-  tableWrap: { maxHeight: 400, overflowY: 'auto', border: `1px solid ${T.border}`, borderRadius: 6 },
+  tableWrap: { maxHeight: 400, overflowY: 'auto', border: `1px solid ${T.border}`, borderRadius: 0 },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: 12 },
-  th: { padding: '8px 12px', fontSize: 10, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, borderBottom: `1px solid ${T.border}`, textAlign: 'left', background: T.bgCard, position: 'sticky', top: 0, zIndex: 1 },
-  td: { padding: '8px 12px', borderBottom: `1px solid ${T.border}` },
+  th: { padding: '10px 12px', fontSize: 10, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, borderBottom: `1px solid ${T.border}`, textAlign: 'left', background: T.bgCard, position: 'sticky', top: 0, zIndex: 1 },
+  td: { padding: '10px 12px', borderBottom: `1px solid ${T.border}` },
   searchWrap: { position: 'relative', display: 'flex', alignItems: 'center' },
-  searchInput: { background: T.bgInput, border: `1px solid ${T.border}`, borderRadius: 6, padding: '4px 8px 4px 26px', color: T.textPrimary, fontSize: 11, fontFamily: T.fontFamily, outline: 'none', width: 140 },
+  searchInput: { background: T.bgInput, border: `1px solid ${T.border}`, borderRadius: 0, padding: '6px 8px 6px 28px', color: T.textPrimary, fontSize: 11, fontFamily: T.fontFamily, outline: 'none', width: 140 },
 
   // ── Right Column ──
-  rightSection: { background: T.bgPanel, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 },
-  analyticsGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 },
-  analyticTile: { background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 6, padding: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 },
+  rightSection: { background: T.bgPanel, border: `1px solid ${T.border}`, padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12, borderRadius: 0 },
+  analyticsGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
+  analyticTile: { background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 0, padding: '16px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 },
   analyticVal: { fontSize: 16, fontWeight: 800, color: T.textWhite, lineHeight: 1 },
   analyticLbl: { fontSize: 8, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.4 },
   tierRow: { display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: `1px solid ${T.border}`, fontSize: 11 },
