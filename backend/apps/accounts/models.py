@@ -485,7 +485,7 @@ class AuditLog(models.Model):
         db_table = 'audit_logs'
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['action', 'created_at']),
+            models.Index(fields=['action', 'created_at'], name='audit_logs_action_created_idx'),
         ]
 
     def __str__(self):

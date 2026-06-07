@@ -86,16 +86,6 @@ class Migration(migrations.Migration):
                 'ordering': ['ride', 'order'],
             },
         ),
-        migrations.RenameIndex(
-            model_name='driversavedroute',
-            new_name='driver_save_driver__fb4665_idx',
-            old_name='driver_sav_driver__e4934d_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='driversavedroute',
-            new_name='driver_save_driver__cc07db_idx',
-            old_name='driver_sav_driver__e0f2a2_idx',
-        ),
         migrations.AlterField(
             model_name='garageride',
             name='status',

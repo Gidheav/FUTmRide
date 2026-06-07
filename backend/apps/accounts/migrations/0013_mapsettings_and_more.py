@@ -36,11 +36,6 @@ class Migration(migrations.Migration):
                 'db_table': 'map_settings',
             },
         ),
-        migrations.RenameIndex(
-            model_name='auditlog',
-            new_name='audit_logs_action_391715_idx',
-            old_name='audit_logs_action_created_idx',
-        ),
         migrations.AlterField(
             model_name='otpverification',
             name='purpose',

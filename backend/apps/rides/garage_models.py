@@ -163,8 +163,8 @@ class DriverSavedRoute(models.Model):
         db_table = 'driver_saved_routes'
         ordering = ['-last_used_at', '-created_at']
         indexes = [
-            models.Index(fields=['driver', 'created_at']),
-            models.Index(fields=['driver', 'last_used_at']),
+            models.Index(fields=['driver', 'created_at'], name='driver_sav_driver__e4934d_idx'),
+            models.Index(fields=['driver', 'last_used_at'], name='driver_sav_driver__e0f2a2_idx'),
         ]
 
     def __str__(self):
