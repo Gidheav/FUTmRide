@@ -101,7 +101,7 @@ export default function RouteOpsPanel() {
   const [selectedRideId, setSelectedRideId] = useState<string | null>(null)
   const [buses, setBuses] = useState<BusAssignment[]>([])
   const [passengers, setPassengers] = useState<Passenger[]>([])
-  const [fleetDrivers, setFleetDrivers] = useState<FleetDriver[]>([])
+  const [interestedDrivers, setInterestedDrivers] = useState<any[]>([])
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([])
   const [now, setNow] = useState(Date.now())
   const [statusFilter, setStatusFilter] = useState('all')
@@ -163,13 +163,16 @@ export default function RouteOpsPanel() {
     return () => clearInterval(t)
   }, [selectedRideId, fetchRideDetails])
 
-  // ── Load fleet drivers ──
+  // ── Load interested drivers for this ride ──
   useEffect(() => {
-    api.get('/users/fleet/?page=1&page_size=200').then(res => {
-      const data = res.data?.results || res.data || []
-      setFleetDrivers(data)
+    if (!selectedRideId) {
+      setInterestedDrivers([])
+      return
+    }
+    apiService.getInterestedDrivers(selectedRideId).then(data => {
+      setInterestedDrivers(data)
     }).catch(() => {})
-  }, [])
+  }, [selectedRideId])
 
   // ── Scroll log to bottom ──
   useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [activityLog])
@@ -223,9 +226,10 @@ export default function RouteOpsPanel() {
     if (!selectedRideId) return
     setActionLoading(busId + action)
     try {
-      const fn = action === 'depart' ? apiService.departBus
-        : action === 'arrive' ? apiService.arriveBus : apiService.completeBus
-      const res = await fn(selectedRideId, busId)
+      let res;
+      if (action === 'depart') res = await apiService.departBus(selectedRideId, busId)
+      else if (action === 'arrive') res = await apiService.arriveBus(selectedRideId, busId)
+      else res = await apiService.completeBus(selectedRideId, busId)
       const bus = buses.find(b => b.id === busId)
       if (action === 'depart' && res.no_shows > 0) {
         addLog(`Bus ${bus?.bus_label} departed — ${res.no_shows} no-show(s), ${res.promoted} promoted`, 'warning')
@@ -464,9 +468,9 @@ export default function RouteOpsPanel() {
                         <select style={s.formInput} value={busForm.driver}
                           onChange={e => setBusForm(p => ({ ...p, driver: e.target.value }))}>
                           <option value="">-- Unassigned --</option>
-                          {fleetDrivers.map(d => (
-                            <option key={d.id} value={d.user?.id || d.id}>
-                              {d.user?.full_name || 'Driver'} — {d.plate_number || 'N/A'}
+                          {interestedDrivers.map(d => (
+                            <option key={d.id} value={d.id}>
+                              {d.name} — {d.plate_number || 'N/A'} (Interested)
                             </option>
                           ))}
                         </select>

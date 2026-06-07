@@ -51,6 +51,9 @@ from .scheduled_bus_views import (
     PassengerNoShowView,
     PassengerReassignView,
     RideAutoAllocateView,
+    DriverAvailableScheduledRidesView,
+    DriverExpressInterestView,
+    AdminInterestedDriversView,
 )
 from .test_tools import (
     TestToolCreateAdminsView,
@@ -121,6 +124,11 @@ urlpatterns = [
     path('scheduled/available/', StudentAvailableScheduledRidesView.as_view(), name='scheduled-ride-available'),
     path('scheduled/<uuid:ride_id>/join/', StudentJoinScheduledRideView.as_view(), name='scheduled-ride-join'),
     path('scheduled/<uuid:ride_id>/leave/', StudentLeaveScheduledRideView.as_view(), name='scheduled-ride-leave'),
+
+    # ── Scheduled Rides (Driver Bidding) ─────────────────────────────────────
+    path('scheduled/driver/available/', DriverAvailableScheduledRidesView.as_view(), name='driver-scheduled-available'),
+    path('scheduled/<uuid:ride_id>/interest/', DriverExpressInterestView.as_view(), name='driver-scheduled-interest'),
+    path('scheduled/<uuid:ride_id>/interested-drivers/', AdminInterestedDriversView.as_view(), name='admin-interested-drivers'),
 
     # Test-only bulk tools. Guarded by DEBUG or ENABLE_TEST_TOOLS.
     path('test-tools/summary/', TestToolSummaryView.as_view(), name='test-tools-summary'),

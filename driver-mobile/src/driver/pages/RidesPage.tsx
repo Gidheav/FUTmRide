@@ -227,6 +227,12 @@ export default function DriverRidesPage() {
   const [locationPickerOpen, setLocationPickerOpen] = useState<null | 'origin' | 'destination'>(null);
   const [locationQuery, setLocationQuery] = useState('');
   const [isCreatingRide, setIsCreatingRide] = useState(false);
+  
+  // Scheduled Rides Bidding State
+  const [availableScheduledRides, setAvailableScheduledRides] = useState<any[]>([]);
+  const [loadingScheduled, setLoadingScheduled] = useState(false);
+  const [expressingInterestId, setExpressingInterestId] = useState<string | null>(null);
+  const [scheduledError, setScheduledError] = useState<string | null>(null);
 
   const errorHoldUntil = useRef<number>(0);
   const initialFetchDone = useRef(cachedRequests.length > 0);
@@ -298,6 +304,38 @@ export default function DriverRidesPage() {
       isMounted = false;
     };
   }, []);
+
+  // ── Fetch Scheduled Rides ──
+  useEffect(() => {
+    let isMounted = true;
+    let interval: any;
+
+    const fetchScheduled = async () => {
+      if (driverMode !== 'garage' || garageRide) return;
+      try {
+        const res = await driverApi.getAvailableScheduledRides();
+        if (isMounted) {
+          setAvailableScheduledRides(res?.data || []);
+          setScheduledError(null);
+        }
+      } catch (err: any) {
+        if (isMounted) setScheduledError(err?.message || 'Error loading scheduled rides');
+      } finally {
+        if (isMounted) setLoadingScheduled(false);
+      }
+    };
+
+    if (driverMode === 'garage' && !garageRide) {
+      setLoadingScheduled(true);
+      fetchScheduled();
+      interval = setInterval(fetchScheduled, 10000); // 10s poll
+    }
+
+    return () => {
+      isMounted = false;
+      if (interval) clearInterval(interval);
+    };
+  }, [driverMode, garageRide]);
 
   useEffect(() => {
     let isMounted = true;
@@ -688,6 +726,18 @@ export default function DriverRidesPage() {
     }
   }, [modeLocked, driverMode]);
 
+  const handleExpressInterest = async (rideId: string) => {
+    setExpressingInterestId(rideId);
+    try {
+      await driverApi.expressInterestScheduledRide(rideId);
+      setAvailableScheduledRides((prev) => prev.filter((r) => r.id !== rideId));
+    } catch (err: any) {
+      setScheduledError(err?.response?.data?.error || err?.message || 'Failed to express interest.');
+    } finally {
+      setExpressingInterestId(null);
+    }
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       <View style={[styles.modeToggleWrap, AMBIENT_SHADOW]}>
@@ -711,7 +761,7 @@ export default function DriverRidesPage() {
             style={[styles.modeTab, driverMode === 'garage' && styles.modeTabActive]}
             onPress={() => setDriverMode('garage')}
           >
-            <Text style={driverMode === 'garage' ? styles.modeTabTextActive : styles.modeTabText}>Garage</Text>
+            <Text style={driverMode === 'garage' ? styles.modeTabTextActive : styles.modeTabText}>Schedules</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.modeTab, driverMode === 'ondemand' && styles.modeTabActive, modeLocked && styles.modeTabDisabled]}
@@ -795,96 +845,62 @@ export default function DriverRidesPage() {
               </View>
             </View>
           ) : (
-            <View style={[styles.card, AMBIENT_SHADOW]}>
-              {lastCompletedAt ? (
-                <View style={styles.completedBadge}>
-                  <MaterialIcons name="check-circle" size={14} color={COLORS.primary} />
-                  <Text style={styles.completedBadgeText}>
-                    Completed at {formatCompletedAt(lastCompletedAt)}
-                  </Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[FONTS.headlineMd, { color: COLORS.onSurface, marginBottom: 4 }]}>Available Schedules</Text>
+              <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginBottom: 16 }]}>Express interest in scheduled routes below.</Text>
+              
+              {loadingScheduled ? (
+                <View style={[styles.card, AMBIENT_SHADOW]}>
+                  <ActivityIndicator size="small" color={COLORS.primary} />
+                  <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, textAlign: 'center', marginTop: 8 }]}>Loading schedules...</Text>
                 </View>
-              ) : null}
-              <Text style={[FONTS.headlineMd, { color: COLORS.onSurface }]}>Create Garage Ride</Text>
-              <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginTop: 4 }]}>Students scan to pay and board.</Text>
-
-              <TouchableOpacity style={styles.inputRow} onPress={() => setLocationPickerOpen('origin')}>
-                <MaterialIcons name="my-location" size={18} color={COLORS.outline} />
-                <Text style={[FONTS.bodyMd, styles.inputValue]}>{origin?.label || 'Select origin'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.useCurrentBtn} onPress={handleUseCurrentLocation}>
-                <MaterialIcons name="location-on" size={18} color={COLORS.primary} />
-                <Text style={[FONTS.labelMd, { color: COLORS.primary }]}>Use current location</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.inputRow} onPress={() => setLocationPickerOpen('destination')}>
-                <MaterialIcons name="place" size={18} color={COLORS.outline} />
-                <Text style={[FONTS.bodyMd, styles.inputValue]}>{destination?.label || 'Select destination'}</Text>
-              </TouchableOpacity>
-
-              <View style={styles.farePreviewCard}>
-                <View style={styles.farePreviewTop}>
-                  <Text style={styles.farePreviewTitle}>Engine Pricing</Text>
-                  {estimatingFare ? (
-                    <ActivityIndicator size="small" color={COLORS.primary} />
-                  ) : (
-                    <MaterialIcons name="verified" size={16} color={COLORS.primary} />
-                  )}
+              ) : scheduledError ? (
+                <View style={[styles.card, AMBIENT_SHADOW]}>
+                  <Text style={[FONTS.bodyMd, { color: COLORS.error, textAlign: 'center' }]}>{scheduledError}</Text>
                 </View>
-                <View style={styles.farePreviewRow}>
-                  <Text style={styles.farePreviewLabel}>Distance</Text>
-                  <Text style={styles.farePreviewValue}>{estimatedDistanceKm ? `${estimatedDistanceKm.toFixed(2)} km` : '—'}</Text>
+              ) : availableScheduledRides.length === 0 ? (
+                <View style={[styles.card, AMBIENT_SHADOW]}>
+                  <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, textAlign: 'center' }]}>No available schedules right now.</Text>
                 </View>
-                <View style={styles.farePreviewRow}>
-                  <Text style={styles.farePreviewLabel}>Estimated fare / seat</Text>
-                  <Text style={styles.farePreviewValue}>{formatCurrency(estimatedFarePerSeat)}</Text>
-                </View>
-              </View>
-
-              <View style={styles.inputRow}>
-                <MaterialIcons name="directions-car" size={18} color={COLORS.outline} />
-                <Text style={[FONTS.bodyMd, styles.inputValue]}>
-                  Vehicle type: {driverVehicleType.replace(/_/g, ' ')} (auto-priced by KM)
-                </Text>
-              </View>
-
-              <Text style={styles.seatHintText}>
-                Seats shown below are matched to your vehicle profile.
-              </Text>
-
-              <View style={styles.inputRow}>
-                <MaterialIcons name="groups" size={18} color={COLORS.outline} />
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.seatRow}>
-                  {seatOptions.map((count) => (
-                    <TouchableOpacity
-                      key={count}
-                      style={[styles.seatChip, totalSeats === count && styles.seatChipActive]}
-                      onPress={() => setTotalSeats(count)}
-                    >
-                      <Text style={totalSeats === count ? styles.seatChipTextActive : styles.seatChipText}>{count} seats</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-
-              <View style={styles.inputRow}>
-                <MaterialIcons name="note" size={18} color={COLORS.outline} />
-                <TextInput
-                  style={[FONTS.bodyMd, styles.textInput]}
-                  placeholder="Driver note (optional)"
-                  value={driverNote}
-                  onChangeText={setDriverNote}
-                />
-              </View>
-
-              {garageError ? <Text style={styles.errorText}>{garageError}</Text> : null}
-
-              <TouchableOpacity style={styles.primaryBtn} onPress={handleCreateGarageRide} disabled={isCreatingRide}>
-                {isCreatingRide ? (
-                  <ActivityIndicator size="small" color={COLORS.onPrimary} />
-                ) : (
-                  <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>Create Garage Ride</Text>
-                )}
-              </TouchableOpacity>
+              ) : (
+                availableScheduledRides.map(ride => {
+                  const date = new Date(ride.departure_time);
+                  const isExpressing = expressingInterestId === ride.id;
+                  return (
+                    <View key={ride.id} style={[styles.card, AMBIENT_SHADOW, { marginBottom: 12 }]}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}>{ride.reference}</Text>
+                        <Text style={[FONTS.labelMd, { color: COLORS.primary }]}>
+                          {date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                        </Text>
+                      </View>
+                      
+                      <View style={{ marginBottom: 16 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <MaterialIcons name="my-location" size={16} color={COLORS.outline} />
+                          <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, marginLeft: 8 }]}>{ride.origin}</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+                          <MaterialIcons name="place" size={16} color={COLORS.outline} />
+                          <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, marginLeft: 8 }]}>{ride.destination}</Text>
+                        </View>
+                      </View>
+                      
+                      <TouchableOpacity 
+                        style={styles.primaryBtn} 
+                        onPress={() => handleExpressInterest(ride.id)} 
+                        disabled={isExpressing}
+                      >
+                        {isExpressing ? (
+                          <ActivityIndicator size="small" color={COLORS.onPrimary} />
+                        ) : (
+                          <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>I'm Available</Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  )
+                })
+              )}
             </View>
           )}
         </View>

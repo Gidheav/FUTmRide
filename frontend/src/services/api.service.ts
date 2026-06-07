@@ -417,6 +417,10 @@ class ApiService {
     return this.post(`rides/scheduled/${rideId}/buses/${busId}/complete/`)
   }
 
+  async getInterestedDrivers(rideId: string): Promise<any[]> {
+    return this.get<any[]>(`rides/scheduled/${rideId}/interested-drivers/`)
+  }
+
   // ── Passenger Management (Route Ops) ──────────────────────────────────────
 
   async getRidePassengers(rideId: string): Promise<any[]> {

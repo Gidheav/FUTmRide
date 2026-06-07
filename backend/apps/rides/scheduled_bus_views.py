@@ -7,7 +7,7 @@ from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.models import UserRole
+from apps.accounts.models import User, UserRole
 from apps.accounts.permissions import IsAdminOrCampusAdmin
 from apps.payments.models import WalletTransaction
 from apps.payments.services import WalletService
@@ -19,6 +19,7 @@ from .scheduled_models import (
     ScheduledRidePassenger,
     ScheduledRideStatus,
     SeatType,
+    ScheduledRideDriverInterest,
 )
 from .scheduled_bus_serializers import (
     AllocationResultSerializer,
@@ -95,6 +96,15 @@ class BusAssignmentCreateView(APIView):
         serializer = BusAssignmentCreateSerializer(data=request.data, context={'ride': ride})
         serializer.is_valid(raise_exception=True)
         bus = ScheduledRideBusAssignment.objects.create(ride=ride, **serializer.validated_data)
+        
+        # Mark driver interest as assigned if a driver was selected
+        if bus.driver:
+            ScheduledRideDriverInterest.objects.filter(
+                ride=ride, 
+                driver=bus.driver,
+                status='interested'
+            ).update(status='assigned')
+            
         return Response(
             BusAssignmentReadSerializer(bus).data,
             status=status.HTTP_201_CREATED,
@@ -500,3 +510,86 @@ class RideAutoAllocateView(APIView):
             'unallocated': remaining,
             'buses': list(bus_results.values()),
         })
+
+
+# ── Driver Bidding / Availability ──────────────────────────────────────────────
+
+class DriverAvailableScheduledRidesView(APIView):
+    """List open scheduled rides for drivers."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != UserRole.DRIVER:
+            return Response({'error': 'Only drivers can view available rides.'}, status=status.HTTP_403_FORBIDDEN)
+            
+        # Get rides that are scheduled
+        from .scheduled_serializers import ScheduledRideListSerializer
+        rides = ScheduledRide.objects.filter(status=ScheduledRideStatus.SCHEDULED)
+        
+        # Exclude rides where the driver has already expressed interest or is assigned
+        rides = rides.exclude(
+            interested_drivers__driver=request.user,
+        ).exclude(
+            bus_assignments__driver=request.user,
+        ).order_by('departure_time')
+        
+        return Response(ScheduledRideListSerializer(rides, many=True).data)
+
+class DriverExpressInterestView(APIView):
+    """Driver expresses interest in taking a scheduled ride."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, ride_id):
+        if request.user.role != UserRole.DRIVER:
+            return Response({'error': 'Only drivers can express interest.'}, status=status.HTTP_403_FORBIDDEN)
+            
+        try:
+            ride = ScheduledRide.objects.get(id=ride_id)
+        except ScheduledRide.DoesNotExist:
+            raise NotFound('Scheduled ride not found.')
+            
+        if ride.status != ScheduledRideStatus.SCHEDULED:
+            return Response({'error': 'This ride is no longer accepting drivers.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        interest, created = ScheduledRideDriverInterest.objects.get_or_create(
+            ride=ride,
+            driver=request.user,
+            defaults={'status': 'interested'}
+        )
+        
+        if not created and interest.status != 'interested':
+            return Response({'error': f'You have already {interest.status} this ride.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        return Response({'message': 'Interest expressed successfully.'}, status=status.HTTP_201_CREATED)
+
+class AdminInterestedDriversView(APIView):
+    """Admin fetches interested drivers for a scheduled ride."""
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
+
+    def get(self, request, ride_id):
+        ride = _get_scoped_ride(request.user, ride_id)
+        interests = ScheduledRideDriverInterest.objects.filter(ride=ride, status='interested')
+        
+        # Return a list of drivers formatted for the frontend dropdown
+        data = []
+        for interest in interests:
+            driver = interest.driver
+            try:
+                vehicle_type = driver.driver_profile.vehicle_type
+                plate_number = driver.driver_profile.plate_number
+            except Exception:
+                vehicle_type = 'Unknown'
+                plate_number = 'Unknown'
+                
+            data.append({
+                'id': str(driver.id),
+                'name': driver.full_name,
+                'email': driver.email,
+                'phone': driver.phone_number,
+                'vehicle_type': vehicle_type,
+                'plate_number': plate_number,
+                'interest_id': str(interest.id),
+                'created_at': interest.created_at,
+            })
+            
+        return Response(data)

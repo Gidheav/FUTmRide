@@ -118,6 +118,10 @@ export const driverApi = {
   updateSavedRoute: (routeId: string, data: any) => api.patch(`rides/garage/routes/${routeId}/`, data),
   deleteSavedRoute: (routeId: string) => api.delete(`rides/garage/routes/${routeId}/`),
   pricingEstimate: (data: any) => api.post('pricing/estimate/', data),
+  
+  // Scheduled Rides
+  getAvailableScheduledRides: () => api.get('rides/scheduled/driver/available/'),
+  expressInterestScheduledRide: (rideId: string) => api.post(`rides/scheduled/${rideId}/interest/`),
 }
 
 export const verificationApi = {

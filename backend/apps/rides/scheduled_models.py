@@ -338,3 +338,25 @@ class ScheduledRidePassenger(models.Model):
     def __str__(self):
         return f'Passenger({self.ride.reference} {self.student_id} {self.pricing_tier})'
 
+
+class ScheduledRideDriverInterest(models.Model):
+    """Tracks a driver's interest in taking a scheduled ride."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    ride = models.ForeignKey(ScheduledRide, on_delete=models.CASCADE, related_name='interested_drivers')
+    driver = models.ForeignKey(User, on_delete=models.CASCADE, related_name='scheduled_ride_interests')
+    status = models.CharField(
+        max_length=20,
+        choices=[('interested', 'Interested'), ('assigned', 'Assigned'), ('declined', 'Declined')],
+        default='interested',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'scheduled_ride_driver_interests'
+        ordering = ['-created_at']
+        unique_together = [('ride', 'driver')]
+
+    def __str__(self):
+        return f'Interest({self.driver.email} -> {self.ride.reference} [{self.status}])'
