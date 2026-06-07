@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 from django.db import models
 from django.utils import timezone
 from apps.accounts.models import Campus, User
@@ -184,6 +184,106 @@ class ScheduledRideStop(models.Model):
         return f'Stop #{self.order}: {self.name} ({self.ride.reference})'
 
 
+class BusAssignmentStatus(models.TextChoices):
+    ASSIGNED = 'assigned', 'Assigned'
+    BOARDING = 'boarding', 'Boarding'
+    LOADING = 'loading', 'Loading'
+    DEPARTED = 'departed', 'Departed'
+    EN_ROUTE = 'en_route', 'En Route'
+    ARRIVED = 'arrived', 'Arrived'
+    COMPLETED = 'completed', 'Completed'
+
+
+class SeatType(models.TextChoices):
+    SEATED = 'seated', 'Seated'
+    STANDING = 'standing', 'Standing'
+
+
+class ScheduledRideBusAssignment(models.Model):
+    """A single bus/driver dispatched for a scheduled ride."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    ride = models.ForeignKey(ScheduledRide, on_delete=models.CASCADE, related_name='bus_assignments')
+    driver = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='bus_assignments',
+    )
+    bus_label = models.CharField(max_length=60, help_text='e.g. Bus A, Bus 1')
+    order = models.PositiveSmallIntegerField(default=1, help_text='Departure sequence')
+    seated_capacity = models.PositiveIntegerField(default=50)
+    standing_capacity = models.PositiveIntegerField(default=0)
+    status = models.CharField(
+        max_length=20,
+        choices=BusAssignmentStatus.choices,
+        default=BusAssignmentStatus.ASSIGNED,
+    )
+    departed_at = models.DateTimeField(null=True, blank=True)
+    arrived_at = models.DateTimeField(null=True, blank=True)
+    admin_notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'scheduled_ride_bus_assignments'
+        ordering = ['ride', 'order']
+        unique_together = [('ride', 'order')]
+        indexes = [
+            models.Index(fields=['ride', 'status']),
+            models.Index(fields=['driver', 'status']),
+        ]
+
+    VALID_TRANSITIONS = {
+        BusAssignmentStatus.ASSIGNED: [BusAssignmentStatus.BOARDING, BusAssignmentStatus.DEPARTED],
+        BusAssignmentStatus.BOARDING: [BusAssignmentStatus.LOADING, BusAssignmentStatus.DEPARTED],
+        BusAssignmentStatus.LOADING: [BusAssignmentStatus.DEPARTED],
+        BusAssignmentStatus.DEPARTED: [BusAssignmentStatus.EN_ROUTE, BusAssignmentStatus.ARRIVED],
+        BusAssignmentStatus.EN_ROUTE: [BusAssignmentStatus.ARRIVED],
+        BusAssignmentStatus.ARRIVED: [BusAssignmentStatus.COMPLETED],
+    }
+
+    def transition_to(self, new_status):
+        allowed = self.VALID_TRANSITIONS.get(self.status, [])
+        if new_status not in allowed:
+            raise ValueError(f'Invalid bus transition: {self.status} -> {new_status}. Allowed: {allowed}')
+        self.status = new_status
+
+    @property
+    def seated_count(self):
+        return self.assigned_passengers.filter(
+            seat_type=SeatType.SEATED,
+        ).exclude(status=PassengerStatus.CANCELLED).exclude(status=PassengerStatus.NO_SHOW).count()
+
+    @property
+    def standing_count(self):
+        return self.assigned_passengers.filter(
+            seat_type=SeatType.STANDING,
+        ).exclude(status=PassengerStatus.CANCELLED).exclude(status=PassengerStatus.NO_SHOW).count()
+
+    @property
+    def checked_in_count(self):
+        return self.assigned_passengers.filter(checked_in_at__isnull=False).exclude(
+            status__in=[PassengerStatus.CANCELLED, PassengerStatus.NO_SHOW],
+        ).count()
+
+    @property
+    def total_assigned(self):
+        return self.seated_count + self.standing_count
+
+    @property
+    def seats_available(self):
+        return max(0, self.seated_capacity - self.seated_count)
+
+    @property
+    def standing_available(self):
+        return max(0, self.standing_capacity - self.standing_count)
+
+    def __str__(self):
+        return f'Bus {self.bus_label} ({self.ride.reference}) [{self.status}]'
+
+
 class ScheduledRidePassenger(models.Model):
     """A student ticket for a scheduled ride."""
 
@@ -191,6 +291,19 @@ class ScheduledRidePassenger(models.Model):
     ride = models.ForeignKey(ScheduledRide, on_delete=models.PROTECT, related_name='passengers')
     student = models.ForeignKey(User, on_delete=models.PROTECT, related_name='scheduled_ride_bookings')
     pricing_tier = models.CharField(max_length=20, choices=PricingTier.choices)
+    bus_assignment = models.ForeignKey(
+        ScheduledRideBusAssignment,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='assigned_passengers',
+    )
+    seat_type = models.CharField(
+        max_length=20,
+        choices=SeatType.choices,
+        default=SeatType.SEATED,
+    )
+    checked_in_at = models.DateTimeField(null=True, blank=True)
     boarding_stop = models.ForeignKey(
         ScheduledRideStop,
         on_delete=models.SET_NULL,
@@ -219,7 +332,9 @@ class ScheduledRidePassenger(models.Model):
         indexes = [
             models.Index(fields=['ride', 'status']),
             models.Index(fields=['student', 'joined_at']),
+            models.Index(fields=['bus_assignment', 'seat_type']),
         ]
 
     def __str__(self):
         return f'Passenger({self.ride.reference} {self.student_id} {self.pricing_tier})'
+

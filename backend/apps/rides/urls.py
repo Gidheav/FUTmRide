@@ -37,6 +37,20 @@ from .scheduled_views import (
     StudentJoinScheduledRideView,
     StudentLeaveScheduledRideView,
 )
+from .scheduled_bus_views import (
+    BusAssignmentListView,
+    BusAssignmentCreateView,
+    BusAssignmentUpdateView,
+    BusAllocateView,
+    BusDepartView,
+    BusArriveView,
+    BusCompleteView,
+    RidePassengerListView,
+    PassengerCheckInView,
+    PassengerNoShowView,
+    PassengerReassignView,
+    RideAutoAllocateView,
+)
 
 urlpatterns = [
     path('available/', AvailableRidesView.as_view(), name='ride-available'),
@@ -74,7 +88,21 @@ urlpatterns = [
     path('scheduled/<uuid:ride_id>/cancel/', ScheduledRideCancelView.as_view(), name='scheduled-ride-cancel'),
     path('scheduled/<uuid:ride_id>/depart/', ScheduledRideDepartView.as_view(), name='scheduled-ride-depart'),
     path('scheduled/<uuid:ride_id>/complete/', ScheduledRideCompleteView.as_view(), name='scheduled-ride-complete'),
-    
+
+    # ── Bus Assignment & Passenger Management (Route Ops) ────────────────────
+    path('scheduled/<uuid:ride_id>/buses/', BusAssignmentListView.as_view(), name='bus-assignment-list'),
+    path('scheduled/<uuid:ride_id>/buses/assign/', BusAssignmentCreateView.as_view(), name='bus-assignment-create'),
+    path('scheduled/<uuid:ride_id>/buses/<uuid:bus_id>/', BusAssignmentUpdateView.as_view(), name='bus-assignment-update'),
+    path('scheduled/<uuid:ride_id>/buses/<uuid:bus_id>/allocate/', BusAllocateView.as_view(), name='bus-allocate'),
+    path('scheduled/<uuid:ride_id>/buses/<uuid:bus_id>/depart/', BusDepartView.as_view(), name='bus-depart'),
+    path('scheduled/<uuid:ride_id>/buses/<uuid:bus_id>/arrive/', BusArriveView.as_view(), name='bus-arrive'),
+    path('scheduled/<uuid:ride_id>/buses/<uuid:bus_id>/complete/', BusCompleteView.as_view(), name='bus-complete'),
+    path('scheduled/<uuid:ride_id>/passengers/', RidePassengerListView.as_view(), name='ride-passenger-list'),
+    path('scheduled/<uuid:ride_id>/passengers/<uuid:pax_id>/check-in/', PassengerCheckInView.as_view(), name='passenger-check-in'),
+    path('scheduled/<uuid:ride_id>/passengers/<uuid:pax_id>/no-show/', PassengerNoShowView.as_view(), name='passenger-no-show'),
+    path('scheduled/<uuid:ride_id>/passengers/<uuid:pax_id>/reassign/', PassengerReassignView.as_view(), name='passenger-reassign'),
+    path('scheduled/<uuid:ride_id>/auto-allocate/', RideAutoAllocateView.as_view(), name='ride-auto-allocate'),
+
     # ── Scheduled Rides (Student) ────────────────────────────────────────────
     path('scheduled/available/', StudentAvailableScheduledRidesView.as_view(), name='scheduled-ride-available'),
     path('scheduled/<uuid:ride_id>/join/', StudentJoinScheduledRideView.as_view(), name='scheduled-ride-join'),
