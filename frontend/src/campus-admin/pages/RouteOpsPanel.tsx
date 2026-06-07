@@ -1,0 +1,938 @@
+import { useState, useEffect, useCallback, useRef, type CSSProperties } from 'react'
+import {
+  Bus, Users, CalendarClock, Clock, MapPin, Navigation, ChevronDown, ChevronUp,
+  Plus, Play, Square, CheckCircle2, AlertTriangle, ArrowRight, RefreshCw,
+  UserCheck, UserX, ArrowRightLeft, Zap, X, Search, Filter, Eye, Truck,
+  CircleDot, Timer, TrendingUp, BarChart3, Activity, Package
+} from 'lucide-react'
+import { T } from '../theme'
+import { apiService } from '../../services/api.service'
+import api from '../../core/api'
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Types                                                                     */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+interface ScheduledRide {
+  id: string; reference: string; departure_date: string
+  window_start: string; window_end: string; join_deadline: string
+  origin_address: string; destination_address: string
+  vehicle_size: string; status: string; passenger_count: number
+  is_joinable: boolean; enabled_tiers: string[]; stops_count: number
+}
+
+interface BusAssignment {
+  id: string; ride: string; driver: string | null; driver_name: string | null
+  vehicle_type: string | null; plate_number: string | null
+  bus_label: string; order: number; seated_capacity: number; standing_capacity: number
+  status: string; departed_at: string | null; arrived_at: string | null
+  admin_notes: string; seated_count: number; standing_count: number
+  checked_in_count: number; total_assigned: number; seats_available: number
+  standing_available: number; created_at: string; updated_at: string
+}
+
+interface Passenger {
+  id: string; student: string; student_name: string; student_email: string
+  pricing_tier: string; bus_assignment: string | null; bus_label: string | null
+  seat_type: string; checked_in_at: string | null
+  boarding_stop: string | null; boarding_stop_name: string | null
+  alighting_stop: string | null; alighting_stop_name: string | null
+  amount_paid: string; payment_reference: string
+  status: string; joined_at: string
+}
+
+interface FleetDriver {
+  id: string; user?: { id: string; full_name: string }
+  plate_number?: string; vehicle_type?: string; vehicle_make?: string
+  vehicle_model?: string
+}
+
+interface ActivityLogEntry {
+  id: string; time: Date; message: string; type: 'info' | 'success' | 'warning' | 'error'
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Helpers                                                                    */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+const STATUS_COLORS: Record<string, { bg: string; color: string; border: string }> = {
+  scheduled: { bg: 'rgba(168,85,247,0.12)', color: '#a855f7', border: 'rgba(168,85,247,0.3)' },
+  boarding: { bg: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: 'rgba(245,158,11,0.3)' },
+  loading: { bg: 'rgba(59,130,246,0.12)', color: '#3b82f6', border: 'rgba(59,130,246,0.3)' },
+  departed: { bg: 'rgba(16,185,129,0.12)', color: '#10b981', border: 'rgba(16,185,129,0.3)' },
+  en_route: { bg: 'rgba(20,184,166,0.12)', color: '#14b8a6', border: 'rgba(20,184,166,0.3)' },
+  arrived: { bg: 'rgba(99,102,241,0.12)', color: '#6366f1', border: 'rgba(99,102,241,0.3)' },
+  completed: { bg: 'rgba(100,116,139,0.12)', color: '#64748b', border: 'rgba(100,116,139,0.3)' },
+  cancelled: { bg: 'rgba(239,68,68,0.12)', color: '#ef4444', border: 'rgba(239,68,68,0.3)' },
+  assigned: { bg: 'rgba(168,85,247,0.12)', color: '#a855f7', border: 'rgba(168,85,247,0.3)' },
+}
+
+const BUS_STATUS_FLOW = ['assigned', 'boarding', 'loading', 'departed', 'en_route', 'arrived', 'completed']
+
+const fmtTime = (t: string) => t?.substring(0, 5) || ''
+const fmtCurrency = (v: string | number) => `₦${Number(v || 0).toLocaleString()}`
+
+const getCountdownMs = (deadline: string) => {
+  const d = new Date(deadline)
+  return d.getTime() - Date.now()
+}
+
+const fmtCountdown = (ms: number) => {
+  if (ms <= 0) return 'Closed'
+  const m = Math.floor(ms / 60000)
+  const h = Math.floor(m / 60)
+  if (h > 0) return `${h}h ${m % 60}m`
+  return `${m}m`
+}
+
+let _logId = 0
+const mkLog = (msg: string, type: ActivityLogEntry['type'] = 'info'): ActivityLogEntry => ({
+  id: String(++_logId), time: new Date(), message: msg, type,
+})
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Component                                                                  */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+export default function RouteOpsPanel() {
+  // ── State ──
+  const [rides, setRides] = useState<ScheduledRide[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selectedRideId, setSelectedRideId] = useState<string | null>(null)
+  const [buses, setBuses] = useState<BusAssignment[]>([])
+  const [passengers, setPassengers] = useState<Passenger[]>([])
+  const [fleetDrivers, setFleetDrivers] = useState<FleetDriver[]>([])
+  const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([])
+  const [now, setNow] = useState(Date.now())
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [paxFilter, setPaxFilter] = useState<'all' | 'unassigned' | 'checked_in' | 'no_show'>('all')
+  const [paxSearch, setPaxSearch] = useState('')
+  const [showAddBus, setShowAddBus] = useState(false)
+  const [expandedBus, setExpandedBus] = useState<string | null>(null)
+  const [busForm, setBusForm] = useState({ driver: '', bus_label: '', seated_capacity: 50, standing_capacity: 0 })
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const logEndRef = useRef<HTMLDivElement>(null)
+
+  const selectedRide = rides.find(r => r.id === selectedRideId)
+
+  // ── Live clock ──
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 10000)
+    return () => clearInterval(t)
+  }, [])
+
+  // ── Fetch rides ──
+  const fetchRides = useCallback(async () => {
+    try {
+      setLoading(true)
+      const data = await apiService.getScheduledRides()
+      setRides(data)
+    } catch { /* silent */ } finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { fetchRides() }, [fetchRides])
+
+  // ── Polling every 15s ──
+  useEffect(() => {
+    const t = setInterval(fetchRides, 15000)
+    return () => clearInterval(t)
+  }, [fetchRides])
+
+  // ── Fetch buses + passengers when ride selected ──
+  const fetchRideDetails = useCallback(async (rideId: string) => {
+    try {
+      const [b, p] = await Promise.all([
+        apiService.getBusAssignments(rideId),
+        apiService.getRidePassengers(rideId),
+      ])
+      setBuses(b)
+      setPassengers(p)
+    } catch { /* silent */ }
+  }, [])
+
+  useEffect(() => {
+    if (selectedRideId) fetchRideDetails(selectedRideId)
+  }, [selectedRideId, fetchRideDetails])
+
+  // ── Poll ride details every 8s ──
+  useEffect(() => {
+    if (!selectedRideId) return
+    const t = setInterval(() => fetchRideDetails(selectedRideId), 8000)
+    return () => clearInterval(t)
+  }, [selectedRideId, fetchRideDetails])
+
+  // ── Load fleet drivers ──
+  useEffect(() => {
+    api.get('/users/fleet/?page=1&page_size=200').then(res => {
+      const data = res.data?.results || res.data || []
+      setFleetDrivers(data)
+    }).catch(() => {})
+  }, [])
+
+  // ── Scroll log to bottom ──
+  useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [activityLog])
+
+  const addLog = (msg: string, type: ActivityLogEntry['type'] = 'info') =>
+    setActivityLog(prev => [...prev.slice(-99), mkLog(msg, type)])
+
+  // ── Actions ──
+  const handleAssignBus = async () => {
+    if (!selectedRideId) return
+    setActionLoading('assign')
+    try {
+      await apiService.createBusAssignment(selectedRideId, busForm)
+      addLog(`Bus "${busForm.bus_label}" assigned${busForm.driver ? '' : ' (no driver)'}`, 'success')
+      setShowAddBus(false)
+      setBusForm({ driver: '', bus_label: '', seated_capacity: 50, standing_capacity: 0 })
+      await fetchRideDetails(selectedRideId)
+    } catch (e: any) {
+      addLog(`Failed to assign bus: ${e?.message || 'Error'}`, 'error')
+    } finally { setActionLoading(null) }
+  }
+
+  const handleAutoAllocate = async () => {
+    if (!selectedRideId) return
+    setActionLoading('auto')
+    try {
+      const res = await apiService.autoAllocatePassengers(selectedRideId)
+      addLog(`Auto-allocated ${res.allocated} passengers (${res.unallocated} remaining)`, 'success')
+      await fetchRideDetails(selectedRideId)
+      fetchRides()
+    } catch (e: any) {
+      addLog(`Auto-allocate failed: ${e?.message || 'Error'}`, 'error')
+    } finally { setActionLoading(null) }
+  }
+
+  const handleBusAction = async (busId: string, action: 'depart' | 'arrive' | 'complete') => {
+    if (!selectedRideId) return
+    setActionLoading(busId + action)
+    try {
+      const fn = action === 'depart' ? apiService.departBus
+        : action === 'arrive' ? apiService.arriveBus : apiService.completeBus
+      const res = await fn(selectedRideId, busId)
+      const bus = buses.find(b => b.id === busId)
+      if (action === 'depart' && res.no_shows > 0) {
+        addLog(`Bus ${bus?.bus_label} departed — ${res.no_shows} no-show(s), ${res.promoted} promoted`, 'warning')
+      } else {
+        addLog(`Bus ${bus?.bus_label} → ${action.toUpperCase()}`, 'success')
+      }
+      await fetchRideDetails(selectedRideId)
+      fetchRides()
+    } catch (e: any) {
+      addLog(`Bus action "${action}" failed: ${e?.message || 'Error'}`, 'error')
+    } finally { setActionLoading(null) }
+  }
+
+  const handleCheckIn = async (paxId: string) => {
+    if (!selectedRideId) return
+    setActionLoading(paxId)
+    try {
+      const res = await apiService.checkInPassenger(selectedRideId, paxId)
+      addLog(`${res.student_name} checked in`, 'success')
+      await fetchRideDetails(selectedRideId)
+    } catch (e: any) {
+      addLog(`Check-in failed: ${e?.message || 'Error'}`, 'error')
+    } finally { setActionLoading(null) }
+  }
+
+  const handleNoShow = async (paxId: string) => {
+    if (!selectedRideId) return
+    setActionLoading(paxId + 'ns')
+    try {
+      const res = await apiService.markNoShow(selectedRideId, paxId)
+      addLog(`${res.no_show.student_name} marked NO-SHOW${res.promoted ? ` → ${res.promoted.student_name} promoted` : ''}`, 'warning')
+      await fetchRideDetails(selectedRideId)
+      fetchRides()
+    } catch (e: any) {
+      addLog(`No-show failed: ${e?.message || 'Error'}`, 'error')
+    } finally { setActionLoading(null) }
+  }
+
+  // ── Derived data ──
+  const filteredRides = statusFilter === 'all' ? rides : rides.filter(r => r.status === statusFilter)
+  const totalPax = rides.reduce((a, r) => a + r.passenger_count, 0)
+  const totalBuses = buses.length
+  const busesEnRoute = buses.filter(b => ['departed', 'en_route'].includes(b.status)).length
+  const busesCompleted = buses.filter(b => b.status === 'completed').length
+  const unassignedPax = passengers.filter(p => !p.bus_assignment && !['cancelled', 'no_show'].includes(p.status)).length
+
+  const filteredPassengers = passengers.filter(p => {
+    if (paxFilter === 'unassigned') return !p.bus_assignment && !['cancelled', 'no_show'].includes(p.status)
+    if (paxFilter === 'checked_in') return !!p.checked_in_at
+    if (paxFilter === 'no_show') return p.status === 'no_show'
+    return true
+  }).filter(p => !paxSearch || p.student_name.toLowerCase().includes(paxSearch.toLowerCase()))
+
+  const nowDate = new Date(now)
+  const timeStr = nowDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+  const dateStr = nowDate.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+
+  // ── Revenue calc ──
+  const totalRevenue = passengers.filter(p => !['cancelled', 'no_show'].includes(p.status)).reduce((s, p) => s + Number(p.amount_paid || 0), 0)
+  const noShowCount = passengers.filter(p => p.status === 'no_show').length
+
+  /* ══════════════════════════════════════════════════════════════════════ */
+  /*  RENDER                                                                */
+  /* ══════════════════════════════════════════════════════════════════════ */
+
+  return (
+    <div style={s.root}>
+      {/* ── SECTION 1: Command Header ────────────────────────────────── */}
+      <div style={s.cmdHeader}>
+        <div style={s.cmdLeft}>
+          <div style={s.cmdClock}>
+            <Clock size={14} />
+            <span style={s.cmdTime}>{timeStr}</span>
+            <span style={s.cmdDate}>{dateStr}</span>
+          </div>
+          <div style={s.cmdDivider} />
+          <div style={s.cmdStat}><span style={s.cmdStatVal}>{rides.length}</span><span style={s.cmdStatLbl}>Routes</span></div>
+          <div style={s.cmdStat}><span style={s.cmdStatVal}>{totalPax}</span><span style={s.cmdStatLbl}>Passengers</span></div>
+          {selectedRideId && (
+            <>
+              <div style={s.cmdStat}><span style={{ ...s.cmdStatVal, color: '#a855f7' }}>{totalBuses}</span><span style={s.cmdStatLbl}>Buses</span></div>
+              <div style={s.cmdStat}><span style={{ ...s.cmdStatVal, color: '#10b981' }}>{busesEnRoute}</span><span style={s.cmdStatLbl}>En Route</span></div>
+              <div style={s.cmdStat}><span style={{ ...s.cmdStatVal, color: '#64748b' }}>{busesCompleted}</span><span style={s.cmdStatLbl}>Done</span></div>
+              <div style={s.cmdStat}><span style={{ ...s.cmdStatVal, color: '#f59e0b' }}>{unassignedPax}</span><span style={s.cmdStatLbl}>Unassigned</span></div>
+            </>
+          )}
+        </div>
+        <div style={s.cmdRight}>
+          <button style={s.cmdBtn} onClick={fetchRides}><RefreshCw size={13} /> Refresh</button>
+        </div>
+      </div>
+
+      <div style={s.mainLayout}>
+        {/* ── LEFT: Ride Feed + Convoy ────────────────────────────────── */}
+        <div style={s.leftCol}>
+          {/* ── SECTION 2: Active Rides Feed ──────────────────────────── */}
+          <div style={s.section}>
+            <div style={s.sectionHeader}>
+              <div style={s.sectionTitleRow}>
+                <CalendarClock size={15} />
+                <span style={s.sectionTitle}>Active Routes</span>
+                <span style={s.badge}>{filteredRides.length}</span>
+              </div>
+              <div style={s.filterRow}>
+                {['all', 'scheduled', 'boarding', 'departed', 'completed', 'cancelled'].map(f => (
+                  <button key={f} style={{ ...s.filterChip, ...(statusFilter === f ? s.filterChipActive : {}) }} onClick={() => setStatusFilter(f)}>
+                    {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={s.rideGrid}>
+              {loading ? (
+                <div style={s.emptyState}>Loading routes...</div>
+              ) : filteredRides.length === 0 ? (
+                <div style={s.emptyState}>
+                  <CalendarClock size={32} style={{ opacity: 0.3 }} />
+                  <span>No routes match current filter</span>
+                </div>
+              ) : filteredRides.map(ride => {
+                const isSelected = ride.id === selectedRideId
+                const sc = STATUS_COLORS[ride.status] || STATUS_COLORS.scheduled
+                const cdMs = getCountdownMs(ride.join_deadline)
+                return (
+                  <div key={ride.id} style={{ ...s.rideCard, ...(isSelected ? s.rideCardSelected : {}), borderLeftColor: sc.color }}
+                    onClick={() => setSelectedRideId(isSelected ? null : ride.id)}>
+                    <div style={s.rideCardTop}>
+                      <span style={s.rideRef}>{ride.reference}</span>
+                      <span style={{ ...s.statusBadge, background: sc.bg, color: sc.color, borderColor: sc.border }}>
+                        {ride.status.toUpperCase()}
+                      </span>
+                    </div>
+                    <div style={s.rideRoute}>
+                      <div style={s.routeDot}><div style={{ ...s.dot, background: T.textPrimary }} /></div>
+                      <span style={s.routeAddr}>{ride.origin_address}</span>
+                    </div>
+                    <div style={s.rideRoute}>
+                      <div style={s.routeDot}><div style={{ ...s.dot, background: '#a855f7' }} /></div>
+                      <span style={s.routeAddr}>{ride.destination_address}</span>
+                    </div>
+                    <div style={s.rideMeta}>
+                      <span><Clock size={11} /> {fmtTime(ride.window_start)}-{fmtTime(ride.window_end)}</span>
+                      <span><Users size={11} /> {ride.passenger_count} pax</span>
+                      <span><MapPin size={11} /> {ride.stops_count} stops</span>
+                      {ride.status === 'scheduled' && cdMs > 0 && (
+                        <span style={{ color: cdMs < 600000 ? '#ef4444' : '#f59e0b' }}>
+                          <Timer size={11} /> {fmtCountdown(cdMs)}
+                        </span>
+                      )}
+                    </div>
+                    <div style={s.rideTiers}>
+                      {ride.enabled_tiers.map(t => (
+                        <span key={t} style={s.tierChip}>{t}</span>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* ── SECTION 3: Convoy Command Center ─────────────────────── */}
+          {selectedRide && (
+            <div style={s.section}>
+              {/* 3A: Ride Overview Strip */}
+              <div style={s.overviewStrip}>
+                <div style={s.overviewRoute}>
+                  <div style={s.overviewNode}><CircleDot size={14} color={T.textPrimary} /><span>{selectedRide.origin_address}</span></div>
+                  {selectedRide.stops_count > 0 && (
+                    <>
+                      <ArrowRight size={14} color={T.textMuted} />
+                      <div style={s.overviewNode}><MapPin size={14} color={T.textMuted} /><span>{selectedRide.stops_count} stops</span></div>
+                    </>
+                  )}
+                  <ArrowRight size={14} color={T.textMuted} />
+                  <div style={s.overviewNode}><Navigation size={14} color='#a855f7' /><span>{selectedRide.destination_address}</span></div>
+                </div>
+                <div style={s.overviewStats}>
+                  <div style={s.overviewKpi}>
+                    <span style={s.overviewKpiVal}>{passengers.length}</span>
+                    <span style={s.overviewKpiLbl}>Total Pax</span>
+                  </div>
+                  <div style={s.overviewKpi}>
+                    <span style={s.overviewKpiVal}>{buses.length}</span>
+                    <span style={s.overviewKpiLbl}>Buses</span>
+                  </div>
+                  <div style={s.overviewKpi}>
+                    <span style={{ ...s.overviewKpiVal, color: '#10b981' }}>{fmtCurrency(totalRevenue)}</span>
+                    <span style={s.overviewKpiLbl}>Revenue</span>
+                  </div>
+                  <div style={s.overviewKpi}>
+                    <span style={{ ...s.overviewKpiVal, color: '#ef4444' }}>{noShowCount}</span>
+                    <span style={s.overviewKpiLbl}>No-Shows</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3B: Bus Assignment Grid */}
+              <div style={s.subsection}>
+                <div style={s.subsectionHeader}>
+                  <div style={s.sectionTitleRow}>
+                    <Bus size={15} />
+                    <span style={s.sectionTitle}>Bus Assignments</span>
+                    <span style={s.badge}>{buses.length}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button style={s.actionBtn} onClick={handleAutoAllocate} disabled={actionLoading === 'auto'}>
+                      <Zap size={13} /> {actionLoading === 'auto' ? 'Allocating...' : 'Auto-Allocate All'}
+                    </button>
+                    <button style={{ ...s.actionBtn, background: '#a855f7', color: '#fff' }} onClick={() => setShowAddBus(true)}>
+                      <Plus size={13} /> Add Bus
+                    </button>
+                  </div>
+                </div>
+
+                {/* Add Bus Modal */}
+                {showAddBus && (
+                  <div style={s.addBusPanel}>
+                    <div style={s.addBusHeader}>
+                      <span style={{ fontWeight: 700, fontSize: 13, color: T.textWhite }}>Assign New Bus</span>
+                      <button style={s.closeBtn} onClick={() => setShowAddBus(false)}><X size={14} /></button>
+                    </div>
+                    <div style={s.formGrid}>
+                      <div style={s.formGroup}>
+                        <label style={s.formLabel}>Bus Label</label>
+                        <input style={s.formInput} placeholder="e.g. Bus A" value={busForm.bus_label}
+                          onChange={e => setBusForm(p => ({ ...p, bus_label: e.target.value }))} />
+                      </div>
+                      <div style={s.formGroup}>
+                        <label style={s.formLabel}>Driver</label>
+                        <select style={s.formInput} value={busForm.driver}
+                          onChange={e => setBusForm(p => ({ ...p, driver: e.target.value }))}>
+                          <option value="">-- Unassigned --</option>
+                          {fleetDrivers.map(d => (
+                            <option key={d.id} value={d.user?.id || d.id}>
+                              {d.user?.full_name || 'Driver'} — {d.plate_number || 'N/A'}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div style={s.formGroup}>
+                        <label style={s.formLabel}>Seated Capacity</label>
+                        <input style={s.formInput} type="number" value={busForm.seated_capacity}
+                          onChange={e => setBusForm(p => ({ ...p, seated_capacity: Number(e.target.value) }))} />
+                      </div>
+                      <div style={s.formGroup}>
+                        <label style={s.formLabel}>Standing Capacity</label>
+                        <input style={s.formInput} type="number" value={busForm.standing_capacity}
+                          onChange={e => setBusForm(p => ({ ...p, standing_capacity: Number(e.target.value) }))} />
+                      </div>
+                    </div>
+                    <button style={{ ...s.actionBtn, background: '#a855f7', color: '#fff', width: '100%', justifyContent: 'center', marginTop: 8 }}
+                      onClick={handleAssignBus} disabled={actionLoading === 'assign' || !busForm.bus_label}>
+                      {actionLoading === 'assign' ? 'Assigning...' : 'Assign Bus'}
+                    </button>
+                  </div>
+                )}
+
+                {/* Bus Cards */}
+                <div style={s.busGrid}>
+                  {buses.length === 0 ? (
+                    <div style={s.emptyState}>
+                      <Bus size={28} style={{ opacity: 0.3 }} />
+                      <span>No buses assigned yet. Click "Add Bus" to begin.</span>
+                    </div>
+                  ) : buses.map(bus => {
+                    const sc = STATUS_COLORS[bus.status] || STATUS_COLORS.assigned
+                    const isExpanded = expandedBus === bus.id
+                    const busPax = passengers.filter(p => p.bus_assignment === bus.id)
+                    const seatedPct = bus.seated_capacity > 0 ? Math.round((bus.seated_count / bus.seated_capacity) * 100) : 0
+                    return (
+                      <div key={bus.id} style={{ ...s.busCard, borderLeftColor: sc.color }}>
+                        <div style={s.busCardTop}>
+                          <div>
+                            <div style={s.busLabel}>{bus.bus_label}</div>
+                            <div style={s.busMeta}>
+                              {bus.driver_name || 'No driver'} {bus.plate_number ? `• ${bus.plate_number}` : ''}
+                            </div>
+                          </div>
+                          <span style={{ ...s.statusBadge, background: sc.bg, color: sc.color, borderColor: sc.border, fontSize: 9 }}>
+                            {bus.status.replace('_', ' ').toUpperCase()}
+                          </span>
+                        </div>
+
+                        {/* Capacity bars */}
+                        <div style={s.capRow}>
+                          <div style={s.capInfo}>
+                            <span style={s.capLabel}>Seated</span>
+                            <span style={s.capVal}>{bus.seated_count}/{bus.seated_capacity}</span>
+                          </div>
+                          <div style={s.capBarBg}>
+                            <div style={{ ...s.capBarFill, width: `${seatedPct}%`, background: seatedPct >= 100 ? '#10b981' : '#a855f7' }} />
+                          </div>
+                        </div>
+                        {bus.standing_capacity > 0 && (
+                          <div style={s.capRow}>
+                            <div style={s.capInfo}>
+                              <span style={s.capLabel}>Standing</span>
+                              <span style={s.capVal}>{bus.standing_count}/{bus.standing_capacity}</span>
+                            </div>
+                            <div style={s.capBarBg}>
+                              <div style={{ ...s.capBarFill, width: `${bus.standing_capacity > 0 ? Math.round((bus.standing_count / bus.standing_capacity) * 100) : 0}%`, background: '#f59e0b' }} />
+                            </div>
+                          </div>
+                        )}
+                        <div style={s.busCheckIn}>
+                          <UserCheck size={12} color='#10b981' />
+                          <span>{bus.checked_in_count} checked in</span>
+                        </div>
+
+                        {/* Bus Actions */}
+                        <div style={s.busActions}>
+                          {bus.status === 'assigned' && (
+                            <button style={{ ...s.busActionBtn, color: '#f59e0b', background: 'rgba(245,158,11,0.1)' }}
+                              onClick={() => handleBusAction(bus.id, 'depart')} disabled={!!actionLoading}>
+                              <Play size={12} /> Board / Depart
+                            </button>
+                          )}
+                          {bus.status === 'boarding' && (
+                            <button style={{ ...s.busActionBtn, color: '#10b981', background: 'rgba(16,185,129,0.1)' }}
+                              onClick={() => handleBusAction(bus.id, 'depart')} disabled={!!actionLoading}>
+                              <Navigation size={12} /> Depart
+                            </button>
+                          )}
+                          {(bus.status === 'departed' || bus.status === 'en_route') && (
+                            <button style={{ ...s.busActionBtn, color: '#6366f1', background: 'rgba(99,102,241,0.1)' }}
+                              onClick={() => handleBusAction(bus.id, 'arrive')} disabled={!!actionLoading}>
+                              <MapPin size={12} /> Mark Arrived
+                            </button>
+                          )}
+                          {bus.status === 'arrived' && (
+                            <button style={{ ...s.busActionBtn, color: '#64748b', background: 'rgba(100,116,139,0.1)' }}
+                              onClick={() => handleBusAction(bus.id, 'complete')} disabled={!!actionLoading}>
+                              <CheckCircle2 size={12} /> Complete
+                            </button>
+                          )}
+                          <button style={{ ...s.busActionBtn, color: T.textMuted, background: 'transparent' }}
+                            onClick={() => setExpandedBus(isExpanded ? null : bus.id)}>
+                            {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                            {isExpanded ? 'Hide' : `${busPax.length} pax`}
+                          </button>
+                        </div>
+
+                        {/* Expanded passenger list */}
+                        {isExpanded && (
+                          <div style={s.busPaxList}>
+                            {busPax.length === 0 ? (
+                              <div style={{ ...s.emptyState, padding: 12, fontSize: 11 }}>No passengers assigned</div>
+                            ) : busPax.map(p => (
+                              <div key={p.id} style={{ ...s.busPaxRow, background: p.status === 'no_show' ? 'rgba(239,68,68,0.06)' : p.checked_in_at ? 'rgba(16,185,129,0.06)' : 'transparent' }}>
+                                <div style={s.busPaxInfo}>
+                                  <span style={s.busPaxName}>{p.student_name}</span>
+                                  <span style={s.busPaxMeta}>{p.pricing_tier} • {p.seat_type}</span>
+                                </div>
+                                <div style={s.busPaxActions}>
+                                  {!p.checked_in_at && p.status !== 'no_show' && p.status !== 'cancelled' && (
+                                    <>
+                                      <button style={{ ...s.miniBtn, color: '#10b981' }} onClick={() => handleCheckIn(p.id)} title="Check In">
+                                        <UserCheck size={12} />
+                                      </button>
+                                      <button style={{ ...s.miniBtn, color: '#ef4444' }} onClick={() => handleNoShow(p.id)} title="No Show">
+                                        <UserX size={12} />
+                                      </button>
+                                    </>
+                                  )}
+                                  {p.checked_in_at && <CheckCircle2 size={13} color='#10b981' />}
+                                  {p.status === 'no_show' && <span style={{ fontSize: 9, color: '#ef4444', fontWeight: 700 }}>NO-SHOW</span>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* 3E: Departure Timeline */}
+              {buses.length > 0 && (
+                <div style={s.subsection}>
+                  <div style={s.sectionTitleRow}>
+                    <Activity size={15} />
+                    <span style={s.sectionTitle}>Departure Sequence</span>
+                  </div>
+                  <div style={s.timeline}>
+                    {buses.sort((a, b) => a.order - b.order).map((bus, i) => {
+                      const sc = STATUS_COLORS[bus.status] || STATUS_COLORS.assigned
+                      const stepIdx = BUS_STATUS_FLOW.indexOf(bus.status)
+                      return (
+                        <div key={bus.id} style={s.timelineItem}>
+                          <div style={{ ...s.timelineDot, background: sc.color, boxShadow: `0 0 8px ${sc.color}` }} />
+                          {i < buses.length - 1 && <div style={s.timelineLine} />}
+                          <div style={s.timelineContent}>
+                            <div style={s.timelineLabel}>{bus.bus_label}</div>
+                            <div style={{ ...s.timelineStatus, color: sc.color }}>{bus.status.replace('_', ' ').toUpperCase()}</div>
+                            {bus.departed_at && <div style={s.timelineMeta}>Departed {new Date(bus.departed_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</div>}
+                            {bus.arrived_at && <div style={s.timelineMeta}>Arrived {new Date(bus.arrived_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</div>}
+                            {/* Progress steps */}
+                            <div style={s.timelineSteps}>
+                              {BUS_STATUS_FLOW.map((step, si) => (
+                                <div key={step} style={{ ...s.timelineStep, background: si <= stepIdx ? sc.color : T.border, opacity: si <= stepIdx ? 1 : 0.3 }} />
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* 3C: Passenger Manifest Table */}
+              <div style={s.subsection}>
+                <div style={s.subsectionHeader}>
+                  <div style={s.sectionTitleRow}>
+                    <Users size={15} />
+                    <span style={s.sectionTitle}>Passenger Manifest</span>
+                    <span style={s.badge}>{passengers.length}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <div style={s.searchWrap}>
+                      <Search size={12} color={T.textMuted} style={{ position: 'absolute', left: 8, top: 8 }} />
+                      <input style={s.searchInput} placeholder="Search student..." value={paxSearch}
+                        onChange={e => setPaxSearch(e.target.value)} />
+                    </div>
+                    {(['all', 'unassigned', 'checked_in', 'no_show'] as const).map(f => (
+                      <button key={f} style={{ ...s.filterChip, ...(paxFilter === f ? s.filterChipActive : {}), fontSize: 9, padding: '2px 8px' }}
+                        onClick={() => setPaxFilter(f)}>
+                        {f === 'all' ? 'All' : f === 'checked_in' ? 'Checked In' : f === 'no_show' ? 'No-Show' : 'Unassigned'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={s.tableWrap}>
+                  <table style={s.table}>
+                    <thead>
+                      <tr>
+                        <th style={s.th}>Student</th>
+                        <th style={s.th}>Tier</th>
+                        <th style={s.th}>Bus</th>
+                        <th style={s.th}>Seat</th>
+                        <th style={s.th}>Status</th>
+                        <th style={s.th}>Paid</th>
+                        <th style={{ ...s.th, textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredPassengers.length === 0 ? (
+                        <tr><td colSpan={7} style={{ ...s.td, textAlign: 'center', color: T.textMuted, padding: 32 }}>No passengers match filter</td></tr>
+                      ) : filteredPassengers.map(p => {
+                        const rowBg = p.status === 'no_show' ? 'rgba(239,68,68,0.06)' :
+                          p.status === 'cancelled' ? 'rgba(100,116,139,0.06)' :
+                          p.checked_in_at ? 'rgba(16,185,129,0.06)' :
+                          !p.bus_assignment ? 'rgba(245,158,11,0.04)' : 'transparent'
+                        return (
+                          <tr key={p.id} style={{ background: rowBg }}>
+                            <td style={s.td}>
+                              <div style={{ fontWeight: 600, fontSize: 12, color: T.textPrimary }}>{p.student_name}</div>
+                              <div style={{ fontSize: 10, color: T.textMuted }}>{p.student_email}</div>
+                            </td>
+                            <td style={s.td}><span style={s.tierChip}>{p.pricing_tier}</span></td>
+                            <td style={s.td}><span style={{ fontSize: 12, color: p.bus_label ? T.textPrimary : T.textMuted }}>{p.bus_label || '—'}</span></td>
+                            <td style={s.td}><span style={{ fontSize: 11, color: T.textSecondary }}>{p.seat_type}</span></td>
+                            <td style={s.td}>
+                              {p.status === 'no_show' ? <span style={{ color: '#ef4444', fontWeight: 700, fontSize: 10 }}>NO-SHOW</span> :
+                               p.status === 'cancelled' ? <span style={{ color: '#64748b', fontWeight: 700, fontSize: 10 }}>CANCELLED</span> :
+                               p.checked_in_at ? <span style={{ color: '#10b981', fontWeight: 600, fontSize: 10 }}>✓ CHECKED IN</span> :
+                               <span style={{ color: '#f59e0b', fontSize: 10 }}>WAITING</span>}
+                            </td>
+                            <td style={s.td}><span style={{ fontFamily: 'monospace', fontSize: 12 }}>{fmtCurrency(p.amount_paid)}</span></td>
+                            <td style={{ ...s.td, textAlign: 'right' }}>
+                              {!p.checked_in_at && !['cancelled', 'no_show'].includes(p.status) && (
+                                <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                                  <button style={{ ...s.miniBtn, color: '#10b981' }} onClick={() => handleCheckIn(p.id)} disabled={!!actionLoading}><UserCheck size={13} /></button>
+                                  <button style={{ ...s.miniBtn, color: '#ef4444' }} onClick={() => handleNoShow(p.id)} disabled={!!actionLoading}><UserX size={13} /></button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── RIGHT: Analytics + Activity Log ─────────────────────────── */}
+        <div style={s.rightCol}>
+          {/* Section 4: Analytics */}
+          <div style={s.rightSection}>
+            <div style={s.sectionTitleRow}>
+              <TrendingUp size={14} />
+              <span style={s.sectionTitle}>Route Analytics</span>
+            </div>
+            {selectedRide ? (
+              <div style={s.analyticsGrid}>
+                <div style={s.analyticTile}>
+                  <span style={s.analyticVal}>{passengers.filter(p => !['cancelled', 'no_show'].includes(p.status)).length}</span>
+                  <span style={s.analyticLbl}>Active Pax</span>
+                </div>
+                <div style={s.analyticTile}>
+                  <span style={s.analyticVal}>{busesCompleted}/{buses.length}</span>
+                  <span style={s.analyticLbl}>Buses Done</span>
+                </div>
+                <div style={s.analyticTile}>
+                  <span style={{ ...s.analyticVal, color: '#10b981' }}>{fmtCurrency(totalRevenue)}</span>
+                  <span style={s.analyticLbl}>Revenue</span>
+                </div>
+                <div style={s.analyticTile}>
+                  <span style={{ ...s.analyticVal, color: '#ef4444' }}>{noShowCount}</span>
+                  <span style={s.analyticLbl}>No-Shows</span>
+                </div>
+                <div style={s.analyticTile}>
+                  <span style={s.analyticVal}>
+                    {passengers.length > 0 ? `${Math.round((passengers.filter(p => p.checked_in_at).length / passengers.length) * 100)}%` : '—'}
+                  </span>
+                  <span style={s.analyticLbl}>Check-in Rate</span>
+                </div>
+                <div style={s.analyticTile}>
+                  <span style={s.analyticVal}>
+                    {passengers.length > 0 ? `${Math.round((noShowCount / passengers.length) * 100)}%` : '0%'}
+                  </span>
+                  <span style={s.analyticLbl}>No-Show Rate</span>
+                </div>
+              </div>
+            ) : (
+              <div style={{ ...s.emptyState, padding: 20, fontSize: 11 }}>Select a route to view analytics</div>
+            )}
+
+            {/* Tier breakdown */}
+            {selectedRide && passengers.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 }}>
+                  Tier Breakdown
+                </div>
+                {['standard', 'standing', 'premium', 'freight'].map(tier => {
+                  const tierPax = passengers.filter(p => p.pricing_tier === tier && !['cancelled', 'no_show'].includes(p.status))
+                  if (tierPax.length === 0) return null
+                  const tierRev = tierPax.reduce((s, p) => s + Number(p.amount_paid || 0), 0)
+                  return (
+                    <div key={tier} style={s.tierRow}>
+                      <span style={s.tierRowLabel}>{tier}</span>
+                      <span style={s.tierRowVal}>{tierPax.length} pax</span>
+                      <span style={{ ...s.tierRowVal, color: '#10b981' }}>{fmtCurrency(tierRev)}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Section 5: Activity Log */}
+          <div style={{ ...s.rightSection, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <div style={s.sectionTitleRow}>
+              <BarChart3 size={14} />
+              <span style={s.sectionTitle}>Activity Log</span>
+              <span style={s.badge}>{activityLog.length}</span>
+            </div>
+            <div style={s.logList}>
+              {activityLog.length === 0 ? (
+                <div style={{ ...s.emptyState, padding: 20, fontSize: 11 }}>Actions will appear here as you work</div>
+              ) : activityLog.map(entry => (
+                <div key={entry.id} style={s.logEntry}>
+                  <div style={{ ...s.logDot, background: entry.type === 'success' ? '#10b981' : entry.type === 'warning' ? '#f59e0b' : entry.type === 'error' ? '#ef4444' : T.textMuted }} />
+                  <div>
+                    <div style={s.logMsg}>{entry.message}</div>
+                    <div style={s.logTime}>{entry.time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
+                  </div>
+                </div>
+              ))}
+              <div ref={logEndRef} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*  STYLES                                                                    */
+/* ══════════════════════════════════════════════════════════════════════════ */
+
+const s: Record<string, CSSProperties> = {
+  root: { display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', fontFamily: T.fontFamily, background: T.bg },
+
+  // ── Command Header ──
+  cmdHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px', background: T.bgPanel, borderBottom: `1px solid ${T.border}`, flexShrink: 0 },
+  cmdLeft: { display: 'flex', alignItems: 'center', gap: 12 },
+  cmdRight: { display: 'flex', alignItems: 'center', gap: 8 },
+  cmdClock: { display: 'flex', alignItems: 'center', gap: 6, color: T.textWhite },
+  cmdTime: { fontSize: 14, fontWeight: 800, letterSpacing: -0.3 },
+  cmdDate: { fontSize: 11, color: T.textMuted, marginLeft: 4 },
+  cmdDivider: { width: 1, height: 20, background: T.border },
+  cmdStat: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 },
+  cmdStatVal: { fontSize: 16, fontWeight: 800, color: T.textWhite, lineHeight: 1 },
+  cmdStatLbl: { fontSize: 8, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  cmdBtn: { display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: `1px solid ${T.border}`, background: T.bgCard, color: T.textSecondary, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: T.fontFamily },
+
+  // ── Main Layout ──
+  mainLayout: { display: 'flex', flex: 1, overflow: 'hidden' },
+  leftCol: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto', gap: 1, background: T.border },
+  rightCol: { width: 300, display: 'flex', flexDirection: 'column', overflow: 'hidden', gap: 1, background: T.border, flexShrink: 0 },
+
+  // ── Sections ──
+  section: { background: T.bgPanel, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 },
+  subsection: { background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 8, padding: 14, display: 'flex', flexDirection: 'column', gap: 12, margin: '0 16px 16px' },
+  sectionHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  subsectionHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  sectionTitleRow: { display: 'flex', alignItems: 'center', gap: 8, color: T.textWhite, fontWeight: 700, fontSize: 12 },
+  sectionTitle: { fontSize: 13, fontWeight: 700 },
+  badge: { fontSize: 10, fontWeight: 700, background: T.accentBg, color: '#a855f7', borderRadius: 999, padding: '2px 8px' },
+
+  // ── Filters ──
+  filterRow: { display: 'flex', gap: 4, flexWrap: 'wrap' },
+  filterChip: { padding: '4px 10px', borderRadius: 999, border: `1px solid ${T.border}`, background: 'transparent', color: T.textMuted, fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: T.fontFamily, transition: 'all 0.15s' },
+  filterChipActive: { background: T.accentBg, color: '#a855f7', borderColor: 'rgba(168,85,247,0.3)' },
+
+  // ── Ride Cards ──
+  rideGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 8 },
+  rideCard: { background: T.bgCard, border: `1px solid ${T.border}`, borderLeft: '3px solid', borderRadius: 8, padding: 12, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 6, transition: 'all 0.15s' },
+  rideCardSelected: { borderColor: '#a855f7', background: 'rgba(168,85,247,0.06)', boxShadow: '0 0 0 1px rgba(168,85,247,0.2)' },
+  rideCardTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  rideRef: { fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: T.textWhite },
+  rideRoute: { display: 'flex', alignItems: 'center', gap: 8 },
+  routeDot: { width: 8, height: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  routeAddr: { fontSize: 11, color: T.textSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  rideMeta: { display: 'flex', gap: 12, fontSize: 10, color: T.textMuted, alignItems: 'center' },
+  rideTiers: { display: 'flex', gap: 4 },
+  tierChip: { padding: '2px 6px', borderRadius: 4, background: T.bgInput, border: `1px solid ${T.border}`, fontSize: 9, fontWeight: 600, color: T.textSecondary, textTransform: 'capitalize' },
+
+  // ── Status Badge ──
+  statusBadge: { padding: '3px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700, border: '1px solid', textTransform: 'uppercase', letterSpacing: 0.4 },
+
+  // ── Overview Strip ──
+  overviewStrip: { background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 8, padding: 14, margin: '0 16px', display: 'flex', flexDirection: 'column', gap: 12 },
+  overviewRoute: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  overviewNode: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: T.textPrimary, fontWeight: 500 },
+  overviewStats: { display: 'flex', gap: 16, flexWrap: 'wrap' },
+  overviewKpi: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 70 },
+  overviewKpiVal: { fontSize: 18, fontWeight: 800, color: T.textWhite, lineHeight: 1 },
+  overviewKpiLbl: { fontSize: 9, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
+
+  // ── Bus Cards ──
+  busGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 8 },
+  busCard: { background: T.bgPanel, border: `1px solid ${T.border}`, borderLeft: '3px solid', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 },
+  busCardTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' },
+  busLabel: { fontSize: 14, fontWeight: 800, color: T.textWhite },
+  busMeta: { fontSize: 10, color: T.textMuted, marginTop: 2 },
+  capRow: { display: 'flex', flexDirection: 'column', gap: 3 },
+  capInfo: { display: 'flex', justifyContent: 'space-between', fontSize: 10 },
+  capLabel: { color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 600 },
+  capVal: { color: T.textPrimary, fontWeight: 700, fontFamily: 'monospace' },
+  capBarBg: { height: 4, borderRadius: 2, background: T.border, overflow: 'hidden' },
+  capBarFill: { height: '100%', borderRadius: 2, transition: 'width 0.3s' },
+  busCheckIn: { display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#10b981', fontWeight: 600 },
+  busActions: { display: 'flex', gap: 4, flexWrap: 'wrap', borderTop: `1px solid ${T.border}`, paddingTop: 8 },
+  busActionBtn: { display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: T.fontFamily, background: 'transparent' },
+
+  // ── Expanded Bus Passenger List ──
+  busPaxList: { borderTop: `1px solid ${T.border}`, paddingTop: 6, display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 200, overflowY: 'auto' },
+  busPaxRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 6px', borderRadius: 4 },
+  busPaxInfo: { display: 'flex', flexDirection: 'column' },
+  busPaxName: { fontSize: 11, fontWeight: 600, color: T.textPrimary },
+  busPaxMeta: { fontSize: 9, color: T.textMuted },
+  busPaxActions: { display: 'flex', gap: 4, alignItems: 'center' },
+  miniBtn: { width: 24, height: 24, borderRadius: 6, border: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: 'transparent', padding: 0, fontFamily: T.fontFamily },
+
+  // ── Add Bus Panel ──
+  addBusPanel: { background: T.bgCard, border: `1px solid rgba(168,85,247,0.3)`, borderRadius: 8, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 },
+  addBusHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  closeBtn: { width: 24, height: 24, borderRadius: 6, border: 'none', background: 'transparent', color: T.textMuted, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  formGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
+  formGroup: { display: 'flex', flexDirection: 'column', gap: 3 },
+  formLabel: { fontSize: 10, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.4 },
+  formInput: { background: T.bgInput, border: `1px solid ${T.border}`, borderRadius: 6, padding: '6px 10px', color: T.textPrimary, fontSize: 12, fontFamily: T.fontFamily, outline: 'none' },
+  actionBtn: { display: 'flex', alignItems: 'center', gap: 5, padding: '6px 14px', borderRadius: 6, border: `1px solid ${T.border}`, background: T.bgCard, color: T.textSecondary, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: T.fontFamily },
+
+  // ── Timeline ──
+  timeline: { display: 'flex', flexDirection: 'column', gap: 0, position: 'relative' },
+  timelineItem: { display: 'flex', alignItems: 'flex-start', gap: 12, position: 'relative', paddingBottom: 16, paddingLeft: 16 },
+  timelineDot: { width: 10, height: 10, borderRadius: 5, flexShrink: 0, position: 'absolute', left: 0, top: 2, zIndex: 1 },
+  timelineLine: { position: 'absolute', left: 4, top: 14, width: 2, height: 'calc(100% - 8px)', background: T.border },
+  timelineContent: { display: 'flex', flexDirection: 'column', gap: 2 },
+  timelineLabel: { fontSize: 12, fontWeight: 700, color: T.textWhite },
+  timelineStatus: { fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 },
+  timelineMeta: { fontSize: 10, color: T.textMuted },
+  timelineSteps: { display: 'flex', gap: 2, marginTop: 4 },
+  timelineStep: { width: 16, height: 3, borderRadius: 1.5 },
+
+  // ── Passenger Table ──
+  tableWrap: { maxHeight: 400, overflowY: 'auto', border: `1px solid ${T.border}`, borderRadius: 6 },
+  table: { width: '100%', borderCollapse: 'collapse', fontSize: 12 },
+  th: { padding: '8px 12px', fontSize: 10, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, borderBottom: `1px solid ${T.border}`, textAlign: 'left', background: T.bgCard, position: 'sticky', top: 0, zIndex: 1 },
+  td: { padding: '8px 12px', borderBottom: `1px solid ${T.border}` },
+  searchWrap: { position: 'relative', display: 'flex', alignItems: 'center' },
+  searchInput: { background: T.bgInput, border: `1px solid ${T.border}`, borderRadius: 6, padding: '4px 8px 4px 26px', color: T.textPrimary, fontSize: 11, fontFamily: T.fontFamily, outline: 'none', width: 140 },
+
+  // ── Right Column ──
+  rightSection: { background: T.bgPanel, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 },
+  analyticsGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 },
+  analyticTile: { background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 6, padding: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 },
+  analyticVal: { fontSize: 16, fontWeight: 800, color: T.textWhite, lineHeight: 1 },
+  analyticLbl: { fontSize: 8, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.4 },
+  tierRow: { display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: `1px solid ${T.border}`, fontSize: 11 },
+  tierRowLabel: { color: T.textSecondary, textTransform: 'capitalize', fontWeight: 500 },
+  tierRowVal: { color: T.textPrimary, fontWeight: 600, fontFamily: 'monospace' },
+
+  // ── Activity Log ──
+  logList: { flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, minHeight: 0 },
+  logEntry: { display: 'flex', gap: 8, alignItems: 'flex-start', padding: '4px 0' },
+  logDot: { width: 6, height: 6, borderRadius: 3, flexShrink: 0, marginTop: 4 },
+  logMsg: { fontSize: 11, color: T.textPrimary, lineHeight: 1.3 },
+  logTime: { fontSize: 9, color: T.textMuted, marginTop: 1 },
+
+  // ── Empty ──
+  emptyState: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 32, color: T.textMuted, fontSize: 12 },
+}

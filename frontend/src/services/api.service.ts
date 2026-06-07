@@ -347,7 +347,8 @@ class ApiService {
     const qs = new URLSearchParams()
     if (params?.status) qs.set('status', params.status)
     if (params?.date) qs.set('date', params.date)
-    return this.get<any[]>(`rides/scheduled/?${qs.toString()}`)
+    const res = await this.get<any>(`rides/scheduled/?${qs.toString()}`)
+    return res?.results || res
   }
 
   async getScheduledRideDetail(id: string): Promise<any> {
@@ -364,6 +365,60 @@ class ApiService {
 
   async completeScheduledRide(id: string): Promise<any> {
     return this.post(`rides/scheduled/${id}/complete/`)
+  }
+
+  // ── Bus Assignment (Route Ops) ──────────────────────────────────────────────
+
+  async getBusAssignments(rideId: string): Promise<any[]> {
+    const res = await this.get<any>(`rides/scheduled/${rideId}/buses/`)
+    return res?.results || res
+  }
+
+  async createBusAssignment(rideId: string, data: any): Promise<any> {
+    return this.post(`rides/scheduled/${rideId}/buses/assign/`, data)
+  }
+
+  async updateBusAssignment(rideId: string, busId: string, data: any): Promise<any> {
+    return this.patch(`rides/scheduled/${rideId}/buses/${busId}/`, data)
+  }
+
+  async allocateBus(rideId: string, busId: string): Promise<any> {
+    return this.post(`rides/scheduled/${rideId}/buses/${busId}/allocate/`)
+  }
+
+  async departBus(rideId: string, busId: string): Promise<any> {
+    return this.post(`rides/scheduled/${rideId}/buses/${busId}/depart/`)
+  }
+
+  async arriveBus(rideId: string, busId: string): Promise<any> {
+    return this.post(`rides/scheduled/${rideId}/buses/${busId}/arrive/`)
+  }
+
+  async completeBus(rideId: string, busId: string): Promise<any> {
+    return this.post(`rides/scheduled/${rideId}/buses/${busId}/complete/`)
+  }
+
+  // ── Passenger Management (Route Ops) ──────────────────────────────────────
+
+  async getRidePassengers(rideId: string): Promise<any[]> {
+    const res = await this.get<any>(`rides/scheduled/${rideId}/passengers/`)
+    return res?.results || res
+  }
+
+  async checkInPassenger(rideId: string, paxId: string): Promise<any> {
+    return this.post(`rides/scheduled/${rideId}/passengers/${paxId}/check-in/`)
+  }
+
+  async markNoShow(rideId: string, paxId: string): Promise<any> {
+    return this.post(`rides/scheduled/${rideId}/passengers/${paxId}/no-show/`)
+  }
+
+  async reassignPassenger(rideId: string, paxId: string, busId: string): Promise<any> {
+    return this.post(`rides/scheduled/${rideId}/passengers/${paxId}/reassign/`, { bus_assignment_id: busId })
+  }
+
+  async autoAllocatePassengers(rideId: string): Promise<any> {
+    return this.post(`rides/scheduled/${rideId}/auto-allocate/`)
   }
 }
 

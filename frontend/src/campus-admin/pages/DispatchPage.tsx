@@ -7,6 +7,7 @@ import { T, useCampusThemeStore } from '../theme'
 import { useDispatchStore } from '../dispatchStore'
 import api from '../../core/api'
 import { createAuthenticatedWebSocket } from '../../core/ws'
+import RouteOpsPanel from './RouteOpsPanel'
 
 const MAP_CENTER = { lat: 9.5323, lng: 6.4526 }
 const DEFAULT_ZOOM = 14
@@ -101,7 +102,12 @@ export default function DispatchPage() {
   const [fleetFilter, setFleetFilter] = useState<'all' | 'idle' | 'on_trip'>('all')
 
   const { mode } = useCampusThemeStore()
-  const { showTraffic, showHeat, showRoutes, setWsConnected, recenterTrigger } = useDispatchStore()
+  const { activeTab: dispatchTab, showTraffic, showHeat, showRoutes, setWsConnected, recenterTrigger } = useDispatchStore()
+
+  // Render Route Ops tab
+  if (dispatchTab === 'route_ops') {
+    return <RouteOpsPanel />
+  }
 
   const mapRef = useRef<google.maps.Map | null>(null)
   const trafficLayerRef = useRef<google.maps.TrafficLayer | null>(null)

@@ -190,9 +190,22 @@ export default function DashboardPage() {
   const [dataControlsOpen, setDataControlsOpen] = useState(false)
 
   // ── Scheduled Route Creation State ──
+  const getNextHour = () => {
+    const d = new Date()
+    d.setHours(d.getHours() + 1)
+    d.setMinutes(0)
+    return d.toTimeString().slice(0, 5)
+  }
+  const getNextHourPlus30 = () => {
+    const d = new Date()
+    d.setHours(d.getHours() + 1)
+    d.setMinutes(30)
+    return d.toTimeString().slice(0, 5)
+  }
+
   const [departureDate, setDepartureDate] = useState(new Date().toISOString().split('T')[0])
-  const [windowStart, setWindowStart] = useState('07:00')
-  const [windowEnd, setWindowEnd] = useState('07:30')
+  const [windowStart, setWindowStart] = useState(getNextHour())
+  const [windowEnd, setWindowEnd] = useState(getNextHourPlus30())
   const [waypoints, setWaypoints] = useState([{ name: '', address: '' }, { name: '', address: '' }])
   const [vehicleSize, setVehicleSize] = useState('bus')
   const [cargoCapacity, setCargoCapacity] = useState('0')
@@ -232,15 +245,21 @@ export default function DashboardPage() {
         premium_price: pricingValues.premium,
         freight_enabled: pricingTiers.freight,
         freight_price: pricingValues.freight,
-        stops: waypoints.map((w, i) => ({
-          order: i + 1,
-          name: w.name || `Stop ${i + 1}`,
-          address: w.address,
-          latitude: 9.5323 + (i * 0.001),
-          longitude: 6.4526 + (i * 0.001),
-          is_pickup: true,
-          is_dropoff: true,
-        })),
+        stops: waypoints.map((w, i) => {
+          let addr = w.address
+          if (!addr) {
+            addr = i === 0 ? 'Campus Gate' : i === waypoints.length - 1 ? 'Library' : `Stop ${i + 1} Address`
+          }
+          return {
+            order: i + 1,
+            name: w.name || `Stop ${i + 1}`,
+            address: addr,
+            latitude: parseFloat((9.5323 + (i * 0.001)).toFixed(6)),
+            longitude: parseFloat((6.4526 + (i * 0.001)).toFixed(6)),
+            is_pickup: true,
+            is_dropoff: true,
+          }
+        }),
       }
       
       await apiService.createScheduledRide(payload)
@@ -248,7 +267,9 @@ export default function DashboardPage() {
       // Reset form or handle success UI
     } catch (error: any) {
       console.error('Failed to create scheduled ride', error)
-      alert(`Error creating ride: ${error.response?.data?.detail || error.message || 'Validation failed'}`)
+      const errData = error.response?.data
+      const errMsg = errData?.detail || (errData ? JSON.stringify(errData) : error.message)
+      alert(`Error creating ride: ${errMsg || 'Validation failed'}`)
     } finally {
       setIsCreatingRide(false)
     }

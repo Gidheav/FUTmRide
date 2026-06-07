@@ -1,6 +1,10 @@
 import { create } from 'zustand'
 
+export type DispatchTab = 'route_ops' | 'live_fleet'
+
 export const useDispatchStore = create<{
+  activeTab: DispatchTab
+  setActiveTab: (tab: DispatchTab) => void
   showTraffic: boolean
   setShowTraffic: (val: boolean | ((p: boolean) => boolean)) => void
   showHeat: boolean
@@ -12,6 +16,8 @@ export const useDispatchStore = create<{
   recenterTrigger: number
   triggerRecenter: () => void
 }>((set) => ({
+  activeTab: 'route_ops',
+  setActiveTab: (tab) => set({ activeTab: tab }),
   showTraffic: false,
   setShowTraffic: (val) => set((state) => ({ showTraffic: typeof val === 'function' ? val(state.showTraffic) : val })),
   showHeat: false,

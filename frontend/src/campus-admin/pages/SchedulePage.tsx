@@ -1,4 +1,5 @@
-import { useState, useEffect, CSSProperties } from 'react'
+import { useState, useEffect } from 'react'
+import type { CSSProperties } from 'react'
 import { CalendarClock, MapPin, Users, Package, Settings2, Trash2, CheckCircle2, Navigation } from 'lucide-react'
 import { T } from '../theme'
 import { apiService } from '../../services/api.service'

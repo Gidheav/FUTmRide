@@ -41,7 +41,7 @@ export default function CampusAdminTopNav() {
   const { clearAuth } = useAuthStore()
   const { mode, toggleMode } = useCampusThemeStore()
 
-  const { wsConnected, showTraffic, setShowTraffic, showHeat, setShowHeat, showRoutes, setShowRoutes, triggerRecenter } = useDispatchStore()
+  const { activeTab: dispatchTab, setActiveTab: setDispatchTab, wsConnected, showTraffic, setShowTraffic, showHeat, setShowHeat, showRoutes, setShowRoutes, triggerRecenter } = useDispatchStore()
   const { activeTab: settingsTab, setActiveTab: setSettingsTab } = useSettingsStore()
   const { activeTab: analyticsTab, setActiveTab: setAnalyticsTab } = useAnalyticsStore()
   const { activeTab: financeTab, setActiveTab: setFinanceTab } = useFinancialStore()
@@ -255,23 +255,35 @@ export default function CampusAdminTopNav() {
         </nav>
       ) : location.pathname === '/dispatch' ? (
         <nav style={s.topNav}>
-          <button style={{ ...s.topNavBtn, color: T.textSecondary, background: 'transparent' }} onClick={triggerRecenter} title="Recenter map">
-            <Crosshair size={13} strokeWidth={1.8} />
-            <span>Recenter</span>
+          <button style={{ ...s.topNavBtn, color: dispatchTab === 'route_ops' ? T.accent : T.textSecondary, background: dispatchTab === 'route_ops' ? T.accentBg : 'transparent' }} onClick={() => setDispatchTab('route_ops')}>
+            <CalendarClock size={13} strokeWidth={1.8} />
+            <span>Route Ops</span>
           </button>
-          <div style={{ width: 1, height: 16, background: T.border, margin: '0 8px' }} />
-          <button style={{ ...s.topNavBtn, color: showTraffic ? T.heatTeal : T.textSecondary, background: showTraffic ? `${T.heatTeal}15` : 'transparent' }} onClick={() => setShowTraffic(p => !p)}>
-            <Activity size={13} strokeWidth={1.8} />
-            <span>Traffic</span>
+          <button style={{ ...s.topNavBtn, color: dispatchTab === 'live_fleet' ? T.accent : T.textSecondary, background: dispatchTab === 'live_fleet' ? T.accentBg : 'transparent' }} onClick={() => setDispatchTab('live_fleet')}>
+            <Radio size={13} strokeWidth={1.8} />
+            <span>Live Fleet</span>
           </button>
-          <button style={{ ...s.topNavBtn, color: showHeat ? T.accent : T.textSecondary, background: showHeat ? T.accentBg : 'transparent' }} onClick={() => setShowHeat(p => !p)}>
-            <Zap size={13} strokeWidth={1.8} />
-            <span>Heat</span>
-          </button>
-          <button style={{ ...s.topNavBtn, color: showRoutes ? T.warn : T.textSecondary, background: showRoutes ? `${T.warn}15` : 'transparent' }} onClick={() => setShowRoutes(p => !p)}>
-            <Route size={13} strokeWidth={1.8} />
-            <span>Routes</span>
-          </button>
+          {dispatchTab === 'live_fleet' && (
+            <>
+              <div style={{ width: 1, height: 16, background: T.border, margin: '0 8px' }} />
+              <button style={{ ...s.topNavBtn, color: T.textSecondary, background: 'transparent' }} onClick={triggerRecenter} title="Recenter map">
+                <Crosshair size={13} strokeWidth={1.8} />
+                <span>Recenter</span>
+              </button>
+              <button style={{ ...s.topNavBtn, color: showTraffic ? T.heatTeal : T.textSecondary, background: showTraffic ? `${T.heatTeal}15` : 'transparent' }} onClick={() => setShowTraffic(p => !p)}>
+                <Activity size={13} strokeWidth={1.8} />
+                <span>Traffic</span>
+              </button>
+              <button style={{ ...s.topNavBtn, color: showHeat ? T.accent : T.textSecondary, background: showHeat ? T.accentBg : 'transparent' }} onClick={() => setShowHeat(p => !p)}>
+                <Zap size={13} strokeWidth={1.8} />
+                <span>Heat</span>
+              </button>
+              <button style={{ ...s.topNavBtn, color: showRoutes ? T.warn : T.textSecondary, background: showRoutes ? `${T.warn}15` : 'transparent' }} onClick={() => setShowRoutes(p => !p)}>
+                <Route size={13} strokeWidth={1.8} />
+                <span>Routes</span>
+              </button>
+            </>
+          )}
         </nav>
       ) : location.pathname === '/settings' ? (
         <nav style={s.topNav}>
