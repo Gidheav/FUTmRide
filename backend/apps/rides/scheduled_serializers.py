@@ -13,6 +13,7 @@ from .scheduled_models import (
     PassengerStatus,
     PricingTier,
     ScheduledRide,
+    ScheduledRideBusAssignment,
     ScheduledRidePassenger,
     ScheduledRideStatus,
     ScheduledRideStop,
@@ -417,5 +418,25 @@ class ScheduledRideJoinSerializer(serializers.Serializer):
             amount_paid=price,
             payment_reference=tx.reference,
             cargo_description=validated_data.get('cargo_description', ''),
-            cargo_weight_kg=validated_data.get('cargo_weight_kg'),
         )
+
+class DispatchedBusListSerializer(serializers.ModelSerializer):
+    ride_reference = serializers.CharField(source='ride.reference', read_only=True)
+    origin_address = serializers.CharField(source='ride.origin_address', read_only=True)
+    destination_address = serializers.CharField(source='ride.destination_address', read_only=True)
+    scheduled_departure_date = serializers.DateField(source='ride.departure_date', read_only=True)
+    scheduled_window_start = serializers.TimeField(source='ride.window_start', read_only=True)
+    driver_name = serializers.SerializerMethodField()
+    passenger_count = serializers.IntegerField(source='total_assigned', read_only=True)
+
+    class Meta:
+        model = ScheduledRideBusAssignment
+        fields = [
+            'id', 'ride_reference', 'origin_address', 'destination_address', 
+            'scheduled_departure_date', 'scheduled_window_start',
+            'driver_name', 'bus_label', 'status', 'departed_at', 'arrived_at', 
+            'passenger_count', 'seated_capacity', 'standing_capacity'
+        ]
+
+    def get_driver_name(self, obj):
+        return obj.driver.full_name if obj.driver else 'Unassigned'

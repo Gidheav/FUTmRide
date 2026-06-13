@@ -1,23 +1,19 @@
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Navigation, Users, Truck, CalendarClock, BarChart3, Banknote, Bell, Settings, Calculator, FlaskConical } from 'lucide-react'
+import { LayoutDashboard, Navigation, Users, Truck, RadioTower, BarChart3, Banknote, Bell, Settings, Calculator, FlaskConical } from 'lucide-react'
 import { type CSSProperties } from 'react'
 import { T } from '../theme'
 
 const SIDEBAR_ICONS = [
   { icon: LayoutDashboard, path: '/' },
   { icon: Navigation, path: '/dispatch' },
-  { icon: Users, path: '/users' },
-  // Temporarily hidden: fleet
-  { icon: Truck, path: '/fleet', hidden: true },
-  { icon: CalendarClock, path: '/schedule' },
-  // Temporarily hidden: analytics
-  { icon: BarChart3, path: '/analytics', hidden: true },
-  { icon: Banknote, path: '/financial' },
+  { icon: RadioTower, path: '/operations' },
+  { icon: BarChart3, path: '/analytics' },
+  { icon: Truck, path: '/fleet' },
+  { icon: FlaskConical, path: '/test' },
   { icon: Calculator, path: '/engine' },
-  // Temporarily hidden: test tools
-  { icon: FlaskConical, path: '/test', hidden: true },
-  // Temporarily hidden: notifications
-  { icon: Bell, path: '/notifications', hidden: true },
+  { icon: Banknote, path: '/financial' },
+  { icon: Users, path: '/users' },
+  { icon: Bell, path: '/notifications' },
   { icon: Settings, path: '/settings' },
 ]
 
@@ -55,7 +51,7 @@ export default function CampusAdminSidebar() {
         </div>
       </div>
       <div style={s.sidebarIcons}>
-        {SIDEBAR_ICONS.filter((it) => !it.hidden).map((item, i) => {
+        {SIDEBAR_ICONS.map((item, i) => {
           const Icon = item.icon
           const isActive = location.pathname === item.path
           return (

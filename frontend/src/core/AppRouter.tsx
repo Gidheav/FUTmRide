@@ -20,7 +20,7 @@ import CampusAdminUnifiedVerification from "../campus-admin/pages/UnifiedVerific
 import CampusAdminRides from "../campus-admin/pages/RidesPage"
 import CampusAdminDispatch from "../campus-admin/pages/DispatchPage"
 import CampusAdminFleet from "../campus-admin/pages/FleetPage"
-import CampusAdminSchedule from "../campus-admin/pages/SchedulePage"
+import CampusAdminOperations from "../campus-admin/pages/OperationsPage"
 import CampusAdminAnalytics from "../campus-admin/pages/AnalyticsPage"
 import CampusAdminSettings from "../campus-admin/pages/SettingsPage"
 import CampusAdminNotifications from "../campus-admin/pages/NotificationsPage"
@@ -124,7 +124,7 @@ export default function AppRouter() {
         <Route path="/rides" element={<CampusAdminRides />} />
         <Route path="/dispatch" element={null} />
         <Route path="/fleet" element={<CampusAdminFleet />} />
-        <Route path="/schedule" element={<CampusAdminSchedule />} />
+        <Route path="/operations" element={<CampusAdminOperations />} />
         <Route path="/analytics" element={<CampusAdminAnalytics />} />
         <Route path="/financial" element={<CampusAdminFinancialHub />} />
         <Route path="/engine" element={<CampusAdminEngine />} />

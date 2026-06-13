@@ -14,8 +14,10 @@ from apps.payments.services import WalletService
 from .scheduled_models import (
     PassengerStatus,
     ScheduledRide,
+    ScheduledRideBusAssignment,
     ScheduledRidePassenger,
     ScheduledRideStatus,
+    BusAssignmentStatus,
 )
 from .scheduled_serializers import (
     ScheduledRideCreateSerializer,
@@ -24,6 +26,8 @@ from .scheduled_serializers import (
     ScheduledRideListSerializer,
     ScheduledRidePassengerReadSerializer,
     StudentScheduledRideDetailSerializer,
+    StudentScheduledRideDetailSerializer,
+    DispatchedBusListSerializer,
 )
 
 
@@ -115,6 +119,34 @@ class ScheduledRideListView(generics.ListAPIView):
             qs = qs.filter(departure_date__lte=date_to)
 
         return qs.order_by('departure_date', 'window_start')
+
+
+class DispatchedBusListView(generics.ListAPIView):
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
+    serializer_class = DispatchedBusListSerializer
+
+    def get_queryset(self):
+        qs = ScheduledRideBusAssignment.objects.select_related(
+            'ride', 'driver', 'ride__campus'
+        )
+        
+        # Scope by campus admin
+        if self.request.user.role != UserRole.ADMIN:
+            campus = admin_campus(self.request.user)
+            if not campus:
+                return qs.none()
+            qs = qs.filter(ride__campus=campus)
+
+        # Only return buses that have been dispatched
+        active_statuses = [
+            BusAssignmentStatus.DEPARTED,
+            BusAssignmentStatus.EN_ROUTE,
+            BusAssignmentStatus.ARRIVED,
+            BusAssignmentStatus.COMPLETED
+        ]
+        
+        qs = qs.filter(status__in=active_statuses)
+        return qs.order_by('-departed_at', 'ride__departure_date')
 
 
 class ScheduledRideDetailView(generics.RetrieveAPIView):

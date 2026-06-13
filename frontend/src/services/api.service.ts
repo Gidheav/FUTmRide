@@ -366,6 +366,11 @@ class ApiService {
     return all
   }
 
+  async getDispatchedBuses(): Promise<any[]> {
+    const res = await this.get<any>(`rides/scheduled/dispatched-buses/?page_size=500`)
+    return res?.results || res
+  }
+
   async getScheduledRideDetail(id: string): Promise<any> {
     return this.get(`rides/scheduled/${id}/`)
   }

@@ -18,9 +18,9 @@ import { useSettingsStore } from '../settingsStore'
 import { useAnalyticsStore } from '../analyticsStore'
 import { type FinancialTab, useFinancialStore } from '../financialStore'
 import { ENGINE_NAV_ITEMS, useEngineStore } from '../engineStore'
-import { type ScheduleTab, useScheduleStore } from '../scheduleStore'
+import { type OperationsTab, useOperationsStore } from '../operationsStore'
 
-const SCHEDULE_NAV_ITEMS: Array<{ label: string; tab: ScheduleTab }> = [
+const OPERATIONS_NAV_ITEMS: Array<{ label: string; tab: OperationsTab }> = [
   { label: 'DEPARTURES', tab: 'departures' },
   { label: 'ROUTES', tab: 'routes' },
   { label: 'FLEET', tab: 'fleet' },
@@ -30,7 +30,7 @@ const SCHEDULE_NAV_ITEMS: Array<{ label: string; tab: ScheduleTab }> = [
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/' },
   { label: 'Open Requests', icon: FolderOpen, path: '/rides' },
-  { label: 'Scheduled Rides', icon: CalendarClock, path: '/schedule' },
+  { label: 'Operations Hub', icon: Radio, path: '/operations' },
   { label: 'Analytics', icon: BarChart3, path: '/analytics' },
   { label: 'Finance', icon: Banknote, path: '/financial' },
   { label: 'Settings', icon: Settings, path: '/settings' },
@@ -54,7 +54,7 @@ export default function CampusAdminTopNav() {
   const { activeTab: analyticsTab, setActiveTab: setAnalyticsTab } = useAnalyticsStore()
   const { activeTab: financeTab, setActiveTab: setFinanceTab } = useFinancialStore()
   const { activeTab: engineTab, setActiveTab: setEngineTab } = useEngineStore()
-  const { activeTab: scheduleTab, setActiveTab: setScheduleTab } = useScheduleStore()
+  const { activeTab: operationsTab, setActiveTab: setOperationsTab } = useOperationsStore()
 
   const verifyMatch = location.pathname.match(/\/users\/(.*)\/verify/)
   const verifyDriverId = verifyMatch ? verifyMatch[1] : null
@@ -209,11 +209,11 @@ export default function CampusAdminTopNav() {
               Platform treasury — revenue, ledger, reports, and payouts
             </div>
           </div>
-        ) : location.pathname === '/schedule' ? (
+        ) : location.pathname === '/operations' ? (
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3, display: 'flex', alignItems: 'center' }}>
-              <CalendarClock size={16} color={T.accent} style={{ marginRight: 8 }} />
-              Schedule & On-Demand
+              <Radio size={16} color={T.accent} style={{ marginRight: 8 }} />
+              Operations Hub
             </div>
             <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
               Manage fleet departures, routes, and passenger assignments
@@ -392,26 +392,22 @@ export default function CampusAdminTopNav() {
             )
           })}
         </nav>
-      ) : location.pathname === '/schedule' ? (
+      ) : location.pathname === '/operations' ? (
         <nav style={s.topNav}>
-          {SCHEDULE_NAV_ITEMS.map((item) => {
-            const isActive = scheduleTab === item.tab
-            return (
-              <button
-                key={item.tab}
-                type="button"
-                style={{
-                  ...s.topNavBtn,
-                  color: isActive ? T.accent : T.textSecondary,
-                  background: isActive ? T.accentBg : 'transparent',
-                  letterSpacing: 0.4,
-                }}
-                onClick={() => setScheduleTab(item.tab)}
-              >
-                <span>{item.label}</span>
-              </button>
-            )
-          })}
+          {OPERATIONS_NAV_ITEMS.map(({ label, tab }) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setOperationsTab(tab)}
+              style={{
+                ...s.topNavBtn,
+                color: operationsTab === tab ? T.accent : T.textSecondary,
+                background: operationsTab === tab ? T.accentBg : 'transparent',
+              }}
+            >
+              <span>{label}</span>
+            </button>
+          ))}
         </nav>
       ) : location.pathname === '/engine' ? (
         <nav style={s.topNav}>

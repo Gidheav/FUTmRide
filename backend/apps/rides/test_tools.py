@@ -407,7 +407,7 @@ def create_bus_assignments(ride, profile, campus):
         .filter(driver_profile__verification_status=DriverProfile.VerificationStatus.APPROVED)
         .order_by('?')[:3]
     )
-    bus_count = 1 if profile['size'] in [VehicleSize.SEDAN, VehicleSize.SUV, VehicleSize.MINIVAN] else random.randint(1, 3)
+    bus_count = 1 if profile['size'] in [VehicleClass.SEDAN, VehicleClass.MPV, VehicleClass.MINIBUS] else random.randint(1, 3)
     created = []
     for order in range(1, bus_count + 1):
         seated = profile['seated']
