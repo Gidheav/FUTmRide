@@ -17,7 +17,7 @@ export const RoutesTab: React.FC<RoutesTabProps> = ({ search }) => {
   ].filter(r => r.name.toLowerCase().includes(search.toLowerCase()) || r.id.toLowerCase().includes(search.toLowerCase()))
 
   return (
-    <div style={{ padding: 24, flex: 1, overflowY: 'auto' }}>
+    <div style={{ padding: 0, marginTop: 4, flex: 1, overflowY: 'auto' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
         {routes.map(route => (
           <div key={route.id} style={{ ...campusPanel.card, display: 'flex', flexDirection: 'column' }}>

@@ -7,13 +7,17 @@ const SIDEBAR_ICONS = [
   { icon: LayoutDashboard, path: '/' },
   { icon: Navigation, path: '/dispatch' },
   { icon: Users, path: '/users' },
-  { icon: Truck, path: '/fleet' },
+  // Temporarily hidden: fleet
+  { icon: Truck, path: '/fleet', hidden: true },
   { icon: CalendarClock, path: '/schedule' },
-  { icon: BarChart3, path: '/analytics' },
+  // Temporarily hidden: analytics
+  { icon: BarChart3, path: '/analytics', hidden: true },
   { icon: Banknote, path: '/financial' },
   { icon: Calculator, path: '/engine' },
-  { icon: FlaskConical, path: '/test' },
-  { icon: Bell, path: '/notifications' },
+  // Temporarily hidden: test tools
+  { icon: FlaskConical, path: '/test', hidden: true },
+  // Temporarily hidden: notifications
+  { icon: Bell, path: '/notifications', hidden: true },
   { icon: Settings, path: '/settings' },
 ]
 
@@ -51,7 +55,7 @@ export default function CampusAdminSidebar() {
         </div>
       </div>
       <div style={s.sidebarIcons}>
-        {SIDEBAR_ICONS.map((item, i) => {
+        {SIDEBAR_ICONS.filter((it) => !it.hidden).map((item, i) => {
           const Icon = item.icon
           const isActive = location.pathname === item.path
           return (

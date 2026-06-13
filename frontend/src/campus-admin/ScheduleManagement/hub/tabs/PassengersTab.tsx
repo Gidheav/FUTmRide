@@ -17,8 +17,8 @@ export const PassengersTab: React.FC<PassengersTabProps> = ({ search }) => {
   ].filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || p.ticket.toLowerCase().includes(search.toLowerCase()) || p.route.toLowerCase().includes(search.toLowerCase()))
 
   return (
-    <div style={{ padding: '16px 24px', flex: 1, overflowX: 'auto' }}>
-      <div style={{ border: `1px solid ${T.border}`, borderRadius: 8, overflow: 'hidden' }}>
+    <div style={{ padding: 0, marginTop: 4, flex: 1, overflowX: 'auto' }}>
+      <div style={{ border: `1px solid ${T.border}` }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 13 }}>
           <thead>
             <tr style={{ background: T.bgInput, borderBottom: `1px solid ${T.border}` }}>
