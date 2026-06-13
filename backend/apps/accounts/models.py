@@ -242,11 +242,12 @@ class CampusAdminProfile(models.Model):
 
 class DriverProfile(models.Model):
     class VehicleType(models.TextChoices):
-        MOTORCYCLE = 'motorcycle', 'Motorcycle'
-        TRICYCLE = 'tricycle', 'Tricycle (Keke)'
+        MOTORBIKE = 'motorbike', 'Motorbike'
+        TRICYCLE = 'tricycle', 'Tricycle'
         SEDAN = 'sedan', 'Sedan'
-        SUV = 'suv', 'SUV'
-        MINIVAN = 'minivan', 'Minivan / Shuttle'
+        MPV = 'mpv', 'MPV'
+        MINIBUS = 'minibus', 'Minibus'
+        COACH = 'coach', 'Coach'
 
     class MaintenanceStatus(models.TextChoices):
         ACTIVE = 'active', 'Active'

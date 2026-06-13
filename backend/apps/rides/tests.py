@@ -24,7 +24,7 @@ from .scheduled_models import (
     ScheduledRide,
     ScheduledRidePassenger,
     ScheduledRideStatus,
-    VehicleSize,
+    VehicleClass,
 )
 from .tasks import auto_close_expired_scheduled_rides
 
@@ -282,7 +282,7 @@ class ScheduledRideTestCase(TestCase):
         self.other_driver = make_driver(phone='+2348000000011', approved=True, campus=self.other_campus)
         self.student = make_student(
             phone='+2348000000002',
-            email='student1@st.edu.ng',
+            email='student.m1234567@st.futminna.edu.ng',
             campus=self.campus,
             wallet_balance='1000.00',
         )
@@ -300,7 +300,7 @@ class ScheduledRideTestCase(TestCase):
         self.other_admin_token = other_admin_login.data['access']
 
         student_login = self.client.post(reverse('auth-login'), {
-            'email': 'student1@st.edu.ng',
+            'email': 'student.m1234567@st.futminna.edu.ng',
             'password': 'SecurePass123!',
         }, format='json')
         self.student_token = student_login.data['access']
@@ -316,7 +316,7 @@ class ScheduledRideTestCase(TestCase):
             'destination_address': 'Library',
             'destination_latitude': '9.075000',
             'destination_longitude': '7.480000',
-            'vehicle_size': VehicleSize.BUS,
+            'allowed_vehicle_types': [VehicleClass.COACH],
             'cargo_capacity_kg': 0,
             'accessibility_features': ['air_conditioning'],
             'standard_enabled': True,
@@ -420,7 +420,7 @@ class ScheduledRideTestCase(TestCase):
     def test_standing_tier_on_sedan_rejected(self):
         payload = {
             **self.base_payload,
-            'vehicle_size': VehicleSize.SEDAN,
+            'allowed_vehicle_types': [VehicleClass.SEDAN],
             'standing_enabled': True,
             'standing_price': '50.00',
         }

@@ -139,7 +139,7 @@ export default function EditProfilePage({ onBack }: Props) {
     return () => {
       isMounted = false;
     };
-  }, [cachedProfile, setCachedProfile]);
+  }, [setCachedProfile]);
 
   const savePersonalDetails = async () => {
     if (!firstName.trim() || !lastName.trim() || !phone.trim()) {

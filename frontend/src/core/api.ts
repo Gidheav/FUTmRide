@@ -1,8 +1,9 @@
 import axios from 'axios'
 import { clearTokens, getAccessToken, getRefreshToken, setTokens } from './tokenStorage'
 
-const rawBase = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8002/api/v1'
+const rawBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1'
 const BASE_URL = rawBase.endsWith('/') ? rawBase : `${rawBase}/`
+console.log('[LR-Ride API] VITE_API_BASE_URL =', import.meta.env.VITE_API_BASE_URL, '| BASE_URL =', BASE_URL)
 
 const AUTH_PUBLIC_PATHS = [
   'auth/login/',

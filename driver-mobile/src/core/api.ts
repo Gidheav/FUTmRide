@@ -105,7 +105,7 @@ export const driverApi = {
   updateProfile: (data: any) => api.patch('users/me/driver-profile/', data),
   getActiveRide: () => api.get('rides/driver/active/'),
   advanceRide: (rideId: string) => api.post(`rides/${rideId}/advance/`),
-  getMarketplaceRequests: () => api.get('rides/driver/requests/'),
+  getMarketplaceRequests: (url?: string) => api.get(url || 'rides/driver/requests/'),
   acceptRideRequest: (rideId: string) => api.post(`rides/driver/requests/${rideId}/accept/`),
   getGarageRides: () => api.get('rides/garage/mine/'),
   createGarageRide: (data: any) => api.post('rides/garage/create/', data),
@@ -120,8 +120,9 @@ export const driverApi = {
   pricingEstimate: (data: any) => api.post('pricing/estimate/', data),
   
   // Scheduled Rides
-  getAvailableScheduledRides: () => api.get('rides/scheduled/driver/available/'),
+  getAvailableScheduledRides: (url?: string) => api.get(url || 'rides/scheduled/driver/available/'),
   expressInterestScheduledRide: (rideId: string) => api.post(`rides/scheduled/${rideId}/interest/`),
+  cancelInterestScheduledRide: (rideId: string) => api.delete(`rides/scheduled/${rideId}/interest/`),
 }
 
 export const verificationApi = {

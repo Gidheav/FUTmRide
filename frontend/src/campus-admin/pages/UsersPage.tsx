@@ -42,7 +42,7 @@ export default function UsersPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['campus-admin-users', search],
     queryFn: async () => {
-      let url = '/users/?page=1&page_size=20&role=driver'
+      let url = '/users/?page=1&page_size=100000&role=driver'
       if (search) url += `&search=${encodeURIComponent(search)}`
       return (await api.get(url)).data
     },

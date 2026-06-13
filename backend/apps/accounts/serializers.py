@@ -38,9 +38,9 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         ]
 
     def validate_role(self, value):
-        if value != UserRole.STUDENT:
+        if value not in [UserRole.STUDENT, UserRole.DRIVER]:
             raise serializers.ValidationError(
-                "Only student accounts can be created via public registration."
+                "Only student and driver accounts can be created via public registration."
             )
         return value
 

@@ -19,12 +19,13 @@ class PricingTier(models.TextChoices):
     FREIGHT = 'freight', 'Freight'
 
 
-class VehicleSize(models.TextChoices):
+class VehicleClass(models.TextChoices):
+    MOTORBIKE = 'motorbike', 'Motorbike'
+    TRICYCLE = 'tricycle', 'Tricycle'
     SEDAN = 'sedan', 'Sedan'
-    SUV = 'suv', 'SUV'
-    MINIVAN = 'minivan', 'Minivan'
+    MPV = 'mpv', 'MPV'
     MINIBUS = 'minibus', 'Minibus'
-    BUS = 'bus', 'Bus'
+    COACH = 'coach', 'Coach'
 
 
 class PassengerStatus(models.TextChoices):
@@ -64,10 +65,9 @@ class ScheduledRide(models.Model):
     destination_latitude = models.DecimalField(max_digits=9, decimal_places=6)
     destination_longitude = models.DecimalField(max_digits=9, decimal_places=6)
 
-    vehicle_size = models.CharField(
-        max_length=20,
-        choices=VehicleSize.choices,
-        default=VehicleSize.BUS,
+    allowed_vehicle_types = models.JSONField(
+        default=list,
+        help_text="List of eligible VehicleClass string values"
     )
     cargo_capacity_kg = models.PositiveIntegerField(default=0)
     accessibility_features = models.JSONField(default=list, blank=True)

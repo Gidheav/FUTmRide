@@ -23,6 +23,7 @@ from apps.accounts.permissions import IsAdminOrCampusAdmin
 from apps.payments.models import WalletTransaction
 from apps.payments.services import generate_reference
 from apps.verification.models import AccountVerification, DriverDocument
+from .models import Ride, RideStatus, VehicleType, PaymentMethod
 from .scheduled_models import (
     PassengerStatus,
     PricingTier,
@@ -32,7 +33,7 @@ from .scheduled_models import (
     ScheduledRideStatus,
     ScheduledRideStop,
     SeatType,
-    VehicleSize,
+    VehicleClass,
 )
 from .scheduled_serializers import generate_scheduled_reference
 from .scheduled_views import scope_admin_queryset
@@ -42,7 +43,7 @@ TEST_MARKER = '[TEST_TOOL]'
 STUDENT_EMAIL_PREFIX = 'bulktest.student.'
 DRIVER_EMAIL_PREFIX = 'bulktest.driver.'
 ADMIN_EMAIL_PREFIX = 'bulktest.admin.'
-MAX_BULK_COUNT = 500
+MAX_BULK_COUNT = 2000
 DEFAULT_PASSWORD = 'TestPass2026!'
 DEFAULT_PASSWORD_HASH = make_password(DEFAULT_PASSWORD)
 
@@ -91,48 +92,42 @@ ROUTES = [
 
 VEHICLE_PROFILES = [
     {
-        'size': VehicleSize.SEDAN,
-        'label': 'Car',
+        'size': VehicleClass.SEDAN,
+        'label': 'Sedan',
         'seated': 4,
         'standing': 0,
         'driver_type': DriverProfile.VehicleType.SEDAN,
     },
     {
-        'size': VehicleSize.SUV,
-        'label': 'SUV',
+        'size': VehicleClass.MPV,
+        'label': 'MPV',
         'seated': 6,
         'standing': 0,
-        'driver_type': DriverProfile.VehicleType.SUV,
+        'driver_type': DriverProfile.VehicleType.MPV,
     },
     {
-        'size': VehicleSize.MINIVAN,
-        'label': 'Shuttle',
+        'size': VehicleClass.MINIBUS,
+        'label': 'Minibus',
         'seated': 14,
-        'standing': 0,
-        'driver_type': DriverProfile.VehicleType.MINIVAN,
+        'standing': 4,
+        'driver_type': DriverProfile.VehicleType.MINIBUS,
     },
     {
-        'size': VehicleSize.MINIBUS,
-        'label': 'Normal Bus',
-        'seated': 22,
-        'standing': 8,
-        'driver_type': DriverProfile.VehicleType.MINIVAN,
-    },
-    {
-        'size': VehicleSize.BUS,
-        'label': 'Long Bus',
+        'size': VehicleClass.COACH,
+        'label': 'Coach',
         'seated': 48,
         'standing': 18,
-        'driver_type': DriverProfile.VehicleType.MINIVAN,
+        'driver_type': DriverProfile.VehicleType.COACH,
     },
 ]
 
 DRIVER_VEHICLES = [
     (DriverProfile.VehicleType.SEDAN, 'Toyota', 'Corolla', 4),
-    (DriverProfile.VehicleType.SUV, 'Toyota', 'Highlander', 6),
-    (DriverProfile.VehicleType.MINIVAN, 'Toyota', 'HiAce Shuttle', 14),
+    (DriverProfile.VehicleType.MPV, 'Toyota', 'Sienna', 6),
+    (DriverProfile.VehicleType.MINIBUS, 'Toyota', 'HiAce Shuttle', 14),
+    (DriverProfile.VehicleType.COACH, 'Marcopolo', 'Bus', 48),
     (DriverProfile.VehicleType.TRICYCLE, 'Bajaj', 'RE Compact', 3),
-    (DriverProfile.VehicleType.MOTORCYCLE, 'Bajaj', 'Boxer', 1),
+    (DriverProfile.VehicleType.MOTORBIKE, 'Bajaj', 'Boxer', 1),
 ]
 
 
@@ -213,6 +208,10 @@ def test_rides_qs(user):
         user,
         ScheduledRide.objects.filter(admin_notes__contains=TEST_MARKER),
     )
+
+
+def test_ondemand_rides_qs():
+    return Ride.objects.filter(cancellation_reason__contains=TEST_MARKER)
 
 
 def ensure_students(count, campus):
@@ -432,72 +431,131 @@ def create_bus_assignments(ride, profile, campus):
 def ensure_rides(count, campus, creator):
     created = []
     errors = []
-    for index in range(count):
-        route = random.choice(ROUTES)
-        profile = random.choice(VEHICLE_PROFILES)
-        days_ahead = random.randint(1, 14)
-        start_hour = random.randint(7, 18)
-        start_minute = random.choice([0, 30])
-        window_start = datetime.time(start_hour, start_minute)
-        end_dt = datetime.datetime.combine(datetime.date.today(), window_start) + datetime.timedelta(minutes=25)
-        window_end = end_dt.time()
-        departure_date = timezone.localdate() + datetime.timedelta(days=days_ahead)
-        join_deadline = timezone.make_aware(datetime.datetime.combine(departure_date, window_end)) - datetime.timedelta(minutes=5)
-        standard_price = Decimal(str(random.choice([100, 150, 200, 250, 300])))
-        standing_enabled = profile['size'] in [VehicleSize.MINIBUS, VehicleSize.BUS] and random.choice([True, False])
-        premium_enabled = profile['size'] in [VehicleSize.SEDAN, VehicleSize.SUV, VehicleSize.MINIVAN] and random.choice([True, False])
-        freight_enabled = profile['size'] in [VehicleSize.MINIVAN, VehicleSize.MINIBUS, VehicleSize.BUS] and random.choice([True, False])
-        cargo_capacity = random.choice([0, 50, 100, 250]) if freight_enabled else 0
+    batch_size = 100
+    for batch_start in range(0, count, batch_size):
+        batch_count = min(batch_size, count - batch_start)
         try:
             with transaction.atomic():
-                driver = (
-                    test_drivers_qs(campus)
-                    .filter(driver_profile__vehicle_type=profile['driver_type'])
-                    .order_by('?')
-                    .first()
-                )
-                ride = ScheduledRide.objects.create(
-                    reference=generate_scheduled_reference(),
-                    created_by=creator,
-                    campus=campus,
-                    departure_date=departure_date,
-                    window_start=window_start,
-                    window_end=window_end,
-                    join_deadline=join_deadline,
-                    origin_address=route[0],
-                    origin_latitude=route[1],
-                    origin_longitude=route[2],
-                    destination_address=route[3],
-                    destination_latitude=route[4],
-                    destination_longitude=route[5],
-                    vehicle_size=profile['size'],
-                    cargo_capacity_kg=cargo_capacity,
-                    accessibility_features=random.sample(
-                        ['air_conditioning', 'low_floor', 'wheelchair_ramp'],
-                        random.randint(0, 2),
-                    ),
-                    assigned_driver=driver,
-                    standard_enabled=True,
-                    standard_price=standard_price,
-                    standing_enabled=standing_enabled,
-                    standing_price=standard_price * Decimal('0.70') if standing_enabled else Decimal('0.00'),
-                    premium_enabled=premium_enabled,
-                    premium_price=standard_price * Decimal('1.60') if premium_enabled else Decimal('0.00'),
-                    freight_enabled=freight_enabled,
-                    freight_price=standard_price * Decimal('2.00') if freight_enabled else Decimal('0.00'),
-                    admin_notes=f'{TEST_MARKER} bulk generated scheduled ride',
-                )
-                make_stops(ride, *route)
-                buses = create_bus_assignments(ride, profile, campus)
-                created.append({
-                    'id': str(ride.id),
-                    'reference': ride.reference,
-                    'vehicle_size': ride.vehicle_size,
-                    'buses': len(buses),
-                    'departure_date': ride.departure_date.isoformat(),
-                })
+                for index in range(batch_start, batch_start + batch_count):
+                    route = random.choice(ROUTES)
+                    profile = random.choice(VEHICLE_PROFILES)
+                    days_ahead = random.randint(1, 14)
+                    start_hour = random.randint(7, 18)
+                    start_minute = random.choice([0, 30])
+                    window_start = datetime.time(start_hour, start_minute)
+                    end_dt = datetime.datetime.combine(datetime.date.today(), window_start) + datetime.timedelta(minutes=25)
+                    window_end = end_dt.time()
+                    departure_date = timezone.localdate() + datetime.timedelta(days=days_ahead)
+                    join_deadline = timezone.make_aware(datetime.datetime.combine(departure_date, window_end)) - datetime.timedelta(minutes=5)
+                    standard_price = Decimal(str(random.choice([100, 150, 200, 250, 300])))
+                    standing_enabled = profile['size'] in [VehicleClass.MINIBUS, VehicleClass.COACH] and random.choice([True, False])
+                    premium_enabled = profile['size'] in [VehicleClass.SEDAN, VehicleClass.MPV] and random.choice([True, False])
+                    freight_enabled = profile['size'] in [VehicleClass.MPV, VehicleClass.MINIBUS, VehicleClass.COACH] and random.choice([True, False])
+                    cargo_capacity = random.choice([0, 50, 100, 250]) if freight_enabled else 0
+                    
+                    driver = (
+                        test_drivers_qs(campus)
+                        .filter(driver_profile__vehicle_type=profile['driver_type'])
+                        .order_by('?')
+                        .first()
+                    )
+                    ride = ScheduledRide.objects.create(
+                        reference=generate_scheduled_reference(),
+                        created_by=creator,
+                        campus=campus,
+                        departure_date=departure_date,
+                        window_start=window_start,
+                        window_end=window_end,
+                        join_deadline=join_deadline,
+                        origin_address=route[0],
+                        origin_latitude=route[1],
+                        origin_longitude=route[2],
+                        destination_address=route[3],
+                        destination_latitude=route[4],
+                        destination_longitude=route[5],
+                        allowed_vehicle_types=[profile['size']],
+                        cargo_capacity_kg=cargo_capacity,
+                        accessibility_features=random.sample(
+                            ['air_conditioning', 'low_floor', 'wheelchair_ramp'],
+                            random.randint(0, 2),
+                        ),
+                        assigned_driver=driver,
+                        standard_enabled=True,
+                        standard_price=standard_price,
+                        standing_enabled=standing_enabled,
+                        standing_price=standard_price * Decimal('0.70') if standing_enabled else Decimal('0.00'),
+                        premium_enabled=premium_enabled,
+                        premium_price=standard_price * Decimal('1.60') if premium_enabled else Decimal('0.00'),
+                        freight_enabled=freight_enabled,
+                        freight_price=standard_price * Decimal('2.00') if freight_enabled else Decimal('0.00'),
+                        admin_notes=f'{TEST_MARKER} bulk generated scheduled ride',
+                    )
+                    make_stops(ride, *route)
+                    buses = create_bus_assignments(ride, profile, campus)
+                    created.append({
+                        'id': str(ride.id),
+                        'reference': ride.reference,
+                        'allowed_vehicle_types': ride.allowed_vehicle_types,
+                        'buses': len(buses),
+                        'departure_date': ride.departure_date.isoformat(),
+                    })
         except Exception as exc:
-            errors.append({'index': index + 1, 'message': str(exc)})
+            errors.append({'message': f'Batch failed at index {batch_start}: {str(exc)}'})
+    return created, errors
+
+
+def ensure_ondemand_rides(count, campus):
+    created = []
+    errors = []
+    students = list(test_students_qs(campus).order_by('?')[:count])
+    
+    if len(students) < count:
+        extra, _ = ensure_students(count - len(students), campus)
+        students = list(test_students_qs(campus).order_by('?')[:count])
+    
+    rides_to_create = []
+    for index, student in enumerate(students[:count]):
+        route = random.choice(ROUTES)
+        vehicle_type = random.choice([VehicleType.SEDAN, VehicleType.MPV, VehicleType.MINIBUS])
+        distance = Decimal(str(random.uniform(2.0, 15.0)))
+        duration = int(distance * 3) # Roughly 3 mins per km
+        total_fare = distance * Decimal('150.00')
+        
+        reference = generate_reference('RD')
+        ride = Ride(
+            reference=reference,
+            student=student,
+            status=RideStatus.SEARCHING,
+            vehicle_type_requested=vehicle_type,
+            requested_seats=random.randint(1, 4),
+            pickup_latitude=route[1],
+            pickup_longitude=route[2],
+            pickup_address=route[0],
+            dropoff_latitude=route[4],
+            dropoff_longitude=route[5],
+            dropoff_address=route[3],
+            estimated_distance_km=distance,
+            estimated_duration_minutes=duration,
+            base_fare=total_fare * Decimal('0.8'),
+            total_fare=total_fare,
+            payment_method=PaymentMethod.WALLET,
+            cancellation_reason=f'{TEST_MARKER} generated on-demand ride',
+        )
+        rides_to_create.append(ride)
+        
+    try:
+        created_rides = Ride.objects.bulk_create(rides_to_create)
+        for ride in created_rides:
+            created.append({
+                'id': str(ride.id) if ride.id else '',
+                'reference': ride.reference,
+                'student': str(ride.student_id),
+                'status': ride.status,
+                'total_fare': str(ride.total_fare),
+            })
+    except Exception as exc:
+        errors.append({'message': f'Bulk create failed: {str(exc)}'})
+        
     return created, errors
 
 
@@ -553,6 +611,9 @@ def serialize_summary(user):
         .select_related('assigned_driver')
         .order_by('departure_date', 'window_start')
     )
+    
+    ondemand_rides = test_ondemand_rides_qs().order_by('-requested_at')
+
     return {
         'enabled': test_tools_enabled(),
         'campus': campus.name if campus else None,
@@ -561,6 +622,7 @@ def serialize_summary(user):
             'drivers': test_drivers_qs(campus).count() if campus else 0,
             'admins': test_admins_qs(campus).count() if campus else 0,
             'scheduled_rides': test_rides_qs(user).count(),
+            'ondemand_rides': ondemand_rides.count(),
         },
         'rides': [
             {
@@ -570,11 +632,23 @@ def serialize_summary(user):
                 'departure_date': ride.departure_date.isoformat(),
                 'window': f'{ride.window_start.strftime("%H:%M")} - {ride.window_end.strftime("%H:%M")}',
                 'status': ride.status,
-                'vehicle_size': ride.vehicle_size,
+                'allowed_vehicle_types': ride.allowed_vehicle_types,
                 'passenger_count': ride.passenger_count,
                 'driver': ride.assigned_driver.full_name if ride.assigned_driver else None,
             }
             for ride in rides
+        ],
+        'ondemand_rides': [
+            {
+                'id': str(ride.id),
+                'reference': ride.reference,
+                'route': f'{ride.pickup_address} -> {ride.dropoff_address}',
+                'status': ride.status,
+                'vehicle_type': ride.vehicle_type_requested,
+                'passenger_count': ride.requested_seats,
+                'student': ride.student.full_name,
+            }
+            for ride in ondemand_rides[:20] # Limit to latest 20 for payload size
         ],
     }
 
@@ -709,6 +783,38 @@ class TestToolDeleteRidesView(TestToolBase):
                     ScheduledRidePassenger.objects.filter(ride=ride).delete()
                     ride.delete()
                     deleted += 1
+            except Exception as exc:
+                errors.append({'id': str(ride.id), 'reference': ride.reference, 'message': str(exc)})
+        return Response({'deleted': deleted, 'errors': errors})
+
+
+class TestToolCreateOnDemandRidesView(TestToolBase):
+    def post(self, request):
+        campus = self.guard(request)
+        if isinstance(campus, Response):
+            return campus
+        count, error = self.count_or_error(request)
+        if error:
+            return error
+        created, errors = ensure_ondemand_rides(count, campus)
+        return Response({'created': len(created), 'records': created, 'errors': errors})
+
+
+class TestToolDeleteOnDemandRidesView(TestToolBase):
+    def post(self, request):
+        campus = self.guard(request)
+        if isinstance(campus, Response):
+            return campus
+        count, error = self.count_or_error(request)
+        if error:
+            return error
+        rides = list(test_ondemand_rides_qs().order_by('?')[:count])
+        deleted = 0
+        errors = []
+        for ride in rides:
+            try:
+                ride.delete()
+                deleted += 1
             except Exception as exc:
                 errors.append({'id': str(ride.id), 'reference': ride.reference, 'message': str(exc)})
         return Response({'deleted': deleted, 'errors': errors})

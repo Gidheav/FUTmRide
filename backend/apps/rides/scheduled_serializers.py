@@ -16,15 +16,10 @@ from .scheduled_models import (
     ScheduledRidePassenger,
     ScheduledRideStatus,
     ScheduledRideStop,
-    VehicleSize,
+    VehicleClass,
 )
 
 ACCESSIBILITY_FEATURES = {'wheelchair_ramp', 'liftgate', 'low_floor', 'air_conditioning'}
-SUPPORTED_DRIVER_SIZE_MATCHES = {
-    VehicleSize.SEDAN: 'sedan',
-    VehicleSize.SUV: 'suv',
-    VehicleSize.MINIVAN: 'minivan',
-}
 
 
 def get_admin_campus(user):
@@ -75,7 +70,7 @@ class ScheduledRideCreateSerializer(serializers.ModelSerializer):
             'departure_date', 'window_start', 'window_end',
             'origin_address', 'origin_latitude', 'origin_longitude',
             'destination_address', 'destination_latitude', 'destination_longitude',
-            'vehicle_size', 'cargo_capacity_kg', 'accessibility_features', 'assigned_driver',
+            'allowed_vehicle_types', 'cargo_capacity_kg', 'accessibility_features', 'assigned_driver',
             'standard_enabled', 'standard_price',
             'standing_enabled', 'standing_price',
             'premium_enabled', 'premium_price',
@@ -139,12 +134,16 @@ class ScheduledRideCreateSerializer(serializers.ModelSerializer):
             if departure_dt <= timezone.now():
                 raise serializers.ValidationError({'window_start': 'Departure time must be in the future.'})
 
-        vehicle_size = attrs.get('vehicle_size', VehicleSize.BUS)
+        allowed_vehicle_types = attrs.get('allowed_vehicle_types', [])
+        if not isinstance(allowed_vehicle_types, list) or not allowed_vehicle_types:
+            raise serializers.ValidationError({'allowed_vehicle_types': 'Must provide a list of allowed vehicle types.'})
+
         standing_enabled = attrs.get('standing_enabled', False)
         freight_enabled = attrs.get('freight_enabled', False)
         cargo_capacity = attrs.get('cargo_capacity_kg', 0)
 
-        if standing_enabled and vehicle_size not in [VehicleSize.MINIBUS, VehicleSize.BUS]:
+        supports_standing = any(v in [VehicleClass.MINIBUS, VehicleClass.COACH] for v in allowed_vehicle_types)
+        if standing_enabled and not supports_standing:
             raise serializers.ValidationError({
                 'standing_enabled': 'Standing tier is only allowed on Minibus or Bus vehicles.',
             })
@@ -170,13 +169,13 @@ class ScheduledRideCreateSerializer(serializers.ModelSerializer):
 
         assigned_driver = attrs.get('assigned_driver')
         if assigned_driver:
-            self._validate_assigned_driver(assigned_driver, campus, vehicle_size)
+            self._validate_assigned_driver(assigned_driver, campus, allowed_vehicle_types)
             self._validate_assigned_driver_window(assigned_driver, departure_date, window_start)
 
         self._validate_route_window(campus, attrs, departure_date, window_start)
         return attrs
 
-    def _validate_assigned_driver(self, driver, campus, vehicle_size):
+    def _validate_assigned_driver(self, driver, campus, allowed_vehicle_types):
         try:
             profile = driver.driver_profile
         except DriverProfile.DoesNotExist:
@@ -189,10 +188,10 @@ class ScheduledRideCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'assigned_driver': 'Assigned driver must be approved.'})
         if profile.maintenance_status != DriverProfile.MaintenanceStatus.ACTIVE:
             raise serializers.ValidationError({'assigned_driver': 'Assigned vehicle must be active.'})
-        expected_type = SUPPORTED_DRIVER_SIZE_MATCHES.get(vehicle_size)
-        if expected_type and profile.vehicle_type != expected_type:
+        
+        if profile.vehicle_type not in allowed_vehicle_types:
             raise serializers.ValidationError({
-                'assigned_driver': f'Assigned driver vehicle must match {vehicle_size}.',
+                'assigned_driver': f'Assigned driver vehicle type ({profile.vehicle_type}) is not in allowed types: {allowed_vehicle_types}.',
             })
 
     def _validate_route_window(self, campus, attrs, departure_date, window_start):
@@ -266,7 +265,7 @@ class ScheduledRideListSerializer(serializers.ModelSerializer):
         model = ScheduledRide
         fields = [
             'id', 'reference', 'departure_date', 'window_start', 'window_end', 'join_deadline',
-            'origin_address', 'destination_address', 'vehicle_size', 'cargo_capacity_kg',
+            'origin_address', 'destination_address', 'allowed_vehicle_types', 'cargo_capacity_kg',
             'accessibility_features', 'assigned_driver', 'assigned_driver_name', 'status',
             'standard_enabled', 'standard_price', 'standing_enabled', 'standing_price',
             'premium_enabled', 'premium_price', 'freight_enabled', 'freight_price',
@@ -325,7 +324,7 @@ class ScheduledRideDetailSerializer(serializers.ModelSerializer):
             'id', 'reference', 'departure_date', 'window_start', 'window_end', 'join_deadline',
             'origin_address', 'origin_latitude', 'origin_longitude',
             'destination_address', 'destination_latitude', 'destination_longitude',
-            'vehicle_size', 'cargo_capacity_kg', 'accessibility_features',
+            'allowed_vehicle_types', 'cargo_capacity_kg', 'accessibility_features',
             'assigned_driver', 'assigned_driver_name', 'standard_enabled', 'standard_price',
             'standing_enabled', 'standing_price', 'premium_enabled', 'premium_price',
             'freight_enabled', 'freight_price', 'status', 'admin_notes', 'stops', 'passengers',
@@ -367,8 +366,10 @@ class ScheduledRideJoinSerializer(serializers.Serializer):
             raise serializers.ValidationError({'pricing_tier': f'The {tier} tier is not available for this ride.'})
         if ScheduledRidePassenger.objects.filter(ride=ride, student=student).exists():
             raise serializers.ValidationError('You already have a ticket for this ride.')
-        if tier == PricingTier.STANDING and ride.vehicle_size not in [VehicleSize.MINIBUS, VehicleSize.BUS]:
-            raise serializers.ValidationError({'pricing_tier': 'Standing tier is only available on Minibus or Bus rides.'})
+        
+        supports_standing = any(v in [VehicleClass.MINIBUS, VehicleClass.COACH] for v in ride.allowed_vehicle_types)
+        if tier == PricingTier.STANDING and not supports_standing:
+            raise serializers.ValidationError({'pricing_tier': 'Standing tier is only available on Minibus or Coach rides.'})
         if tier == PricingTier.FREIGHT:
             if ride.cargo_capacity_kg <= 0:
                 raise serializers.ValidationError({'pricing_tier': 'Freight is not available for this ride.'})

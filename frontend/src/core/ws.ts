@@ -4,7 +4,7 @@ export function createAuthenticatedWebSocket(path: string): WebSocket | null {
     sessionStorage.getItem('access_token') || localStorage.getItem('access_token')
   if (!token) return null
 
-  const base = import.meta.env.VITE_WS_BASE_URL || 'ws://127.0.0.1:8002'
+  const base = import.meta.env.VITE_WS_BASE_URL || 'ws://127.0.0.1:8000'
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
   return new WebSocket(`${base}${normalizedPath}`, [`access_token.${token}`])
 }

@@ -514,26 +514,47 @@ class RideAutoAllocateView(APIView):
 
 # ── Driver Bidding / Availability ──────────────────────────────────────────────
 
-class DriverAvailableScheduledRidesView(APIView):
+class DriverAvailableScheduledRidesView(generics.ListAPIView):
     """List open scheduled rides for drivers."""
     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request):
-        if request.user.role != UserRole.DRIVER:
-            return Response({'error': 'Only drivers can view available rides.'}, status=status.HTTP_403_FORBIDDEN)
-            
-        # Get rides that are scheduled
-        from .scheduled_serializers import ScheduledRideListSerializer
-        rides = ScheduledRide.objects.filter(status=ScheduledRideStatus.SCHEDULED)
+    def get_queryset(self):
+        if self.request.user.role != UserRole.DRIVER:
+            raise PermissionDenied('Only drivers can view available rides.')
         
-        # Exclude rides where the driver has already expressed interest or is assigned
-        rides = rides.exclude(
-            interested_drivers__driver=request.user,
+        return ScheduledRide.objects.filter(
+            status=ScheduledRideStatus.SCHEDULED
         ).exclude(
-            bus_assignments__driver=request.user,
+            bus_assignments__driver=self.request.user,
         ).order_by('departure_date', 'window_start')
         
-        return Response(ScheduledRideListSerializer(rides, many=True).data)
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        
+        # Annotate with whether this driver has already expressed interest
+        interested_ids = set(
+            ScheduledRideDriverInterest.objects.filter(
+                driver=request.user, status='interested'
+            ).values_list('ride_id', flat=True)
+        )
+        
+        from .scheduled_serializers import ScheduledRideListSerializer
+        
+        if page is not None:
+            data = ScheduledRideListSerializer(page, many=True).data
+            for item in data:
+                import uuid as _uuid
+                rid = _uuid.UUID(str(item['id']))
+                item['driver_interest_status'] = 'interested' if rid in interested_ids else None
+            return self.get_paginated_response(data)
+
+        data = ScheduledRideListSerializer(queryset, many=True).data
+        for item in data:
+            import uuid as _uuid
+            rid = _uuid.UUID(str(item['id']))
+            item['driver_interest_status'] = 'interested' if rid in interested_ids else None
+        return Response(data)
 
 class DriverExpressInterestView(APIView):
     """Driver expresses interest in taking a scheduled ride."""
@@ -561,6 +582,37 @@ class DriverExpressInterestView(APIView):
             return Response({'error': f'You have already {interest.status} this ride.'}, status=status.HTTP_400_BAD_REQUEST)
             
         return Response({'message': 'Interest expressed successfully.'}, status=status.HTTP_201_CREATED)
+
+    def delete(self, request, ride_id):
+        """Driver withdraws interest in a scheduled ride."""
+        if request.user.role != UserRole.DRIVER:
+            return Response({'error': 'Only drivers can withdraw interest.'}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            ride = ScheduledRide.objects.get(id=ride_id)
+        except ScheduledRide.DoesNotExist:
+            raise NotFound('Scheduled ride not found.')
+        deleted, _ = ScheduledRideDriverInterest.objects.filter(
+            ride=ride, driver=request.user, status='interested'
+        ).delete()
+        if not deleted:
+            return Response({'error': 'No active interest found to withdraw.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'message': 'Interest withdrawn successfully.'}, status=status.HTTP_200_OK)
+
+
+class DriverMyInterestedRidesView(APIView):
+    """Returns rides where the current driver has expressed interest."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != UserRole.DRIVER:
+            return Response({'error': 'Only drivers can access this.'}, status=status.HTTP_403_FORBIDDEN)
+        from .scheduled_serializers import ScheduledRideListSerializer
+        ride_ids = ScheduledRideDriverInterest.objects.filter(
+            driver=request.user, status='interested'
+        ).values_list('ride_id', flat=True)
+        rides = ScheduledRide.objects.filter(id__in=ride_ids, status=ScheduledRideStatus.SCHEDULED
+            ).order_by('departure_date', 'window_start')
+        return Response(ScheduledRideListSerializer(rides, many=True).data)
 
 class AdminInterestedDriversView(APIView):
     """Admin fetches interested drivers for a scheduled ride."""

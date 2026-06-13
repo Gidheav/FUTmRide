@@ -490,9 +490,7 @@ export default function DriverApp() {
   if (user.role !== 'driver') {
     return (
       <SafeAreaProvider>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <DriverLoginScreen />
-        </View>
+        <DriverLoginScreen />
       </SafeAreaProvider>
     )
   }

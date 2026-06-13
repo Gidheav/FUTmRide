@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   Modal,
   ScrollView,
   StyleSheet,
@@ -10,6 +11,9 @@ import {
   View,
   Switch,
   RefreshControl,
+  LayoutAnimation,
+  Platform,
+  UIManager,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
@@ -20,6 +24,28 @@ import { useDriverRidesStore } from '../../core/driverRidesStore';
 import * as Location from 'expo-location';
 import QRCode from 'react-native-qrcode-svg';
 import locationData from '../locations.json';
+
+if (
+  Platform.OS === 'android' &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+const customZoomAnimation = {
+  duration: 300,
+  create: {
+    type: LayoutAnimation.Types.easeInEaseOut,
+    property: LayoutAnimation.Properties.scaleXY,
+  },
+  update: {
+    type: LayoutAnimation.Types.easeInEaseOut,
+  },
+  delete: {
+    type: LayoutAnimation.Types.easeInEaseOut,
+    property: LayoutAnimation.Properties.scaleXY,
+  },
+};
 
 const FILTERS = [
   { label: 'High Fare', icon: 'payments' as const },
@@ -185,6 +211,159 @@ const formatCompletedAt = (value: string | null | undefined) => {
   });
 };
 
+const getVehicleIcon = (size: string): React.ComponentProps<typeof MaterialIcons>['name'] => {
+  const s = String(size || '').toLowerCase();
+  if (s.includes('sedan') || s.includes('car')) return 'directions-car';
+  if (s.includes('minivan') || s.includes('van')) return 'airport-shuttle';
+  if (s.includes('minibus')) return 'directions-transit';
+  if (s.includes('bus') || s.includes('long_bus') || s.includes('coaster')) return 'directions-bus';
+  return 'directions-car';
+};
+
+const ScheduledRideCard = React.memo(function ScheduledRideCard({ ride, onExpressInterest, onCancelInterest, isExpressing, isCancelling, disabled }: { 
+  ride: any, 
+  onExpressInterest: (id: string) => void, 
+  onCancelInterest: (id: string) => void,
+  isExpressing: boolean,
+  isCancelling: boolean,
+  disabled?: boolean,
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const date = new Date(`${ride.departure_date}T${ride.window_start}`);
+  const isInterested = ride.driver_interest_status === 'interested';
+  
+  return (
+    <TouchableOpacity activeOpacity={0.7} onPress={() => setExpanded(!expanded)} style={styles.premiumCard}>
+      {/* Header */}
+      <View style={styles.premiumCardHeader}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+          <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}>{ride.reference}</Text>
+          {isInterested && (
+            <View style={styles.premiumCardInterestedBadge}>
+              <MaterialIcons name="check" size={12} color={COLORS.primary} />
+            </View>
+          )}
+        </View>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+            {Array.isArray(ride.allowed_vehicle_types) ? ride.allowed_vehicle_types.map((vt: string, idx: number) => (
+               <MaterialIcons key={idx} name={getVehicleIcon(vt)} size={16} color={COLORS.onSurfaceVariant} />
+            )) : <MaterialIcons name={getVehicleIcon(ride.vehicle_size)} size={16} color={COLORS.onSurfaceVariant} />}
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+            <MaterialIcons name="people" size={16} color={COLORS.onSurfaceVariant} />
+            <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>{ride.passenger_count || 0}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+            <MaterialIcons name="location-on" size={16} color={COLORS.onSurfaceVariant} />
+            <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>{ride.stops_count || 0}</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Main Info */}
+      <View style={styles.premiumCardBody}>
+        <View style={styles.premiumCardTimeCol}>
+          <MaterialIcons name="schedule" size={20} color={COLORS.primary} />
+          <Text style={[FONTS.bodyLg, { color: COLORS.onSurface, fontWeight: '500' }]} numberOfLines={1} adjustsFontSizeToFit>
+            {date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+          </Text>
+          <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant }]} numberOfLines={1}>
+            {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          </Text>
+        </View>
+
+        <View style={styles.premiumCardRouteCol}>
+          {/* Vertical Timeline */}
+          <View style={styles.timelineRow}>
+            <View style={styles.timelineGraphic}>
+              <View style={styles.timelineDotTop} />
+              <View style={styles.timelineLine} />
+            </View>
+            <Text style={[FONTS.bodyMd, { color: COLORS.onSurface, flex: 1, paddingBottom: 4 }]} numberOfLines={2}>
+              {ride.origin_address}
+            </Text>
+          </View>
+          <View style={styles.timelineRow}>
+            <View style={styles.timelineGraphic}>
+              <View style={styles.timelineDotBottom} />
+            </View>
+            <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, flex: 1 }]} numberOfLines={2}>
+              {ride.destination_address}
+            </Text>
+          </View>
+        </View>
+
+        {/* Action Column */}
+        <View style={styles.premiumCardActionCol}>
+          {isInterested ? (
+            <TouchableOpacity 
+              style={[styles.actionColBtn, styles.actionColBtnCancel, disabled && { opacity: 0.5 }]} 
+              onPress={() => onCancelInterest(ride.id)} 
+              disabled={isCancelling || disabled}
+            >
+              {isCancelling ? (
+                <ActivityIndicator size="small" color={COLORS.error} />
+              ) : (
+                <MaterialIcons name="close" size={20} color={COLORS.error} />
+              )}
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity 
+              style={[styles.actionColBtn, styles.actionColBtnPrimary, disabled && { opacity: 0.5 }]} 
+              onPress={() => onExpressInterest(ride.id)} 
+              disabled={isExpressing || disabled}
+            >
+              {isExpressing ? (
+                <ActivityIndicator size="small" color={COLORS.onPrimary} />
+              ) : (
+                <MaterialIcons name="check" size={20} color={COLORS.onPrimary} />
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      {/* Expanded Info */}
+      {expanded && (
+        <View style={styles.premiumCardExpandedInfo}>
+          <View style={styles.premiumCardInfoGrid}>
+            <View style={styles.premiumCardInfoItem}>
+              <MaterialIcons name="directions-car" size={16} color={COLORS.outline} />
+              <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginLeft: 6 }]}>{String(ride.vehicle_size || '').replace(/_/g, ' ')}</Text>
+            </View>
+          </View>
+          
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+            {ride.freight_enabled && (
+              <View style={{ backgroundColor: COLORS.surfaceContainer, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 }}>
+                <Text style={[FONTS.bodySm, { color: COLORS.onSurface }]}>Freight: {formatCurrency(ride.freight_price)}</Text>
+              </View>
+            )}
+            {ride.premium_enabled && (
+              <View style={{ backgroundColor: COLORS.surfaceContainer, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 }}>
+                <Text style={[FONTS.bodySm, { color: COLORS.onSurface }]}>Premium: {formatCurrency(ride.premium_price)}</Text>
+              </View>
+            )}
+            {ride.standard_enabled && (
+              <View style={{ backgroundColor: COLORS.surfaceContainer, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 }}>
+                <Text style={[FONTS.bodySm, { color: COLORS.onSurface }]}>Standard: {formatCurrency(ride.standard_price)}</Text>
+              </View>
+            )}
+            {ride.standing_enabled && (
+              <View style={{ backgroundColor: COLORS.surfaceContainer, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 }}>
+                <Text style={[FONTS.bodySm, { color: COLORS.onSurface }]}>Standing: {formatCurrency(ride.standing_price)}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
+
+    </TouchableOpacity>
+  );
+});
+
 export default function DriverRidesPage() {
   const [driverMode, setDriverMode] = useState<DriverMode>('garage');
   const {
@@ -208,6 +387,13 @@ export default function DriverRidesPage() {
   const [acceptingRideId, setAcceptingRideId] = useState<string | null>(null);
   const [driverHasActiveRide, setDriverHasActiveRide] = useState(cachedHasActiveRide);
   const [activeFilter, setActiveFilter] = useState('High Fare');
+  // Pagination State
+  const [scheduledNextUrl, setScheduledNextUrl] = useState<string | null>(null);
+  const [marketplaceNextUrl, setMarketplaceNextUrl] = useState<string | null>(null);
+  const [loadingMoreScheduled, setLoadingMoreScheduled] = useState(false);
+  const [loadingMoreMarketplace, setLoadingMoreMarketplace] = useState(false);
+  const [scheduledTotalCount, setScheduledTotalCount] = useState<number>(0);
+  const [marketplaceTotalCount, setMarketplaceTotalCount] = useState<number>(0);
 
   const [garageRide, setGarageRide] = useState<GarageRide | null>(cachedGarageRide);
   const [garagePassengers, setGaragePassengers] = useState<GaragePassenger[]>(cachedGaragePassengers);
@@ -232,12 +418,18 @@ export default function DriverRidesPage() {
   // Scheduled Rides Bidding State
   const [availableScheduledRides, setAvailableScheduledRides] = useState<any[]>([]);
   const [loadingScheduled, setLoadingScheduled] = useState(false);
+  const scheduledFetchedOnce = useRef(false);
   const [expressingInterestId, setExpressingInterestId] = useState<string | null>(null);
   const [scheduledError, setScheduledError] = useState<string | null>(null);
 
   const errorHoldUntil = useRef<number>(0);
   const initialFetchDone = useRef(cachedRequests.length > 0);
   const isFetchingRequests = useRef(false);
+
+  // Active On-Demand Ride State
+  const [activeOnDemandRide, setActiveOnDemandRide] = useState<any>(null);
+  const [loadingActiveOnDemand, setLoadingActiveOnDemand] = useState(false);
+  const [advancingRideId, setAdvancingRideId] = useState<string | null>(null);
 
   const filteredLocations = useMemo(() => filterLocations(locationQuery), [locationQuery]);
   const seatOptions = useMemo(() => getSeatOptionsByVehicleType(driverVehicleType), [driverVehicleType]);
@@ -306,18 +498,41 @@ export default function DriverRidesPage() {
     };
   }, []);
 
-  // ── Fetch Scheduled Rides ──
+  // ── Fetch Scheduled Rides (always runs on mount so data is ready for instant tab switch) ──
   useEffect(() => {
     let isMounted = true;
-    let interval: any;
 
     const fetchScheduled = async () => {
-      if (driverMode !== 'garage' || garageRide) return;
+      if (garageRide || isOnline === false) {
+        if (isMounted) setLoadingScheduled(false);
+        return;
+      }
+      if (isOnline === null) return; // Wait for status to be determined
+      // Only show loading spinner on the very first fetch
+      if (!scheduledFetchedOnce.current) setLoadingScheduled(true);
       try {
         const res = await driverApi.getAvailableScheduledRides();
         if (isMounted) {
-          setAvailableScheduledRides(res?.data || []);
+          const data = res?.data;
+          const newData = Array.isArray(data) ? data : (data?.results ?? []);
+          const nextUrl = data?.pagination?.next || data?.next || null;
+          const totalCount = data?.pagination?.count ?? newData.length;
+          setScheduledTotalCount(totalCount);
+          // On first page poll, replace state (page 1 only). Preserve loaded pages by merging.
+          setAvailableScheduledRides((prev) => {
+            if (prev.length <= newData.length || prev.length === 0) {
+              setScheduledNextUrl(nextUrl);
+              LayoutAnimation.configureNext(customZoomAnimation);
+              return newData;
+            }
+            // Merge new page-1 data into existing multi-page data
+            const uniqueMap = new Map();
+            prev.forEach((item: any) => uniqueMap.set(item.id, item));
+            newData.forEach((item: any) => uniqueMap.set(item.id, item));
+            return Array.from(uniqueMap.values());
+          });
           setScheduledError(null);
+          scheduledFetchedOnce.current = true;
         }
       } catch (err: any) {
         if (isMounted) setScheduledError(err?.message || 'Error loading scheduled rides');
@@ -326,17 +541,14 @@ export default function DriverRidesPage() {
       }
     };
 
-    if (driverMode === 'garage' && !garageRide) {
-      setLoadingScheduled(true);
-      fetchScheduled();
-      interval = setInterval(fetchScheduled, 10000); // 10s poll
-    }
+    fetchScheduled();
+    const interval = setInterval(fetchScheduled, 10000);
 
     return () => {
       isMounted = false;
-      if (interval) clearInterval(interval);
+      clearInterval(interval);
     };
-  }, [driverMode, garageRide]);
+  }, [garageRide, isOnline]);
 
   useEffect(() => {
     let isMounted = true;
@@ -386,7 +598,11 @@ export default function DriverRidesPage() {
   useEffect(() => {
     let isMounted = true;
     const fetchMarketplaceRequests = async () => {
-      if (isFetchingRequests.current) return;
+      if (isOnline === false) {
+        if (isMounted) setLoadingRequests(false);
+        return;
+      }
+      if (isFetchingRequests.current || isOnline === null) return;
       isFetchingRequests.current = true;
       if (!initialFetchDone.current) {
         setLoadingRequests(true);
@@ -399,12 +615,43 @@ export default function DriverRidesPage() {
           if (!Array.isArray(data) && typeof data?.driver_has_active_ride === 'boolean') {
             setDriverHasActiveRide(data.driver_has_active_ride);
             setCachedHasActiveRide(data.driver_has_active_ride);
+            
+            // If they have an active ride, fetch it
+            if (data.driver_has_active_ride) {
+              try {
+                const activeRes = await driverApi.getActiveRide();
+                setActiveOnDemandRide(activeRes.data);
+              } catch (err: any) {
+                if (err?.response?.status === 404) {
+                  setActiveOnDemandRide(null);
+                }
+              }
+            } else {
+              setActiveOnDemandRide(null);
+            }
           } else {
             setDriverHasActiveRide(false);
             setCachedHasActiveRide(false);
+            setActiveOnDemandRide(null);
           }
-          setMarketplaceRequests(list as RideListItem[]);
-          setCachedRequests(list as RideListItem[]);
+          if (isMounted) {
+            const nextUrl = data?.pagination?.next || data?.next || null;
+            const totalCount = data?.pagination?.count ?? list.length;
+            setMarketplaceTotalCount(totalCount);
+            setMarketplaceRequests((prev) => {
+              if (prev.length > list.length && prev.length > 0) {
+                const uniqueMap = new Map();
+                prev.forEach((item: any) => uniqueMap.set(item.id, item));
+                list.forEach((item: any) => uniqueMap.set(item.id, item));
+                return Array.from(uniqueMap.values());
+              } else {
+                setMarketplaceNextUrl(nextUrl);
+                LayoutAnimation.configureNext(customZoomAnimation);
+                return list as RideListItem[];
+              }
+            });
+            setRequestsError(null);
+          }
           if (requestsError && Date.now() > errorHoldUntil.current) {
             setRequestsError(null);
           }
@@ -429,10 +676,10 @@ export default function DriverRidesPage() {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [requestsError]);
+  }, [requestsError, isOnline]);
 
 
-  const handleAcceptRide = async (rideId: string) => {
+  const handleAcceptRide = useCallback(async (rideId: string) => {
     if (acceptingRideId) return;
     setAcceptingRideId(rideId);
     try {
@@ -460,7 +707,77 @@ export default function DriverRidesPage() {
     } finally {
       setAcceptingRideId(null);
     }
-  };
+  }, [acceptingRideId]);
+
+  const loadMoreScheduled = useCallback(async () => {
+    if (!scheduledNextUrl || loadingMoreScheduled) return;
+    setLoadingMoreScheduled(true);
+    try {
+      const res = await driverApi.getAvailableScheduledRides(scheduledNextUrl);
+      const data = res?.data;
+      const moreData = Array.isArray(data) ? data : (data?.results ?? []);
+      setScheduledNextUrl(data?.pagination?.next || data?.next || null);
+      setAvailableScheduledRides((prev) => {
+        const uniqueMap = new Map();
+        [...prev, ...moreData].forEach((item) => {
+          if (!uniqueMap.has(item.id)) uniqueMap.set(item.id, item);
+        });
+        return Array.from(uniqueMap.values());
+      });
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingMoreScheduled(false);
+    }
+  }, [scheduledNextUrl, loadingMoreScheduled]);
+
+  const loadMoreMarketplace = useCallback(async () => {
+    if (!marketplaceNextUrl || loadingMoreMarketplace) return;
+    setLoadingMoreMarketplace(true);
+    try {
+      const res = await driverApi.getMarketplaceRequests(marketplaceNextUrl);
+      const data = res?.data;
+      const moreData = Array.isArray(data) ? data : (data?.results ?? []);
+      setMarketplaceNextUrl(data?.pagination?.next || data?.next || null);
+      setMarketplaceRequests((prev) => {
+        const uniqueMap = new Map();
+        [...prev, ...moreData].forEach((item) => {
+          if (!uniqueMap.has(item.id)) uniqueMap.set(item.id, item);
+        });
+        return Array.from(uniqueMap.values());
+      });
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingMoreMarketplace(false);
+    }
+  }, [marketplaceNextUrl, loadingMoreMarketplace]);
+
+  const handleAdvanceRide = useCallback(async (rideId: string) => {
+    if (advancingRideId) return;
+    setAdvancingRideId(rideId);
+    try {
+      const res = await driverApi.advanceRide(rideId);
+      setActiveOnDemandRide(res.data);
+      if (['completed', 'cancelled'].includes(res.data.status)) {
+        setDriverHasActiveRide(false);
+        setCachedHasActiveRide(false);
+        setActiveOnDemandRide(null);
+      }
+    } catch (error: any) {
+      const data = error?.response?.data;
+      const message =
+        data?.error?.message ||
+        data?.detail ||
+        (typeof data === 'string' ? data : null) ||
+        (data ? JSON.stringify(data) : null) ||
+        'Unable to advance ride.';
+      setRequestsError(message);
+      errorHoldUntil.current = Date.now() + 12000;
+    } finally {
+      setAdvancingRideId(null);
+    }
+  }, [advancingRideId]);
 
   const handleToggleOnline = async () => {
     if (isUpdatingOnline || isOnline === null) return;
@@ -727,17 +1044,37 @@ export default function DriverRidesPage() {
     }
   }, [modeLocked, driverMode]);
 
-  const handleExpressInterest = async (rideId: string) => {
+  const [cancellingInterestId, setCancellingInterestId] = useState<string | null>(null);
+
+  const handleExpressInterest = useCallback(async (rideId: string) => {
     setExpressingInterestId(rideId);
     try {
       await driverApi.expressInterestScheduledRide(rideId);
-      setAvailableScheduledRides((prev) => prev.filter((r) => r.id !== rideId));
+      // Update locally — mark as interested (don't remove)
+      setAvailableScheduledRides(prev => prev.map(r => 
+        r.id === rideId ? { ...r, driver_interest_status: 'interested' } : r
+      ));
     } catch (err: any) {
       setScheduledError(err?.response?.data?.error || err?.message || 'Failed to express interest.');
     } finally {
       setExpressingInterestId(null);
     }
-  };
+  }, []);
+
+  const handleCancelInterest = useCallback(async (rideId: string) => {
+    setCancellingInterestId(rideId);
+    try {
+      await driverApi.cancelInterestScheduledRide(rideId);
+      // Update locally — mark as not interested
+      setAvailableScheduledRides(prev => prev.map(r => 
+        r.id === rideId ? { ...r, driver_interest_status: null } : r
+      ));
+    } catch (err: any) {
+      setScheduledError(err?.response?.data?.error || err?.message || 'Failed to withdraw interest.');
+    } finally {
+      setCancellingInterestId(null);
+    }
+  }, []);
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -746,7 +1083,8 @@ export default function DriverRidesPage() {
     try {
       if (driverMode === 'garage' && !garageRide) {
         const res = await driverApi.getAvailableScheduledRides();
-        setAvailableScheduledRides(res?.data || []);
+        const data = res?.data;
+        setAvailableScheduledRides(Array.isArray(data) ? data : (data?.results ?? []));
       } else if (driverMode === 'ondemand') {
         const res = await driverApi.getMarketplaceRequests();
         const data = res?.data;
@@ -761,250 +1099,350 @@ export default function DriverRidesPage() {
     }
   };
 
+  // ── Virtualized list helpers (stable references for FlatList) ──
+  const scheduledKeyExtractor = useCallback((item: any) => item.id, []);
+  const requestKeyExtractor = useCallback((item: RideListItem) => item.id, []);
+
+  const renderScheduledItem = useCallback(({ item }: { item: any }) => (
+    <View style={{ paddingHorizontal: 16 }}>
+      <ScheduledRideCard
+        ride={item}
+        onExpressInterest={handleExpressInterest}
+        onCancelInterest={handleCancelInterest}
+        isExpressing={expressingInterestId === item.id}
+        isCancelling={cancellingInterestId === item.id}
+        disabled={!isOnline}
+      />
+    </View>
+  ), [expressingInterestId, cancellingInterestId, handleExpressInterest, handleCancelInterest, isOnline]);
+
+  const renderRequestItem = useCallback(({ item: ride }: { item: RideListItem }) => {
+    const requestedSeats = ride.requested_seats || 0;
+    const passengersLabel = requestedSeats
+      ? `${requestedSeats} passenger${requestedSeats > 1 ? 's' : ''}`
+      : 'Passengers —';
+    return (
+      <View style={{ paddingHorizontal: 16 }}>
+        <RequestCard
+          name={getStudentName(ride.student)}
+          rating="New"
+          fare={formatCurrency(ride.total_fare)}
+          passengers={passengersLabel}
+          from={ride.pickup_address || 'Pickup location'}
+          to={ride.dropoff_address || 'Dropoff location'}
+          distance={formatDistance(ride.estimated_distance_km)}
+          acceptLabel="Accept Request"
+          onAccept={() => handleAcceptRide(ride.id)}
+          disabled={Boolean(acceptingRideId === ride.id || driverHasActiveRide || modeLocked || !isOnline)}
+        />
+      </View>
+    );
+  }, [acceptingRideId, driverHasActiveRide, modeLocked, handleAcceptRide, isOnline]);
+
   return (
-    <ScrollView 
-      style={styles.container} 
-      contentContainerStyle={styles.scrollContent} 
-      showsVerticalScrollIndicator={false}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />}
-    >
-      <View style={[styles.modeToggleWrap, AMBIENT_SHADOW]}>
-        <View style={styles.modeHeaderRow}>
-          <View style={styles.onlineStatusLeft}>
-            <View style={[styles.onlineStatusDot, { backgroundColor: isOnline ? COLORS.primaryContainer : COLORS.error }]} />
-            <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}>
-              {isOnline === null ? 'Loading…' : isOnline ? 'Online' : 'Offline'}
+    <View style={styles.container}>
+      {/* Enterprise Status Board */}
+      <View style={[styles.enterpriseHeader, AMBIENT_SHADOW]}>
+        {/* Status Row */}
+        <View style={styles.enterpriseStatusRow}>
+          <View style={styles.enterpriseStatusLeft}>
+            <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 0.5 }]}>
+              System Status
             </Text>
+            <View style={styles.enterpriseStatusValue}>
+              {isOnline === null ? (
+                <ActivityIndicator size="small" color={COLORS.primary} style={{ marginRight: 8 }} />
+              ) : (
+                <View style={[styles.pulseDot, { backgroundColor: isOnline ? COLORS.primaryContainer : COLORS.error }]} />
+              )}
+              <Text style={[FONTS.headlineMd, { color: COLORS.onSurface }]}>
+                {isOnline === null ? 'Connecting...' : isOnline ? 'Online & Active' : 'Offline'}
+              </Text>
+            </View>
+            <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginTop: 2 }]}>
+              {isOnline ? 'Receiving live matches' : 'Matching paused'}
+            </Text>
+            {isOnline && isOfflineBlocked && (
+              <Text style={[FONTS.labelMd, { color: COLORS.error, marginTop: 4 }]}>Offline locked during active ride</Text>
+            )}
           </View>
           <Switch
             value={Boolean(isOnline)}
             onValueChange={handleToggleOnline}
             disabled={Boolean(isUpdatingOnline || isOnline === null || (isOnline && isOfflineBlocked))}
-            trackColor={{ false: COLORS.surfaceContainerLow, true: COLORS.primaryContainer }}
+            trackColor={{ false: COLORS.surfaceContainerHigh, true: COLORS.primaryContainer }}
             thumbColor={COLORS.surface}
           />
         </View>
-        <View style={styles.modeTabs}>
+        
+        {/* Mode Segmented Control */}
+        <View style={styles.segmentedControl}>
           <TouchableOpacity
-            style={[styles.modeTab, driverMode === 'garage' && styles.modeTabActive]}
+            style={[styles.segmentBtn, driverMode === 'garage' && styles.segmentBtnActive]}
             onPress={() => setDriverMode('garage')}
           >
-            <Text style={driverMode === 'garage' ? styles.modeTabTextActive : styles.modeTabText}>Schedules</Text>
+            <MaterialIcons name="event-note" size={18} color={driverMode === 'garage' ? COLORS.onPrimary : COLORS.onSurfaceVariant} style={{ marginRight: 6 }} />
+            <Text style={driverMode === 'garage' ? styles.segmentTextActive : styles.segmentText}>Scheduled</Text>
+            {Boolean(scheduledTotalCount > 0 || availableScheduledRides.length > 0) && (
+              <View style={styles.tabBadge}>
+                <Text style={styles.tabBadgeText}>{scheduledTotalCount || availableScheduledRides.length}</Text>
+              </View>
+            )}
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.modeTab, driverMode === 'ondemand' && styles.modeTabActive, modeLocked && styles.modeTabDisabled]}
+            style={[styles.segmentBtn, driverMode === 'ondemand' && styles.segmentBtnActive, modeLocked && styles.segmentBtnDisabled]}
             onPress={() => {
               if (!modeLocked) setDriverMode('ondemand');
             }}
             disabled={Boolean(modeLocked)}
           >
-            <Text style={driverMode === 'ondemand' ? styles.modeTabTextActive : styles.modeTabText}>On-Demand</Text>
+            <MaterialIcons name="bolt" size={18} color={driverMode === 'ondemand' ? COLORS.onPrimary : COLORS.onSurfaceVariant} style={{ marginRight: 6 }} />
+            <Text style={driverMode === 'ondemand' ? styles.segmentTextActive : styles.segmentText}>On-Demand</Text>
+            {Boolean(marketplaceTotalCount > 0 || marketplaceRequests.length > 0) && (
+              <View style={styles.tabBadge}>
+                <Text style={styles.tabBadgeText}>{marketplaceTotalCount || marketplaceRequests.length}</Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
-        {modeLocked ? (
-          <Text style={styles.modeHint}>Garage ride active — complete it before switching.</Text>
-        ) : null}
-        <Text style={styles.onlineHintText}>
-          {isOnline ? 'You are visible to students and can receive live requests.' : 'You are offline. Live matching is paused.'}
-        </Text>
+        {modeLocked && (
+          <View style={styles.modeLockedAlert}>
+            <MaterialIcons name="lock" size={14} color={COLORS.onSurfaceVariant} />
+            <Text style={styles.modeLockedText}>Complete active scheduled ride to switch modes.</Text>
+          </View>
+        )}
       </View>
 
-      {isOnline && isOfflineBlocked ? (
-        <Text style={styles.modeHint}>You cannot go offline while a ride is active.</Text>
-      ) : null}
-
-      {driverMode === 'garage' && (
-        <View style={styles.sectionWrap}>
-          {loadingGarage ? (
-            <View style={[styles.card, AMBIENT_SHADOW]}>
-              <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant }]}>Loading garage ride…</Text>
-            </View>
-          ) : garageRide ? (
-            <View style={[styles.card, AMBIENT_SHADOW]}>
-              <Text style={[FONTS.headlineMd, { color: COLORS.onSurface }]}>Active Garage Ride</Text>
-              <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginTop: 4 }]}>Ref: {garageRide.reference}</Text>
-
-              <View style={styles.qrWrap}>
-                <QRCode value={garageRide.qr_token} size={180} />
-                <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginTop: 8 }]}>QR Token: {garageRide.qr_token}</Text>
+      {/* ── Garage / Scheduled Tab ── */}
+      <FlatList
+        style={driverMode !== 'garage' ? { display: 'none', position: 'absolute' } : { flex: 1 }}
+        data={garageRide || loadingGarage ? [] : availableScheduledRides}
+        keyExtractor={scheduledKeyExtractor}
+        renderItem={renderScheduledItem}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: 8 }]}
+        showsVerticalScrollIndicator={false}
+        initialNumToRender={6}
+        maxToRenderPerBatch={8}
+        windowSize={5}
+        removeClippedSubviews={Platform.OS === 'android'}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />}
+        ListHeaderComponent={
+          (loadingGarage || garageRide || loadingScheduled || scheduledError || availableScheduledRides.length === 0) ? (
+          <View style={styles.sectionWrap}>
+            {loadingGarage ? (
+              <View style={[styles.schedulesListContainer, AMBIENT_SHADOW]}>
+                <View style={styles.emptyStateContainer}>
+                  <ActivityIndicator size="large" color={COLORS.primary} />
+                  <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, marginTop: 12 }]}>Loading garage ride…</Text>
+                </View>
               </View>
-
-              <View style={styles.rideInfoRow}>
-                <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Seats</Text>
-                <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}> {garageRide.booked_seats}/{garageRide.total_seats} booked </Text>
-              </View>
-              <View style={styles.rideInfoRow}>
-                <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Fare per seat</Text>
-                <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}> {formatCurrency(garageRide.fare_per_seat)} </Text>
-              </View>
-              <View style={styles.rideInfoRow}>
-                <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Route</Text>
-                <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}> {garageRide.origin_address} → {garageRide.destination_address} </Text>
-              </View>
-
-              <Text style={[FONTS.labelLg, { color: COLORS.onSurfaceVariant, marginTop: 16 }]}>Passengers</Text>
-              {garagePassengers.length === 0 ? (
-                <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginTop: 6 }]}>No passengers yet.</Text>
-              ) : (
-                garagePassengers.map((p) => (
-                  <View key={p.id} style={styles.passengerRow}>
-                    <MaterialIcons name="person" size={16} color={COLORS.primaryContainer} />
-                    <Text style={[FONTS.bodyMd, { color: COLORS.onSurface }]}> {getStudentName(p.student as any)} </Text>
-                    <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant }]}> ({p.seats_booked} seats) </Text>
+            ) : garageRide ? (
+              <View style={[styles.schedulesListContainer, AMBIENT_SHADOW]}>
+                <View style={styles.sectionHeaderEnterprise}>
+                  <View style={styles.sectionTitleRow}>
+                    <MaterialIcons name="directions-car" size={24} color={COLORS.primary} />
+                    <Text style={[FONTS.headlineMd, { color: COLORS.onSurface, marginLeft: 8 }]}>Active Garage Ride</Text>
                   </View>
-                ))
-              )}
+                  <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginTop: 4 }]}>
+                    Ref: {garageRide.reference}
+                  </Text>
+                </View>
 
-              {garageError ? <Text style={styles.errorText}>{garageError}</Text> : null}
+                <View style={styles.premiumCard}>
+                  <View style={{ padding: 16 }}>
+                    <View style={styles.qrWrap}>
+                      <QRCode value={garageRide.qr_token} size={180} />
+                      <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginTop: 8 }]}>QR Token: {garageRide.qr_token}</Text>
+                    </View>
 
-              <View style={styles.actionRow}>
-                <TouchableOpacity style={styles.cancelBtn} onPress={handleCancelGarageRide}>
-                  <Text style={[FONTS.labelLg, { color: COLORS.error }]}>Cancel Ride</Text>
-                </TouchableOpacity>
-                {garageRide.status === 'departed' ? (
-                  <TouchableOpacity style={styles.primaryBtn} onPress={handleCompleteGarageRide}>
-                    <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>Complete</Text>
-                  </TouchableOpacity>
+                    <View style={styles.rideInfoRow}>
+                      <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Seats</Text>
+                      <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}> {garageRide.booked_seats}/{garageRide.total_seats} booked </Text>
+                    </View>
+                    <View style={styles.rideInfoRow}>
+                      <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Fare per seat</Text>
+                      <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}> {formatCurrency(garageRide.fare_per_seat)} </Text>
+                    </View>
+                    <View style={styles.rideInfoRow}>
+                      <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Route</Text>
+                      <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}> {garageRide.origin_address} → {garageRide.destination_address} </Text>
+                    </View>
+
+                    <Text style={[FONTS.labelLg, { color: COLORS.onSurfaceVariant, marginTop: 16 }]}>Passengers</Text>
+                    {garagePassengers.length === 0 ? (
+                      <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginTop: 6 }]}>No passengers yet.</Text>
+                    ) : (
+                      garagePassengers.map((p) => (
+                        <View key={p.id} style={styles.passengerRow}>
+                          <MaterialIcons name="person" size={16} color={COLORS.primaryContainer} />
+                          <Text style={[FONTS.bodyMd, { color: COLORS.onSurface }]}> {getStudentName(p.student as any)} </Text>
+                          <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant }]}> ({p.seats_booked} seats) </Text>
+                        </View>
+                      ))
+                    )}
+
+                    {garageError ? <Text style={styles.errorText}>{garageError}</Text> : null}
+
+                    <View style={styles.actionRow}>
+                      <TouchableOpacity style={styles.cancelBtn} onPress={handleCancelGarageRide}>
+                        <Text style={[FONTS.labelLg, { color: COLORS.error }]}>Cancel Ride</Text>
+                      </TouchableOpacity>
+                      {garageRide.status === 'departed' ? (
+                        <TouchableOpacity style={styles.primaryBtn} onPress={handleCompleteGarageRide}>
+                          <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>Complete</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity style={styles.primaryBtn} onPress={handleDepartGarageRide}>
+                          <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>Depart</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                </View>
+              </View>
+            ) : loadingScheduled || scheduledError || availableScheduledRides.length === 0 ? (
+              <View style={[styles.schedulesListContainer, AMBIENT_SHADOW]}>
+                {loadingScheduled ? (
+                  <View style={styles.emptyStateContainer}>
+                    <ActivityIndicator size="large" color={COLORS.primary} />
+                    <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, marginTop: 12 }]}>Loading schedules...</Text>
+                  </View>
+                ) : scheduledError ? (
+                  <View style={styles.emptyStateContainer}>
+                    <MaterialIcons name="error-outline" size={48} color={COLORS.error} />
+                    <Text style={[FONTS.bodyMd, { color: COLORS.error, textAlign: 'center', marginTop: 12 }]}>{scheduledError}</Text>
+                  </View>
                 ) : (
-                  <TouchableOpacity style={styles.primaryBtn} onPress={handleDepartGarageRide}>
-                    <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>Depart</Text>
-                  </TouchableOpacity>
+                  <View style={styles.emptyStateContainer}>
+                    <MaterialIcons name="event-busy" size={48} color={COLORS.surfaceContainerHigh} />
+                    <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, textAlign: 'center', marginTop: 12 }]}>No available schedules right now.</Text>
+                  </View>
                 )}
               </View>
-            </View>
-          ) : (
-            <View style={{ flex: 1 }}>
-              <Text style={[FONTS.headlineMd, { color: COLORS.onSurface, marginBottom: 4 }]}>Available Schedules</Text>
-              <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginBottom: 16 }]}>Express interest in scheduled routes below.</Text>
-              
-              {loadingScheduled ? (
-                <View style={[styles.card, AMBIENT_SHADOW]}>
-                  <ActivityIndicator size="small" color={COLORS.primary} />
-                  <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, textAlign: 'center', marginTop: 8 }]}>Loading schedules...</Text>
-                </View>
-              ) : scheduledError ? (
-                <View style={[styles.card, AMBIENT_SHADOW]}>
-                  <Text style={[FONTS.bodyMd, { color: COLORS.error, textAlign: 'center' }]}>{scheduledError}</Text>
-                </View>
-              ) : availableScheduledRides.length === 0 ? (
-                <View style={[styles.card, AMBIENT_SHADOW]}>
-                  <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, textAlign: 'center' }]}>No available schedules right now.</Text>
-                </View>
-              ) : (
-                availableScheduledRides.map(ride => {
-                  const date = new Date(`${ride.departure_date}T${ride.window_start}`);
-                  const isExpressing = expressingInterestId === ride.id;
-                  return (
-                    <View key={ride.id} style={[styles.card, AMBIENT_SHADOW, { marginBottom: 12 }]}>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-                        <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}>{ride.reference}</Text>
-                        <Text style={[FONTS.labelMd, { color: COLORS.primary }]}>
-                          {date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+            ) : null}
+          </View>
+          ) : null
+        }
+        ItemSeparatorComponent={ListItemSeparator}
+        onEndReached={loadMoreScheduled}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={loadingMoreScheduled ? <ActivityIndicator size="small" color={COLORS.primary} style={{ marginVertical: 16 }} /> : null}
+      />
+
+      {/* ── On-Demand Tab ── */}
+      <FlatList
+        style={driverMode !== 'ondemand' ? { display: 'none', position: 'absolute' } : { flex: 1 }}
+        data={!loadingRequests && !requestsError ? marketplaceRequests : []}
+        keyExtractor={requestKeyExtractor}
+        renderItem={renderRequestItem}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: 8 }]}
+        showsVerticalScrollIndicator={false}
+        initialNumToRender={6}
+        maxToRenderPerBatch={8}
+        windowSize={5}
+        removeClippedSubviews={Platform.OS === 'android'}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />}
+        ListHeaderComponent={
+          <>
+            {activeOnDemandRide && (
+              <View style={[styles.schedulesListContainer, AMBIENT_SHADOW, { marginBottom: 16 }]}>
+                <View style={[styles.premiumCard, { borderColor: COLORS.primary, borderWidth: 1, borderRadius: 12 }]}>
+                  <View style={[styles.premiumCardHeader, { backgroundColor: 'rgba(0, 109, 54, 0.05)' }]}>
+                    <View style={styles.requestUser}>
+                      <View style={[styles.avatar, { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.primary }]}>
+                        <Text style={[FONTS.labelMd, { color: COLORS.onPrimary }]}>
+                          {(getStudentName(activeOnDemandRide?.student) || 'P').charAt(0).toUpperCase()}
                         </Text>
                       </View>
-                      
-                      <View style={{ marginBottom: 16 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                          <MaterialIcons name="my-location" size={16} color={COLORS.outline} />
-                          <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, marginLeft: 8 }]}>{ride.origin}</Text>
-                        </View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
-                          <MaterialIcons name="place" size={16} color={COLORS.outline} />
-                          <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, marginLeft: 8 }]}>{ride.destination}</Text>
+                      <View>
+                        <Text style={[FONTS.labelMd, { color: COLORS.onSurface }]}>{getStudentName(activeOnDemandRide?.student) || 'Passenger'}</Text>
+                        <View style={styles.ratingRow}>
+                          <MaterialIcons name="trip-origin" size={12} color={COLORS.primary} />
+                          <Text style={[FONTS.labelMd, { color: COLORS.primary }]}>ACTIVE RIDE</Text>
                         </View>
                       </View>
-                      
-                      <TouchableOpacity 
-                        style={styles.primaryBtn} 
-                        onPress={() => handleExpressInterest(ride.id)} 
-                        disabled={isExpressing}
-                      >
-                        {isExpressing ? (
-                          <ActivityIndicator size="small" color={COLORS.onPrimary} />
-                        ) : (
-                          <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>I'm Available</Text>
-                        )}
-                      </TouchableOpacity>
                     </View>
-                  )
-                })
-              )}
-            </View>
-          )}
-        </View>
-      )}
+                    <View style={[styles.premiumCardBadge, { backgroundColor: COLORS.primaryContainer }]}>
+                      <Text style={[styles.premiumCardBadgeText, { color: COLORS.onPrimaryContainer }]}>
+                        {activeOnDemandRide.status.toUpperCase()}
+                      </Text>
+                    </View>
+                  </View>
 
-      {driverMode === 'ondemand' && (
-        <View style={styles.sectionWrap}>
-          <View style={styles.sectionHeader}>
-            <Text style={[FONTS.labelLg, { color: COLORS.onSurfaceVariant }]}>Active Request</Text>
-            <View style={styles.liveBadge}>
-              <Text style={[FONTS.labelMd, { color: COLORS.onSurface }]}>{marketplaceRequests.length} Live</Text>
-            </View>
-          </View>
+                  <View style={styles.premiumCardBody}>
+                    <View style={styles.premiumCardTimeCol}>
+                      <Text style={[FONTS.titleLg, { color: COLORS.onSurface }]} numberOfLines={1} adjustsFontSizeToFit>
+                        {formatCurrency(activeOnDemandRide.total_fare)}
+                      </Text>
+                      <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginTop: 4 }]}>
+                        {formatDistance(activeOnDemandRide.estimated_distance_km)}
+                      </Text>
+                    </View>
 
-          {loadingRequests && (
-            <View style={[styles.card, AMBIENT_SHADOW]}>
-              <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant }]}>Loading active requests...</Text>
-            </View>
-          )}
-          {!loadingRequests && requestsError && (
-            <View style={[styles.card, AMBIENT_SHADOW]}>
-              <Text style={[FONTS.bodyMd, { color: COLORS.error }]}>{requestsError}</Text>
-            </View>
-          )}
-          {!loadingRequests && !requestsError && marketplaceRequests.length === 0 && (
-            <View style={[styles.card, AMBIENT_SHADOW]}>
-              <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant }]}>No active requests right now.</Text>
-            </View>
-          )}
-          {!loadingRequests && !requestsError &&
-            marketplaceRequests.map((ride) => {
-              const requestedSeats = ride.requested_seats || 0;
-              const passengersLabel = requestedSeats
-                ? `${requestedSeats} passenger${requestedSeats > 1 ? 's' : ''}`
-                : 'Passengers —';
-              return (
-                <RequestCard
-                  key={ride.id}
-                  name={getStudentName(ride.student)}
-                  rating="New"
-                  fare={formatCurrency(ride.total_fare)}
-                  passengers={passengersLabel}
-                  from={ride.pickup_address || 'Pickup location'}
-                  to={ride.dropoff_address || 'Dropoff location'}
-                  distance={formatDistance(ride.estimated_distance_km)}
-                  acceptLabel="Accept Request"
-                  onAccept={() => handleAcceptRide(ride.id)}
-                  disabled={Boolean(acceptingRideId === ride.id || driverHasActiveRide || modeLocked)}
-                />
-              );
-            })}
+                    <View style={styles.premiumCardRouteCol}>
+                      <View style={styles.timelineRow}>
+                        <View style={styles.timelineGraphic}>
+                          <View style={styles.timelineDotTop} />
+                          <View style={styles.timelineLine} />
+                        </View>
+                        <Text style={[FONTS.bodyMd, { color: COLORS.onSurface, flex: 1, paddingBottom: 4 }]} numberOfLines={2}>
+                          {activeOnDemandRide.pickup_address || 'Pickup location'}
+                        </Text>
+                      </View>
+                      <View style={styles.timelineRow}>
+                        <View style={styles.timelineGraphic}>
+                          <View style={styles.timelineDotBottom} />
+                        </View>
+                        <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, flex: 1 }]} numberOfLines={2}>
+                          {activeOnDemandRide.dropoff_address || 'Dropoff location'}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                  
+                  <TouchableOpacity
+                    style={{ backgroundColor: COLORS.primary, paddingVertical: 12, alignItems: 'center' }}
+                    onPress={() => handleAdvanceRide(activeOnDemandRide.id)}
+                    disabled={advancingRideId === activeOnDemandRide.id}
+                  >
+                    {advancingRideId === activeOnDemandRide.id ? (
+                      <ActivityIndicator size="small" color={COLORS.onPrimary} />
+                    ) : (
+                      <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>
+                        {activeOnDemandRide.status === 'accepted' ? 'Confirm Arrival' : activeOnDemandRide.status === 'arrived' ? 'Start Trip' : activeOnDemandRide.status === 'in_progress' ? 'Complete Trip' : 'Advance Status'}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-            {FILTERS.map((f) => (
-              <TouchableOpacity
-                key={f.label}
-                style={[styles.filterPill, activeFilter === f.label && styles.filterPillActive]}
-                onPress={() => setActiveFilter(f.label)}
-                activeOpacity={0.8}
-              >
-                {f.icon && (
-                  <MaterialIcons
-                    name={f.icon}
-                    size={16}
-                    color={activeFilter === f.label ? COLORS.primary : COLORS.onSurface}
-                    style={{ marginRight: 4 }}
-                  />
+            {(loadingRequests || requestsError || marketplaceRequests.length === 0) && (
+              <View style={[styles.schedulesListContainer, AMBIENT_SHADOW, { marginBottom: 16 }]}>
+                {loadingRequests ? (
+                  <View style={styles.emptyStateContainer}>
+                    <ActivityIndicator size="large" color={COLORS.primary} />
+                    <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, marginTop: 12 }]}>Loading requests...</Text>
+                  </View>
+                ) : requestsError ? (
+                  <View style={styles.emptyStateContainer}>
+                    <Text style={[FONTS.bodyMd, { color: COLORS.error }]}>{requestsError}</Text>
+                  </View>
+                ) : (
+                  <View style={styles.emptyStateContainer}>
+                    <MaterialIcons name="hourglass-empty" size={48} color={COLORS.surfaceContainerHigh} />
+                    <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, textAlign: 'center', marginTop: 12 }]}>No active requests right now.</Text>
+                  </View>
                 )}
-                <Text style={[FONTS.labelMd, { color: activeFilter === f.label ? COLORS.primary : COLORS.onSurface }]}>
-                  {f.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
+              </View>
+            )}
+          </>
+        }
+        ItemSeparatorComponent={ListItemSeparator}
+        onEndReached={loadMoreMarketplace}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={loadingMoreMarketplace ? <ActivityIndicator size="small" color={COLORS.primary} style={{ marginVertical: 16 }} /> : null}
+      />
 
       <Modal visible={Boolean(locationPickerOpen)} animationType="slide" onRequestClose={() => setLocationPickerOpen(null)}>
         <View style={styles.modalPage}>
@@ -1039,12 +1477,12 @@ export default function DriverRidesPage() {
           </ScrollView>
         </View>
       </Modal>
-    </ScrollView>
+    </View>
   );
 }
 
 /* ─── Request Card Sub-component ─── */
-function RequestCard({
+const RequestCard = React.memo(function RequestCard({
   name,
   rating,
   fare,
@@ -1075,50 +1513,67 @@ function RequestCard({
     .join('');
 
   return (
-    <View style={[styles.requestCard, AMBIENT_SHADOW]}>
-      <View style={styles.requestTop}>
-        <View style={styles.requestUser}>
-          <View style={styles.avatar}>
-            <Text style={[FONTS.headlineMd, { color: COLORS.onSurfaceVariant }]}>{initials}</Text>
+    <View style={styles.premiumCard}>
+      <View style={styles.premiumCardHeader}>
+        <View style={[styles.requestUser, { flex: 1 }]}>
+          <View style={[styles.avatar, { width: 28, height: 28, borderRadius: 14 }]}>
+            <Text style={[FONTS.labelSm, { color: COLORS.onSurfaceVariant }]}>{initials}</Text>
           </View>
           <View>
-            <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}>{name}</Text>
+            <Text style={[FONTS.labelMd, { color: COLORS.onSurface }]}>{name}</Text>
             <View style={styles.ratingRow}>
-              <MaterialIcons name="star" size={14} color={COLORS.onSurfaceVariant} />
-              <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>{rating}</Text>
+              <MaterialIcons name="star" size={12} color={COLORS.onSurfaceVariant} />
+              <Text style={[FONTS.labelSm, { color: COLORS.onSurfaceVariant }]}>{rating}</Text>
             </View>
           </View>
         </View>
-        <Text style={[FONTS.headlineMd, { color: COLORS.onSurface }]}>{fare}</Text>
-      </View>
-
-      <View style={styles.routeWrap}>
-        <View style={styles.routeLine} />
-        <View style={styles.routePoint}>
-          <View style={styles.pickupDot} />
-          <Text style={[FONTS.bodySm, { color: COLORS.onSurface }]} numberOfLines={1}>
-            {from}
-          </Text>
-        </View>
-        <View style={styles.routePoint}>
-          <View style={styles.dropoffDot} />
-          <Text style={[FONTS.bodySm, { color: COLORS.onSurface }]} numberOfLines={1}>
-            {to}
-          </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <MaterialIcons name="people" size={16} color={COLORS.onSurfaceVariant} />
+          <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>{passengers}</Text>
         </View>
       </View>
 
-      <View style={styles.requestMeta}>
-        <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>{passengers}</Text>
-        <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>{distance}</Text>
-      </View>
+      <View style={styles.premiumCardBody}>
+        <View style={styles.premiumCardTimeCol}>
+          <Text style={[FONTS.bodyLg, { color: COLORS.onSurface, fontWeight: '500' }]} numberOfLines={1} adjustsFontSizeToFit>{fare}</Text>
+          <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginTop: 4 }]} numberOfLines={1}>{distance}</Text>
+        </View>
 
-      <TouchableOpacity style={[styles.acceptBtn, disabled && styles.acceptBtnDisabled]} onPress={onAccept} disabled={disabled}>
-        <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}> {acceptLabel} </Text>
-      </TouchableOpacity>
+        <View style={styles.premiumCardRouteCol}>
+          <View style={styles.timelineRow}>
+            <View style={styles.timelineGraphic}>
+              <View style={styles.timelineDotTop} />
+              <View style={styles.timelineLine} />
+            </View>
+            <Text style={[FONTS.bodyMd, { color: COLORS.onSurface, flex: 1, paddingBottom: 4 }]} numberOfLines={2}>
+              {from}
+            </Text>
+          </View>
+          <View style={styles.timelineRow}>
+            <View style={styles.timelineGraphic}>
+              <View style={styles.timelineDotBottom} />
+            </View>
+            <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, flex: 1 }]} numberOfLines={2}>
+              {to}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.premiumCardActionCol}>
+          <TouchableOpacity 
+            style={[styles.actionColBtn, styles.actionColBtnPrimary, disabled && { opacity: 0.5 }]} 
+            onPress={onAccept} 
+            disabled={disabled}
+          >
+            <MaterialIcons name="arrow-forward" size={20} color={COLORS.onPrimary} />
+          </TouchableOpacity>
+        </View>
+      </View>
     </View>
   );
-}
+});
+
+const ListItemSeparator = () => null;
 
 const styles = StyleSheet.create({
   container: {
@@ -1126,7 +1581,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
   },
   scrollContent: {
-    padding: 16,
+    paddingTop: 16,
     paddingBottom: 140,
   },
   modeToggleWrap: {
@@ -1135,6 +1590,272 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 14,
+  },
+  enterpriseHeader: {
+    backgroundColor: COLORS.surfaceContainerLowest,
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.surfaceContainerLow,
+    zIndex: 10,
+  },
+  enterpriseStatusRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  enterpriseStatusLeft: {
+    flex: 1,
+  },
+  enterpriseStatusValue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  pulseDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  segmentedControl: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.surfaceContainerLow,
+    borderRadius: 12,
+    padding: 4,
+  },
+  segmentBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentBtnActive: {
+    backgroundColor: COLORS.primary,
+    ...AMBIENT_SHADOW,
+  },
+  segmentBtnDisabled: {
+    opacity: 0.5,
+  },
+  segmentText: {
+    ...FONTS.labelLg,
+    color: COLORS.onSurfaceVariant,
+  },
+  segmentTextActive: {
+    ...FONTS.labelLg,
+    color: COLORS.onPrimary,
+  },
+  modeLockedAlert: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surfaceContainerHigh,
+    padding: 8,
+    borderRadius: 8,
+    marginTop: 12,
+    gap: 6,
+  },
+  modeLockedText: {
+    ...FONTS.labelMd,
+    color: COLORS.onPrimary,
+  },
+  tabBadge: {
+    backgroundColor: COLORS.primaryContainer,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 5,
+    marginLeft: 6,
+  },
+  tabBadgeText: {
+    color: COLORS.onPrimaryContainer,
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  schedulesListContainer: {
+    backgroundColor: COLORS.surfaceContainerLowest,
+    padding: 16,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: COLORS.surfaceContainerLow,
+  },
+  schedulesListWrapper: {
+    marginTop: 8,
+  },
+  sectionHeaderEnterprise: {
+    marginBottom: 16,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 120,
+    paddingHorizontal: 24,
+    backgroundColor: COLORS.surfaceContainerLowest,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.surfaceContainerLow,
+    borderStyle: 'dashed',
+  },
+  premiumCard: {
+    backgroundColor: COLORS.surface,
+    marginBottom: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.surfaceContainerLow,
+    overflow: 'hidden',
+  },
+  premiumCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    paddingBottom: 8,
+  },
+  premiumCardBadge: {
+    backgroundColor: COLORS.surfaceContainerLow,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  premiumCardBadgeText: {
+    ...FONTS.labelLg,
+    color: COLORS.onSurfaceVariant,
+  },
+  premiumCardInterestedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 109, 54, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
+  },
+  premiumCardInterestedText: {
+    ...FONTS.labelMd,
+    color: COLORS.primary,
+  },
+  premiumCardBody: {
+    flexDirection: 'row',
+    padding: 12,
+    paddingTop: 0,
+    alignItems: 'center',
+  },
+  premiumCardTimeCol: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 90,
+    paddingRight: 16,
+    borderRightWidth: 1,
+    borderRightColor: COLORS.surfaceContainerLow,
+  },
+  premiumCardRouteCol: {
+    flex: 1,
+    paddingLeft: 16,
+  },
+  premiumCardActionCol: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingLeft: 12,
+    borderLeftWidth: 1,
+    borderLeftColor: COLORS.surfaceContainerLow,
+    marginLeft: 8,
+  },
+  actionColBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionColBtnPrimary: {
+    backgroundColor: COLORS.primary,
+  },
+  actionColBtnCancel: {
+    backgroundColor: COLORS.surfaceContainerLowest,
+    borderWidth: 1,
+    borderColor: COLORS.error,
+  },
+  timelineRow: {
+    flexDirection: 'row',
+  },
+  timelineGraphic: {
+    width: 16,
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  timelineDotTop: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: COLORS.primary,
+    marginTop: 4,
+  },
+  timelineDotBottom: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: COLORS.onSurfaceVariant,
+    marginTop: 4,
+  },
+  timelineLine: {
+    width: 2,
+    flex: 1,
+    backgroundColor: COLORS.surfaceContainerHigh,
+    marginVertical: 4,
+  },
+  premiumCardExpandToggle: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.surfaceContainerLow,
+  },
+  premiumCardExpandedInfo: {
+    padding: 16,
+    backgroundColor: COLORS.surfaceBright,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.surfaceContainerLow,
+  },
+  premiumCardInfoGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  premiumCardInfoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surfaceContainerLow,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  premiumCardActionBar: {
+    flexDirection: 'row',
+    padding: 16,
+    paddingTop: 0,
+  },
+  premiumCardActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  premiumCardActionBtnPrimary: {
+    backgroundColor: COLORS.primary,
+  },
+  premiumCardActionBtnCancel: {
+    backgroundColor: COLORS.surfaceContainerLowest,
+    borderWidth: 1,
+    borderColor: COLORS.error,
   },
   modeHeaderRow: {
     flexDirection: 'row',
@@ -1191,9 +1912,9 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
     padding: 16,
-    borderWidth: 1,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
     borderColor: '#E8ECEA',
     gap: 12,
   },
@@ -1412,7 +2133,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: COLORS.error,
+    backgroundColor: COLORS.onSurfaceVariant,
   },
   requestMeta: {
     marginTop: 10,

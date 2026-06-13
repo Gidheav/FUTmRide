@@ -365,12 +365,19 @@ class DriverMarketplaceListView(generics.ListAPIView):
                 GarageRideStatus.DEPARTED,
             ],
         ).exists()
-        if has_active or has_active_garage:
-            return Response({'results': [], 'driver_has_active_ride': True})
-
         queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            response = self.get_paginated_response(serializer.data)
+            response.data['driver_has_active_ride'] = bool(has_active or has_active_garage)
+            return response
+            
         serializer = self.get_serializer(queryset, many=True)
-        return Response({'results': serializer.data, 'driver_has_active_ride': False})
+        return Response({
+            'results': serializer.data, 
+            'driver_has_active_ride': bool(has_active or has_active_garage)
+        })
 
 
 class DriverAcceptRideView(APIView):

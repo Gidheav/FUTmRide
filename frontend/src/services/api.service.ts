@@ -424,7 +424,7 @@ class ApiService {
   // ── Passenger Management (Route Ops) ──────────────────────────────────────
 
   async getRidePassengers(rideId: string): Promise<any[]> {
-    const res = await this.get<any>(`rides/scheduled/${rideId}/passengers/`)
+    const res = await this.get<any>(`rides/scheduled/${rideId}/passengers/?page_size=100000`)
     return res?.results || res
   }
 
@@ -482,6 +482,14 @@ class ApiService {
 
   async joinTestScheduledRide(rideId: string, count: number): Promise<any> {
     return this.post('rides/test-tools/rides/join/', { ride_id: rideId, count }, TEST_TOOL_REQUEST_CONFIG)
+  }
+
+  async createTestOnDemandRides(count: number): Promise<any> {
+    return this.post('rides/test-tools/ondemand-rides/create/', { count }, TEST_TOOL_REQUEST_CONFIG)
+  }
+
+  async deleteTestOnDemandRides(count: number): Promise<any> {
+    return this.post('rides/test-tools/ondemand-rides/delete/', { count }, TEST_TOOL_REQUEST_CONFIG)
   }
 }
 

@@ -112,6 +112,11 @@ export default function RouteOpsPanel() {
   const [busForm, setBusForm] = useState({ driver: '', bus_label: '', seated_capacity: 50, standing_capacity: 0 })
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const logEndRef = useRef<HTMLDivElement>(null)
+  const [visiblePax, setVisiblePax] = useState(50)
+
+  useEffect(() => {
+    setVisiblePax(50)
+  }, [selectedRideId, paxFilter, paxSearch])
 
   const selectedRide = rides.find(r => r.id === selectedRideId)
 
@@ -190,9 +195,32 @@ export default function RouteOpsPanel() {
       setShowAddBus(false)
       setBusForm({ driver: '', bus_label: '', seated_capacity: 50, standing_capacity: 0 })
       await fetchRideDetails(selectedRideId)
+      // Refresh interested drivers list after assignment
+      apiService.getInterestedDrivers(selectedRideId).then(setInterestedDrivers).catch(() => {})
     } catch (e: any) {
       addLog(`Failed to assign bus: ${e?.message || 'Error'}`, 'error')
     } finally { setActionLoading(null) }
+  }
+
+  const handleDriverSelect = (driverId: string) => {
+    const driver = interestedDrivers.find(d => d.id === driverId)
+    if (!driver) {
+      setBusForm(p => ({ ...p, driver: driverId }))
+      return
+    }
+    // Auto-populate capacity based on vehicle type
+    const vt = (driver.vehicle_type || '').toLowerCase()
+    const seatedDefaults: Record<string, number> = {
+      bus: 50, minibus: 18, minivan: 8, suv: 6, sedan: 4, van: 14,
+    }
+    const standingDefaults: Record<string, number> = {
+      bus: 20, minibus: 10, minivan: 0, suv: 0, sedan: 0, van: 0,
+    }
+    const seated = seatedDefaults[vt] ?? 50
+    const standing = standingDefaults[vt] ?? 0
+    // Auto label from driver name if blank
+    const label = busForm.bus_label || `${driver.name.split(' ')[0]}'s Bus`
+    setBusForm(p => ({ ...p, driver: driverId, seated_capacity: seated, standing_capacity: standing, bus_label: label }))
   }
 
   const handleAutoAllocate = async () => {
@@ -282,6 +310,15 @@ export default function RouteOpsPanel() {
     if (paxFilter === 'no_show') return p.status === 'no_show'
     return true
   }).filter(p => !paxSearch || p.student_name.toLowerCase().includes(paxSearch.toLowerCase()))
+
+  const displayedPassengers = filteredPassengers.slice(0, visiblePax)
+
+  const handleScrollTable = (e: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget
+    if (scrollHeight - scrollTop <= clientHeight + 100) {
+      setVisiblePax(prev => Math.min(prev + 50, filteredPassengers.length))
+    }
+  }
 
   const nowDate = new Date(now)
   const timeStr = nowDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
@@ -459,21 +496,41 @@ export default function RouteOpsPanel() {
                     </div>
                     <div style={s.formGrid}>
                       <div style={s.formGroup}>
-                        <label style={s.formLabel}>Bus Label</label>
-                        <input style={s.formInput} placeholder="e.g. Bus A" value={busForm.bus_label}
-                          onChange={e => setBusForm(p => ({ ...p, bus_label: e.target.value }))} />
-                      </div>
-                      <div style={s.formGroup}>
-                        <label style={s.formLabel}>Driver</label>
+                        <label style={s.formLabel}>Select Driver (Available)</label>
                         <select style={s.formInput} value={busForm.driver}
-                          onChange={e => setBusForm(p => ({ ...p, driver: e.target.value }))}>
-                          <option value="">-- Unassigned --</option>
+                          onChange={e => handleDriverSelect(e.target.value)}>
+                          <option value="">-- No Driver --</option>
                           {interestedDrivers.map(d => (
                             <option key={d.id} value={d.id}>
-                              {d.name} — {d.plate_number || 'N/A'} (Interested)
+                              {d.name} · {d.vehicle_type || '?'} · {d.plate_number || 'No Plate'}
                             </option>
                           ))}
                         </select>
+                        {interestedDrivers.length === 0 && (
+                          <span style={{ fontSize: 11, color: '#f59e0b', marginTop: 4, display: 'block' }}>⚠ No drivers have expressed interest yet</span>
+                        )}
+                      </div>
+                      {/* Show selected driver info card */}
+                      {busForm.driver && (() => {
+                        const d = interestedDrivers.find(x => x.id === busForm.driver)
+                        if (!d) return null
+                        return (
+                          <div style={{ gridColumn: '1/-1', background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.2)', borderRadius: 8, padding: '8px 12px', display: 'flex', gap: 16, alignItems: 'center' }}>
+                            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(168,85,247,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <Bus size={16} color="#a855f7" />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: T.textPrimary }}>{d.name}</div>
+                              <div style={{ fontSize: 11, color: T.textMuted }}>{d.vehicle_type} · {d.plate_number} · {d.phone}</div>
+                            </div>
+                            <span style={{ fontSize: 10, background: 'rgba(16,185,129,0.15)', color: '#10b981', padding: '2px 8px', borderRadius: 4, border: '1px solid rgba(16,185,129,0.3)' }}>Interested ✓</span>
+                          </div>
+                        )
+                      })()}
+                      <div style={s.formGroup}>
+                        <label style={s.formLabel}>Bus Label</label>
+                        <input style={s.formInput} placeholder="e.g. Bus A" value={busForm.bus_label}
+                          onChange={e => setBusForm(p => ({ ...p, bus_label: e.target.value }))} />
                       </div>
                       <div style={s.formGroup}>
                         <label style={s.formLabel}>Seated Capacity</label>
@@ -647,7 +704,7 @@ export default function RouteOpsPanel() {
                   </div>
                 </div>
 
-                <div style={s.tableWrap}>
+                <div style={s.tableWrap} onScroll={handleScrollTable}>
                   <table style={s.table}>
                     <thead>
                       <tr>
@@ -661,9 +718,9 @@ export default function RouteOpsPanel() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredPassengers.length === 0 ? (
+                      {displayedPassengers.length === 0 ? (
                         <tr><td colSpan={7} style={{ ...s.td, textAlign: 'center', color: T.textMuted, padding: 32 }}>No passengers match filter</td></tr>
-                      ) : filteredPassengers.map(p => {
+                      ) : displayedPassengers.map(p => {
                         const rowBg = p.status === 'no_show' ? 'rgba(239,68,68,0.06)' :
                           p.status === 'cancelled' ? 'rgba(100,116,139,0.06)' :
                           p.checked_in_at ? 'rgba(16,185,129,0.06)' :

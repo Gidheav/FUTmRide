@@ -78,6 +78,8 @@ export const applyThemeMode = (mode: 'system' | 'light' | 'dark') => {
 };
 
 export const FONTS = {
+  titleLg: { fontSize: 18, lineHeight: 24, fontWeight: '600' as const },
+  titleMd: { fontSize: 16, lineHeight: 24, fontWeight: '600' as const },
   bodyLg: { fontSize: 18, lineHeight: 28, fontWeight: '400' as const },
   labelLg: { fontSize: 14, lineHeight: 16, letterSpacing: 0.14, fontWeight: '600' as const },
   headlineMd: { fontSize: 20, lineHeight: 28, fontWeight: '700' as const },

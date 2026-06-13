@@ -207,7 +207,7 @@ export default function DashboardPage() {
   const [windowStart, setWindowStart] = useState(getNextHour())
   const [windowEnd, setWindowEnd] = useState(getNextHourPlus30())
   const [waypoints, setWaypoints] = useState([{ name: '', address: '' }, { name: '', address: '' }])
-  const [vehicleSize, setVehicleSize] = useState('bus')
+  const [allowedVehicleTypes, setAllowedVehicleTypes] = useState<string[]>(['sedan'])
   const [cargoCapacity, setCargoCapacity] = useState('0')
   const [accessibility, setAccessibility] = useState<Record<string, boolean>>({
     wheelchair_ramp: false, liftgate: false, low_floor: false, air_conditioning: true,
@@ -234,7 +234,7 @@ export default function DashboardPage() {
         destination_address: waypoints[waypoints.length - 1]?.address || 'Library',
         destination_latitude: 9.5350,
         destination_longitude: 6.4550,
-        vehicle_size: vehicleSize,
+        allowed_vehicle_types: allowedVehicleTypes,
         cargo_capacity_kg: parseInt(cargoCapacity, 10) || 0,
         accessibility_features: Object.entries(accessibility).filter(([_, v]) => v).map(([k]) => k),
         standard_enabled: pricingTiers.standard,
@@ -1500,21 +1500,38 @@ export default function DashboardPage() {
                   </button>
                 </div>
 
-                {/* Vehicle Constraints */}
                 <div style={s.rpSection}>
-                  <div style={s.rpLabel}>Vehicle Constraints</div>
-                  <div style={{ ...s.rpInputRow, marginBottom: 8 }}>
-                    <select 
-                      style={{ ...s.rpInput, paddingLeft: 8, width: '100%', appearance: 'none' }}
-                      value={vehicleSize}
-                      onChange={e => setVehicleSize(e.target.value)}
-                    >
-                      <option value="sedan">Sedan (4 seats)</option>
-                      <option value="suv">SUV (6 seats)</option>
-                      <option value="minivan">Minivan (7-8 seats)</option>
-                      <option value="minibus">Minibus (14-18 seats)</option>
-                      <option value="bus">Bus (30+ seats)</option>
-                    </select>
+                  <div style={s.rpLabel}>Allowed Vehicle Types</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+                    {[
+                      { key: 'motorbike', label: 'Motorbike (1 pax, 1 backpack)' },
+                      { key: 'tricycle', label: 'Tricycle (3-4 pax, 1-2 small bags)' },
+                      { key: 'sedan', label: 'Sedan (4 pax, 2-3 suitcases)' },
+                      { key: 'mpv', label: 'MPV (6-7 pax, 2 med bags)' },
+                      { key: 'minibus', label: 'Minibus (10-18 pax, 4-6 large bags)' },
+                      { key: 'coach', label: 'Coach (16-50+ pax, massive cargo)' },
+                    ].map((item) => {
+                      const isChecked = allowedVehicleTypes.includes(item.key)
+                      return (
+                        <div key={item.key} style={s.rpCheckRow} onClick={() => {
+                          if (isChecked && allowedVehicleTypes.length === 1) return // Keep at least one
+                          setAllowedVehicleTypes(prev => isChecked ? prev.filter(k => k !== item.key) : [...prev, item.key])
+                        }}>
+                          <div style={{
+                            ...s.rpCheckbox,
+                            background: isChecked ? T.accent : 'transparent',
+                            borderColor: isChecked ? T.accent : T.border,
+                          }}>
+                            {isChecked && (
+                              <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                                <path d="M1 4L3.5 6.5L9 1" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            )}
+                          </div>
+                          <span style={s.rpCheckLabel}>{item.label}</span>
+                        </div>
+                      )
+                    })}
                   </div>
 
                   {pricingTiers.freight && (
@@ -1558,7 +1575,7 @@ export default function DashboardPage() {
                   <div style={s.rpLabel}>Pricing Tiers (Multi-select)</div>
                   {[
                     { key: 'standard', label: 'Standard (Seated)' },
-                    { key: 'standing', label: 'Standing (Bus/Minibus)', disabled: !['bus', 'minibus'].includes(vehicleSize) },
+                    { key: 'standing', label: 'Standing (Minibus/Coach)', disabled: !allowedVehicleTypes.some(v => ['minibus', 'coach'].includes(v)) },
                     { key: 'premium', label: 'Premium (Comfort)' },
                     { key: 'freight', label: 'Freight (Cargo)' },
                   ].map((tier) => (

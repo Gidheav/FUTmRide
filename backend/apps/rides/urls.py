@@ -54,6 +54,7 @@ from .scheduled_bus_views import (
     DriverAvailableScheduledRidesView,
     DriverExpressInterestView,
     AdminInterestedDriversView,
+    DriverMyInterestedRidesView,
 )
 from .test_tools import (
     TestToolCreateAdminsView,
@@ -66,6 +67,8 @@ from .test_tools import (
     TestToolDeleteStudentsView,
     TestToolJoinRideView,
     TestToolSummaryView,
+    TestToolCreateOnDemandRidesView,
+    TestToolDeleteOnDemandRidesView,
 )
 
 urlpatterns = [
@@ -127,6 +130,7 @@ urlpatterns = [
 
     # ── Scheduled Rides (Driver Bidding) ─────────────────────────────────────
     path('scheduled/driver/available/', DriverAvailableScheduledRidesView.as_view(), name='driver-scheduled-available'),
+    path('scheduled/driver/my-interests/', DriverMyInterestedRidesView.as_view(), name='driver-my-interests'),
     path('scheduled/<uuid:ride_id>/interest/', DriverExpressInterestView.as_view(), name='driver-scheduled-interest'),
     path('scheduled/<uuid:ride_id>/interested-drivers/', AdminInterestedDriversView.as_view(), name='admin-interested-drivers'),
 
@@ -141,6 +145,8 @@ urlpatterns = [
     path('test-tools/rides/create/', TestToolCreateRidesView.as_view(), name='test-tools-rides-create'),
     path('test-tools/rides/delete/', TestToolDeleteRidesView.as_view(), name='test-tools-rides-delete'),
     path('test-tools/rides/join/', TestToolJoinRideView.as_view(), name='test-tools-rides-join'),
+    path('test-tools/ondemand-rides/create/', TestToolCreateOnDemandRidesView.as_view(), name='test-tools-ondemand-create'),
+    path('test-tools/ondemand-rides/delete/', TestToolDeleteOnDemandRidesView.as_view(), name='test-tools-ondemand-delete'),
 
     # Admin
     path('', AdminRideListView.as_view(), name='admin-ride-list'),

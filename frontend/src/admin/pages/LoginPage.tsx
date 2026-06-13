@@ -71,16 +71,29 @@ export default function LoginPage() {
       })
     },
     onError: (error: any) => {
-      if (!error?.response) {
-        toast.error('Cannot reach backend. Check deployment/CORS settings.')
-        return
-      }
+      console.error('[Login Error]', error?.message, error?.response?.status, error?.response?.data)
       const body = error?.response?.data
       const apiError = body?.error
       const message = typeof apiError === 'string'
         ? apiError
-        : apiError?.message || body?.detail || body?.message || 'Invalid credentials.'
-      toast.error(message)
+        : apiError?.message || body?.detail || body?.message || null
+      if (message) {
+        toast.error(message)
+      } else if (!error?.response) {
+        // This handles cases where the request never reached the server (or was blocked by CORS)
+        const targetUrl = error?.config?.url 
+          ? (error.config.baseURL || '') + error.config.url 
+          : 'Unknown URL'
+        toast.error(
+          `Connection Failed!\n` +
+          `Tried to reach: ${targetUrl}\n` +
+          `Error: ${error?.message}\n` +
+          `Check if your backend is running and the URL in your .env file is correct. Did you restart "npm run dev"?`,
+          { duration: 8000 }
+        )
+      } else {
+        toast.error(`Server error (${error.response.status}): ${JSON.stringify(body) || 'Unknown error'}`)
+      }
     },
   })
 

@@ -81,7 +81,7 @@ export default function DriverProfilePage({ onNavigateToSettings, onEditProfile 
     return () => {
       isMounted = false;
     };
-  }, [cachedProfile, setCachedProfile]);
+  }, [setCachedProfile]);
 
   const initials = useMemo(() => {
     const first = (user?.first_name ?? '').trim()[0] ?? '';

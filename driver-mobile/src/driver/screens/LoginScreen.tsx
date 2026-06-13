@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { useState } from 'react'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useAuthStore } from '../../core/authStore'
@@ -197,26 +198,28 @@ export default function DriverLoginScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.page}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
-    >
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+    <SafeAreaView style={styles.page} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoid}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <View style={styles.card}>
-          <ImageBackground source={{ uri: HERO_IMAGE }} style={styles.hero} resizeMode="cover">
-            <View style={styles.heroOverlay} />
-            <View style={styles.heroTextWrap}>
-              <Text style={styles.heroTitle}>Driver Portal</Text>
-              <Text style={styles.heroSubtitle}>LR Ride Campus Transit</Text>
-            </View>
-          </ImageBackground>
+        <View style={styles.content}>
+          <View style={styles.card}>
+            <ImageBackground source={{ uri: HERO_IMAGE }} style={styles.hero} resizeMode="cover">
+              <View style={styles.heroOverlay} />
+              <View style={styles.heroTextWrap}>
+                <Text style={styles.heroTitle}>Driver Portal</Text>
+                <Text style={styles.heroSubtitle}>LR Ride Campus Transit</Text>
+              </View>
+            </ImageBackground>
 
-          <View style={styles.formArea}>
+            <ScrollView
+              contentContainerStyle={styles.formScrollContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              bounces={false}
+            >
+              <View style={styles.formArea}>
             <View style={styles.tabs}>
               <Pressable
                 style={[styles.tab, !isRegistering && styles.tabActive]}
@@ -333,9 +336,6 @@ export default function DriverLoginScreen() {
                   )}
                 </TouchableOpacity>
 
-                <Pressable style={styles.switchModeRow} onPress={() => setIsRegistering(false)}>
-                  <Text style={styles.switchModeText}>Already have an account? Login</Text>
-                </Pressable>
               </>
             ) : (
               <>
@@ -451,20 +451,6 @@ export default function DriverLoginScreen() {
                   )}
                 </TouchableOpacity>
 
-                <View style={styles.dividerRow}>
-                  <View style={styles.dividerLine} />
-                  <Text style={styles.dividerText}>New to the fleet?</Text>
-                  <View style={styles.dividerLine} />
-                </View>
-
-                <TouchableOpacity
-                  style={styles.secondaryButton}
-                  activeOpacity={0.9}
-                  onPress={() => setIsRegistering(true)}
-                >
-                  <MaterialIcons name="directions-car" size={18} color="#1a1c1c" />
-                  <Text style={styles.secondaryButtonText}>Create Driver Account</Text>
-                </TouchableOpacity>
                   </>
                 )}
               </>
@@ -474,10 +460,12 @@ export default function DriverLoginScreen() {
               <MaterialIcons name="verified-user" size={14} color="#7b7b7b" />
               <Text style={styles.securityText}>VERIFIED SECURE PORTAL</Text>
             </View>
+              </View>
+            </ScrollView>
           </View>
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   )
 }
 
@@ -486,12 +474,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f9f9f9',
   },
+  keyboardAvoid: {
+    flex: 1,
+  },
   content: {
-    flexGrow: 1,
+    flex: 1,
     padding: 20,
     justifyContent: 'center',
   },
   card: {
+    flex: 1,
     backgroundColor: '#ffffff',
     borderRadius: 20,
     overflow: 'hidden',
@@ -499,6 +491,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 8 },
+  },
+  formScrollContent: {
+    flexGrow: 1,
   },
   hero: {
     height: 190,

@@ -60,10 +60,10 @@ class ScheduledRideStopInline(admin.TabularInline):
 class ScheduledRideAdmin(admin.ModelAdmin):
     list_display = [
         'reference', 'campus', 'created_by', 'departure_date',
-        'window_start', 'window_end', 'status', 'vehicle_size',
+        'window_start', 'window_end', 'status', 'allowed_vehicle_types',
         'passenger_count', 'created_at',
     ]
-    list_filter = ['status', 'vehicle_size', 'departure_date', 'campus']
+    list_filter = ['status', 'departure_date', 'campus']
     search_fields = [
         'reference', 'origin_address', 'destination_address',
         'created_by__first_name', 'created_by__last_name',
