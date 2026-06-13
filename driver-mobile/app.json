@@ -1,15 +1,15 @@
 {
   "expo": {
-    "name": "FUTMDrive",
+    "name": "FUTMDrv",
     "slug": "futmdrive",
     "version": "1.0.1",
     "sdkVersion": "54.0.0",
     "runtimeVersion": "54.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/FUT-icon-removedbg.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/icon2.png",
+      "image": "./assets/FUT-icon-removedbg.png",
       "resizeMode": "contain",
       "backgroundColor": "#d3c5e3"
     },
@@ -31,7 +31,7 @@
         "POST_NOTIFICATIONS"
       ],
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/FUT-icon-removedbg.png",
         "backgroundColor": "#5B2D8E"
       },
       "config": {

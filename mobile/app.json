@@ -1,15 +1,15 @@
 {
   "expo": {
-    "name": "FUTmRide",
-    "slug": "lr-ride-mobile",
+    "name": "FUTMstd",
+    "slug": "futmstd",
     "version": "1.0.0",
     "sdkVersion": "54.0.0",
     "runtimeVersion": "54.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/FUT-icon-removedbg.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/icon2.png",
+      "image": "./assets/FUT-icon-removedbg.png",
       "resizeMode": "contain",
       "backgroundColor": "#d3c5e3"
     },
@@ -27,7 +27,7 @@
     "android": {
       "package": "com.lrride.mobile",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/FUT-icon-removedbg.png",
         "backgroundColor": "#5B2D8E"
       },
       "config": {

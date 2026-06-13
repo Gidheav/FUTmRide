@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   View,
   Text,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
+  Pressable,
 } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme'
@@ -34,11 +34,50 @@ export default function AppLockScreen({
   onLogout,
 }: AppLockScreenProps) {
   const [pin, setPin] = useState('')
+  const keypadRows = useMemo(() => ([
+    ['1', '2', '3'],
+    ['4', '5', '6'],
+    ['7', '8', '9'],
+    ['', '0', 'back'],
+  ]), [])
+  const PIN_MIN_LENGTH = 4
+  const PIN_MAX_LENGTH = 6
+  const canSubmitPin = hasPin && pin.length >= PIN_MIN_LENGTH && !busy
+
+  useEffect(() => {
+    if (errorMessage) {
+      setPin('')
+    }
+  }, [errorMessage])
+
+  const submitPin = (value = pin) => {
+    if (busy) return
+    onUnlockPin(value)
+  }
+
+  const handleDigitPress = (digit: string) => {
+    if (busy) return
+    if (digit === 'back') {
+      setPin((prev) => prev.slice(0, -1))
+      return
+    }
+    if (!digit) return
+    setPin((prev) => {
+      if (prev.length >= PIN_MAX_LENGTH) return prev
+      const next = `${prev}${digit}`
+      if (next.length === PIN_MAX_LENGTH) {
+        setTimeout(() => submitPin(next), 0)
+      }
+      return next
+    })
+  }
 
   return (
     <View style={styles.container}>
       <View style={[styles.card, AMBIENT_SHADOW]}>
-        <MaterialIcons name="lock" size={28} color={COLORS.primary} />
+        <View style={styles.iconWrap}>
+          <MaterialIcons name="lock" size={30} color={COLORS.primary} />
+        </View>
         <Text style={styles.title}>App Locked</Text>
         <Text style={styles.subtitle}>
           {statusMessage || 'Unlock online to continue'}
@@ -52,20 +91,63 @@ export default function AppLockScreen({
         ) : null}
 
         {hasPin ? (
-          <View style={styles.inputGroup}>
-            <TextInput
-              style={styles.input}
-              value={pin}
-              onChangeText={setPin}
-              placeholder="Enter PIN"
-              keyboardType="number-pad"
-              secureTextEntry
-              maxLength={6}
-            />
+          <View style={styles.pinPanel}>
+            <View style={styles.dotRow}>
+              {Array.from({ length: PIN_MAX_LENGTH }).map((_, index) => (
+                <View
+                  key={index}
+                  style={[
+                    styles.pinDot,
+                    index < pin.length ? styles.pinDotFilled : styles.pinDotEmpty,
+                  ]}
+                />
+              ))}
+            </View>
+
+            <View style={[styles.keypad, busy && styles.keypadDisabled]}>
+              {keypadRows.map((row, rowIndex) => (
+                <View key={`row-${rowIndex}`} style={styles.keypadRow}>
+                  {row.map((item, index) => {
+                    if (!item) {
+                      return <View key={`empty-${rowIndex}-${index}`} style={styles.keypadEmpty} />
+                    }
+                    if (item === 'back') {
+                      return (
+                        <Pressable
+                          key="back"
+                          style={({ pressed }) => [
+                            styles.keypadBack,
+                            pressed && styles.keypadPressed,
+                          ]}
+                          onPress={() => handleDigitPress('back')}
+                          disabled={busy || pin.length === 0}
+                        >
+                          <MaterialIcons name="backspace" size={24} color={COLORS.onSurfaceVariant} />
+                        </Pressable>
+                      )
+                    }
+                    return (
+                      <Pressable
+                        key={`${item}-${rowIndex}`}
+                        style={({ pressed }) => [
+                          styles.keypadButton,
+                          pressed && styles.keypadPressed,
+                        ]}
+                        onPress={() => handleDigitPress(item)}
+                        disabled={busy}
+                      >
+                        <Text style={styles.keypadText}>{item}</Text>
+                      </Pressable>
+                    )
+                  })}
+                </View>
+              ))}
+            </View>
+
             <TouchableOpacity
-              style={[styles.primaryButton, busy && styles.buttonDisabled]}
-              onPress={() => onUnlockPin(pin)}
-              disabled={busy}
+              style={[styles.primaryButton, !canSubmitPin && styles.buttonDisabled]}
+              onPress={() => submitPin()}
+              disabled={!canSubmitPin}
             >
               {busy ? (
                 <ActivityIndicator size="small" color={COLORS.onPrimary} />
@@ -116,11 +198,20 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
+    maxWidth: 380,
     borderRadius: 16,
     backgroundColor: COLORS.surface,
     padding: 24,
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
+  },
+  iconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.surfaceContainerLow,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     ...FONTS.headlineMd,
@@ -146,23 +237,73 @@ const styles = StyleSheet.create({
     color: COLORS.error,
     flex: 1,
   },
-  inputGroup: {
+  pinPanel: {
     width: '100%',
-    gap: 10,
+    alignItems: 'center',
     marginTop: 8,
+    gap: 16,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: COLORS.surfaceContainerHighest,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    backgroundColor: COLORS.surfaceContainerLowest,
+  dotRow: {
+    flexDirection: 'row',
+    gap: 12,
+    minHeight: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pinDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  pinDotFilled: {
+    backgroundColor: COLORS.primary,
+  },
+  pinDotEmpty: {
+    backgroundColor: COLORS.surfaceContainerHighest,
+  },
+  keypad: {
+    width: '100%',
+    maxWidth: 300,
+    gap: 14,
+  },
+  keypadDisabled: {
+    opacity: 0.55,
+  },
+  keypadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  keypadButton: {
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    backgroundColor: COLORS.surfaceContainerLow,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  keypadBack: {
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  keypadEmpty: {
+    width: 62,
+    height: 62,
+  },
+  keypadText: {
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: '700',
     color: COLORS.onSurface,
-    textAlign: 'center',
-    fontSize: 16,
+  },
+  keypadPressed: {
+    opacity: 0.78,
   },
   primaryButton: {
+    width: '100%',
     backgroundColor: COLORS.primary,
     borderRadius: 12,
     paddingVertical: 12,

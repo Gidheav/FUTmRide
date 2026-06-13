@@ -18,6 +18,14 @@ import { useSettingsStore } from '../settingsStore'
 import { useAnalyticsStore } from '../analyticsStore'
 import { type FinancialTab, useFinancialStore } from '../financialStore'
 import { ENGINE_NAV_ITEMS, useEngineStore } from '../engineStore'
+import { type ScheduleTab, useScheduleStore } from '../scheduleStore'
+
+const SCHEDULE_NAV_ITEMS: Array<{ label: string; tab: ScheduleTab }> = [
+  { label: 'DEPARTURES', tab: 'departures' },
+  { label: 'ROUTES', tab: 'routes' },
+  { label: 'FLEET', tab: 'fleet' },
+  { label: 'PASSENGERS', tab: 'passengers' },
+]
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/' },
@@ -46,6 +54,7 @@ export default function CampusAdminTopNav() {
   const { activeTab: analyticsTab, setActiveTab: setAnalyticsTab } = useAnalyticsStore()
   const { activeTab: financeTab, setActiveTab: setFinanceTab } = useFinancialStore()
   const { activeTab: engineTab, setActiveTab: setEngineTab } = useEngineStore()
+  const { activeTab: scheduleTab, setActiveTab: setScheduleTab } = useScheduleStore()
 
   const verifyMatch = location.pathname.match(/\/users\/(.*)\/verify/)
   const verifyDriverId = verifyMatch ? verifyMatch[1] : null
@@ -198,6 +207,16 @@ export default function CampusAdminTopNav() {
             </div>
             <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
               Platform treasury — revenue, ledger, reports, and payouts
+            </div>
+          </div>
+        ) : location.pathname === '/schedule' ? (
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3, display: 'flex', alignItems: 'center' }}>
+              <CalendarClock size={16} color={T.accent} style={{ marginRight: 8 }} />
+              Schedule & On-Demand
+            </div>
+            <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
+              Manage fleet departures, routes, and passenger assignments
             </div>
           </div>
         ) : location.pathname === '/engine' ? (
@@ -367,6 +386,27 @@ export default function CampusAdminTopNav() {
                   letterSpacing: 0.4,
                 }}
                 onClick={() => setFinanceTab(item.tab)}
+              >
+                <span>{item.label}</span>
+              </button>
+            )
+          })}
+        </nav>
+      ) : location.pathname === '/schedule' ? (
+        <nav style={s.topNav}>
+          {SCHEDULE_NAV_ITEMS.map((item) => {
+            const isActive = scheduleTab === item.tab
+            return (
+              <button
+                key={item.tab}
+                type="button"
+                style={{
+                  ...s.topNavBtn,
+                  color: isActive ? T.accent : T.textSecondary,
+                  background: isActive ? T.accentBg : 'transparent',
+                  letterSpacing: 0.4,
+                }}
+                onClick={() => setScheduleTab(item.tab)}
               >
                 <span>{item.label}</span>
               </button>
