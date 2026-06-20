@@ -1,5 +1,4 @@
 import {
-  ActivityIndicator,
   Alert,
   ImageBackground,
   KeyboardAvoidingView,
@@ -13,8 +12,10 @@ import {
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { MaterialIcons } from '@expo/vector-icons'
+import { COLORS, FONTS } from '../../core/theme'
+import LoadingOverlay from '../components/LoadingOverlay'
 import { useAuthStore } from '../../core/authStore'
 import api, { settingsApi } from '../../core/api'
 import { API_BASE_URL } from '../../../config/apiConfig'
@@ -47,6 +48,27 @@ export default function DriverLoginScreen() {
   const availableTwoFactorMethods = twoFactorMethods.length
     ? twoFactorMethods
     : ['totp', 'sms', 'email']
+
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(''), 10000)
+      return () => clearTimeout(timer)
+    }
+  }, [error])
+
+  useEffect(() => {
+    if (registerError) {
+      const timer = setTimeout(() => setRegisterError(''), 10000)
+      return () => clearTimeout(timer)
+    }
+  }, [registerError])
+
+  // Clear errors when switching tabs
+  const handleTabSwitch = (isReg: boolean) => {
+    setIsRegistering(isReg)
+    setError('')
+    setRegisterError('')
+  }
 
   const getApiErrorMessage = (err: any, fallback: string) => {
     const message = err?.response?.data?.error?.message
@@ -199,6 +221,12 @@ export default function DriverLoginScreen() {
 
   return (
     <SafeAreaView style={styles.page} edges={['top', 'bottom']}>
+      {(error || registerError) ? (
+        <View style={styles.floatingPill}>
+          <MaterialIcons name="error-outline" size={18} color={COLORS.error} />
+          <Text style={styles.pillText}>{error || registerError}</Text>
+        </View>
+      ) : null}
       <KeyboardAvoidingView
         style={styles.keyboardAvoid}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -223,13 +251,13 @@ export default function DriverLoginScreen() {
             <View style={styles.tabs}>
               <Pressable
                 style={[styles.tab, !isRegistering && styles.tabActive]}
-                onPress={() => setIsRegistering(false)}
+                onPress={() => handleTabSwitch(false)}
               >
                 <Text style={!isRegistering ? styles.tabActiveText : styles.tabText}>Login</Text>
               </Pressable>
               <Pressable
                 style={[styles.tab, isRegistering && styles.tabActive]}
-                onPress={() => setIsRegistering(true)}
+                onPress={() => handleTabSwitch(true)}
               >
                 <Text style={isRegistering ? styles.tabActiveText : styles.tabText}>Create Account</Text>
               </Pressable>
@@ -237,8 +265,6 @@ export default function DriverLoginScreen() {
 
             {isRegistering ? (
               <>
-                {registerError ? <Text style={styles.errorText}>{registerError}</Text> : null}
-
                 <View style={styles.inputGroup}>
                   <MaterialIcons name="person" size={20} color="#5e5e5e" style={styles.inputIcon} />
                   <TextInput
@@ -326,14 +352,8 @@ export default function DriverLoginScreen() {
                   disabled={registerLoading}
                   activeOpacity={0.9}
                 >
-                  {registerLoading ? (
-                    <ActivityIndicator color="#ffffff" />
-                  ) : (
-                    <>
-                      <Text style={styles.primaryButtonText}>Create Driver Account</Text>
-                      <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
-                    </>
-                  )}
+                  <Text style={styles.primaryButtonText}>Create Driver Account</Text>
+                  <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
                 </TouchableOpacity>
 
               </>
@@ -341,7 +361,6 @@ export default function DriverLoginScreen() {
               <>
                 {twoFactorRequired ? (
                   <>
-                    {error ? <Text style={styles.errorText}>{error}</Text> : null}
                     <Text style={styles.sectionTitle}>Two-Factor Verification</Text>
                     <View style={styles.methodRow}>
                       {availableTwoFactorMethods.includes('totp') ? (
@@ -387,20 +406,12 @@ export default function DriverLoginScreen() {
                       disabled={twoFactorBusy}
                       activeOpacity={0.9}
                     >
-                      {twoFactorBusy ? (
-                        <ActivityIndicator color="#ffffff" />
-                      ) : (
-                        <>
-                          <Text style={styles.primaryButtonText}>Verify & Continue</Text>
-                          <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
-                        </>
-                      )}
+                      <Text style={styles.primaryButtonText}>Verify & Continue</Text>
+                      <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
                     </TouchableOpacity>
                   </>
                 ) : (
                   <>
-                {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
                 <View style={styles.inputGroup}>
                   <MaterialIcons name="person" size={20} color="#5e5e5e" style={styles.inputIcon} />
                   <TextInput
@@ -441,14 +452,8 @@ export default function DriverLoginScreen() {
                   disabled={loading}
                   activeOpacity={0.9}
                 >
-                  {loading ? (
-                    <ActivityIndicator color="#ffffff" />
-                  ) : (
-                    <>
-                      <Text style={styles.primaryButtonText}>Secure Login</Text>
-                      <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
-                    </>
-                  )}
+                  <Text style={styles.primaryButtonText}>Secure Login</Text>
+                  <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
                 </TouchableOpacity>
 
                   </>
@@ -465,6 +470,7 @@ export default function DriverLoginScreen() {
           </View>
         </View>
       </KeyboardAvoidingView>
+      <LoadingOverlay visible={loading || registerLoading || twoFactorBusy} />
     </SafeAreaView>
   )
 }
@@ -706,10 +712,27 @@ const styles = StyleSheet.create({
     color: '#7b7b7b',
     letterSpacing: 1.2,
   },
-  errorText: {
-    color: '#ba1a1a',
+  floatingPill: {
+    position: 'absolute',
+    top: 60,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.errorContainer || '#ffdad6',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 24,
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 5,
+    zIndex: 100,
+  },
+  pillText: {
+    fontSize: 13,
+    color: COLORS.error || '#ba1a1a',
     fontWeight: '600',
-    fontSize: 12,
-    marginBottom: 8,
   },
 })

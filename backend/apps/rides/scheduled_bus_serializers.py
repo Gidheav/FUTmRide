@@ -13,6 +13,9 @@ from .scheduled_models import (
 class BusAssignmentReadSerializer(serializers.ModelSerializer):
     driver_name = serializers.SerializerMethodField()
     vehicle_type = serializers.SerializerMethodField()
+    vehicle_make = serializers.SerializerMethodField()
+    vehicle_model = serializers.SerializerMethodField()
+    vehicle_seats = serializers.SerializerMethodField()
     plate_number = serializers.SerializerMethodField()
     seated_count = serializers.IntegerField(read_only=True)
     standing_count = serializers.IntegerField(read_only=True)
@@ -25,6 +28,7 @@ class BusAssignmentReadSerializer(serializers.ModelSerializer):
         model = ScheduledRideBusAssignment
         fields = [
             'id', 'ride', 'driver', 'driver_name', 'vehicle_type', 'plate_number',
+            'vehicle_make', 'vehicle_model', 'vehicle_seats',
             'bus_label', 'order', 'seated_capacity', 'standing_capacity',
             'status', 'departed_at', 'arrived_at', 'admin_notes',
             'seated_count', 'standing_count', 'checked_in_count',
@@ -37,18 +41,30 @@ class BusAssignmentReadSerializer(serializers.ModelSerializer):
         return obj.driver.full_name if obj.driver else None
 
     def get_vehicle_type(self, obj):
-        if not obj.driver:
-            return None
-        try:
-            return obj.driver.driver_profile.vehicle_type
-        except DriverProfile.DoesNotExist:
-            return None
+        profile = self._driver_profile(obj)
+        return profile.vehicle_type if profile else None
+
+    def get_vehicle_make(self, obj):
+        profile = self._driver_profile(obj)
+        return profile.vehicle_make if profile else None
+
+    def get_vehicle_model(self, obj):
+        profile = self._driver_profile(obj)
+        return profile.vehicle_model if profile else None
+
+    def get_vehicle_seats(self, obj):
+        profile = self._driver_profile(obj)
+        return profile.vehicle_seats if profile else None
 
     def get_plate_number(self, obj):
+        profile = self._driver_profile(obj)
+        return profile.plate_number if profile else None
+
+    def _driver_profile(self, obj):
         if not obj.driver:
             return None
         try:
-            return obj.driver.driver_profile.plate_number
+            return obj.driver.driver_profile
         except DriverProfile.DoesNotExist:
             return None
 

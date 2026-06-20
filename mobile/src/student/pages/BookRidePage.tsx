@@ -20,11 +20,12 @@ import locationData from '../Gk-location cordinate.json'
 import MapPickerPage from './MapPickerPage'
 
 const VEHICLES = [
-  { id: 'motorcycle', label: 'Motorcycle (Okada)' },
+  { id: 'motorbike', label: 'Motorbike (Okada)' },
   { id: 'tricycle', label: 'Tricycle (Keke)' },
   { id: 'sedan', label: 'Sedan' },
-  { id: 'suv', label: 'SUV' },
-  { id: 'minivan', label: 'Minivan / Shuttle' },
+  { id: 'mpv', label: 'MPV' },
+  { id: 'minibus', label: 'Minibus / Shuttle' },
+  { id: 'coach', label: 'Coach' },
 ]
 
 const SCHEDULE_OPTIONS = [0, 5, 10, 15, 20, 25, 30]
@@ -71,8 +72,11 @@ const filterLocations = (query: string) => {
 }
 
 const getSeatLimit = (vehicleId: string) => {
-  if (vehicleId === 'motorcycle') return 2
+  if (vehicleId === 'motorbike') return 2
   if (vehicleId === 'tricycle') return 4
+  if (vehicleId === 'mpv') return 7
+  if (vehicleId === 'minibus') return 18
+  if (vehicleId === 'coach') return 50
   return 6
 }
 
@@ -410,7 +414,7 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
                     closePicker()
                   }}>
                     <View style={styles.modalItemIcon}>
-                      <MaterialIcons name={item.id === 'motorcycle' ? 'two-wheeler' : item.id === 'tricycle' ? 'electric-rickshaw' : 'directions-car'} size={18} color="#6A1B9A" />
+                      <MaterialIcons name={item.id === 'motorbike' ? 'two-wheeler' : item.id === 'tricycle' ? 'electric-rickshaw' : item.id === 'minibus' || item.id === 'coach' ? 'directions-bus' : 'directions-car'} size={18} color="#6A1B9A" />
                     </View>
                     <View style={styles.modalItemContent}>
                       <Text style={styles.modalItemTitle}>{item.label}</Text>

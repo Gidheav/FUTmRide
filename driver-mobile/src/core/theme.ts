@@ -1,12 +1,12 @@
 const LIGHT_COLORS = {
   surfaceContainerLow: "#f3f3f3",
   onTertiary: "#ffffff",
-  onPrimaryFixedVariant: "#005227",
+  onPrimaryFixedVariant: "#38006B",
   onPrimary: "#ffffff",
   secondaryFixed: "#ffd6f9",
-  primaryFixed: "#79fca0",
-  primaryContainer: "#0fa958",
-  inversePrimary: "#5bdf87",
+  primaryFixed: "#E9D5FF",
+  primaryContainer: "#7A1FA2",
+  inversePrimary: "#D094FF",
   onSurface: "#1a1c1c",
   inverseSurface: "#2f3131",
   outlineVariant: "#bccabb",
@@ -15,7 +15,7 @@ const LIGHT_COLORS = {
   outline: "#6d7b6d",
   surfaceVariant: "#e2e2e2",
   inverseOnSurface: "#f1f1f1",
-  primary: "#006d36",
+  primary: "#5E1284",
   onTertiaryFixedVariant: "#474747",
   onSecondaryFixedVariant: "#79197e",
   surface: "#f9f9f9",
@@ -24,14 +24,14 @@ const LIGHT_COLORS = {
   error: "#ba1a1a",
   surfaceContainerLowest: "#ffffff",
   secondaryContainer: "#fc92fb",
-  onPrimaryContainer: "#003416",
+  onPrimaryContainer: "#FFFFFF",
   surfaceDim: "#dadada",
   surfaceContainer: "#eeeeee",
-  surfaceTint: "#006d36",
+  surfaceTint: "#5E1284",
   tertiaryFixedDim: "#c6c6c6",
   errorContainer: "#ffdad6",
   onSecondaryFixed: "#37003b",
-  primaryFixedDim: "#5bdf87",
+  primaryFixedDim: "#D094FF",
   onError: "#ffffff",
   secondaryFixedDim: "#ffa9fb",
   onSurfaceVariant: "#3d4a3e",
@@ -44,7 +44,7 @@ const LIGHT_COLORS = {
   onBackground: "#1a1c1c",
   surfaceContainerHigh: "#e8e8e8",
   onTertiaryContainer: "#2c2c2c",
-  onPrimaryFixed: "#00210c",
+  onPrimaryFixed: "#1C0036",
   tertiary: "#5e5e5e"
 };
 
@@ -91,9 +91,9 @@ export const FONTS = {
 };
 
 export const AMBIENT_SHADOW = {
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 8 },
-  shadowOpacity: 0.05,
-  shadowRadius: 24,
-  elevation: 4,
+  shadowColor: 'transparent',
+  shadowOffset: { width: 0, height: 0 },
+  shadowOpacity: 0,
+  shadowRadius: 0,
+  elevation: 0,
 };

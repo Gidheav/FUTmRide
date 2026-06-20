@@ -400,16 +400,21 @@ class StudentProfileSerializer(serializers.ModelSerializer):
 
 class DriverProfileSerializer(serializers.ModelSerializer):
     user = UserPublicSerializer(read_only=True)
+    fleet_state = serializers.SerializerMethodField()
+    pending_assignment = serializers.SerializerMethodField()
+    last_route = serializers.SerializerMethodField()
+    recommendation = serializers.SerializerMethodField()
 
     class Meta:
         model = DriverProfile
         fields = [
             "id", "user", "vehicle_type", "vehicle_make", "vehicle_model",
-            "vehicle_year", "vehicle_color", "plate_number", "verification_status",
+            "vehicle_year", "vehicle_color", "plate_number", "vehicle_seats", "verification_status",
             "maintenance_status", "last_service_date", "service_due_date", "odometer_km",
             "is_online", "is_on_trip", "wallet_balance", "daily_goal_target", "total_trips",
             "total_earnings", "average_rating", "acceptance_rate",
             "cancellation_rate", "verified_at", "created_at",
+            "fleet_state", "pending_assignment", "last_route", "recommendation",
         ]
         read_only_fields = [
             "id", "verification_status", "maintenance_status", "last_service_date",
@@ -418,11 +423,73 @@ class DriverProfileSerializer(serializers.ModelSerializer):
             "acceptance_rate", "cancellation_rate", "verified_at", "created_at",
         ]
 
+    def _assignment_payload(self, assignment):
+        if not assignment:
+            return None
+        ride = assignment.ride
+        from apps.rides.route_display import scheduled_route_label
+
+        return {
+            "id": str(assignment.id),
+            "ride_id": str(ride.id),
+            "reference": ride.reference,
+            "route": scheduled_route_label(ride),
+            "status": assignment.status,
+            "bus_label": assignment.bus_label,
+            "departure_date": ride.departure_date,
+            "window_start": ride.window_start,
+            "window_end": ride.window_end,
+        }
+
+    def _latest_assignment(self, obj, statuses):
+        from apps.rides.scheduled_models import ScheduledRideBusAssignment
+
+        return (
+            ScheduledRideBusAssignment.objects
+            .select_related("ride")
+            .prefetch_related("ride__stops")
+            .filter(driver=obj.user, status__in=statuses)
+            .order_by("-updated_at", "-created_at")
+            .first()
+        )
+
+    def get_pending_assignment(self, obj):
+        from apps.rides.scheduled_models import BusAssignmentStatus
+
+        assignment = self._latest_assignment(obj, [
+            BusAssignmentStatus.ASSIGNED,
+            BusAssignmentStatus.BOARDING,
+            BusAssignmentStatus.LOADING,
+        ])
+        return self._assignment_payload(assignment)
+
+    def get_last_route(self, obj):
+        from apps.rides.scheduled_models import BusAssignmentStatus
+
+        assignment = self._latest_assignment(obj, [BusAssignmentStatus.COMPLETED])
+        return self._assignment_payload(assignment)
+
+    def get_fleet_state(self, obj):
+        pending = self.get_pending_assignment(obj)
+        if pending:
+            return pending["status"]
+        return "idle"
+
+    def get_recommendation(self, obj):
+        if obj.maintenance_status != DriverProfile.MaintenanceStatus.ACTIVE:
+            return "Review vehicle maintenance status"
+        pending = self.get_pending_assignment(obj)
+        if pending:
+            return "Ready for boarding/departure"
+        if obj.is_online:
+            return "Available for assignment"
+        return "Driver offline"
+
 
 class DriverProfileCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = DriverProfile
-        fields = ["vehicle_type", "vehicle_make", "vehicle_model", "vehicle_year", "vehicle_color", "plate_number"]
+        fields = ["vehicle_type", "vehicle_make", "vehicle_model", "vehicle_year", "vehicle_color", "plate_number", "vehicle_seats"]
 
     def create(self, validated_data):
         return DriverProfile.objects.create(

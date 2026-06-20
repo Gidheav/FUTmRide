@@ -1,9 +1,10 @@
 export const VEHICLE_TYPES = [
-  { id: 'motorcycle', label: 'Motorcycle' },
+  { id: 'motorbike', label: 'Motorbike' },
   { id: 'tricycle', label: 'Tricycle' },
   { id: 'sedan', label: 'Sedan' },
-  { id: 'suv', label: 'SUV' },
-  { id: 'minivan', label: 'Minivan' },
+  { id: 'mpv', label: 'MPV' },
+  { id: 'minibus', label: 'Minibus' },
+  { id: 'coach', label: 'Coach' },
 ] as const
 
 export const EFFECTIVE_DELAY_OPTIONS = [

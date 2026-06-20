@@ -2,13 +2,13 @@ import { DELAY_MS } from './constants'
 import type { FareConfig, FareDraft, PlatformSettings, SimulationResult } from './types'
 
 const LEGACY_BASE: Record<string, number> = {
-  motorcycle: 200, tricycle: 300, sedan: 500, suv: 700, minivan: 600,
+  motorbike: 200, tricycle: 300, sedan: 500, mpv: 700, minibus: 600, coach: 800,
 }
 const LEGACY_PER_KM: Record<string, number> = {
-  motorcycle: 80, tricycle: 100, sedan: 150, suv: 200, minivan: 170,
+  motorbike: 80, tricycle: 100, sedan: 150, mpv: 200, minibus: 170, coach: 220,
 }
 const LEGACY_MIN: Record<string, number> = {
-  motorcycle: 250, tricycle: 350, sedan: 600, suv: 800, minivan: 700,
+  motorbike: 250, tricycle: 350, sedan: 600, mpv: 800, minibus: 700, coach: 900,
 }
 
 /** Mirrors backend FareCalculator.calculate for draft preview parity */

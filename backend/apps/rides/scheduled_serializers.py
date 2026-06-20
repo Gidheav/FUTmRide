@@ -1,6 +1,9 @@
 import datetime
+import math
+import urllib.parse
+import urllib.request
 import uuid
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from django.db import transaction
 from django.utils import timezone
@@ -9,6 +12,8 @@ from rest_framework import serializers
 from apps.accounts.models import CampusAdminProfile, DriverProfile, User, UserRole
 from apps.payments.models import WalletTransaction
 from apps.payments.services import WalletService
+from apps.rides.services import FareCalculator
+from apps.rides.route_display import scheduled_endpoint_names
 from .scheduled_models import (
     PassengerStatus,
     PricingTier,
@@ -20,7 +25,6 @@ from .scheduled_models import (
     VehicleClass,
 )
 
-ACCESSIBILITY_FEATURES = {'wheelchair_ramp', 'liftgate', 'low_floor', 'air_conditioning'}
 
 
 def get_admin_campus(user):
@@ -45,6 +49,230 @@ def generate_scheduled_reference():
     return 'SR-' + uuid.uuid4().hex[:12].upper()
 
 
+def _as_float(value):
+    return float(value or 0)
+
+
+def _point_value(point, key):
+    if isinstance(point, dict):
+        return point.get(key)
+    return getattr(point, key)
+
+
+def _haversine_km(a, b):
+    radius_km = 6371.0
+    lat1 = math.radians(_as_float(_point_value(a, 'latitude')))
+    lon1 = math.radians(_as_float(_point_value(a, 'longitude')))
+    lat2 = math.radians(_as_float(_point_value(b, 'latitude')))
+    lon2 = math.radians(_as_float(_point_value(b, 'longitude')))
+    d_lat = lat2 - lat1
+    d_lon = lon2 - lon1
+    h = (
+        math.sin(d_lat / 2) ** 2
+        + math.cos(lat1) * math.cos(lat2) * math.sin(d_lon / 2) ** 2
+    )
+    return 2 * radius_km * math.atan2(math.sqrt(h), math.sqrt(1 - h))
+
+
+def _route_path_between(a, b):
+    coords = (
+        f"{_as_float(_point_value(a, 'longitude'))},{_as_float(_point_value(a, 'latitude'))};"
+        f"{_as_float(_point_value(b, 'longitude'))},{_as_float(_point_value(b, 'latitude'))}"
+    )
+    query = urllib.parse.urlencode({
+        'overview': 'full',
+        'geometries': 'geojson',
+        'alternatives': 'false',
+        'steps': 'false',
+    })
+    url = f'https://router.project-osrm.org/route/v1/driving/{coords}?{query}'
+    try:
+        with urllib.request.urlopen(url, timeout=3) as response:
+            import json
+
+            payload = json.loads(response.read().decode('utf-8'))
+        if payload.get('code') == 'Ok' and payload.get('routes'):
+            route = payload['routes'][0]
+            coordinates = route.get('geometry', {}).get('coordinates') or []
+            path = [
+                {'latitude': coord[1], 'longitude': coord[0]}
+                for coord in coordinates
+            ]
+            if len(path) >= 2:
+                return path, float(route.get('distance') or 0) / 1000
+    except Exception:
+        pass
+
+    fallback_path = [
+        {'latitude': _point_value(a, 'latitude'), 'longitude': _point_value(a, 'longitude')},
+        {'latitude': _point_value(b, 'latitude'), 'longitude': _point_value(b, 'longitude')},
+    ]
+    return fallback_path, _haversine_km(a, b) * 1.25
+
+
+def _path_cumulative_km(path):
+    cumulative = [0.0]
+    for idx in range(1, len(path)):
+        cumulative.append(cumulative[-1] + _haversine_km(path[idx - 1], path[idx]))
+    return cumulative
+
+
+def _project_point_to_route(point, path, path_cumulative):
+    point_lat = _as_float(_point_value(point, 'latitude'))
+    point_lng = _as_float(_point_value(point, 'longitude'))
+    origin_lat = math.radians(point_lat)
+    meters_per_deg_lat = 111_320
+    meters_per_deg_lng = 111_320 * math.cos(origin_lat)
+
+    def to_xy(lat, lng):
+        return lng * meters_per_deg_lng, lat * meters_per_deg_lat
+
+    px, py = to_xy(point_lat, point_lng)
+    best_offset_m = float('inf')
+    best_along_km = 0.0
+
+    for idx in range(1, len(path)):
+        ax, ay = to_xy(_as_float(path[idx - 1]['latitude']), _as_float(path[idx - 1]['longitude']))
+        bx, by = to_xy(_as_float(path[idx]['latitude']), _as_float(path[idx]['longitude']))
+        dx = bx - ax
+        dy = by - ay
+        segment_len_sq = dx * dx + dy * dy
+        if segment_len_sq == 0:
+            t = 0
+        else:
+            t = max(0, min(1, ((px - ax) * dx + (py - ay) * dy) / segment_len_sq))
+        nearest_x = ax + t * dx
+        nearest_y = ay + t * dy
+        offset_m = math.hypot(px - nearest_x, py - nearest_y)
+        if offset_m < best_offset_m:
+            best_offset_m = offset_m
+            segment_km = max(0, path_cumulative[idx] - path_cumulative[idx - 1])
+            best_along_km = path_cumulative[idx - 1] + (segment_km * t)
+
+    return best_along_km, best_offset_m
+
+
+def get_scheduled_fare_vehicle_type(ride):
+    vehicle_types = ride.allowed_vehicle_types or []
+    if vehicle_types:
+        return vehicle_types[0]
+    return VehicleClass.SEDAN
+
+
+def get_route_cumulative_distances(stops, validate=False):
+    ordered = sorted(stops, key=lambda stop: _point_value(stop, 'order'))
+    if len(ordered) < 2:
+        return ordered, [0.0]
+
+    path, total_km = _route_path_between(ordered[0], ordered[-1])
+    path_cumulative = _path_cumulative_km(path)
+    if total_km > 0 and path_cumulative:
+        scale = total_km / path_cumulative[-1] if path_cumulative[-1] else 1
+        path_cumulative = [value * scale for value in path_cumulative]
+
+    positions = []
+    offsets = []
+    for idx, stop in enumerate(ordered):
+        if idx == 0:
+            positions.append(0.0)
+            offsets.append(0.0)
+        elif idx == len(ordered) - 1:
+            positions.append(total_km or path_cumulative[-1])
+            offsets.append(0.0)
+        else:
+            along_km, offset_m = _project_point_to_route(stop, path, path_cumulative)
+            positions.append(along_km)
+            offsets.append(offset_m)
+
+    if validate:
+        far_stops = [
+            _point_value(stop, 'name') or f"Stop {_point_value(stop, 'order')}"
+            for stop, offset_m in zip(ordered, offsets)
+            if offset_m > 1000
+        ]
+        if far_stops:
+            raise serializers.ValidationError({
+                'stops': f"Stops must be within 1km of the origin-to-destination route: {', '.join(far_stops)}.",
+            })
+        if any(positions[idx] <= positions[idx - 1] for idx in range(1, len(positions))):
+            raise serializers.ValidationError({
+                'stops': 'Stops must follow the same order as the origin-to-destination road route.',
+            })
+
+    return ordered, positions
+
+
+def calculate_scheduled_segment_fare(ride, boarding_stop, alighting_stop):
+    stops, cumulative = get_route_cumulative_distances(list(ride.stops.all()), validate=True)
+    order_to_index = {stop.order: idx for idx, stop in enumerate(stops)}
+    board_idx = order_to_index.get(boarding_stop.order)
+    alight_idx = order_to_index.get(alighting_stop.order)
+    if board_idx is None or alight_idx is None or alight_idx <= board_idx:
+        raise serializers.ValidationError({
+            'alighting_stop_id': 'Alighting stop must come after boarding stop on the route.',
+        })
+    distance_km = max(0.01, cumulative[alight_idx] - cumulative[board_idx])
+    vehicle_type = get_scheduled_fare_vehicle_type(ride)
+    result = FareCalculator.calculate(
+        vehicle_type=vehicle_type,
+        distance_km=distance_km,
+        surge_multiplier=1.0,
+    )
+    amount = Decimal(str(result['total_fare'])).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    return amount, result
+
+
+def build_scheduled_fare_matrix(ride):
+    stops, cumulative = get_route_cumulative_distances(list(ride.stops.all()))
+    vehicle_type = get_scheduled_fare_vehicle_type(ride)
+    rows = []
+    for from_idx, boarding in enumerate(stops[:-1]):
+        for to_idx in range(from_idx + 1, len(stops)):
+            alighting = stops[to_idx]
+            distance_km = max(0.01, cumulative[to_idx] - cumulative[from_idx])
+            result = FareCalculator.calculate(
+                vehicle_type=vehicle_type,
+                distance_km=distance_km,
+                surge_multiplier=1.0,
+            )
+            rows.append({
+                'boarding_stop_id': str(boarding.id),
+                'boarding_stop_name': boarding.name,
+                'boarding_stop_address': boarding.address,
+                'boarding_order': boarding.order,
+                'alighting_stop_id': str(alighting.id),
+                'alighting_stop_name': alighting.name,
+                'alighting_stop_address': alighting.address,
+                'alighting_order': alighting.order,
+                'distance_km': round(distance_km, 3),
+                'vehicle_type': vehicle_type,
+                'fare': result['total_fare'],
+                'platform_commission': result['platform_commission'],
+                'driver_earnings': result['driver_earnings'],
+            })
+    return rows
+
+
+def get_full_route_fare_summary(ride):
+    stops, cumulative = get_route_cumulative_distances(list(ride.stops.all()))
+    if len(stops) < 2:
+        return None
+    distance_km = max(0.01, cumulative[-1])
+    vehicle_type = get_scheduled_fare_vehicle_type(ride)
+    result = FareCalculator.calculate(
+        vehicle_type=vehicle_type,
+        distance_km=distance_km,
+        surge_multiplier=1.0,
+    )
+    return {
+        'vehicle_type': vehicle_type,
+        'distance_km': round(distance_km, 3),
+        'fare': result['total_fare'],
+        'platform_commission': result['platform_commission'],
+        'driver_earnings': result['driver_earnings'],
+    }
+
+
 class ScheduledRideStopSerializer(serializers.ModelSerializer):
     address = serializers.CharField(max_length=255, allow_blank=False)
 
@@ -56,6 +284,34 @@ class ScheduledRideStopSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id']
 
+
+class StopUpdateSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(required=False)
+    address = serializers.CharField(max_length=255, allow_blank=False)
+
+    class Meta:
+        model = ScheduledRideStop
+        fields = [
+            'id', 'order', 'name', 'address', 'latitude', 'longitude',
+            'estimated_arrival_offset_min', 'is_pickup', 'is_dropoff',
+        ]
+
+class ScheduledRideStopsUpdateSerializer(serializers.Serializer):
+    stops = StopUpdateSerializer(many=True)
+
+    def validate_stops(self, value):
+        if len(value) < 2:
+            raise serializers.ValidationError('At least origin and destination stops are required.')
+        orders = [stop['order'] for stop in value]
+        expected = list(range(1, len(value) + 1))
+        if sorted(orders) != expected:
+            raise serializers.ValidationError(f'Stop order must be contiguous from 1 to {len(value)}.')
+        for stop in value:
+            if not stop.get('is_pickup', True) and not stop.get('is_dropoff', True):
+                raise serializers.ValidationError('Each stop must allow pickup, dropoff, or both.')
+        sorted_value = sorted(value, key=lambda item: item['order'])
+        get_route_cumulative_distances(sorted_value, validate=True)
+        return sorted_value
 
 class ScheduledRideCreateSerializer(serializers.ModelSerializer):
     stops = ScheduledRideStopSerializer(many=True)
@@ -71,23 +327,13 @@ class ScheduledRideCreateSerializer(serializers.ModelSerializer):
             'departure_date', 'window_start', 'window_end',
             'origin_address', 'origin_latitude', 'origin_longitude',
             'destination_address', 'destination_latitude', 'destination_longitude',
-            'allowed_vehicle_types', 'cargo_capacity_kg', 'accessibility_features', 'assigned_driver',
+            'allowed_vehicle_types', 'cargo_capacity_kg', 'assigned_driver',
             'standard_enabled', 'standard_price',
             'standing_enabled', 'standing_price',
             'premium_enabled', 'premium_price',
             'freight_enabled', 'freight_price',
             'admin_notes', 'stops',
         ]
-
-    def validate_accessibility_features(self, value):
-        if value in (None, ''):
-            return []
-        if not isinstance(value, list):
-            raise serializers.ValidationError('Accessibility features must be a list.')
-        unknown = [item for item in value if item not in ACCESSIBILITY_FEATURES]
-        if unknown:
-            raise serializers.ValidationError(f'Unsupported accessibility features: {", ".join(unknown)}.')
-        return list(dict.fromkeys(value))
 
     def validate_cargo_capacity_kg(self, value):
         if value < 0 or value > 2000:
@@ -109,7 +355,9 @@ class ScheduledRideCreateSerializer(serializers.ModelSerializer):
         for stop in value:
             if not stop.get('is_pickup', True) and not stop.get('is_dropoff', True):
                 raise serializers.ValidationError('Each stop must allow pickup, dropoff, or both.')
-        return sorted(value, key=lambda item: item['order'])
+        sorted_value = sorted(value, key=lambda item: item['order'])
+        get_route_cumulative_distances(sorted_value, validate=True)
+        return sorted_value
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -127,8 +375,11 @@ class ScheduledRideCreateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({'window_end': 'Departure window end must be after start.'})
             start_dt = datetime.datetime.combine(datetime.date.today(), window_start)
             end_dt = datetime.datetime.combine(datetime.date.today(), window_end)
-            if end_dt - start_dt > datetime.timedelta(minutes=30):
-                raise serializers.ValidationError({'window_end': 'Departure window cannot exceed 30 minutes.'})
+            diff = end_dt - start_dt
+            if diff < datetime.timedelta(minutes=30):
+                raise serializers.ValidationError({'window_end': 'Departure window must be at least 30 minutes.'})
+            if diff > datetime.timedelta(hours=12):
+                raise serializers.ValidationError({'window_end': 'Departure window cannot exceed 12 hours.'})
 
         if departure_date and window_start:
             departure_dt = combine_local(departure_date, window_start)
@@ -139,34 +390,14 @@ class ScheduledRideCreateSerializer(serializers.ModelSerializer):
         if not isinstance(allowed_vehicle_types, list) or not allowed_vehicle_types:
             raise serializers.ValidationError({'allowed_vehicle_types': 'Must provide a list of allowed vehicle types.'})
 
-        standing_enabled = attrs.get('standing_enabled', False)
-        freight_enabled = attrs.get('freight_enabled', False)
-        cargo_capacity = attrs.get('cargo_capacity_kg', 0)
-
-        supports_standing = any(v in [VehicleClass.MINIBUS, VehicleClass.COACH] for v in allowed_vehicle_types)
-        if standing_enabled and not supports_standing:
-            raise serializers.ValidationError({
-                'standing_enabled': 'Standing tier is only allowed on Minibus or Bus vehicles.',
-            })
-        if freight_enabled and cargo_capacity <= 0:
-            raise serializers.ValidationError({
-                'cargo_capacity_kg': 'Cargo capacity must be greater than 0 if Freight tier is enabled.',
-            })
-
-        enabled_tiers = {
-            PricingTier.STANDARD: (attrs.get('standard_enabled', False), attrs.get('standard_price', Decimal('0'))),
-            PricingTier.STANDING: (standing_enabled, attrs.get('standing_price', Decimal('0'))),
-            PricingTier.PREMIUM: (attrs.get('premium_enabled', False), attrs.get('premium_price', Decimal('0'))),
-            PricingTier.FREIGHT: (freight_enabled, attrs.get('freight_price', Decimal('0'))),
-        }
-        if not any(enabled for enabled, _price in enabled_tiers.values()):
-            raise serializers.ValidationError('At least one pricing tier must be enabled.')
-        price_errors = {}
-        for tier, (enabled, price) in enabled_tiers.items():
-            if enabled and price <= 0:
-                price_errors[f'{tier}_price'] = 'Enabled pricing tiers must have a price greater than zero.'
-        if price_errors:
-            raise serializers.ValidationError(price_errors)
+        attrs['standard_enabled'] = True
+        attrs['standing_enabled'] = False
+        attrs['premium_enabled'] = False
+        attrs['freight_enabled'] = False
+        attrs['standing_price'] = Decimal('0')
+        attrs['premium_price'] = Decimal('0')
+        attrs['freight_price'] = Decimal('0')
+        attrs['cargo_capacity_kg'] = 0
 
         assigned_driver = attrs.get('assigned_driver')
         if assigned_driver:
@@ -241,6 +472,18 @@ class ScheduledRideCreateSerializer(serializers.ModelSerializer):
         deadline_dt = combine_local(validated_data['departure_date'], validated_data['window_end'])
         deadline_dt -= datetime.timedelta(minutes=5)
 
+        ordered_stops = sorted(stops_data, key=lambda item: item['order'])
+        origin = ordered_stops[0]
+        destination = ordered_stops[-1]
+        validated_data.update({
+            'origin_address': origin['address'],
+            'origin_latitude': origin['latitude'],
+            'origin_longitude': origin['longitude'],
+            'destination_address': destination['address'],
+            'destination_latitude': destination['latitude'],
+            'destination_longitude': destination['longitude'],
+        })
+
         ride = ScheduledRide.objects.create(
             reference=generate_scheduled_reference(),
             created_by=user,
@@ -251,6 +494,13 @@ class ScheduledRideCreateSerializer(serializers.ModelSerializer):
         ScheduledRideStop.objects.bulk_create([
             ScheduledRideStop(ride=ride, **stop_data) for stop_data in stops_data
         ])
+        full_route = get_full_route_fare_summary(ride)
+        if full_route:
+            ride.standard_price = Decimal(str(full_route['fare'])).quantize(
+                Decimal('0.01'),
+                rounding=ROUND_HALF_UP,
+            )
+            ride.save(update_fields=['standard_price', 'updated_at'])
         return ride
 
 
@@ -259,30 +509,71 @@ class ScheduledRideListSerializer(serializers.ModelSerializer):
     is_joinable = serializers.BooleanField(read_only=True)
     enabled_tiers = serializers.ListField(read_only=True)
     stops_count = serializers.SerializerMethodField()
+    origin_name = serializers.SerializerMethodField()
+    destination_name = serializers.SerializerMethodField()
     created_by_name = serializers.SerializerMethodField()
     assigned_driver_name = serializers.SerializerMethodField()
+    fare_summary = serializers.SerializerMethodField()
 
     class Meta:
         model = ScheduledRide
         fields = [
             'id', 'reference', 'departure_date', 'window_start', 'window_end', 'join_deadline',
-            'origin_address', 'destination_address', 'allowed_vehicle_types', 'cargo_capacity_kg',
-            'accessibility_features', 'assigned_driver', 'assigned_driver_name', 'status',
+            'origin_address', 'origin_name', 'destination_address', 'destination_name',
+            'allowed_vehicle_types', 'cargo_capacity_kg',
+            'assigned_driver', 'assigned_driver_name', 'status',
             'standard_enabled', 'standard_price', 'standing_enabled', 'standing_price',
             'premium_enabled', 'premium_price', 'freight_enabled', 'freight_price',
             'passenger_count', 'is_joinable', 'enabled_tiers', 'stops_count',
-            'created_by_name', 'admin_notes', 'created_at',
+            'created_by_name', 'admin_notes', 'fare_summary', 'created_at',
         ]
         read_only_fields = fields
 
     def get_stops_count(self, obj):
         return obj.stops.count()
 
+    def get_origin_name(self, obj):
+        return scheduled_endpoint_names(obj)['origin_name']
+
+    def get_destination_name(self, obj):
+        return scheduled_endpoint_names(obj)['destination_name']
+
     def get_created_by_name(self, obj):
         return obj.created_by.full_name
 
     def get_assigned_driver_name(self, obj):
         return obj.assigned_driver.full_name if obj.assigned_driver else None
+
+    def get_fare_summary(self, obj):
+        return get_full_route_fare_summary(obj)
+
+
+class ScheduledRideUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ScheduledRide
+        fields = [
+            'window_start', 'window_end', 'join_deadline',
+            'status', 'admin_notes'
+        ]
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        
+        window_start = attrs.get('window_start', self.instance.window_start if self.instance else None)
+        window_end = attrs.get('window_end', self.instance.window_end if self.instance else None)
+        
+        if window_start and window_end:
+            if window_end <= window_start:
+                raise serializers.ValidationError({'window_end': 'Departure window end must be after start.'})
+            start_dt = datetime.datetime.combine(datetime.date.today(), window_start)
+            end_dt = datetime.datetime.combine(datetime.date.today(), window_end)
+            diff = end_dt - start_dt
+            if diff < datetime.timedelta(minutes=30):
+                raise serializers.ValidationError({'window_end': 'Departure window must be at least 30 minutes.'})
+            if diff > datetime.timedelta(hours=12):
+                raise serializers.ValidationError({'window_end': 'Departure window cannot exceed 12 hours.'})
+                
+        return attrs
 
 
 class ScheduledRidePassengerReadSerializer(serializers.ModelSerializer):
@@ -316,29 +607,45 @@ class ScheduledRideDetailSerializer(serializers.ModelSerializer):
     passenger_count = serializers.IntegerField(read_only=True)
     is_joinable = serializers.BooleanField(read_only=True)
     enabled_tiers = serializers.ListField(read_only=True)
+    origin_name = serializers.SerializerMethodField()
+    destination_name = serializers.SerializerMethodField()
     created_by_name = serializers.SerializerMethodField()
     assigned_driver_name = serializers.SerializerMethodField()
+    fare_summary = serializers.SerializerMethodField()
+    fare_matrix = serializers.SerializerMethodField()
 
     class Meta:
         model = ScheduledRide
         fields = [
             'id', 'reference', 'departure_date', 'window_start', 'window_end', 'join_deadline',
-            'origin_address', 'origin_latitude', 'origin_longitude',
-            'destination_address', 'destination_latitude', 'destination_longitude',
-            'allowed_vehicle_types', 'cargo_capacity_kg', 'accessibility_features',
+            'origin_address', 'origin_name', 'origin_latitude', 'origin_longitude',
+            'destination_address', 'destination_name', 'destination_latitude', 'destination_longitude',
+            'allowed_vehicle_types', 'cargo_capacity_kg',
             'assigned_driver', 'assigned_driver_name', 'standard_enabled', 'standard_price',
             'standing_enabled', 'standing_price', 'premium_enabled', 'premium_price',
             'freight_enabled', 'freight_price', 'status', 'admin_notes', 'stops', 'passengers',
             'passenger_count', 'is_joinable', 'enabled_tiers', 'created_by_name',
-            'created_at', 'updated_at',
+            'fare_summary', 'fare_matrix', 'created_at', 'updated_at',
         ]
         read_only_fields = fields
+
+    def get_origin_name(self, obj):
+        return scheduled_endpoint_names(obj)['origin_name']
+
+    def get_destination_name(self, obj):
+        return scheduled_endpoint_names(obj)['destination_name']
 
     def get_created_by_name(self, obj):
         return obj.created_by.full_name
 
     def get_assigned_driver_name(self, obj):
         return obj.assigned_driver.full_name if obj.assigned_driver else None
+
+    def get_fare_summary(self, obj):
+        return get_full_route_fare_summary(obj)
+
+    def get_fare_matrix(self, obj):
+        return build_scheduled_fare_matrix(obj)
 
 
 class StudentScheduledRideDetailSerializer(ScheduledRideDetailSerializer):
@@ -348,43 +655,50 @@ class StudentScheduledRideDetailSerializer(ScheduledRideDetailSerializer):
 
 
 class ScheduledRideJoinSerializer(serializers.Serializer):
-    pricing_tier = serializers.ChoiceField(choices=PricingTier.choices)
+    pricing_tier = serializers.ChoiceField(choices=PricingTier.choices, required=False, default=PricingTier.STANDARD)
     boarding_stop_id = serializers.UUIDField(required=False, allow_null=True)
     alighting_stop_id = serializers.UUIDField(required=False, allow_null=True)
-    cargo_description = serializers.CharField(required=False, allow_blank=True)
-    cargo_weight_kg = serializers.DecimalField(max_digits=8, decimal_places=2, required=False, allow_null=True)
 
     def validate(self, attrs):
         ride = self.context['ride']
         student = self.context['request'].user
-        tier = attrs['pricing_tier']
 
         if student.role != UserRole.STUDENT:
             raise serializers.ValidationError('Only students can join scheduled rides.')
         if not ride.is_joinable:
             raise serializers.ValidationError('This ride is no longer accepting passengers.')
-        if tier not in ride.enabled_tiers:
-            raise serializers.ValidationError({'pricing_tier': f'The {tier} tier is not available for this ride.'})
         if ScheduledRidePassenger.objects.filter(ride=ride, student=student).exists():
             raise serializers.ValidationError('You already have a ticket for this ride.')
-        
-        supports_standing = any(v in [VehicleClass.MINIBUS, VehicleClass.COACH] for v in ride.allowed_vehicle_types)
-        if tier == PricingTier.STANDING and not supports_standing:
-            raise serializers.ValidationError({'pricing_tier': 'Standing tier is only available on Minibus or Coach rides.'})
-        if tier == PricingTier.FREIGHT:
-            if ride.cargo_capacity_kg <= 0:
-                raise serializers.ValidationError({'pricing_tier': 'Freight is not available for this ride.'})
-            if not attrs.get('cargo_description'):
-                raise serializers.ValidationError({'cargo_description': 'Cargo description is required for freight tier.'})
-            if not attrs.get('cargo_weight_kg') or attrs['cargo_weight_kg'] <= 0:
-                raise serializers.ValidationError({'cargo_weight_kg': 'Cargo weight must be greater than 0 for freight tier.'})
-            if attrs['cargo_weight_kg'] > ride.cargo_capacity_kg:
-                raise serializers.ValidationError({'cargo_weight_kg': 'Cargo weight exceeds this ride cargo capacity.'})
 
-        for field in ['boarding_stop_id', 'alighting_stop_id']:
-            stop_id = attrs.get(field)
-            if stop_id and not ScheduledRideStop.objects.filter(ride=ride, id=stop_id).exists():
-                raise serializers.ValidationError({field: 'This stop does not belong to the selected ride.'})
+        stops = list(ride.stops.order_by('order'))
+        if len(stops) < 2:
+            raise serializers.ValidationError('This ride route is incomplete.')
+
+        boarding_stop_id = attrs.get('boarding_stop_id') or stops[0].id
+        alighting_stop_id = attrs.get('alighting_stop_id') or stops[-1].id
+
+        try:
+            boarding_stop = next(stop for stop in stops if stop.id == boarding_stop_id)
+        except StopIteration:
+            raise serializers.ValidationError({'boarding_stop_id': 'This stop does not belong to the selected ride.'})
+        try:
+            alighting_stop = next(stop for stop in stops if stop.id == alighting_stop_id)
+        except StopIteration:
+            raise serializers.ValidationError({'alighting_stop_id': 'This stop does not belong to the selected ride.'})
+
+        if not boarding_stop.is_pickup:
+            raise serializers.ValidationError({'boarding_stop_id': 'This stop is not available for boarding.'})
+        if not alighting_stop.is_dropoff:
+            raise serializers.ValidationError({'alighting_stop_id': 'This stop is not available for alighting.'})
+        if alighting_stop.order <= boarding_stop.order:
+            raise serializers.ValidationError({'alighting_stop_id': 'Alighting stop must come after boarding stop.'})
+
+        amount, fare_result = calculate_scheduled_segment_fare(ride, boarding_stop, alighting_stop)
+        attrs['pricing_tier'] = PricingTier.STANDARD
+        attrs['boarding_stop'] = boarding_stop
+        attrs['alighting_stop'] = alighting_stop
+        attrs['calculated_amount'] = amount
+        attrs['fare_result'] = fare_result
         return attrs
 
     @transaction.atomic
@@ -392,7 +706,10 @@ class ScheduledRideJoinSerializer(serializers.Serializer):
         ride = self.context['ride']
         student = self.context['request'].user
         tier = validated_data['pricing_tier']
-        price = ride.get_tier_price(tier)
+        price = validated_data['calculated_amount']
+        fare_result = validated_data['fare_result']
+        boarding_stop = validated_data['boarding_stop']
+        alighting_stop = validated_data['alighting_stop']
 
         try:
             tx = WalletService.debit(
@@ -404,6 +721,11 @@ class ScheduledRideJoinSerializer(serializers.Serializer):
                     'scheduled_ride_id': str(ride.id),
                     'scheduled_ride_reference': ride.reference,
                     'pricing_tier': tier,
+                    'boarding_stop_id': str(boarding_stop.id),
+                    'alighting_stop_id': str(alighting_stop.id),
+                    'distance_km': fare_result.get('distance_km'),
+                    'fare_engine_source': fare_result.get('config_source'),
+                    'vehicle_type': fare_result.get('vehicle_type') or get_scheduled_fare_vehicle_type(ride),
                 },
             )
         except ValueError as exc:
@@ -413,17 +735,18 @@ class ScheduledRideJoinSerializer(serializers.Serializer):
             ride=ride,
             student=student,
             pricing_tier=tier,
-            boarding_stop_id=validated_data.get('boarding_stop_id'),
-            alighting_stop_id=validated_data.get('alighting_stop_id'),
+            boarding_stop=boarding_stop,
+            alighting_stop=alighting_stop,
             amount_paid=price,
             payment_reference=tx.reference,
-            cargo_description=validated_data.get('cargo_description', ''),
         )
 
 class DispatchedBusListSerializer(serializers.ModelSerializer):
     ride_reference = serializers.CharField(source='ride.reference', read_only=True)
     origin_address = serializers.CharField(source='ride.origin_address', read_only=True)
+    origin_name = serializers.SerializerMethodField()
     destination_address = serializers.CharField(source='ride.destination_address', read_only=True)
+    destination_name = serializers.SerializerMethodField()
     scheduled_departure_date = serializers.DateField(source='ride.departure_date', read_only=True)
     scheduled_window_start = serializers.TimeField(source='ride.window_start', read_only=True)
     driver_name = serializers.SerializerMethodField()
@@ -432,11 +755,18 @@ class DispatchedBusListSerializer(serializers.ModelSerializer):
     class Meta:
         model = ScheduledRideBusAssignment
         fields = [
-            'id', 'ride_reference', 'origin_address', 'destination_address', 
+            'id', 'ride_reference', 'origin_address', 'origin_name',
+            'destination_address', 'destination_name',
             'scheduled_departure_date', 'scheduled_window_start',
             'driver_name', 'bus_label', 'status', 'departed_at', 'arrived_at', 
             'passenger_count', 'seated_capacity', 'standing_capacity'
         ]
+
+    def get_origin_name(self, obj):
+        return scheduled_endpoint_names(obj.ride)['origin_name']
+
+    def get_destination_name(self, obj):
+        return scheduled_endpoint_names(obj.ride)['destination_name']
 
     def get_driver_name(self, obj):
         return obj.driver.full_name if obj.driver else 'Unassigned'

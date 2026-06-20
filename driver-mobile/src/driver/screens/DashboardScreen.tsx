@@ -194,12 +194,9 @@ const DashboardScreen = ({ onCreateGarageRide }: { onCreateGarageRide?: () => vo
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Modern Hero Section with Gradient */}
-        <LinearGradient
-          colors={[COLORS.primary, '#004d26']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.heroCard}
+        {/* Modern Hero Section */}
+        <View
+          style={[styles.heroCard, { backgroundColor: COLORS.primary }]}
         >
           <View style={styles.heroHeader}>
             <View>
@@ -247,7 +244,7 @@ const DashboardScreen = ({ onCreateGarageRide }: { onCreateGarageRide?: () => vo
               <Text style={styles.heroStatLabel}>Online</Text>
             </View>
           </View>
-        </LinearGradient>
+        </View>
 
         {/* Primary Action */}
         {status === 'active' && activeRide ? (
@@ -428,7 +425,7 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#4ade80',
+    backgroundColor: '#81c784',
   },
   onlineText: {
     color: '#FFFFFF',
@@ -467,7 +464,7 @@ const styles = StyleSheet.create({
   goalFill: {
     height: '100%',
     borderRadius: 999,
-    backgroundColor: '#B9FFD0',
+    backgroundColor: '#FFFFFF',
   },
   goalHint: {
     ...FONTS.bodySm,

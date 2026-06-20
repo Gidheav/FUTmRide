@@ -72,7 +72,7 @@ export default function DriverSidebar({
 
         {/* Overlay layout containing the side panel */}
         <View
-          style={[styles.overlayWrap]}
+          style={[styles.overlayWrap, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
           pointerEvents="box-none"
         >
           <Animated.View style={[
@@ -115,18 +115,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   backdrop: {
-    backgroundColor: 'rgba(0, 0, 0, 0.45)', // Fixed backdrop opacity for modal
+    backgroundColor: 'rgba(0, 0, 0, 0)',
   },
   sidebar: {
-    marginBlockStart:30,
     backgroundColor: '#ffffff',
     borderTopRightRadius: 0,
-    borderBottomRightRadius: 0,
-    elevation: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 4, height: 0 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
+    borderBottomRightRadius: 20,
   },
   sidebarContent: {
     flex: 1,

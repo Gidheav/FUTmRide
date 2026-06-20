@@ -56,11 +56,12 @@ export default function FleetPage() {
   const vehicleTypeLabel = (value?: string | null) => {
     if (!value) return 'Unknown'
     const map: Record<string, string> = {
-      motorcycle: 'Motorcycle',
-      tricycle: 'Tricycle (Keke)',
+      motorbike: 'Motorbike',
+      tricycle: 'Tricycle',
       sedan: 'Sedan',
-      suv: 'SUV',
-      minivan: 'Minivan / Shuttle',
+      mpv: 'MPV',
+      minibus: 'Minibus',
+      coach: 'Coach',
     }
     return map[value] || value
   }

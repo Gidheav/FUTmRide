@@ -19,13 +19,13 @@ class FareCalculator:
 
     # Legacy fallback defaults (used only if no DB config exists)
     _LEGACY_BASE = {
-        'motorcycle': 200, 'tricycle': 300, 'sedan': 500, 'suv': 700, 'minivan': 600,
+        'motorbike': 200, 'tricycle': 300, 'sedan': 500, 'mpv': 700, 'minibus': 600, 'coach': 800,
     }
     _LEGACY_PER_KM = {
-        'motorcycle': 80, 'tricycle': 100, 'sedan': 150, 'suv': 200, 'minivan': 170,
+        'motorbike': 80, 'tricycle': 100, 'sedan': 150, 'mpv': 200, 'minibus': 170, 'coach': 220,
     }
     _LEGACY_MIN = {
-        'motorcycle': 250, 'tricycle': 350, 'sedan': 600, 'suv': 800, 'minivan': 700,
+        'motorbike': 250, 'tricycle': 350, 'sedan': 600, 'mpv': 800, 'minibus': 700, 'coach': 900,
     }
 
     @classmethod

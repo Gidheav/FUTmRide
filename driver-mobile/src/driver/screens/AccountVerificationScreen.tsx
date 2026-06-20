@@ -1,9 +1,10 @@
 import React, { useState } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, TextInput,
-  TouchableOpacity, ActivityIndicator, Alert, Platform,
+  TouchableOpacity, Alert, Platform,
 } from 'react-native'
 import * as ImagePicker from 'expo-image-picker'
+import LoadingOverlay from '../components/LoadingOverlay'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme'
@@ -305,17 +306,12 @@ export default function AccountVerificationScreen({ onBack, onSuccess }: Props) 
             onPress={() => submitMutation.mutate()}
             disabled={submitMutation.isPending}
           >
-            {submitMutation.isPending ? (
-              <ActivityIndicator color={COLORS.onPrimary} size="small" />
-            ) : (
-              <>
-                <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>Submit</Text>
-                <MaterialIcons name="check" size={18} color={COLORS.onPrimary} />
-              </>
-            )}
+            <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>Submit</Text>
+            <MaterialIcons name="check" size={18} color={COLORS.onPrimary} />
           </TouchableOpacity>
         )}
       </View>
+      <LoadingOverlay visible={submitMutation.isPending} />
     </View>
   )
 }

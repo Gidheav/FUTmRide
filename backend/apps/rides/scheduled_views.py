@@ -26,7 +26,6 @@ from .scheduled_serializers import (
     ScheduledRideListSerializer,
     ScheduledRidePassengerReadSerializer,
     StudentScheduledRideDetailSerializer,
-    StudentScheduledRideDetailSerializer,
     DispatchedBusListSerializer,
 )
 
@@ -128,7 +127,7 @@ class DispatchedBusListView(generics.ListAPIView):
     def get_queryset(self):
         qs = ScheduledRideBusAssignment.objects.select_related(
             'ride', 'driver', 'ride__campus'
-        )
+        ).prefetch_related('ride__stops')
         
         # Scope by campus admin
         if self.request.user.role != UserRole.ADMIN:
@@ -149,9 +148,8 @@ class DispatchedBusListView(generics.ListAPIView):
         return qs.order_by('-departed_at', 'ride__departure_date')
 
 
-class ScheduledRideDetailView(generics.RetrieveAPIView):
+class ScheduledRideDetailView(generics.RetrieveUpdateAPIView):
     permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
-    serializer_class = ScheduledRideDetailSerializer
     lookup_field = 'id'
     lookup_url_kwarg = 'ride_id'
 
@@ -166,6 +164,78 @@ class ScheduledRideDetailView(generics.RetrieveAPIView):
             'passengers__alighting_stop',
         )
         return scope_admin_queryset(self.request.user, qs)
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            from .scheduled_serializers import ScheduledRideUpdateSerializer
+            return ScheduledRideUpdateSerializer
+        from .scheduled_serializers import ScheduledRideDetailSerializer
+        return ScheduledRideDetailSerializer
+
+class ScheduledRideStopsUpdateView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
+
+    @transaction.atomic
+    def patch(self, request, ride_id):
+        ride = self._get_scoped_ride(request.user, ride_id, for_update=True)
+        if not ride:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        from .scheduled_serializers import ScheduledRideStopsUpdateSerializer
+        serializer = ScheduledRideStopsUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        stops_data = serializer.validated_data['stops']
+        existing_stops = {stop.id: stop for stop in ride.stops.all()}
+        
+        updated_stop_ids = []
+        for stop_data in stops_data:
+            stop_id = stop_data.get('id')
+            if stop_id and stop_id in existing_stops:
+                stop = existing_stops[stop_id]
+                for k, v in stop_data.items():
+                    if k != 'id':
+                        setattr(stop, k, v)
+                stop.save()
+                updated_stop_ids.append(stop_id)
+            else:
+                stop_data.pop('id', None)
+                from .scheduled_models import ScheduledRideStop
+                new_stop = ScheduledRideStop.objects.create(ride=ride, **stop_data)
+                updated_stop_ids.append(new_stop.id)
+                
+        # delete removed stops
+        for stop_id, stop in existing_stops.items():
+            if stop_id not in updated_stop_ids:
+                stop.delete()
+
+        ordered_stops = sorted(ride.stops.all(), key=lambda s: s.order)
+        if ordered_stops:
+            from .scheduled_serializers import get_full_route_fare_summary
+
+            full_route = get_full_route_fare_summary(ride)
+            ride.origin_address = ordered_stops[0].address
+            ride.origin_latitude = ordered_stops[0].latitude
+            ride.origin_longitude = ordered_stops[0].longitude
+            ride.destination_address = ordered_stops[-1].address
+            ride.destination_latitude = ordered_stops[-1].latitude
+            ride.destination_longitude = ordered_stops[-1].longitude
+            if full_route:
+                ride.standard_price = Decimal(str(full_route['fare']))
+            ride.save(update_fields=[
+                'origin_address', 'origin_latitude', 'origin_longitude',
+                'destination_address', 'destination_latitude', 'destination_longitude',
+                'standard_price', 'updated_at',
+            ])
+
+        from .scheduled_serializers import ScheduledRideDetailSerializer
+        return Response(ScheduledRideDetailSerializer(ride, context={'request': request}).data)
+
+    def _get_scoped_ride(self, user, ride_id, for_update=False):
+        qs = ScheduledRide.objects.all()
+        if for_update:
+            qs = qs.select_for_update()
+        return scope_admin_queryset(user, qs).filter(id=ride_id).first()
 
 
 class ScheduledRideCancelView(APIView):

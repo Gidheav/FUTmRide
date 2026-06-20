@@ -199,7 +199,6 @@ export default function TestPage() {
                   <div style={s.subTabs}>
                     <button style={subTabStyle(section === 'student')} onClick={() => switchSection('student')}>Student</button>
                     <button style={subTabStyle(section === 'driver')} onClick={() => switchSection('driver')}>Driver</button>
-                    <button style={subTabStyle(section === 'admin')} onClick={() => switchSection('admin')}>Admin</button>
                   </div>
                   {section === 'driver' ? (
                     <ActionPanel
@@ -211,18 +210,6 @@ export default function TestPage() {
                       dangerLabel="Delete random drivers"
                       onPrimary={() => runAction.mutate('createDrivers')}
                       onDanger={() => runAction.mutate('deleteDrivers')}
-                      busy={busy}
-                    />
-                  ) : section === 'admin' ? (
-                    <ActionPanel
-                      icon={<UserCog size={16} />}
-                      title="Campus admins"
-                      count={counts.admin}
-                      setCount={(value) => setCounts((prev) => ({ ...prev, admin: value }))}
-                      primaryLabel="Create admins"
-                      dangerLabel="Delete random admins"
-                      onPrimary={() => runAction.mutate('createAdmins')}
-                      onDanger={() => runAction.mutate('deleteAdmins')}
                       busy={busy}
                     />
                   ) : (

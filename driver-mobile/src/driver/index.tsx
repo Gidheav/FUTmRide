@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, AppState, BackHandler, Platform, StyleSheet, Text, ToastAndroid, TouchableOpacity, View } from 'react-native'
+import { AppState, BackHandler, Platform, StyleSheet, Text, ToastAndroid, TouchableOpacity, View } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { useQuery } from '@tanstack/react-query'
 import { MaterialIcons } from '@expo/vector-icons'
@@ -40,6 +40,7 @@ import CreateGarageRideScreen from './screens/CreateGarageRideScreen'
 import AppLockScreen from './screens/AppLockScreen'
 import PinSetupScreen from './screens/PinSetupScreen'
 import DriverLayout from './layout/DriverLayout'
+import LoadingOverlay from './components/LoadingOverlay'
 import type { DriverTab } from './types'
 
 type SubPage = null | 'settings' | 'edit-profile' | 'account-verification' | 'vehicle-verification' | 'verification-success' | 'garage-ride'
@@ -83,6 +84,10 @@ export default function DriverApp() {
   const lastBackPressRef = useRef(0)
   const lastRideNotificationKey = useRef<string | null>(null)
   const rideClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Timestamp of when the app last left the foreground. Used to calculate
+  // how long the user was actually away, so system dialogs (permissions,
+  // notification shade, etc.) never trigger a lock.
+  const wentBackgroundAtRef = useRef<number | null>(null)
   const sessionActive = isAuthenticated && user?.role === 'driver' && !isLocked && !pinSetupRequired
 
   const endDriverSession = () => {
@@ -133,6 +138,7 @@ export default function DriverApp() {
     return () => subscription.remove()
   }, [activeTab, subPage])
 
+  // ── Boot: always lock on app start and verify session ───────────────────────
   useEffect(() => {
     if (!authHasHydrated) {
       return
@@ -181,62 +187,108 @@ export default function DriverApp() {
     }
   }, [authHasHydrated, hydrateTokens, isAuthenticated, resetLock, setLocked, user?.id])
 
+  // ── Foreground countdown: lock after the chosen timeout elapses ─────────────
+  // This ONLY runs while the session is active and unlocked.
+  // "Immediate" (0) has no foreground countdown — it only locks when
+  // the user actually leaves the app (handled by the AppState effect below).
   useEffect(() => {
     if (!sessionActive) {
       return
     }
 
+    // If the unlock window already expired (e.g. stale state), lock now
     if (!isDriverUnlockFresh(lastUnlockedAt, lockTimeoutMinutes)) {
       setLocked(true)
       setLockStatus('Unlock window expired. Please unlock again.')
       return
     }
 
-    const timeoutMs = lockTimeoutMinutes === 0
-      ? null
-      : Math.max(0, Math.min(lockTimeoutMinutes, 30) * 60 * 1000 - (Date.now() - (lastUnlockedAt || 0)))
-
-    if (timeoutMs === null) {
+    // "Immediate" = no foreground timer; only background-return triggers lock
+    if (lockTimeoutMinutes === 0) {
       return
     }
+
+    const elapsed = Date.now() - (lastUnlockedAt || 0)
+    const totalMs = Math.min(lockTimeoutMinutes, 30) * 60 * 1000
+    const remainingMs = Math.max(0, totalMs - elapsed)
 
     const timer = setTimeout(() => {
       setLocked(true)
       setLockStatus('Unlock window expired. Please unlock again.')
-    }, timeoutMs)
+    }, remainingMs)
 
     return () => clearTimeout(timer)
   }, [lastUnlockedAt, lockTimeoutMinutes, sessionActive, setLocked])
 
+  // ── AppState: check elapsed background time on return ───────────────────────
+  // This effect does NOT lock the app when it goes to background.
+  // It only records the timestamp, then checks elapsed time when
+  // the app comes back. This means permission dialogs, notification
+  // shade, share sheets, etc. never trigger a lock.
   useEffect(() => {
     if (!isAuthenticated || user?.role !== 'driver') {
       return
     }
 
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'background' || state === 'inactive') {
-        if (lockTimeoutMinutes === 0 && sessionActive) {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'background' || nextState === 'inactive') {
+        // Just record when we left — do NOT lock here
+        if (wentBackgroundAtRef.current === null) {
+          wentBackgroundAtRef.current = Date.now()
+        }
+        return
+      }
+
+      if (nextState !== 'active') {
+        return
+      }
+
+      // App returned to foreground
+      const leftAt = wentBackgroundAtRef.current
+      wentBackgroundAtRef.current = null
+
+      if (!sessionActive || !leftAt) {
+        // Not unlocked or never left — nothing to check
+        if (sessionActive) {
+          // Just ping session health on return
+          pingDriverSession()
+            .then(() => setSessionWarning(''))
+            .catch((error) => {
+              if (!error?.response) {
+                setSessionWarning('You are offline. Live driver actions may fail until internet returns.')
+              }
+            })
+        }
+        return
+      }
+
+      const awayMs = Date.now() - leftAt
+
+      // For "Immediate" (0), only lock if the user was actually away
+      // for 30+ seconds. Brief system dialogs (~1-5s) are ignored.
+      if (lockTimeoutMinutes === 0) {
+        if (awayMs > 30_000) {
           setLocked(true)
           setLockStatus('Unlock the app to continue.')
         }
         return
       }
 
-      if (state === 'active' && sessionActive) {
-        if (!isDriverUnlockFresh(lastUnlockedAt, lockTimeoutMinutes)) {
-          setLocked(true)
-          setLockStatus('Unlock window expired. Please unlock again.')
-          return
-        }
-
-        pingDriverSession()
-          .then(() => setSessionWarning(''))
-          .catch((error) => {
-            if (!error?.response) {
-              setSessionWarning('You are offline. Live driver actions may fail until internet returns.')
-            }
-          })
+      // For timed locks, check if the unlock window expired while away
+      if (!isDriverUnlockFresh(lastUnlockedAt, lockTimeoutMinutes)) {
+        setLocked(true)
+        setLockStatus('Unlock window expired. Please unlock again.')
+        return
       }
+
+      // Still fresh — just ping session health
+      pingDriverSession()
+        .then(() => setSessionWarning(''))
+        .catch((error) => {
+          if (!error?.response) {
+            setSessionWarning('You are offline. Live driver actions may fail until internet returns.')
+          }
+        })
     })
 
     return () => subscription.remove()
@@ -468,10 +520,10 @@ export default function DriverApp() {
   if (!authHasHydrated || sessionBooting) {
     return (
       <SafeAreaProvider>
-        <View style={s.loadingRoot}>
-          <ActivityIndicator size="small" color={COLORS.primary} />
-          <Text style={s.loadingText}>{lockStatus || 'Preparing secure driver app...'}</Text>
-        </View>
+        <LoadingOverlay 
+          visible={true} 
+          message={lockStatus || 'Preparing secure driver app...'} 
+        />
       </SafeAreaProvider>
     )
   }

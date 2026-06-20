@@ -8,6 +8,7 @@ import { useDispatchStore } from '../dispatchStore'
 import api from '../../core/api'
 import { createAuthenticatedWebSocket } from '../../core/ws'
 import RouteOpsPanel from './RouteOpsPanel'
+import { routeEndpointLabel } from '../shared/routeDisplay'
 
 const MAP_CENTER = { lat: 9.5323, lng: 6.4526 }
 const DEFAULT_ZOOM = 14
@@ -22,9 +23,11 @@ interface GarageRide {
     vehicle_type: string | null
   }
   origin_address: string
+  origin_name?: string | null
   origin_latitude: number
   origin_longitude: number
   destination_address: string
+  destination_name?: string | null
   destination_latitude: number
   destination_longitude: number
   vehicle_type: string
@@ -326,6 +329,8 @@ function LiveFleetPanel() {
       if (!query) return true
       const fields = [
         ride.reference,
+        routeEndpointLabel(ride, 'origin'),
+        routeEndpointLabel(ride, 'destination'),
         ride.origin_address,
         ride.destination_address,
         ride.driver?.full_name,
@@ -596,8 +601,8 @@ function LiveFleetPanel() {
                 >
                   <div style={s.infoWindow}>
                     <div style={s.infoTitle}>Ride {selectedRide.reference}</div>
-                    <div style={s.infoText}>{selectedRide.origin_address}</div>
-                    <div style={s.infoText}>{selectedRide.destination_address}</div>
+                    <div style={s.infoText}>{routeEndpointLabel(selectedRide, 'origin')}</div>
+                    <div style={s.infoText}>{routeEndpointLabel(selectedRide, 'destination')}</div>
                     <div style={s.infoMeta}>
                       Driver: {selectedRide.driver?.full_name || 'Unassigned'}
                     </div>
@@ -744,7 +749,7 @@ function LiveFleetPanel() {
                         <span style={s.queueRef}>{ride.reference}</span>
                         <span style={s.queueStatus}>{ride.status.replaceAll('_', ' ')}</span>
                       </div>
-                      <div style={s.queueRoute}>{ride.origin_address.split(',')[0]} → {ride.destination_address.split(',')[0]}</div>
+                      <div style={s.queueRoute}>{routeEndpointLabel(ride, 'origin', true)} → {routeEndpointLabel(ride, 'destination', true)}</div>
                       <div style={s.queueMeta}>
                         Driver: {ride.driver?.full_name || 'Unassigned'} • Seats {ride.booked_seats}/{ride.total_seats}
                       </div>

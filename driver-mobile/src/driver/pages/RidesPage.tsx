@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Modal,
   ScrollView,
@@ -16,6 +15,7 @@ import {
   UIManager,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import LoadingOverlay from '../components/LoadingOverlay';
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
 import { driverApi } from '../../core/api';
 import { startDriverLocationTracking, stopDriverLocationTracking } from '../../core/locationSocket';
@@ -304,7 +304,7 @@ const ScheduledRideCard = React.memo(function ScheduledRideCard({ ride, onExpres
               disabled={isCancelling || disabled}
             >
               {isCancelling ? (
-                <ActivityIndicator size="small" color={COLORS.error} />
+                <LoadingOverlay visible={true} inline size={24} />
               ) : (
                 <MaterialIcons name="close" size={20} color={COLORS.error} />
               )}
@@ -316,7 +316,7 @@ const ScheduledRideCard = React.memo(function ScheduledRideCard({ ride, onExpres
               disabled={isExpressing || disabled}
             >
               {isExpressing ? (
-                <ActivityIndicator size="small" color={COLORS.onPrimary} />
+                <LoadingOverlay visible={true} inline size={24} />
               ) : (
                 <MaterialIcons name="check" size={20} color={COLORS.onPrimary} />
               )}
@@ -1151,7 +1151,7 @@ export default function DriverRidesPage() {
             </Text>
             <View style={styles.enterpriseStatusValue}>
               {isOnline === null ? (
-                <ActivityIndicator size="small" color={COLORS.primary} style={{ marginRight: 8 }} />
+                <View style={{ marginRight: 8 }}><LoadingOverlay visible={true} inline size={24} /></View>
               ) : (
                 <View style={[styles.pulseDot, { backgroundColor: isOnline ? COLORS.primaryContainer : COLORS.error }]} />
               )}
@@ -1232,7 +1232,7 @@ export default function DriverRidesPage() {
             {loadingGarage ? (
               <View style={[styles.schedulesListContainer, AMBIENT_SHADOW]}>
                 <View style={styles.emptyStateContainer}>
-                  <ActivityIndicator size="large" color={COLORS.primary} />
+                  <LoadingOverlay visible={true} inline size={60} />
                   <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, marginTop: 12 }]}>Loading garage ride…</Text>
                 </View>
               </View>
@@ -1304,7 +1304,7 @@ export default function DriverRidesPage() {
               <View style={[styles.schedulesListContainer, AMBIENT_SHADOW]}>
                 {loadingScheduled ? (
                   <View style={styles.emptyStateContainer}>
-                    <ActivityIndicator size="large" color={COLORS.primary} />
+                    <LoadingOverlay visible={true} inline size={60} />
                     <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, marginTop: 12 }]}>Loading schedules...</Text>
                   </View>
                 ) : scheduledError ? (
@@ -1326,7 +1326,7 @@ export default function DriverRidesPage() {
         ItemSeparatorComponent={ListItemSeparator}
         onEndReached={loadMoreScheduled}
         onEndReachedThreshold={0.5}
-        ListFooterComponent={loadingMoreScheduled ? <ActivityIndicator size="small" color={COLORS.primary} style={{ marginVertical: 16 }} /> : null}
+        ListFooterComponent={loadingMoreScheduled ? <LoadingOverlay visible={true} inline size={40} /> : null}
       />
 
       {/* ── On-Demand Tab ── */}
@@ -1406,7 +1406,7 @@ export default function DriverRidesPage() {
                     disabled={advancingRideId === activeOnDemandRide.id}
                   >
                     {advancingRideId === activeOnDemandRide.id ? (
-                      <ActivityIndicator size="small" color={COLORS.onPrimary} />
+                      <LoadingOverlay visible={true} inline size={24} />
                     ) : (
                       <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>
                         {activeOnDemandRide.status === 'accepted' ? 'Confirm Arrival' : activeOnDemandRide.status === 'arrived' ? 'Start Trip' : activeOnDemandRide.status === 'in_progress' ? 'Complete Trip' : 'Advance Status'}
@@ -1421,7 +1421,7 @@ export default function DriverRidesPage() {
               <View style={[styles.schedulesListContainer, AMBIENT_SHADOW, { marginBottom: 16 }]}>
                 {loadingRequests ? (
                   <View style={styles.emptyStateContainer}>
-                    <ActivityIndicator size="large" color={COLORS.primary} />
+                    <LoadingOverlay visible={true} inline size={60} />
                     <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, marginTop: 12 }]}>Loading requests...</Text>
                   </View>
                 ) : requestsError ? (
@@ -1441,7 +1441,7 @@ export default function DriverRidesPage() {
         ItemSeparatorComponent={ListItemSeparator}
         onEndReached={loadMoreMarketplace}
         onEndReachedThreshold={0.5}
-        ListFooterComponent={loadingMoreMarketplace ? <ActivityIndicator size="small" color={COLORS.primary} style={{ marginVertical: 16 }} /> : null}
+        ListFooterComponent={loadingMoreMarketplace ? <LoadingOverlay visible={true} inline size={40} /> : null}
       />
 
       <Modal visible={Boolean(locationPickerOpen)} animationType="slide" onRequestClose={() => setLocationPickerOpen(null)}>

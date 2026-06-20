@@ -1,6 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react'
 import {
-  ActivityIndicator,
   Alert,
   Modal,
   ScrollView,
@@ -12,6 +11,7 @@ import {
   View,
 } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
+import LoadingOverlay from '../components/LoadingOverlay'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import QRCode from 'react-native-qrcode-svg'
 import MapView, { Marker } from 'react-native-maps'
@@ -434,7 +434,7 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
   if (hydrating && !ride) {
     return (
       <View style={[styles.page, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}> 
-        <ActivityIndicator color={COLORS.primary} />
+        <LoadingOverlay visible={true} inline size={60} />
         <Text style={styles.loadingText}>Loading garage ride...</Text>
       </View>
     )
@@ -571,28 +571,17 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
         <View style={styles.footer}>
           {ride.status === 'departed' ? (
             <TouchableOpacity style={styles.completeBtn} onPress={handleComplete} disabled={isUpdatingRide}>
-              {isUpdatingRide ? (
-                <ActivityIndicator color="#FFF" />
-              ) : (
-                <>
-                  <Text style={styles.departBtnText}>Complete Ride</Text>
-                  <MaterialIcons name="check-circle" size={20} color="#FFF" />
-                </>
-              )}
+              <Text style={styles.departBtnText}>Complete Ride</Text>
+              <MaterialIcons name="check-circle" size={20} color="#FFF" />
             </TouchableOpacity>
           ) : (
             <TouchableOpacity style={styles.departBtn} onPress={handleDepart} disabled={isUpdatingRide}>
-              {isUpdatingRide ? (
-                <ActivityIndicator color="#FFF" />
-              ) : (
-                <>
-                  <Text style={styles.departBtnText}>Depart Now</Text>
-                  <MaterialIcons name="arrow-forward" size={20} color="#FFF" />
-                </>
-              )}
+              <Text style={styles.departBtnText}>Depart Now</Text>
+              <MaterialIcons name="arrow-forward" size={20} color="#FFF" />
             </TouchableOpacity>
           )}
         </View>
+        <LoadingOverlay visible={isUpdatingRide} />
       </View>
     )
   }
@@ -682,11 +671,7 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
           onPress={handleCreate}
           disabled={loading}
         >
-          {loading ? (
-            <ActivityIndicator color="#FFF" />
-          ) : (
-            <Text style={styles.submitBtnText}>Create Ride & Show QR</Text>
-          )}
+          <Text style={styles.submitBtnText}>Create Ride & Show QR</Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -802,6 +787,7 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
           </ScrollView>
         </View>
       </Modal>
+      <LoadingOverlay visible={loading} />
     </View>
   )
 }

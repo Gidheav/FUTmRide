@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, type CSSProperties } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Bus, Users, CalendarClock, Clock, MapPin, Navigation, ChevronDown, ChevronUp,
   Plus, Play, Square, CheckCircle2, AlertTriangle, ArrowRight, RefreshCw,
@@ -8,6 +9,7 @@ import {
 import { T } from '../theme'
 import { apiService } from '../../services/api.service'
 import api from '../../core/api'
+import { routeEndpointLabel } from '../shared/routeDisplay'
 
 /* ────────────────────────────────────────────────────────────────────────── */
 /*  Types                                                                     */
@@ -17,8 +19,17 @@ interface ScheduledRide {
   id: string; reference: string; departure_date: string
   window_start: string; window_end: string; join_deadline: string
   origin_address: string; destination_address: string
+  origin_name?: string | null; destination_name?: string | null
   vehicle_size: string; status: string; passenger_count: number
   is_joinable: boolean; enabled_tiers: string[]; stops_count: number
+  allowed_vehicle_types: string[]
+  fare_summary?: {
+    vehicle_type: string
+    distance_km: number
+    fare: number
+    platform_commission?: number
+    driver_earnings?: number
+  } | null
 }
 
 interface BusAssignment {
@@ -44,7 +55,8 @@ interface Passenger {
 interface FleetDriver {
   id: string; user?: { id: string; full_name: string }
   plate_number?: string; vehicle_type?: string; vehicle_make?: string
-  vehicle_model?: string
+  vehicle_model?: string; vehicle_color?: string; vehicle_seats?: number
+  name?: string; phone?: string; is_online?: boolean
 }
 
 interface ActivityLogEntry {
@@ -72,6 +84,23 @@ const BUS_STATUS_FLOW = ['assigned', 'boarding', 'loading', 'departed', 'en_rout
 const fmtTime = (t: string) => t?.substring(0, 5) || ''
 const fmtCurrency = (v: string | number) => `₦${Number(v || 0).toLocaleString()}`
 
+const VEHICLE_LABELS: Record<string, string> = {
+  motorbike: 'Motorbike',
+  tricycle: 'Tricycle',
+  sedan: 'Sedan',
+  mpv: 'MPV',
+  minibus: 'Minibus',
+  coach: 'Coach',
+}
+
+const vehicleLabel = (vehicleType: string) => VEHICLE_LABELS[vehicleType] || vehicleType
+
+const formatVehicleSummary = (vehicleTypes: string[]) => {
+  if (!vehicleTypes?.length) return 'Vehicle'
+  if (vehicleTypes.length <= 3) return vehicleTypes.map(vehicleLabel).join(' · ')
+  return `${vehicleTypes.slice(0, 2).map(vehicleLabel).join(' · ')} +${vehicleTypes.length - 2}`
+}
+
 const getCountdownMs = (deadline: string) => {
   const d = new Date(deadline)
   return d.getTime() - Date.now()
@@ -98,10 +127,11 @@ export default function RouteOpsPanel() {
   // ── State ──
   const [rides, setRides] = useState<ScheduledRide[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedRideId, setSelectedRideId] = useState<string | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [selectedRideId, setSelectedRideId] = useState<string | null>(searchParams.get('ride'))
   const [buses, setBuses] = useState<BusAssignment[]>([])
   const [passengers, setPassengers] = useState<Passenger[]>([])
-  const [interestedDrivers, setInterestedDrivers] = useState<any[]>([])
+  const [interestedDrivers, setInterestedDrivers] = useState<FleetDriver[]>([])
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([])
   const [now, setNow] = useState(Date.now())
   const [statusFilter, setStatusFilter] = useState('all')
@@ -208,18 +238,19 @@ export default function RouteOpsPanel() {
       setBusForm(p => ({ ...p, driver: driverId }))
       return
     }
-    // Auto-populate capacity based on vehicle type
+    // Use driver's actual vehicle_seats from profile as primary; fall back to type defaults
     const vt = (driver.vehicle_type || '').toLowerCase()
     const seatedDefaults: Record<string, number> = {
-      bus: 50, minibus: 18, minivan: 8, suv: 6, sedan: 4, van: 14,
+      coach: 50, minibus: 18, mpv: 7, sedan: 4, tricycle: 3, motorbike: 1,
     }
     const standingDefaults: Record<string, number> = {
-      bus: 20, minibus: 10, minivan: 0, suv: 0, sedan: 0, van: 0,
+      coach: 20, minibus: 10, mpv: 0, sedan: 0, tricycle: 0, motorbike: 0,
     }
-    const seated = seatedDefaults[vt] ?? 50
+    const seated = driver.vehicle_seats ?? seatedDefaults[vt] ?? 4
     const standing = standingDefaults[vt] ?? 0
     // Auto label from driver name if blank
-    const label = busForm.bus_label || `${driver.name.split(' ')[0]}'s Bus`
+    const driverName = driver.name || driver.user?.full_name || 'Driver'
+    const label = busForm.bus_label || `${driverName.split(' ')[0]}'s Bus`
     setBusForm(p => ({ ...p, driver: driverId, seated_capacity: seated, standing_capacity: standing, bus_label: label }))
   }
 
@@ -395,7 +426,15 @@ export default function RouteOpsPanel() {
                 const cdMs = getCountdownMs(ride.join_deadline)
                 return (
                   <div key={ride.id} style={{ ...s.rideCard, ...(isSelected ? s.rideCardSelected : {}), borderLeftColor: sc.color }}
-                    onClick={() => setSelectedRideId(isSelected ? null : ride.id)}>
+                    onClick={() => {
+                      const newId = isSelected ? null : ride.id
+                      setSelectedRideId(newId)
+                      setSearchParams(prev => {
+                        if (newId) prev.set('ride', newId)
+                        else prev.delete('ride')
+                        return prev
+                      })
+                    }}>
                     <div style={s.rideCardTop}>
                       <span style={s.rideRef}>{ride.reference}</span>
                       <span style={{ ...s.statusBadge, background: sc.bg, color: sc.color, borderColor: sc.border }}>
@@ -404,11 +443,11 @@ export default function RouteOpsPanel() {
                     </div>
                     <div style={s.rideRoute}>
                       <div style={s.routeDot}><div style={{ ...s.dot, background: T.textPrimary }} /></div>
-                      <span style={s.routeAddr}>{ride.origin_address}</span>
+                      <span style={s.routeAddr}>{routeEndpointLabel(ride, 'origin')}</span>
                     </div>
                     <div style={s.rideRoute}>
                       <div style={s.routeDot}><div style={{ ...s.dot, background: '#a855f7' }} /></div>
-                      <span style={s.routeAddr}>{ride.destination_address}</span>
+                      <span style={s.routeAddr}>{routeEndpointLabel(ride, 'destination')}</span>
                     </div>
                     <div style={s.rideMeta}>
                       <span><Clock size={11} /> {fmtTime(ride.window_start)}-{fmtTime(ride.window_end)}</span>
@@ -439,7 +478,7 @@ export default function RouteOpsPanel() {
               {/* 3A: Ride Overview Strip */}
               <div style={s.overviewStrip}>
                 <div style={s.overviewRoute}>
-                  <div style={s.overviewNode}><CircleDot size={14} color={T.textPrimary} /><span>{selectedRide.origin_address}</span></div>
+                  <div style={s.overviewNode}><CircleDot size={14} color={T.textPrimary} /><span>{routeEndpointLabel(selectedRide, 'origin')}</span></div>
                   {selectedRide.stops_count > 0 && (
                     <>
                       <ArrowRight size={14} color={T.textMuted} />
@@ -447,7 +486,7 @@ export default function RouteOpsPanel() {
                     </>
                   )}
                   <ArrowRight size={14} color={T.textMuted} />
-                  <div style={s.overviewNode}><Navigation size={14} color='#a855f7' /><span>{selectedRide.destination_address}</span></div>
+                  <div style={s.overviewNode}><Navigation size={14} color='#a855f7' /><span>{routeEndpointLabel(selectedRide, 'destination')}</span></div>
                 </div>
                 <div style={s.overviewStats}>
                   <div style={s.overviewKpi}>
@@ -502,12 +541,12 @@ export default function RouteOpsPanel() {
                           <option value="">-- No Driver --</option>
                           {interestedDrivers.map(d => (
                             <option key={d.id} value={d.id}>
-                              {d.name} · {d.vehicle_type || '?'} · {d.plate_number || 'No Plate'}
+                              {d.name} · {d.vehicle_make || d.vehicle_type || 'Vehicle'} {d.vehicle_model || ''} · {d.plate_number || 'No Plate'}
                             </option>
                           ))}
                         </select>
                         {interestedDrivers.length === 0 && (
-                          <span style={{ fontSize: 11, color: '#f59e0b', marginTop: 4, display: 'block' }}>⚠ No drivers have expressed interest yet</span>
+                          <span style={{ fontSize: 11, color: '#f59e0b', marginTop: 4, display: 'block' }}>No drivers have expressed interest yet</span>
                         )}
                       </div>
                       {/* Show selected driver info card */}
@@ -521,9 +560,11 @@ export default function RouteOpsPanel() {
                             </div>
                             <div style={{ flex: 1 }}>
                               <div style={{ fontSize: 12, fontWeight: 600, color: T.textPrimary }}>{d.name}</div>
-                              <div style={{ fontSize: 11, color: T.textMuted }}>{d.vehicle_type} · {d.plate_number} · {d.phone}</div>
+                              <div style={{ fontSize: 11, color: T.textMuted }}>
+                                {d.vehicle_make || d.vehicle_type || 'Vehicle'} {d.vehicle_model || ''} · {d.vehicle_seats || 'N/A'} pax · {d.plate_number || 'No Plate'} · {d.phone}
+                              </div>
                             </div>
-                            <span style={{ fontSize: 10, background: 'rgba(16,185,129,0.15)', color: '#10b981', padding: '2px 8px', borderRadius: 4, border: '1px solid rgba(16,185,129,0.3)' }}>Interested ✓</span>
+                            <span style={{ fontSize: 10, background: 'rgba(16,185,129,0.15)', color: '#10b981', padding: '2px 8px', borderRadius: 4, border: '1px solid rgba(16,185,129,0.3)' }}>Interested</span>
                           </div>
                         )
                       })()}
@@ -561,6 +602,9 @@ export default function RouteOpsPanel() {
                     const sc = STATUS_COLORS[bus.status] || STATUS_COLORS.assigned
                     const isExpanded = expandedBus === bus.id
                     const busPax = passengers.filter(p => p.bus_assignment === bus.id)
+                    const activeBusPax = busPax.filter(p => !['cancelled', 'no_show'].includes(p.status))
+                    const isBoardingComplete = activeBusPax.length > 0 && bus.checked_in_count >= activeBusPax.length
+                    const disableDispatch = !isBoardingComplete || !!actionLoading
                     const seatedPct = bus.seated_capacity > 0 ? Math.round((bus.seated_count / bus.seated_capacity) * 100) : 0
                     return (
                       <div key={bus.id} style={{ ...s.busCard, borderLeftColor: sc.color, cursor: 'pointer' }} onClick={() => setExpandedBus(isExpanded ? null : bus.id)}>
@@ -605,14 +649,14 @@ export default function RouteOpsPanel() {
                         {/* Bus Actions */}
                         <div style={s.busActions} onClick={e => e.stopPropagation()}>
                           {bus.status === 'assigned' && (
-                            <button style={{ ...s.busActionBtn, color: '#f59e0b', background: 'rgba(245,158,11,0.1)' }}
-                              onClick={() => handleBusAction(bus.id, 'depart')} disabled={!!actionLoading}>
+                            <button style={{ ...s.busActionBtn, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', opacity: disableDispatch ? 0.5 : 1, cursor: disableDispatch ? 'not-allowed' : 'pointer' }}
+                              onClick={() => handleBusAction(bus.id, 'depart')} disabled={disableDispatch}>
                               <Play size={12} /> Board / Depart
                             </button>
                           )}
                           {bus.status === 'boarding' && (
-                            <button style={{ ...s.busActionBtn, color: '#10b981', background: 'rgba(16,185,129,0.1)' }}
-                              onClick={() => handleBusAction(bus.id, 'depart')} disabled={!!actionLoading}>
+                            <button style={{ ...s.busActionBtn, color: '#10b981', background: 'rgba(16,185,129,0.1)', opacity: disableDispatch ? 0.5 : 1, cursor: disableDispatch ? 'not-allowed' : 'pointer' }}
+                              onClick={() => handleBusAction(bus.id, 'depart')} disabled={disableDispatch}>
                               <Navigation size={12} /> Depart
                             </button>
                           )}

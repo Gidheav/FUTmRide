@@ -475,10 +475,6 @@ def ensure_rides(count, campus, creator):
                         destination_longitude=route[5],
                         allowed_vehicle_types=[profile['size']],
                         cargo_capacity_kg=cargo_capacity,
-                        accessibility_features=random.sample(
-                            ['air_conditioning', 'low_floor', 'wheelchair_ramp'],
-                            random.randint(0, 2),
-                        ),
                         assigned_driver=driver,
                         standard_enabled=True,
                         standard_price=standard_price,

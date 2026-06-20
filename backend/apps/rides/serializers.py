@@ -53,7 +53,7 @@ class RideRequestSerializer(serializers.ModelSerializer):
         seats = attrs.get('requested_seats') or 1
         vehicle_type = attrs.get('vehicle_type_requested')
         if vehicle_type == VehicleType.MOTORBIKE and seats > 2:
-            raise serializers.ValidationError({'requested_seats': 'Motorcycle allows up to 2 seats.'})
+            raise serializers.ValidationError({'requested_seats': 'Motorbike allows up to 2 seats.'})
         if vehicle_type == VehicleType.TRICYCLE and seats > 4:
             raise serializers.ValidationError({'requested_seats': 'Tricycle allows up to 4 seats.'})
         return attrs

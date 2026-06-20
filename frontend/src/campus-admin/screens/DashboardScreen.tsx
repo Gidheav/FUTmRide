@@ -1,15 +1,18 @@
-import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react'
+import { Fragment, useState, useEffect, useRef, useCallback, useMemo, type CSSProperties } from 'react'
 import {
   CalendarClock,
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Plus, X, Search,
   Layers, Pencil, MousePointer2, Ruler, Square, Circle,
   ZoomIn, ZoomOut, Crosshair, Maximize2, Undo2, Redo2, Trash2,
 } from 'lucide-react'
-import { GoogleMap, useJsApiLoader, DrawingManager, Polyline, Marker, InfoWindow } from '@react-google-maps/api'
+import { GoogleMap, useJsApiLoader, DrawingManager, Polyline, Marker, InfoWindow, Circle as MapCircle } from '@react-google-maps/api'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { T, useCampusThemeStore } from '../theme'
 import { createAuthenticatedWebSocket } from '../../core/ws'
 import { apiService } from '../../services/api.service'
+import { calculateFare, configToDraft, defaultFareDraft } from '../engine/fareCalculator'
+import type { FareConfig, PlatformSettings } from '../engine/types'
+import { routeEndpointLabel } from '../shared/routeDisplay'
 
 const GMAP_LIBS: ('drawing' | 'geometry' | 'places')[] = ['drawing', 'geometry', 'places']
 
@@ -25,6 +28,28 @@ interface MeasuredRoadRoute {
   summary: string
   roadSteps: { name: string; distanceText: string; durationText: string }[]
   color: string
+}
+
+interface RouteWaypoint {
+  name: string
+  address: string
+  latitude?: number
+  longitude?: number
+}
+
+interface RouteFareRow {
+  vehicleType: string
+  from: string
+  to: string
+  fromIndex: number
+  toIndex: number
+  distanceKm: number
+  fare: number
+}
+
+interface RouteProjection {
+  alongKm: number
+  offsetMeters: number
 }
 
 const ROUTE_COLORS = ['#f59e0b', '#3b82f6', '#10b981', '#a855f7', '#ef4444', '#06b6d4']
@@ -49,9 +74,11 @@ export interface GarageRide {
     vehicle_type: string | null
   }
   origin_address: string
+  origin_name?: string | null
   origin_latitude: number
   origin_longitude: number
   destination_address: string
+  destination_name?: string | null
   destination_latitude: number
   destination_longitude: number
   vehicle_type: string
@@ -144,8 +171,23 @@ function Toggle({ active, onToggle, color }: { active: boolean; onToggle: () => 
    MAIN COMPONENT
    ══════════════════════════════════════════════════════════════════════════════ */
 
-const MAP_CENTER = { lat: 9.5323, lng: 6.4526 } // FUT Minna Main Campus
-const DEFAULT_ZOOM = 15
+const MAP_CENTER = { lat: 9.6139, lng: 6.5569 } // Minna city operating area
+const DEFAULT_ZOOM = 12
+const ROUTE_STOP_RADIUS_METERS = 150
+const MINNA_BOUNDS = {
+  north: 9.78,
+  south: 9.42,
+  east: 6.78,
+  west: 6.30,
+}
+const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
+  commission_rate: 0.15,
+  distance_provider: 'osrm',
+  max_distance_km: 150,
+  no_show_fee_enabled: true,
+  no_show_fee_amount: 200,
+  no_show_wait_minutes: 5,
+}
 
 export default function DashboardPage() {
   const { mode } = useCampusThemeStore()
@@ -206,60 +248,301 @@ export default function DashboardPage() {
   const [departureDate, setDepartureDate] = useState(new Date().toISOString().split('T')[0])
   const [windowStart, setWindowStart] = useState(getNextHour())
   const [windowEnd, setWindowEnd] = useState(getNextHourPlus30())
-  const [waypoints, setWaypoints] = useState([{ name: '', address: '' }, { name: '', address: '' }])
+  const [waypoints, setWaypoints] = useState<RouteWaypoint[]>([{ name: '', address: '' }, { name: '', address: '' }])
   const [allowedVehicleTypes, setAllowedVehicleTypes] = useState<string[]>(['sedan'])
-  const [cargoCapacity, setCargoCapacity] = useState('0')
-  const [accessibility, setAccessibility] = useState<Record<string, boolean>>({
-    wheelchair_ramp: false, liftgate: false, low_floor: false, air_conditioning: true,
-  })
-  
-  const [pricingTiers, setPricingTiers] = useState<Record<string, boolean>>({
-    standard: true, standing: false, premium: false, freight: false,
-  })
-  const [pricingValues, setPricingValues] = useState<Record<string, string>>({
-    standard: '100', standing: '50', premium: '250', freight: '500',
-  })
+  const [activeWaypointIndex, setActiveWaypointIndex] = useState<number | null>(null)
+  const [routeStopKm, setRouteStopKm] = useState<number[]>([])
+  const [routeStopOffsetM, setRouteStopOffsetM] = useState<number[]>([])
+  const [routeRoadPath, setRouteRoadPath] = useState<google.maps.LatLngLiteral[]>([])
+  const [isRoutePricingLoading, setIsRoutePricingLoading] = useState(false)
+  const [pricingSettings, setPricingSettings] = useState<PlatformSettings>(DEFAULT_PLATFORM_SETTINGS)
+  const [liveFareConfigs, setLiveFareConfigs] = useState<Record<string, FareConfig>>({})
   const [isCreatingRide, setIsCreatingRide] = useState(false)
+
+  useEffect(() => {
+    let mounted = true
+    apiService.get<any>('pricing/config/active/')
+      .then((data) => {
+        if (!mounted) return
+        setPricingSettings(data?.settings || DEFAULT_PLATFORM_SETTINGS)
+        setLiveFareConfigs(data?.live || {})
+      })
+      .catch(() => {
+        if (!mounted) return
+        setPricingSettings(DEFAULT_PLATFORM_SETTINGS)
+        setLiveFareConfigs({})
+      })
+    return () => { mounted = false }
+  }, [])
+
+  const fetchMainRoute = useCallback(async (from: RouteWaypoint, to: RouteWaypoint) => {
+    if (
+      from.latitude == null || from.longitude == null
+      || to.latitude == null || to.longitude == null
+    ) return { distanceKm: 0, path: [] as google.maps.LatLngLiteral[] }
+
+    const fallback = getHaversineDistance(from.latitude, from.longitude, to.latitude, to.longitude) * 1.25
+    const fallbackPath = [
+      { lat: Number(from.latitude), lng: Number(from.longitude) },
+      { lat: Number(to.latitude), lng: Number(to.longitude) },
+    ]
+    try {
+      const url = `https://router.project-osrm.org/route/v1/driving/${from.longitude},${from.latitude};${to.longitude},${to.latitude}?overview=full&geometries=geojson&alternatives=false&steps=false`
+      const res = await fetch(url)
+      if (!res.ok) return { distanceKm: fallback, path: fallbackPath }
+      const data = await res.json()
+      const meters = data?.routes?.[0]?.distance
+      const coords = data?.routes?.[0]?.geometry?.coordinates
+      const path = Array.isArray(coords)
+        ? coords.map((coord: [number, number]) => ({ lat: coord[1], lng: coord[0] }))
+        : fallbackPath
+      return { distanceKm: meters ? meters / 1000 : fallback, path }
+    } catch {
+      return { distanceKm: fallback, path: fallbackPath }
+    }
+  }, [])
+
+  const projectStopOntoRoute = useCallback((point: RouteWaypoint, path: google.maps.LatLngLiteral[]): RouteProjection => {
+    if (point.latitude == null || point.longitude == null || path.length < 2) {
+      return { alongKm: 0, offsetMeters: Number.POSITIVE_INFINITY }
+    }
+
+    const originLat = Number(point.latitude) * Math.PI / 180
+    const metersPerDegLat = 111_320
+    const metersPerDegLng = 111_320 * Math.cos(originLat)
+    const toXY = (p: { lat: number; lng: number }) => ({
+      x: p.lng * metersPerDegLng,
+      y: p.lat * metersPerDegLat,
+    })
+    const target = toXY({ lat: Number(point.latitude), lng: Number(point.longitude) })
+    let cumulativeM = 0
+    let bestAlongM = 0
+    let bestOffsetM = Number.POSITIVE_INFINITY
+
+    for (let idx = 1; idx < path.length; idx += 1) {
+      const a = toXY(path[idx - 1])
+      const b = toXY(path[idx])
+      const dx = b.x - a.x
+      const dy = b.y - a.y
+      const segmentLenSq = dx * dx + dy * dy
+      const segmentLenM = Math.sqrt(segmentLenSq)
+      const t = segmentLenSq === 0
+        ? 0
+        : Math.max(0, Math.min(1, ((target.x - a.x) * dx + (target.y - a.y) * dy) / segmentLenSq))
+      const px = a.x + t * dx
+      const py = a.y + t * dy
+      const offsetM = Math.hypot(target.x - px, target.y - py)
+
+      if (offsetM < bestOffsetM) {
+        bestOffsetM = offsetM
+        bestAlongM = cumulativeM + (segmentLenM * t)
+      }
+      cumulativeM += segmentLenM
+    }
+
+    return { alongKm: bestAlongM / 1000, offsetMeters: bestOffsetM }
+  }, [])
+
+  useEffect(() => {
+    const origin = waypoints[0]
+    const destination = waypoints[waypoints.length - 1]
+    const endpointsPinned = (
+      origin?.latitude != null
+      && origin?.longitude != null
+      && destination?.latitude != null
+      && destination?.longitude != null
+    )
+
+    if (!endpointsPinned || waypoints.length < 2) {
+      setRouteStopKm([])
+      setRouteStopOffsetM([])
+      setRouteRoadPath([])
+      return
+    }
+
+    let cancelled = false
+    setIsRoutePricingLoading(true)
+    fetchMainRoute(origin, destination)
+      .then((route) => {
+        if (cancelled) return
+        const path = route.path.length >= 2 ? route.path : [
+          { lat: Number(origin.latitude), lng: Number(origin.longitude) },
+          { lat: Number(destination.latitude), lng: Number(destination.longitude) },
+        ]
+        const projections = waypoints.map((point, idx) => {
+          if (idx === 0) return { alongKm: 0, offsetMeters: 0 }
+          if (idx === waypoints.length - 1) return { alongKm: route.distanceKm, offsetMeters: 0 }
+          if (point.latitude == null || point.longitude == null) {
+            return { alongKm: Number.NaN, offsetMeters: Number.NaN }
+          }
+          return projectStopOntoRoute(point, path)
+        })
+        setRouteRoadPath(path)
+        setRouteStopKm(projections.map(p => p.alongKm))
+        setRouteStopOffsetM(projections.map(p => p.offsetMeters))
+      })
+      .finally(() => {
+        if (!cancelled) setIsRoutePricingLoading(false)
+      })
+
+    return () => { cancelled = true }
+  }, [fetchMainRoute, projectStopOntoRoute, waypoints])
+
+  const routeFareRows = useMemo<RouteFareRow[]>(() => {
+    const origin = waypoints[0]
+    const destination = waypoints[waypoints.length - 1]
+    const endpointsPinned = (
+      origin?.latitude != null
+      && origin?.longitude != null
+      && destination?.latitude != null
+      && destination?.longitude != null
+    )
+    if (!endpointsPinned || routeStopKm.length !== waypoints.length) return []
+
+    const pricedWaypointIndexes = waypoints.reduce<number[]>((indexes, point, idx) => {
+      const isEndpoint = idx === 0 || idx === waypoints.length - 1
+      const isPinned = point.latitude != null && point.longitude != null
+      const alongKm = routeStopKm[idx]
+      const offsetM = routeStopOffsetM[idx]
+
+      if (isEndpoint && Number.isFinite(alongKm)) {
+        indexes.push(idx)
+        return indexes
+      }
+
+      if (
+        isPinned
+        && Number.isFinite(alongKm)
+        && Number.isFinite(offsetM)
+        && offsetM <= ROUTE_STOP_RADIUS_METERS
+      ) {
+        indexes.push(idx)
+      }
+      return indexes
+    }, [])
+
+    if (pricedWaypointIndexes.length < 2) return []
+
+    const orderFollowsRoute = pricedWaypointIndexes.every((idx, pos) =>
+      pos === 0 || routeStopKm[idx] > routeStopKm[pricedWaypointIndexes[pos - 1]]
+    )
+    if (!orderFollowsRoute) return []
+
+    const rows: RouteFareRow[] = []
+    allowedVehicleTypes.forEach((vehicleType) => {
+      const liveConfig = liveFareConfigs[vehicleType]
+      const draft = liveConfig ? configToDraft(liveConfig) : defaultFareDraft(vehicleType)
+      for (let fromPos = 0; fromPos < pricedWaypointIndexes.length - 1; fromPos += 1) {
+        for (let toPos = fromPos + 1; toPos < pricedWaypointIndexes.length; toPos += 1) {
+          const fromIdx = pricedWaypointIndexes[fromPos]
+          const toIdx = pricedWaypointIndexes[toPos]
+          const distanceKm = Math.max(0.01, routeStopKm[toIdx] - routeStopKm[fromIdx])
+          const result = calculateFare(
+            vehicleType,
+            distanceKm,
+            1,
+            pricingSettings,
+            draft,
+            liveConfig ? 'database' : 'legacy_fallback',
+          )
+          rows.push({
+            vehicleType,
+            from: waypoints[fromIdx].name || waypoints[fromIdx].address || `Stop ${fromIdx + 1}`,
+            to: waypoints[toIdx].name || waypoints[toIdx].address || `Stop ${toIdx + 1}`,
+            fromIndex: fromIdx,
+            toIndex: toIdx,
+            distanceKm,
+            fare: result.total_fare,
+          })
+        }
+      }
+    })
+    return rows
+  }, [allowedVehicleTypes, liveFareConfigs, pricingSettings, routeStopKm, routeStopOffsetM, waypoints])
+
+  const formatMoney = (value: number) => `₦${Math.round(value || 0).toLocaleString('en-NG')}`
+
+  const fullRouteFares = routeFareRows.filter((row) => row.fromIndex === 0 && row.toIndex === waypoints.length - 1)
+  const firstFullRouteFare = fullRouteFares[0]
+  const fareSummaryText = fullRouteFares.length
+    ? fullRouteFares.length === 1
+      ? formatMoney(fullRouteFares[0].fare)
+      : `${formatMoney(Math.min(...fullRouteFares.map(row => row.fare)))}-${formatMoney(Math.max(...fullRouteFares.map(row => row.fare)))}`
+    : isRoutePricingLoading ? 'Calculating' : 'Pin stops'
+  const allWaypointsPinned = waypoints.every(w => w.latitude != null && w.longitude != null)
+  const offRouteStopCount = routeStopOffsetM.filter((meters, idx) =>
+    idx > 0
+    && idx < waypoints.length - 1
+    && Number.isFinite(meters)
+    && meters > ROUTE_STOP_RADIUS_METERS
+  ).length
+  const routeOrderValid = allWaypointsPinned && routeStopKm.length === waypoints.length
+    ? routeStopKm.every((km, idx) => idx === 0 || km > routeStopKm[idx - 1])
+    : true
+  const routeStopWarning = offRouteStopCount > 0
+    ? `${offRouteStopCount} stop${offRouteStopCount === 1 ? '' : 's'} must be within ${ROUTE_STOP_RADIUS_METERS}m of the main route.`
+    : !routeOrderValid
+      ? 'Stops must follow the same order as the origin-to-destination route.'
+      : null
+
+  const updateWaypoint = useCallback((index: number, patch: Partial<RouteWaypoint>) => {
+    setWaypoints(prev => prev.map((point, idx) => idx === index ? { ...point, ...patch } : point))
+  }, [])
+
+  const canAddIntermediateStop = (
+    waypoints[0]?.latitude != null
+    && waypoints[0]?.longitude != null
+    && waypoints[waypoints.length - 1]?.latitude != null
+    && waypoints[waypoints.length - 1]?.longitude != null
+    && routeRoadPath.length >= 2
+    && !isRoutePricingLoading
+  )
 
   const handleCreateScheduledRide = async () => {
     try {
+      const invalidStop = waypoints.find(w => !w.address.trim() || w.latitude == null || w.longitude == null)
+      if (invalidStop) {
+        alert('Every route location needs a name/address and a pinned map point.')
+        return
+      }
+      if (routeStopWarning) {
+        alert(routeStopWarning)
+        return
+      }
       setIsCreatingRide(true)
+      const stops = waypoints.map((w, i) => ({
+        order: i + 1,
+        name: w.name.trim() || (i === 0 ? 'Origin' : i === waypoints.length - 1 ? 'Destination' : `Stop ${i + 1}`),
+        address: w.address.trim(),
+        latitude: Number(w.latitude),
+        longitude: Number(w.longitude),
+        is_pickup: i < waypoints.length - 1,
+        is_dropoff: i > 0,
+      }))
+      const origin = stops[0]
+      const destination = stops[stops.length - 1]
+      const previewFare = firstFullRouteFare?.fare || routeFareRows[routeFareRows.length - 1]?.fare || 0
       const payload = {
         departure_date: departureDate,
         window_start: windowStart,
         window_end: windowEnd,
-        origin_address: waypoints[0]?.address || 'Campus Gate',
-        origin_latitude: 9.5323,
-        origin_longitude: 6.4526,
-        destination_address: waypoints[waypoints.length - 1]?.address || 'Library',
-        destination_latitude: 9.5350,
-        destination_longitude: 6.4550,
+        origin_address: origin.address,
+        origin_latitude: origin.latitude,
+        origin_longitude: origin.longitude,
+        destination_address: destination.address,
+        destination_latitude: destination.latitude,
+        destination_longitude: destination.longitude,
         allowed_vehicle_types: allowedVehicleTypes,
-        cargo_capacity_kg: parseInt(cargoCapacity, 10) || 0,
-        accessibility_features: Object.entries(accessibility).filter(([_, v]) => v).map(([k]) => k),
-        standard_enabled: pricingTiers.standard,
-        standard_price: pricingValues.standard,
-        standing_enabled: pricingTiers.standing,
-        standing_price: pricingValues.standing,
-        premium_enabled: pricingTiers.premium,
-        premium_price: pricingValues.premium,
-        freight_enabled: pricingTiers.freight,
-        freight_price: pricingValues.freight,
-        stops: waypoints.map((w, i) => {
-          let addr = w.address
-          if (!addr) {
-            addr = i === 0 ? 'Campus Gate' : i === waypoints.length - 1 ? 'Library' : `Stop ${i + 1} Address`
-          }
-          return {
-            order: i + 1,
-            name: w.name || `Stop ${i + 1}`,
-            address: addr,
-            latitude: parseFloat((9.5323 + (i * 0.001)).toFixed(6)),
-            longitude: parseFloat((6.4526 + (i * 0.001)).toFixed(6)),
-            is_pickup: true,
-            is_dropoff: true,
-          }
-        }),
+        cargo_capacity_kg: 0,
+        standard_enabled: true,
+        standard_price: String(previewFare || 1),
+        standing_enabled: false,
+        standing_price: '0',
+        premium_enabled: false,
+        premium_price: '0',
+        freight_enabled: false,
+        freight_price: '0',
+        stops,
       }
       
       await apiService.createScheduledRide(payload)
@@ -360,10 +643,40 @@ export default function DashboardPage() {
   const handleFullscreen = () => setIsFullscreen(f => !f)
 
   const handleMapClick = useCallback((e: google.maps.MapMouseEvent) => {
-    if (activeTool !== 'select' || !e.latLng) return
+    if (!e.latLng) return
     const lat = e.latLng.lat()
     const lng = e.latLng.lng()
 
+    if (activeWaypointIndex !== null) {
+      const isIntermediateStop = activeWaypointIndex > 0 && activeWaypointIndex < waypoints.length - 1
+      if (isIntermediateStop) {
+        if (routeRoadPath.length < 2) {
+          alert('Pin the origin and destination first so the main route can be calculated before adding stops.')
+          return
+        }
+        const projection = projectStopOntoRoute({ name: '', address: '', latitude: lat, longitude: lng }, routeRoadPath)
+        if (projection.offsetMeters > ROUTE_STOP_RADIUS_METERS) {
+          alert(`This stop is ${Math.round(projection.offsetMeters)}m from the route. Stops must be within ${ROUTE_STOP_RADIUS_METERS}m so passengers meet the bus from the road.`)
+          return
+        }
+      }
+
+      const geocoder = new google.maps.Geocoder()
+      geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+        const address = status === 'OK' && results?.[0]
+          ? results[0].formatted_address
+          : `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+        updateWaypoint(activeWaypointIndex, {
+          address,
+          latitude: Number(lat.toFixed(6)),
+          longitude: Number(lng.toFixed(6)),
+        })
+        setActiveWaypointIndex(null)
+      })
+      return
+    }
+
+    if (activeTool !== 'select') return
     const geocoder = new google.maps.Geocoder()
     geocoder.geocode({ location: { lat, lng } }, (results, status) => {
       if (status === 'OK' && results?.[0]) {
@@ -376,7 +689,7 @@ export default function DashboardPage() {
         setSelectedLocation({ lat, lng, address: `Coordinates: ${lat.toFixed(5)}, ${lng.toFixed(5)}` })
       }
     })
-  }, [activeTool])
+  }, [activeTool, activeWaypointIndex, projectStopOntoRoute, routeRoadPath, updateWaypoint, waypoints.length])
 
   const formatRouteStatus = useCallback((route: MeasuredRoadRoute, routeIndex: number, routeCount: number) => {
     return `${route.distanceText} | ${route.durationText} (Route ${routeIndex + 1}/${routeCount})`
@@ -937,7 +1250,7 @@ export default function DashboardPage() {
                     <div key={req.id} style={s.reqCard}>
                       <div style={s.reqRow}>
                         <span style={s.reqLabel}>Route:</span>
-                        <span style={s.reqRoute}>{req.origin_address.split(',')[0]} to {req.destination_address.split(',')[0]}</span>
+                        <span style={s.reqRoute}>{routeEndpointLabel(req, 'origin', true)} to {routeEndpointLabel(req, 'destination', true)}</span>
                       </div>
                       <div style={s.reqRow}>
                         <span style={s.reqLabel}>Est. Fare:</span>
@@ -1097,15 +1410,10 @@ export default function DashboardPage() {
                     clickableIcons: false,
                     gestureHandling: 'greedy',
                     backgroundColor: mode === 'dark' ? '#0f1117' : '#ffffff',
-                    minZoom: 14,
-                    maxZoom: 18,
+                    minZoom: 11,
+                    maxZoom: 19,
                     restriction: {
-                      latLngBounds: {
-                        north: 9.55,
-                        south: 9.51,
-                        east: 6.47,
-                        west: 6.43,
-                      },
+                      latLngBounds: MINNA_BOUNDS,
                       strictBounds: true,
                     },
                     styles: mode === 'dark' ? [
@@ -1175,6 +1483,52 @@ export default function DashboardPage() {
                       }}
                     />
                   )}
+
+                  {routeRoadPath.length >= 2 && (
+                    <Polyline
+                      path={routeRoadPath}
+                      options={{
+                        strokeColor: '#10b981',
+                        strokeOpacity: 0.85,
+                        strokeWeight: 3,
+                      }}
+                    />
+                  )}
+
+                  {waypoints.map((point, idx) => (
+                    point.latitude != null && point.longitude != null ? (
+                      <Fragment key={`route-stop-${idx}`}>
+                        <MapCircle
+                          center={{ lat: Number(point.latitude), lng: Number(point.longitude) }}
+                          radius={ROUTE_STOP_RADIUS_METERS}
+                          options={{
+                            fillColor: idx === 0 ? '#16a34a' : idx === waypoints.length - 1 ? '#ef4444' : '#3b82f6',
+                            fillOpacity: 0.08,
+                            strokeColor: idx === 0 ? '#16a34a' : idx === waypoints.length - 1 ? '#ef4444' : '#3b82f6',
+                            strokeOpacity: 0.45,
+                            strokeWeight: 1,
+                            clickable: false,
+                          }}
+                        />
+                        <Marker
+                          position={{ lat: Number(point.latitude), lng: Number(point.longitude) }}
+                          label={{
+                            text: idx === 0 ? 'O' : idx === waypoints.length - 1 ? 'D' : String(idx),
+                            color: '#ffffff',
+                            fontWeight: '700',
+                          }}
+                          icon={{
+                            path: google.maps.SymbolPath.CIRCLE,
+                            fillColor: idx === 0 ? '#16a34a' : idx === waypoints.length - 1 ? '#ef4444' : '#3b82f6',
+                            fillOpacity: 1,
+                            strokeColor: '#ffffff',
+                            strokeWeight: 2,
+                            scale: 9,
+                          }}
+                        />
+                      </Fragment>
+                    ) : null
+                  ))}
 
                   {/* Custom POI / Location InfoWindow */}
                   {selectedLocation && (
@@ -1465,51 +1819,86 @@ export default function DashboardPage() {
                 {/* Multi-Stop Route */}
                 <div style={s.rpSection}>
                   <div style={s.rpLabel}>Route & Stops</div>
+                  {activeWaypointIndex !== null && (
+                    <div style={{ ...s.routePinNotice, marginBottom: 8 }}>
+                      Click the map to pin {activeWaypointIndex === 0 ? 'origin' : activeWaypointIndex === waypoints.length - 1 ? 'destination' : `stop ${activeWaypointIndex}`}
+                    </div>
+                  )}
                   {waypoints.map((waypoint, i) => (
-                    <div key={i} style={{ ...s.rpInputRow, marginBottom: 6 }}>
-                      <div style={s.rpInputIcon}>
-                        <span style={{ fontSize: 10, fontWeight: 700 }}>{i === 0 ? 'O' : i === waypoints.length - 1 ? 'D' : i}</span>
+                    <div key={i} style={s.routeStopRow}>
+                      <div style={s.routeStopBadge}>
+                        {i === 0 ? 'O' : i === waypoints.length - 1 ? 'D' : i}
                       </div>
-                      <input 
-                        style={{ ...s.rpInput, flex: 1 }} 
-                        placeholder={i === 0 ? "Origin Address" : i === waypoints.length - 1 ? "Destination Address" : "Stop Address"} 
-                        value={waypoint.address}
-                        onChange={(e) => {
-                          const newWaypoints = [...waypoints]
-                          newWaypoints[i].address = e.target.value
-                          setWaypoints(newWaypoints)
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <input
+                          style={{ ...s.rpInput, height: 26, marginBottom: 4 }}
+                          placeholder={i === 0 ? 'Origin name' : i === waypoints.length - 1 ? 'Destination name' : `Stop ${i} name`}
+                          value={waypoint.name}
+                          onChange={(e) => updateWaypoint(i, { name: e.target.value })}
+                        />
+                        <input
+                          style={{ ...s.rpInput, height: 26 }}
+                          placeholder="Display address"
+                          value={waypoint.address}
+                          onChange={(e) => updateWaypoint(i, { address: e.target.value })}
+                        />
+                        <div style={s.routeCoordLine}>
+                          {waypoint.latitude != null && waypoint.longitude != null
+                            ? routeStopOffsetM[i] == null
+                              ? 'Pinned'
+                              : i === 0 || i === waypoints.length - 1
+                                ? 'Main route endpoint'
+                                : routeStopOffsetM[i] <= ROUTE_STOP_RADIUS_METERS
+                                  ? `Within stop range (${Math.round(routeStopOffsetM[i])}m)`
+                                  : `Too far from route (${Math.round(routeStopOffsetM[i])}m)`
+                            : 'No map point'}
+                        </div>
+                      </div>
+                      <button
+                        style={{
+                          ...s.routePinBtn,
+                          ...(activeWaypointIndex === i ? { background: T.accent, color: '#fff', borderColor: T.accent } : {}),
                         }}
-                      />
+                        onClick={() => {
+                          setActiveWaypointIndex(activeWaypointIndex === i ? null : i)
+                          setActiveTool(null)
+                        }}
+                        title="Pin on map"
+                      >
+                        <Crosshair size={12} />
+                      </button>
                       {waypoints.length > 2 && (
-                        <button 
+                        <button
                           style={s.rpRemoveBtn}
                           onClick={() => setWaypoints(waypoints.filter((_, idx) => idx !== i))}
                         ><X size={12} /></button>
                       )}
                     </div>
                   ))}
-                  <button
-                    style={s.addWaypointBtn}
-                    onClick={() => {
-                      const newWaypoints = [...waypoints]
-                      newWaypoints.splice(newWaypoints.length - 1, 0, { name: '', address: '' })
-                      setWaypoints(newWaypoints)
-                    }}
-                  >
-                    + Add Stop
-                  </button>
+                  {canAddIntermediateStop && (
+                    <button
+                      style={s.addWaypointBtn}
+                      onClick={() => {
+                        const newWaypoints = [...waypoints]
+                        newWaypoints.splice(newWaypoints.length - 1, 0, { name: '', address: '' })
+                        setWaypoints(newWaypoints)
+                      }}
+                    >
+                      + Add Stop
+                    </button>
+                  )}
                 </div>
 
                 <div style={s.rpSection}>
                   <div style={s.rpLabel}>Allowed Vehicle Types</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
                     {[
-                      { key: 'motorbike', label: 'Motorbike (1 pax, 1 backpack)' },
-                      { key: 'tricycle', label: 'Tricycle (3-4 pax, 1-2 small bags)' },
-                      { key: 'sedan', label: 'Sedan (4 pax, 2-3 suitcases)' },
-                      { key: 'mpv', label: 'MPV (6-7 pax, 2 med bags)' },
-                      { key: 'minibus', label: 'Minibus (10-18 pax, 4-6 large bags)' },
-                      { key: 'coach', label: 'Coach (16-50+ pax, massive cargo)' },
+                      { key: 'motorbike', label: 'Motorbike' },
+                      { key: 'tricycle', label: 'Tricycle' },
+                      { key: 'sedan', label: 'Sedan' },
+                      { key: 'mpv', label: 'MPV' },
+                      { key: 'minibus', label: 'Minibus' },
+                      { key: 'coach', label: 'Coach' },
                     ].map((item) => {
                       const isChecked = allowedVehicleTypes.includes(item.key)
                       return (
@@ -1533,87 +1922,32 @@ export default function DashboardPage() {
                       )
                     })}
                   </div>
-
-                  {pricingTiers.freight && (
-                    <div style={{ ...s.rpInputRow, marginBottom: 8 }}>
-                      <input 
-                        type="number" 
-                        style={{ ...s.rpInput, paddingLeft: 8 }} 
-                        placeholder="Cargo Capacity (kg)" 
-                        value={cargoCapacity}
-                        onChange={e => setCargoCapacity(e.target.value)}
-                      />
-                      <span style={{ fontSize: 10, color: T.textMuted, paddingRight: 8 }}>kg</span>
-                    </div>
-                  )}
-
-                  {[
-                    { key: 'wheelchair_ramp', label: 'Wheelchair Ramp' },
-                    { key: 'liftgate', label: 'Liftgate' },
-                    { key: 'low_floor', label: 'Low Floor' },
-                    { key: 'air_conditioning', label: 'Air Conditioning' },
-                  ].map((item) => (
-                    <div key={item.key} style={s.rpCheckRow} onClick={() => setAccessibility(p => ({ ...p, [item.key]: !p[item.key] }))}>
-                      <div style={{
-                        ...s.rpCheckbox,
-                        background: accessibility[item.key] ? T.accent : 'transparent',
-                        borderColor: accessibility[item.key] ? T.accent : T.border,
-                      }}>
-                        {accessibility[item.key] && (
-                          <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                            <path d="M1 4L3.5 6.5L9 1" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        )}
-                      </div>
-                      <span style={s.rpCheckLabel}>{item.label}</span>
-                    </div>
-                  ))}
                 </div>
 
-                {/* Pricing Templates */}
                 <div style={s.rpSection}>
-                  <div style={s.rpLabel}>Pricing Tiers (Multi-select)</div>
-                  {[
-                    { key: 'standard', label: 'Standard (Seated)' },
-                    { key: 'standing', label: 'Standing (Minibus/Coach)', disabled: !allowedVehicleTypes.some(v => ['minibus', 'coach'].includes(v)) },
-                    { key: 'premium', label: 'Premium (Comfort)' },
-                    { key: 'freight', label: 'Freight (Cargo)' },
-                  ].map((tier) => (
-                    <div key={tier.key} style={{ marginBottom: 6 }}>
-                      <div 
-                        style={{ ...s.rpCheckRow, opacity: tier.disabled ? 0.5 : 1, pointerEvents: tier.disabled ? 'none' : 'auto' }} 
-                        onClick={() => {
-                          if (tier.disabled) return
-                          setPricingTiers(p => ({ ...p, [tier.key]: !p[tier.key] }))
-                        }}
-                      >
-                        <div style={{
-                          ...s.rpCheckbox,
-                          background: pricingTiers[tier.key] && !tier.disabled ? T.accent : 'transparent',
-                          borderColor: pricingTiers[tier.key] && !tier.disabled ? T.accent : T.border,
-                        }}>
-                          {pricingTiers[tier.key] && !tier.disabled && (
-                            <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                              <path d="M1 4L3.5 6.5L9 1" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          )}
-                        </div>
-                        <span style={s.rpCheckLabel}>{tier.label}</span>
+                  <div style={s.rpLabel}>Engine Route Fares</div>
+                  <div style={s.routeFareSummary}>
+                    <span>{allowedVehicleTypes.length} vehicle{allowedVehicleTypes.length === 1 ? '' : 's'}</span>
+                    <strong>{fareSummaryText}</strong>
+                  </div>
+                  {routeStopWarning && (
+                    <div style={s.routeWarning}>{routeStopWarning}</div>
+                  )}
+                  <div style={s.routeFareTable}>
+                    {fullRouteFares.map((row, idx) => (
+                      <div key={`${row.vehicleType}-${row.fromIndex}-${row.toIndex}-${idx}`} style={s.routeFareRow}>
+                        <span style={s.routeFareVehicle}>{row.vehicleType.toUpperCase()}</span>
+                        <span style={s.routeFareStops}>{row.from} → {row.to}</span>
+                        <span style={s.routeFareMeta}>{row.distanceKm.toFixed(1)} km</span>
+                        <strong style={s.routeFareValue}>{formatMoney(row.fare)}</strong>
                       </div>
-                      
-                      {pricingTiers[tier.key] && !tier.disabled && (
-                        <div style={{ ...s.rpInputRow, marginLeft: 24, marginBottom: 8, height: 26, width: 100 }}>
-                          <span style={{ padding: '0 8px', color: T.textMuted, fontSize: 11 }}>₦</span>
-                          <input 
-                            type="number"
-                            style={s.rpInput}
-                            value={pricingValues[tier.key]}
-                            onChange={e => setPricingValues(p => ({ ...p, [tier.key]: e.target.value }))}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    ))}
+                    {!fullRouteFares.length && (
+                      <div style={{ padding: '10px 0', color: T.textMuted, fontSize: 11 }}>
+                        Pin origin and destination to preview route fares.
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1876,6 +2210,105 @@ const s: Record<string, CSSProperties> = {
     background: 'none', border: 'none', color: T.accent,
     fontSize: 10, fontWeight: 600, cursor: 'pointer', padding: '4px 0',
     fontFamily: T.fontFamily,
+  },
+  routePinNotice: {
+    border: `1px solid ${T.accent}`,
+    background: T.accentBg,
+    color: T.textWhite,
+    padding: '6px 8px',
+    fontSize: 10,
+    fontWeight: 600,
+  },
+  routeStopRow: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginBottom: 8,
+  },
+  routeStopBadge: {
+    width: 22,
+    height: 22,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: T.bgInput,
+    border: `1px solid ${T.border}`,
+    color: T.textWhite,
+    fontSize: 10,
+    fontWeight: 800,
+    flexShrink: 0,
+  },
+  routePinBtn: {
+    width: 26,
+    height: 26,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: T.bgInput,
+    border: `1px solid ${T.border}`,
+    color: T.textSecondary,
+    cursor: 'pointer',
+    flexShrink: 0,
+  },
+  routeCoordLine: {
+    color: T.textMuted,
+    fontSize: 9,
+    marginTop: 3,
+  },
+  routeFareSummary: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    background: T.bgInput,
+    border: `1px solid ${T.border}`,
+    padding: '7px 8px',
+    marginBottom: 8,
+    fontSize: 10,
+    color: T.textSecondary,
+  },
+  routeWarning: {
+    border: '1px solid rgba(245,158,11,0.45)',
+    background: 'rgba(245,158,11,0.1)',
+    color: '#f59e0b',
+    padding: '6px 8px',
+    marginBottom: 8,
+    fontSize: 10,
+    fontWeight: 600,
+    lineHeight: 1.35,
+  },
+  routeFareTable: {
+    border: `1px solid ${T.border}`,
+    background: T.bgInput,
+    maxHeight: 180,
+    overflowY: 'auto',
+  },
+  routeFareRow: {
+    display: 'grid',
+    gridTemplateColumns: '52px 1fr 44px 58px',
+    gap: 6,
+    alignItems: 'center',
+    padding: '6px 8px',
+    borderBottom: `1px solid ${T.border}`,
+    fontSize: 10,
+  },
+  routeFareVehicle: {
+    color: T.accent,
+    fontWeight: 800,
+    fontSize: 9,
+  },
+  routeFareStops: {
+    color: T.textSecondary,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  routeFareMeta: {
+    color: T.textMuted,
+    textAlign: 'right',
+  },
+  routeFareValue: {
+    color: T.textWhite,
+    textAlign: 'right',
   },
   rpCheckRow: {
     display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, cursor: 'pointer',

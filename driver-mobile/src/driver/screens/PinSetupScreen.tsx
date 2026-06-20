@@ -1,14 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
-  ActivityIndicator,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
+  Pressable,
 } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import { AMBIENT_SHADOW, COLORS, FONTS } from '../../core/theme'
+import LoadingOverlay from '../components/LoadingOverlay'
 
 type PinSetupScreenProps = {
   busy: boolean
@@ -23,80 +26,156 @@ export default function PinSetupScreen({
   onSetPin,
   onLogout,
 }: PinSetupScreenProps) {
+  const [step, setStep] = useState<'create' | 'confirm'>('create')
+  const [firstPin, setFirstPin] = useState('')
   const [pin, setPin] = useState('')
-  const [confirmPin, setConfirmPin] = useState('')
-  const [localError, setLocalError] = useState('')
+  const [displayError, setDisplayError] = useState('')
 
-  const submit = () => {
-    if (!pin || pin.length < 4) {
-      setLocalError('Enter a 4 to 6 digit PIN.')
+  const keypadRows = useMemo(() => ([
+    ['1', '2', '3'],
+    ['4', '5', '6'],
+    ['7', '8', '9'],
+    ['', '0', 'back'],
+  ]), [])
+  
+  const PIN_MAX_LENGTH = 4
+
+  useEffect(() => {
+    if (errorMessage) {
+      setDisplayError(errorMessage)
+      setPin('')
+      setFirstPin('')
+      setStep('create')
+    }
+  }, [errorMessage])
+
+  useEffect(() => {
+    if (displayError) {
+      const timer = setTimeout(() => {
+        setDisplayError('')
+      }, 10000)
+      return () => clearTimeout(timer)
+    }
+  }, [displayError])
+
+  const handleDigitPress = (digit: string) => {
+    if (busy) return
+    setDisplayError('')
+    
+    if (digit === 'back') {
+      setPin((prev) => prev.slice(0, -1))
       return
     }
-    if (!/^\d+$/.test(pin)) {
-      setLocalError('PIN must contain numbers only.')
-      return
+    if (!digit) return
+    
+    setPin((prev) => {
+      if (prev.length >= PIN_MAX_LENGTH) return prev
+      const next = `${prev}${digit}`
+      
+      if (next.length === PIN_MAX_LENGTH) {
+        setTimeout(() => processPinComplete(next), 50)
+      }
+      return next
+    })
+  }
+
+  const processPinComplete = (completePin: string) => {
+    if (step === 'create') {
+      setFirstPin(completePin)
+      setPin('')
+      setStep('confirm')
+    } else {
+      if (completePin === firstPin) {
+        onSetPin(completePin)
+      } else {
+        setDisplayError('PINs do not match. Please try again.')
+        setFirstPin('')
+        setPin('')
+        setStep('create')
+      }
     }
-    if (pin !== confirmPin) {
-      setLocalError('PINs do not match.')
-      return
-    }
-    setLocalError('')
-    onSetPin(pin)
   }
 
   return (
     <View style={styles.container}>
+      {displayError ? (
+        <View style={styles.floatingPill}>
+          <MaterialIcons name="error-outline" size={18} color={COLORS.error} />
+          <Text style={styles.pillText}>{displayError}</Text>
+        </View>
+      ) : null}
       <View style={[styles.card, AMBIENT_SHADOW]}>
-        <MaterialIcons name="admin-panel-settings" size={30} color={COLORS.primary} />
-        <Text style={styles.title}>Secure Driver App</Text>
-        <Text style={styles.subtitle}>Set a PIN before opening your driver workspace.</Text>
+        <View style={styles.iconWrap}>
+          <MaterialIcons name="admin-panel-settings" size={30} color={COLORS.primary} />
+        </View>
+        <Text style={styles.title}>
+          {step === 'create' ? 'Secure Driver App' : 'Confirm PIN'}
+        </Text>
+        <Text style={styles.subtitle}>
+          {step === 'create'
+            ? 'Set a 4-digit PIN before opening your driver workspace.'
+            : 'Please re-enter your 4-digit PIN.'}
+        </Text>
 
-        {localError || errorMessage ? (
-          <View style={styles.errorBox}>
-            <MaterialIcons name="error-outline" size={17} color={COLORS.error} />
-            <Text style={styles.errorText}>{localError || errorMessage}</Text>
+        <View style={styles.pinPanel}>
+          <View style={styles.dotRow}>
+            {Array.from({ length: PIN_MAX_LENGTH }).map((_, index) => (
+              <View
+                key={index}
+                style={[
+                  styles.pinDot,
+                  index < pin.length ? styles.pinDotFilled : styles.pinDotEmpty,
+                ]}
+              />
+            ))}
           </View>
-        ) : null}
 
-        <View style={styles.inputGroup}>
-          <TextInput
-            style={styles.input}
-            value={pin}
-            onChangeText={setPin}
-            placeholder="New PIN"
-            keyboardType="number-pad"
-            secureTextEntry
-            maxLength={6}
-            editable={!busy}
-          />
-          <TextInput
-            style={styles.input}
-            value={confirmPin}
-            onChangeText={setConfirmPin}
-            placeholder="Confirm PIN"
-            keyboardType="number-pad"
-            secureTextEntry
-            maxLength={6}
-            editable={!busy}
-          />
+          <View style={[styles.keypad, busy && styles.keypadDisabled]}>
+            {keypadRows.map((row, rowIndex) => (
+              <View key={`row-${rowIndex}`} style={styles.keypadRow}>
+                {row.map((item, index) => {
+                  if (!item) {
+                    return <View key={`empty-${rowIndex}-${index}`} style={styles.keypadEmpty} />
+                  }
+                  if (item === 'back') {
+                    return (
+                      <Pressable
+                        key="back"
+                        style={({ pressed }) => [
+                          styles.keypadBack,
+                          pressed && styles.keypadPressed,
+                        ]}
+                        onPress={() => handleDigitPress('back')}
+                        disabled={busy || pin.length === 0}
+                      >
+                        <MaterialIcons name="backspace" size={24} color={COLORS.onSurfaceVariant} />
+                      </Pressable>
+                    )
+                  }
+                  return (
+                    <Pressable
+                      key={`${item}-${rowIndex}`}
+                      style={({ pressed }) => [
+                        styles.keypadButton,
+                        pressed && styles.keypadPressed,
+                      ]}
+                      onPress={() => handleDigitPress(item)}
+                      disabled={busy}
+                    >
+                      <Text style={styles.keypadText}>{item}</Text>
+                    </Pressable>
+                  )
+                })}
+              </View>
+            ))}
+          </View>
         </View>
 
-        <TouchableOpacity
-          style={[styles.primaryButton, busy && styles.buttonDisabled]}
-          onPress={submit}
-          disabled={busy}
-        >
-          {busy ? (
-            <ActivityIndicator size="small" color={COLORS.onPrimary} />
-          ) : (
-            <Text style={styles.primaryButtonText}>Set PIN & Unlock</Text>
-          )}
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.logoutButton} onPress={onLogout}>
+        <TouchableOpacity style={styles.logoutButton} onPress={onLogout} disabled={busy}>
           <Text style={styles.logoutText}>Log out</Text>
         </TouchableOpacity>
       </View>
+      <LoadingOverlay visible={busy} />
     </View>
   )
 }
@@ -110,12 +189,21 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   card: {
-    width: '100%',
+    width: '94%',
+    maxWidth: 420,
     borderRadius: 16,
     backgroundColor: COLORS.surface,
     padding: 24,
     alignItems: 'center',
     gap: 12,
+  },
+  iconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: COLORS.surfaceContainerLow,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     ...FONTS.headlineMd,
@@ -126,55 +214,101 @@ const styles = StyleSheet.create({
     color: COLORS.tertiary,
     textAlign: 'center',
   },
-  errorBox: {
-    width: '100%',
+  floatingPill: {
+    position: 'absolute',
+    top: 60,
+    alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    borderRadius: 12,
     backgroundColor: COLORS.errorContainer,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 24,
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 5,
+    zIndex: 100,
   },
-  errorText: {
+  pillText: {
     ...FONTS.bodySm,
     color: COLORS.error,
-    flex: 1,
+    fontWeight: '600',
   },
-  inputGroup: {
+  pinPanel: {
     width: '100%',
-    gap: 10,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: COLORS.surfaceContainerHighest,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    backgroundColor: COLORS.surfaceContainerLowest,
-    color: COLORS.onSurface,
-    textAlign: 'center',
-    fontSize: 16,
-  },
-  primaryButton: {
-    width: '100%',
-    backgroundColor: COLORS.primary,
-    borderRadius: 12,
-    paddingVertical: 13,
     alignItems: 'center',
+    marginTop: 22,
+    gap: 24,
   },
-  primaryButtonText: {
-    ...FONTS.labelLg,
-    color: COLORS.onPrimary,
+  dotRow: {
+    flexDirection: 'row',
+    gap: 12,
+    minHeight: 14,
+    marginBottom: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pinDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+  },
+  pinDotFilled: {
+    backgroundColor: COLORS.primary,
+  },
+  pinDotEmpty: {
+    backgroundColor: COLORS.surfaceContainerHighest,
+  },
+  keypad: {
+    width: '100%',
+    maxWidth: 360,
+    gap: 20,
+  },
+  keypadDisabled: {
+    opacity: 0.55,
+  },
+  keypadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+  },
+  keypadButton: {
+    width: '28%',
+    aspectRatio: 1,
+    borderRadius: 999,
+    backgroundColor: COLORS.surfaceContainerLow,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  keypadBack: {
+    width: '28%',
+    aspectRatio: 1,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  keypadEmpty: {
+    width: '28%',
+    aspectRatio: 1,
+  },
+  keypadText: {
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: '700',
+    color: COLORS.onSurface,
+  },
+  keypadPressed: {
+    opacity: 0.78,
   },
   logoutButton: {
+    marginTop: 8,
     paddingVertical: 8,
   },
   logoutText: {
     ...FONTS.bodySm,
     color: COLORS.error,
-  },
-  buttonDisabled: {
-    opacity: 0.65,
   },
 })

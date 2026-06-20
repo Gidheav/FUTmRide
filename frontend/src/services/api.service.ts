@@ -163,6 +163,14 @@ class ApiService {
     return response.data
   }
 
+  async getCampusFleet(params?: { maintenance_status?: string; verification_status?: string; search?: string }): Promise<any[]> {
+    const q = new URLSearchParams()
+    if (params?.maintenance_status) q.append('maintenance_status', params.maintenance_status)
+    if (params?.verification_status) q.append('verification_status', params.verification_status)
+    if (params?.search) q.append('search', params.search)
+    return this.get<any[]>(`accounts/fleet/?${q.toString()}`)
+  }
+
   async patch<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
     const response = await api.patch<T>(url, data, config)
     return response.data
@@ -373,6 +381,14 @@ class ApiService {
 
   async getScheduledRideDetail(id: string): Promise<any> {
     return this.get(`rides/scheduled/${id}/`)
+  }
+
+  async updateScheduledRide(id: string, data: Partial<{ window_start: string; window_end: string; status: string }>): Promise<any> {
+    return this.patch(`rides/scheduled/${id}/`, data)
+  }
+
+  async updateScheduledRideStops(id: string, stops: any[]): Promise<any> {
+    return this.patch(`rides/scheduled/${id}/stops/`, { stops })
   }
 
   async cancelScheduledRide(id: string): Promise<any> {

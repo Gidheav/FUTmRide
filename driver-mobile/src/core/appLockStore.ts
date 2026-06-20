@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
-export type DriverLockTimeoutMinutes = 0 | 1 | 5 | 15 | 30
+export type DriverLockTimeoutMinutes = 0 | 0.25 | 0.5 | 1 | 5 | 15 | 30
 
 export const MAX_DRIVER_UNLOCK_MINUTES = 30
 

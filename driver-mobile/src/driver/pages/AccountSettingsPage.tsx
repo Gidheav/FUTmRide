@@ -125,6 +125,8 @@ const MODAL_TITLES: Record<ModalId, string> = {
 
 const LOCK_TIMEOUT_OPTIONS: Array<{ label: string; value: DriverLockTimeoutMinutes }> = [
   { label: 'Immediate', value: 0 },
+  { label: '15 seconds', value: 0.25 },
+  { label: '30 seconds', value: 0.5 },
   { label: '1 minute', value: 1 },
   { label: '5 minutes', value: 5 },
   { label: '15 minutes', value: 15 },

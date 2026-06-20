@@ -4,12 +4,15 @@ import { campusPanel } from '../../../shared/campusPanelStyles'
 import { T } from '../../../theme'
 import { apiService } from '../../../../services/api.service'
 import { formatDistanceToNow, isPast, parseISO } from 'date-fns'
+import { routeEndpointLabel } from '../../../shared/routeDisplay'
 
 interface DispatchedBus {
   id: string
   ride_reference: string
   origin_address: string
+  origin_name?: string | null
   destination_address: string
+  destination_name?: string | null
   scheduled_departure_date: string
   scheduled_window_start: string
   driver_name: string
@@ -92,6 +95,8 @@ export const DeparturesTab: React.FC<DeparturesTabProps> = ({ search }) => {
   const filteredRides = rides.filter(r => 
     r.ride_reference.toLowerCase().includes(search.toLowerCase()) || 
     (r.driver_name || '').toLowerCase().includes(search.toLowerCase()) ||
+    routeEndpointLabel(r, 'origin').toLowerCase().includes(search.toLowerCase()) ||
+    routeEndpointLabel(r, 'destination').toLowerCase().includes(search.toLowerCase()) ||
     r.origin_address.toLowerCase().includes(search.toLowerCase()) ||
     r.destination_address.toLowerCase().includes(search.toLowerCase())
   )
@@ -120,9 +125,11 @@ export const DeparturesTab: React.FC<DeparturesTabProps> = ({ search }) => {
           <tbody>
             {filteredRides.length === 0 ? (
               <tr>
-                <td colSpan={7} style={{ padding: 32, textAlign: 'center', color: T.textMuted }}>
-                  <AlertCircle size={32} style={{ opacity: 0.5, marginBottom: 12 }} />
-                  <div>No scheduled rides found.</div>
+                <td colSpan={9} style={{ padding: '48px 32px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: T.textMuted }}>
+                    <AlertCircle size={32} style={{ opacity: 0.5, marginBottom: 12 }} />
+                    <div>No dispatched vehicles found.</div>
+                  </div>
                 </td>
               </tr>
             ) : (
@@ -142,11 +149,11 @@ export const DeparturesTab: React.FC<DeparturesTabProps> = ({ search }) => {
                   <td style={{ padding: '16px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: T.textPrimary, marginBottom: 4 }}>
                       <div style={{ width: 6, height: 6, borderRadius: '50%', background: T.textPrimary }} />
-                      <span style={{ maxWidth: 150, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ride.origin_address}</span>
+                      <span style={{ maxWidth: 150, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{routeEndpointLabel(ride, 'origin')}</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: T.textSecondary }}>
                       <div style={{ width: 6, height: 6, background: T.accent }} />
-                      <span style={{ maxWidth: 150, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ride.destination_address}</span>
+                      <span style={{ maxWidth: 150, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{routeEndpointLabel(ride, 'destination')}</span>
                     </div>
                   </td>
                   <td style={{ padding: '16px', color: T.textSecondary }}>

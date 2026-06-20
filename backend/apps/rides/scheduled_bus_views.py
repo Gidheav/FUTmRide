@@ -627,11 +627,22 @@ class AdminInterestedDriversView(APIView):
         for interest in interests:
             driver = interest.driver
             try:
-                vehicle_type = driver.driver_profile.vehicle_type
-                plate_number = driver.driver_profile.plate_number
+                profile = driver.driver_profile
+                vehicle_type = profile.vehicle_type
+                vehicle_make = profile.vehicle_make
+                vehicle_model = profile.vehicle_model
+                vehicle_color = profile.vehicle_color
+                vehicle_seats = profile.vehicle_seats
+                plate_number = profile.plate_number
+                is_online = profile.is_online
             except Exception:
-                vehicle_type = 'Unknown'
-                plate_number = 'Unknown'
+                vehicle_type = None
+                vehicle_make = None
+                vehicle_model = None
+                vehicle_color = None
+                vehicle_seats = None
+                plate_number = None
+                is_online = False
                 
             data.append({
                 'id': str(driver.id),
@@ -639,7 +650,12 @@ class AdminInterestedDriversView(APIView):
                 'email': driver.email,
                 'phone': driver.phone_number,
                 'vehicle_type': vehicle_type,
+                'vehicle_make': vehicle_make,
+                'vehicle_model': vehicle_model,
+                'vehicle_color': vehicle_color,
+                'vehicle_seats': vehicle_seats,
                 'plate_number': plate_number,
+                'is_online': is_online,
                 'interest_id': str(interest.id),
                 'created_at': interest.created_at,
             })

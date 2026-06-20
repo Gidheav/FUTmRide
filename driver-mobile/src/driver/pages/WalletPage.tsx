@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Modal,
   TextInput,
@@ -12,6 +11,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
+import LoadingOverlay from '../components/LoadingOverlay';
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
 import { driverApi, driverWalletApi, verificationApi } from '../../core/api';
 import { useAuthStore } from '../../core/authStore';
@@ -501,7 +501,7 @@ export default function DriverWalletPage() {
 
         {loading ? (
           <View style={styles.loadingRow}>
-            <ActivityIndicator size="small" color={COLORS.primary} />
+            <LoadingOverlay visible={true} inline size={40} />
             <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant }]}>Loading wallet activity...</Text>
           </View>
         ) : filteredTransactions.length === 0 ? (
@@ -709,14 +709,11 @@ export default function DriverWalletPage() {
                 onPress={savePayoutMethod}
                 disabled={savingPayout}
               >
-                {savingPayout ? (
-                  <ActivityIndicator size="small" color={COLORS.onPrimary} />
-                ) : (
-                  <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>Save</Text>
-                )}
+                <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>Save</Text>
               </TouchableOpacity>
             </View>
           </View>
+          <LoadingOverlay visible={savingPayout} />
         </View>
       </Modal>
 
@@ -756,14 +753,11 @@ export default function DriverWalletPage() {
                 onPress={saveDailyGoal}
                 disabled={savingGoal}
               >
-                {savingGoal ? (
-                  <ActivityIndicator size="small" color={COLORS.onPrimary} />
-                ) : (
-                  <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>Save</Text>
-                )}
+                <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>Save</Text>
               </TouchableOpacity>
             </View>
           </View>
+          <LoadingOverlay visible={savingGoal} />
         </View>
       </Modal>
 

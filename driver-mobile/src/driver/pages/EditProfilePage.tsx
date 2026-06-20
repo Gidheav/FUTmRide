@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   ScrollView,
   StyleSheet,
@@ -10,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import LoadingOverlay from '../components/LoadingOverlay';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
 import { useAuthStore } from '../../core/authStore';
@@ -235,7 +235,7 @@ export default function EditProfilePage({ onBack }: Props) {
 
       {loading ? (
         <View style={styles.loadingWrap}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <LoadingOverlay visible={true} inline size={60} />
           <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, marginTop: 12 }]}>Loading profile...</Text>
         </View>
       ) : (
@@ -249,7 +249,7 @@ export default function EditProfilePage({ onBack }: Props) {
             <InputField label="Home address" value={homeAddress} onChangeText={setHomeAddress} autoCapitalize="sentences" />
             <TouchableOpacity style={styles.primaryButton} onPress={savePersonalDetails} disabled={savingPersonal}>
               {savingPersonal ? (
-                <ActivityIndicator color={COLORS.onPrimary} />
+                <LoadingOverlay visible={true} inline size={24} />
               ) : (
                 <Text style={[FONTS.labelLg, styles.primaryButtonText]}>Save personal details</Text>
               )}
@@ -284,7 +284,7 @@ export default function EditProfilePage({ onBack }: Props) {
             <InputField label="Plate number" value={plateNumber} onChangeText={setPlateNumber} autoCapitalize="characters" />
             <TouchableOpacity style={styles.primaryButton} onPress={saveVehicleDetails} disabled={savingVehicle}>
               {savingVehicle ? (
-                <ActivityIndicator color={COLORS.onPrimary} />
+                <LoadingOverlay visible={true} inline size={24} />
               ) : (
                 <Text style={[FONTS.labelLg, styles.primaryButtonText]}>Save vehicle details</Text>
               )}

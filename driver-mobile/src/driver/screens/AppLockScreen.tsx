@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ActivityIndicator,
   View,
   Text,
   StyleSheet,
@@ -9,6 +8,7 @@ import {
 } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme'
+import LoadingOverlay from '../components/LoadingOverlay'
 
 type AppLockScreenProps = {
   hasPin: boolean
@@ -41,14 +41,37 @@ export default function AppLockScreen({
     ['', '0', 'back'],
   ]), [])
   const PIN_MIN_LENGTH = 4
-  const PIN_MAX_LENGTH = 6
-  const canSubmitPin = hasPin && pin.length >= PIN_MIN_LENGTH && !busy
+  const PIN_MAX_LENGTH = 4
+  const [displayError, setDisplayError] = useState('')
 
   useEffect(() => {
     if (errorMessage) {
+      setDisplayError(errorMessage)
       setPin('')
     }
   }, [errorMessage])
+
+  useEffect(() => {
+    if (displayError) {
+      const timer = setTimeout(() => {
+        setDisplayError('')
+      }, 10000)
+      return () => clearTimeout(timer)
+    }
+  }, [displayError])
+
+  // Auto-trigger biometric prompt once when available and not busy
+  const biometricTriggeredRef = useRef(false)
+  useEffect(() => {
+    if (!biometricEnabled) return
+    if (biometricTriggeredRef.current) return
+    if (busy) return
+    biometricTriggeredRef.current = true
+    const t = setTimeout(() => {
+      onUnlockBiometric()
+    }, 300)
+    return () => clearTimeout(t)
+  }, [biometricEnabled, busy, onUnlockBiometric])
 
   const submitPin = (value = pin) => {
     if (busy) return
@@ -57,6 +80,7 @@ export default function AppLockScreen({
 
   const handleDigitPress = (digit: string) => {
     if (busy) return
+    setDisplayError('')
     if (digit === 'back') {
       setPin((prev) => prev.slice(0, -1))
       return
@@ -74,6 +98,12 @@ export default function AppLockScreen({
 
   return (
     <View style={styles.container}>
+      {displayError ? (
+        <View style={styles.floatingPill}>
+          <MaterialIcons name="error-outline" size={18} color={COLORS.error} />
+          <Text style={styles.pillText}>{displayError}</Text>
+        </View>
+      ) : null}
       <View style={[styles.card, AMBIENT_SHADOW]}>
         <View style={styles.iconWrap}>
           <MaterialIcons name="lock" size={30} color={COLORS.primary} />
@@ -82,13 +112,6 @@ export default function AppLockScreen({
         <Text style={styles.subtitle}>
           {statusMessage || 'Unlock online to continue'}
         </Text>
-
-        {errorMessage ? (
-          <View style={styles.errorBox}>
-            <MaterialIcons name="wifi-off" size={17} color={COLORS.error} />
-            <Text style={styles.errorText}>{errorMessage}</Text>
-          </View>
-        ) : null}
 
         {hasPin ? (
           <View style={styles.pinPanel}>
@@ -144,17 +167,7 @@ export default function AppLockScreen({
               ))}
             </View>
 
-            <TouchableOpacity
-              style={[styles.primaryButton, !canSubmitPin && styles.buttonDisabled]}
-              onPress={() => submitPin()}
-              disabled={!canSubmitPin}
-            >
-              {busy ? (
-                <ActivityIndicator size="small" color={COLORS.onPrimary} />
-              ) : (
-                <Text style={styles.primaryButtonText}>Unlock</Text>
-              )}
-            </TouchableOpacity>
+            {/* Unlock is submitted automatically when PIN reaches required length */}
           </View>
         ) : null}
 
@@ -169,21 +182,13 @@ export default function AppLockScreen({
           </TouchableOpacity>
         ) : null}
 
-        {onRetry ? (
-          <TouchableOpacity
-            style={[styles.retryButton, busy && styles.buttonDisabled]}
-            onPress={onRetry}
-            disabled={busy}
-          >
-            <MaterialIcons name="refresh" size={17} color={COLORS.primary} />
-            <Text style={styles.secondaryButtonText}>Retry Connection</Text>
-          </TouchableOpacity>
-        ) : null}
+        {/* Retry connection removed; connection retry handled elsewhere */}
 
         <TouchableOpacity style={styles.logoutButton} onPress={onLogout}>
           <Text style={styles.logoutText}>Log out</Text>
         </TouchableOpacity>
       </View>
+      <LoadingOverlay visible={busy} />
     </View>
   )
 }
@@ -197,8 +202,8 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   card: {
-    width: '100%',
-    maxWidth: 380,
+    width: '94%',
+    maxWidth: 420,
     borderRadius: 16,
     backgroundColor: COLORS.surface,
     padding: 24,
@@ -206,9 +211,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   iconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: COLORS.surfaceContainerLow,
     alignItems: 'center',
     justifyContent: 'center',
@@ -222,38 +227,47 @@ const styles = StyleSheet.create({
     color: COLORS.tertiary,
     textAlign: 'center',
   },
-  errorBox: {
-    width: '100%',
+  floatingPill: {
+    position: 'absolute',
+    top: 60,
+    alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    borderRadius: 12,
     backgroundColor: COLORS.errorContainer,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 24,
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 5,
+    zIndex: 100,
   },
-  errorText: {
+  pillText: {
     ...FONTS.bodySm,
     color: COLORS.error,
-    flex: 1,
+    fontWeight: '600',
   },
   pinPanel: {
     width: '100%',
     alignItems: 'center',
-    marginTop: 8,
-    gap: 16,
+    marginTop: 22,
+    gap: 24,
   },
   dotRow: {
     flexDirection: 'row',
     gap: 12,
     minHeight: 14,
+    marginBottom: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
   pinDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
   },
   pinDotFilled: {
     backgroundColor: COLORS.primary,
@@ -263,8 +277,8 @@ const styles = StyleSheet.create({
   },
   keypad: {
     width: '100%',
-    maxWidth: 300,
-    gap: 14,
+    maxWidth: 360,
+    gap: 20,
   },
   keypadDisabled: {
     opacity: 0.55,
@@ -272,26 +286,26 @@ const styles = StyleSheet.create({
   keypadRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
   },
   keypadButton: {
-    width: 62,
-    height: 62,
-    borderRadius: 31,
+    width: '28%',
+    aspectRatio: 1,
+    borderRadius: 999,
     backgroundColor: COLORS.surfaceContainerLow,
     alignItems: 'center',
     justifyContent: 'center',
   },
   keypadBack: {
-    width: 62,
-    height: 62,
-    borderRadius: 31,
+    width: '28%',
+    aspectRatio: 1,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
   },
   keypadEmpty: {
-    width: 62,
-    height: 62,
+    width: '28%',
+    aspectRatio: 1,
   },
   keypadText: {
     fontSize: 22,
@@ -301,17 +315,6 @@ const styles = StyleSheet.create({
   },
   keypadPressed: {
     opacity: 0.78,
-  },
-  primaryButton: {
-    width: '100%',
-    backgroundColor: COLORS.primary,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  primaryButtonText: {
-    ...FONTS.labelLg,
-    color: COLORS.onPrimary,
   },
   secondaryButton: {
     marginTop: 6,
@@ -323,16 +326,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.primary,
-  },
-  retryButton: {
-    marginTop: 4,
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    backgroundColor: COLORS.surfaceContainerLow,
   },
   secondaryButtonText: {
     ...FONTS.labelLg,

@@ -1,9 +1,10 @@
 import React, { useState } from 'react'
 import {
   View, Text, StyleSheet, ScrollView,
-  TouchableOpacity, ActivityIndicator, Alert, Platform,
+  TouchableOpacity, Alert, Platform,
 } from 'react-native'
 import * as ImagePicker from 'expo-image-picker'
+import LoadingOverlay from '../components/LoadingOverlay'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme'
@@ -176,13 +177,8 @@ export default function VehicleVerificationScreen({ onBack, onAllUploaded }: Pro
                 onPress={() => uploadDoc(activeDoc)}
                 disabled={activeSt.uploading}
               >
-                {activeSt.uploading
-                  ? <ActivityIndicator color={COLORS.onPrimary} />
-                  : <>
-                    <MaterialIcons name="cloud-upload" size={20} color={COLORS.onPrimary} />
-                    <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>Upload Document</Text>
-                  </>
-                }
+                <MaterialIcons name="cloud-upload" size={20} color={COLORS.onPrimary} />
+                <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>Upload Document</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -227,6 +223,7 @@ export default function VehicleVerificationScreen({ onBack, onAllUploaded }: Pro
         )}
 
       </ScrollView>
+      <LoadingOverlay visible={Object.values(docStates).some(s => s.uploading)} />
     </View>
   )
 }

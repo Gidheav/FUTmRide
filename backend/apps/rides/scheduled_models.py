@@ -70,7 +70,7 @@ class ScheduledRide(models.Model):
         help_text="List of eligible VehicleClass string values"
     )
     cargo_capacity_kg = models.PositiveIntegerField(default=0)
-    accessibility_features = models.JSONField(default=list, blank=True)
+
     assigned_driver = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -98,6 +98,23 @@ class ScheduledRide(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        import datetime
+        
+        if self.window_start and self.window_end:
+            if self.window_end <= self.window_start:
+                raise ValidationError({'window_end': 'Departure window end must be after start.'})
+                
+            start_dt = datetime.datetime.combine(datetime.date.today(), self.window_start)
+            end_dt = datetime.datetime.combine(datetime.date.today(), self.window_end)
+            diff = end_dt - start_dt
+            
+            if diff < datetime.timedelta(minutes=30):
+                raise ValidationError({'window_end': 'Departure window must be at least 30 minutes.'})
+            if diff > datetime.timedelta(hours=12):
+                raise ValidationError({'window_end': 'Departure window cannot exceed 12 hours.'})
 
     class Meta:
         db_table = 'scheduled_rides'

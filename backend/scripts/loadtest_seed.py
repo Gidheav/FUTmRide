@@ -29,7 +29,7 @@ PASSWORD = 'LoadTest2026!'
 NUM_DRIVERS = 20
 NUM_STUDENTS = 100
 
-VEHICLE_TYPES = ['sedan', 'suv', 'minivan', 'tricycle', 'motorcycle']
+VEHICLE_TYPES = ['sedan', 'mpv', 'minibus', 'tricycle', 'motorbike']
 VEHICLE_MAKES = ['Toyota', 'Honda', 'Hyundai', 'Kia', 'Nissan', 'Ford']
 VEHICLE_MODELS = ['Corolla', 'Civic', 'Accent', 'Rio', 'Almera', 'Focus']
 VEHICLE_COLORS = ['White', 'Black', 'Silver', 'Red', 'Blue', 'Green']

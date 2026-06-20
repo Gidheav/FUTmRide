@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import api from '../../core/api'
+import { routeLineLabel } from '../shared/routeDisplay'
 
 const css = '' +
   '*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }' +
@@ -57,7 +58,7 @@ export default function RidesPage() {
                   <div className="ref">{ride.reference}</div>
                   <span className="status">{ride.status}</span>
                 </div>
-                <div className="route">{ride.pickup_address} to {ride.dropoff_address}</div>
+                <div className="route">{routeLineLabel(ride, 'pickup')}</div>
                 <div className="meta">
                   Fare: {ride.total_fare ? `\u20A6${Number(ride.total_fare).toLocaleString('en-NG')}` : '-'} | Payment: {ride.payment_method || '-'}
                 </div>

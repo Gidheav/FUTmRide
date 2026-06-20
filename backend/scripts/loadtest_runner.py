@@ -124,7 +124,7 @@ async def create_garage_ride(session: aiohttp.ClientSession, token: str, driver_
         'destination_address': dest[0],
         'destination_latitude': str(round(dest[1] + random.uniform(-0.002, 0.002), 6)),
         'destination_longitude': str(round(dest[2] + random.uniform(-0.002, 0.002), 6)),
-        'vehicle_type': random.choice(['sedan', 'suv', 'minivan']),
+        'vehicle_type': random.choice(['sedan', 'mpv', 'minibus']),
         'total_seats': random.randint(3, 6),
         'fare_per_seat': str(random.choice([100, 150, 200, 250, 300, 500])),
         'driver_note': f'Load test ride #{driver_idx}',

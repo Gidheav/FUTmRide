@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useWindowDimensions } from 'react-native';
 import {
-  ActivityIndicator,
   Image,
   ScrollView,
   StyleSheet,
@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import LoadingOverlay from '../components/LoadingOverlay';
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
 import { useAuthStore } from '../../core/authStore';
 import { driverApi } from '../../core/api';
@@ -43,6 +44,8 @@ const formatCurrency = (value?: string | number | null) => {
 };
 
 export default function DriverProfilePage({ onNavigateToSettings, onEditProfile }: ProfileProps) {
+  const { width } = useWindowDimensions();
+  const isWide = width >= 600;
   const { user } = useAuthStore();
   const { profile: cachedProfile, setProfile: setCachedProfile } = useDriverProfileStore();
   const [profile, setProfile] = useState<any>(cachedProfile);
@@ -56,16 +59,18 @@ export default function DriverProfilePage({ onNavigateToSettings, onEditProfile 
       try {
         const response = await driverApi.getProfile();
         if (!isMounted) return;
-        setProfile(response?.data ?? null);
-        setCachedProfile(response?.data ?? null);
+        const data = response?.data ?? null;
+        setProfile(data);
+        setCachedProfile(data);
       } catch (error: any) {
         if (error?.response?.status === 404) {
           try {
             await driverApi.createProfile(DEFAULT_DRIVER_PROFILE);
             const retry = await driverApi.getProfile();
             if (!isMounted) return;
-            setProfile(retry?.data ?? null);
-            setCachedProfile(retry?.data ?? null);
+            const retryData = retry?.data ?? null;
+            setProfile(retryData);
+            setCachedProfile(retryData);
           } catch (createErr: any) {
             console.warn('[Profile] driver profile fetch failed:', createErr?.response?.data ?? createErr.message);
           }
@@ -102,7 +107,7 @@ export default function DriverProfilePage({ onNavigateToSettings, onEditProfile 
   if (loading) {
     return (
       <View style={styles.loadingWrap}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+        <LoadingOverlay visible={true} inline size={60} />
         <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, marginTop: 12 }]}>Loading profile...</Text>
       </View>
     );
@@ -110,15 +115,15 @@ export default function DriverProfilePage({ onNavigateToSettings, onEditProfile 
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-      <View style={styles.profileHeader}>
+      <View style={[styles.profileHeader, isWide && styles.profileHeaderWide]}>
         {user?.profile_photo ? (
-          <Image source={{ uri: user.profile_photo }} style={styles.profileImage} />
+          <Image source={{ uri: user.profile_photo }} style={[styles.profileImage, isWide && styles.profileImageWide]} />
         ) : (
-          <View style={styles.initialsAvatar}>
+          <View style={[styles.initialsAvatar, isWide && styles.profileImageWide]}>
             <Text style={styles.initialsText}>{initials}</Text>
           </View>
         )}
-        <View style={styles.nameContainer}>
+        <View style={[styles.nameContainer, isWide && styles.nameContainerWide]}>
           <Text style={[FONTS.headlineXl, styles.nameText]}>{user?.full_name || 'Driver'}</Text>
           <View style={styles.subRow}>
             <MaterialIcons name={user?.is_verified ? 'verified' : 'info'} size={16} color={COLORS.primary} />
@@ -196,7 +201,7 @@ export default function DriverProfilePage({ onNavigateToSettings, onEditProfile 
         </TouchableOpacity>
         <TouchableOpacity style={styles.secondaryButton} onPress={onNavigateToSettings}>
           <MaterialIcons name="settings" size={20} color={COLORS.onBackground} />
-          <Text style={[FONTS.labelLg, styles.secondaryButtonText]}>App settings</Text>
+          <Text style={[FONTS.labelLg, styles.secondaryButtonText]}>Settings</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -226,16 +231,20 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   profileImage: {
-    width: 128,
-    height: 128,
-    borderRadius: 64,
+    width: '30%',
+    aspectRatio: 1,
+    maxWidth: 160,
+    minWidth: 96,
+    borderRadius: 999,
     borderWidth: 4,
     borderColor: COLORS.surfaceContainerLowest,
   },
   initialsAvatar: {
-    width: 128,
-    height: 128,
-    borderRadius: 64,
+    width: '30%',
+    aspectRatio: 1,
+    maxWidth: 160,
+    minWidth: 96,
+    borderRadius: 999,
     backgroundColor: COLORS.surfaceContainerHigh,
     alignItems: 'center',
     justifyContent: 'center',
@@ -263,17 +272,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
+    justifyContent: 'space-between',
   },
   statBox: {
     width: '48%',
+    minWidth: 140,
     flexGrow: 1,
     backgroundColor: COLORS.surfaceContainerLowest,
     borderRadius: 16,
-    paddingVertical: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
     alignItems: 'center',
     justifyContent: 'center',
     ...AMBIENT_SHADOW,
-    gap: 4,
+    gap: 6,
   },
   statValue: {
     color: COLORS.onBackground,
@@ -323,6 +335,26 @@ const styles = StyleSheet.create({
   },
   actionArea: {
     gap: 12,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+
+  /* Wide layout overrides */
+  profileHeaderWide: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  nameContainerWide: {
+    alignItems: 'flex-start',
+    marginLeft: 16,
+  },
+  profileImageWide: {
+    width: 120,
+    minWidth: 120,
+    maxWidth: 160,
   },
   primaryButton: {
     flexDirection: 'row',
@@ -330,8 +362,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     backgroundColor: COLORS.primary,
-    paddingVertical: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
     borderRadius: 14,
+    minWidth: 140,
   },
   primaryButtonText: {
     color: COLORS.onPrimary,
@@ -342,10 +376,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     backgroundColor: COLORS.surfaceContainerLowest,
-    paddingVertical: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: COLORS.surfaceContainerLow,
+    minWidth: 140,
   },
   secondaryButtonText: {
     color: COLORS.onBackground,

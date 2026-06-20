@@ -31,9 +31,11 @@ from .scheduled_views import (
     ScheduledRideListView,
     ScheduledRideDetailView,
     ScheduledRideCancelView,
+    ScheduledRideStopsUpdateView,
     ScheduledRideDepartView,
     ScheduledRideCompleteView,
     StudentAvailableScheduledRidesView,
+    StudentScheduledRideDetailView,
     StudentJoinScheduledRideView,
     StudentLeaveScheduledRideView,
     DispatchedBusListView,
@@ -105,6 +107,7 @@ urlpatterns = [
     path('scheduled/create/', ScheduledRideCreateView.as_view(), name='scheduled-ride-create'),
     path('scheduled/', ScheduledRideListView.as_view(), name='scheduled-ride-list'),
     path('scheduled/<uuid:ride_id>/', ScheduledRideDetailView.as_view(), name='scheduled-ride-detail'),
+    path('scheduled/<uuid:ride_id>/stops/', ScheduledRideStopsUpdateView.as_view(), name='scheduled-ride-stops-update'),
     path('scheduled/<uuid:ride_id>/cancel/', ScheduledRideCancelView.as_view(), name='scheduled-ride-cancel'),
     path('scheduled/<uuid:ride_id>/depart/', ScheduledRideDepartView.as_view(), name='scheduled-ride-depart'),
     path('scheduled/<uuid:ride_id>/complete/', ScheduledRideCompleteView.as_view(), name='scheduled-ride-complete'),
@@ -127,6 +130,7 @@ urlpatterns = [
 
     # ── Scheduled Rides (Student) ────────────────────────────────────────────
     path('scheduled/available/', StudentAvailableScheduledRidesView.as_view(), name='scheduled-ride-available'),
+    path('scheduled/<uuid:ride_id>/detail/', StudentScheduledRideDetailView.as_view(), name='student-scheduled-ride-detail'),
     path('scheduled/<uuid:ride_id>/join/', StudentJoinScheduledRideView.as_view(), name='scheduled-ride-join'),
     path('scheduled/<uuid:ride_id>/leave/', StudentLeaveScheduledRideView.as_view(), name='scheduled-ride-leave'),
 

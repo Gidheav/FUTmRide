@@ -572,12 +572,27 @@ class CampusAdminFleetListView(generics.ListAPIView):
 
     def get_queryset(self):
         queryset = DriverProfile.objects.select_related('user', 'campus')
+        from apps.rides.scheduled_models import BusAssignmentStatus, ScheduledRideBusAssignment
+
+        departed_driver_ids = ScheduledRideBusAssignment.objects.filter(
+            driver__isnull=False,
+            status__in=[
+                BusAssignmentStatus.DEPARTED,
+                BusAssignmentStatus.EN_ROUTE,
+                BusAssignmentStatus.ARRIVED,
+            ],
+        ).values_list('driver_id', flat=True)
+        queryset = queryset.exclude(user_id__in=departed_driver_ids)
+
         if self.request.user.role == UserRole.CAMPUS_ADMIN:
             try:
                 campus = self.request.user.campus_admin_profile.campus
             except CampusAdminProfile.DoesNotExist:
                 return DriverProfile.objects.none()
-            return queryset.filter(campus=campus)
+            # Include drivers assigned to this campus + unassigned drivers (campus=None)
+            return queryset.filter(
+                models.Q(campus=campus) | models.Q(campus__isnull=True)
+            )
         return queryset
 
 
