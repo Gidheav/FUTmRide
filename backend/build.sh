@@ -3,6 +3,7 @@
 set -o errexit
 
 # Install dependencies
+pip install -r requirements/base.txt
 pip install -r requirements/production.txt
 
 # Run migrations automatically
