@@ -329,7 +329,7 @@ export default function GarageRidePage({ qrToken, onClose, onBoarded }: GarageRi
                   activeOpacity={0.85}
                 >
                   {boarding ? (
-                    < size="small" color="#ffffff" />
+                    <LoadingOverlay visible={true} inline size={20} />
                   ) : (
                     <>
                       <MaterialIcons name="account-balance-wallet" size={18} color="#ffffff" />

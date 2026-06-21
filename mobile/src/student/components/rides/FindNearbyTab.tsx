@@ -368,7 +368,7 @@ export default function FindNearbyTab() {
           disabled={scanLoading}
         >
           {scanLoading ? (
-            < size="small" color="#ffffff" />
+            <LoadingOverlay visible={true} inline size={20} />
           ) : (
             <MaterialIcons name="radar" size={18} color="#ffffff" />
           )}

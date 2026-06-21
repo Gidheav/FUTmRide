@@ -366,7 +366,7 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
               activeOpacity={0.9}
               disabled={saving}
             >
-              {saving ? < size="small" color="#ffffff" /> : <Text style={styles.primaryButtonText}>Save</Text>}
+              {saving ? <LoadingOverlay visible={true} inline size={20} /> : <Text style={styles.primaryButtonText}>Save</Text>}
             </TouchableOpacity>
           </View>
         </>

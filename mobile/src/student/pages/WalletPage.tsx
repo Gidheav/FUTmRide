@@ -558,7 +558,7 @@ export default function StudentWalletPage() {
               disabled={recipientLookupLoading}
             >
               {recipientLookupLoading ? (
-                < size="small" color="#ffffff" />
+                <LoadingOverlay visible={true} inline size={20} />
               ) : (
                 <MaterialIcons name="send" size={18} color="#ffffff" />
               )}
@@ -866,7 +866,7 @@ export default function StudentWalletPage() {
                     disabled={topupLoading || Number(topupAmount) < 100}
                   >
                     {topupLoading ? (
-                      < size="small" color="#ffffff" />
+                      <LoadingOverlay visible={true} inline size={20} />
                     ) : (
                       <MaterialIcons name="add-circle" size={18} color="#ffffff" />
                     )}
@@ -941,7 +941,7 @@ export default function StudentWalletPage() {
                     disabled={transferLoading || Number(transferAmount) < 50}
                   >
                     {transferLoading ? (
-                      < size="small" color="#ffffff" />
+                      <LoadingOverlay visible={true} inline size={20} />
                     ) : (
                       <MaterialIcons name="send" size={18} color="#ffffff" />
                     )}

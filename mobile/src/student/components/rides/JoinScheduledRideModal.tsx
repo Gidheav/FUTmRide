@@ -152,7 +152,7 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined }: Prop
                   disabled={joining}
                 >
                   {joining ? (
-                    < color="#ffffff" size="small" />
+                    <LoadingOverlay visible={true} inline size={20} />
                   ) : (
                     <Text style={styles.joinBtnText}>Confirm & Pay</Text>
                   )}

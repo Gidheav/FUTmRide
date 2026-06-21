@@ -136,7 +136,7 @@ export default function StudentAccountPage({ onEditProfile, onOpenNotifications,
           )}
           <TouchableOpacity style={styles.editBadge} activeOpacity={0.85} onPress={handlePickPhoto}>
             {uploadingPhoto ? (
-              < size="small" color="#ffffff" />
+              <LoadingOverlay visible={true} inline size={20} />
             ) : (
               <MaterialIcons name="edit" size={14} color="#ffffff" />
             )}

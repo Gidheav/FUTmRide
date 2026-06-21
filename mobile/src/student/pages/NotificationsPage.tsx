@@ -246,7 +246,7 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
             activeOpacity={0.85}
           >
             {markingAll ? (
-              < size="small" color="#6A1B9A" />
+              <LoadingOverlay visible={true} inline size={20} />
             ) : (
               <MaterialIcons name="done-all" size={20} color="#6A1B9A" />
             )}
