@@ -107,7 +107,7 @@ export default function StudentApp() {
   }, [rideScreen, isAuthenticated, locked, checkActiveRide])
 
   // ─── Session sync ─────────────────────────────────────────────────────────
-  const syncSession = async () => {
+  const syncSession = async (silent = false) => {
     if (!refreshToken || syncInFlight.current) return
     syncInFlight.current = true
     try {
@@ -123,7 +123,10 @@ export default function StudentApp() {
         }
       }
     } catch {
-      logout()
+      // If called silently (e.g. from AppLock unlock), don't logout on refresh failure.
+      // The refresh token may have been rotated/invalidated by the server migration.
+      // The user will be logged out naturally when they next make an authenticated API call.
+      if (!silent) logout()
     } finally {
       syncInFlight.current = false
     }
@@ -281,7 +284,7 @@ export default function StudentApp() {
         onUnlocked={() => {
           setLocked(false)
           setLastUnlockAt(Date.now())
-          void syncSession()
+          void syncSession(true)
         }}
         onForgotPin={() => {
           setPinRecoveryRequired(true)

@@ -1,4 +1,3 @@
-import axios from 'axios'
 import api, { API_BASE_URL } from './api'
 
 export type RefreshResponse = {
@@ -7,7 +6,7 @@ export type RefreshResponse = {
 }
 
 export const refreshSession = async (refreshToken: string) => {
-  const res = await axios.post<RefreshResponse>(`${API_BASE_URL}/auth/token/refresh/`, {
+  const res = await api.post<RefreshResponse>('auth/token/refresh/', {
     refresh: refreshToken,
   })
   return res.data
