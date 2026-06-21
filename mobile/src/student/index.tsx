@@ -57,6 +57,8 @@ export default function StudentApp() {
   const syncInFlight = useRef(false)
   const lastBackPressAt = useRef(0)
   const lastWalletSyncAt = useRef(0)
+  // Track previous auth state so we can detect a fresh email/password login
+  const prevIsAuthenticatedRef = useRef(isAuthenticated)
   const setWalletBalance = useWalletStore((state) => state.setWalletBalance)
   const syncWalletBalance = useWalletStore((state) => state.syncBalance)
   const bumpWalletActivityRefresh = useWalletStore((state) => state.bumpWalletActivityRefresh)
@@ -131,6 +133,20 @@ export default function StudentApp() {
       syncInFlight.current = false
     }
   }
+
+  // ─── Fresh login detection ────────────────────────────────────────────────
+  // When the user logs in with email + password, isAuthenticated flips false→true.
+  // We stamp lastUnlockAt immediately so the AppLock timeout check never triggers
+  // on a fresh login. AppLock is ONLY for when the app returns from the background.
+  useEffect(() => {
+    const wasAuthenticated = prevIsAuthenticatedRef.current
+    prevIsAuthenticatedRef.current = isAuthenticated
+    if (!wasAuthenticated && isAuthenticated) {
+      // Fresh login — treat as an immediate unlock so AppLock doesn't fire
+      setLastUnlockAt(Date.now())
+      setLocked(false)
+    }
+  }, [isAuthenticated, setLastUnlockAt, setLocked])
 
   // ─── App lock / timeout ───────────────────────────────────────────────────
   useEffect(() => {
