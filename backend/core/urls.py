@@ -11,6 +11,7 @@ def healthcheck(request):
 
 
 urlpatterns = [
+    path("", healthcheck, name="root"),
     path("admin/", admin.site.urls),
     path("health/", HealthCheckView.as_view(), name="health-detail"),
     path("health-simple/", healthcheck, name="healthcheck"),
