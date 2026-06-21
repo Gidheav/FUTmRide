@@ -11,17 +11,18 @@ import {
 import { MaterialIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useEffect, useRef, useState } from 'react'
+import type { StudentTab } from '../types'
 
 type SidebarProps = {
   visible: boolean
   onClose: () => void
-  onLogout: () => void
+  onNavigate: (page: StudentTab) => void
 }
 
 export default function StudentSidebar({
   visible,
   onClose,
-  onLogout,
+  onNavigate,
 }: SidebarProps) {
   const [isVisible, setIsVisible] = useState(visible)
   const { width } = Dimensions.get('window')
@@ -89,10 +90,36 @@ export default function StudentSidebar({
                 </TouchableOpacity>
               </View>
 
-              <TouchableOpacity style={styles.menuItem} onPress={onLogout} activeOpacity={0.85}>
-                <MaterialIcons name="logout" size={20} color="#ba1a1a" />
-                <Text style={styles.logoutText}>Sign Out</Text>
-              </TouchableOpacity>
+              <View style={styles.menuGroup}>
+                <TouchableOpacity style={styles.menuItem} onPress={() => onNavigate('about')} activeOpacity={0.85}>
+                  <MaterialIcons name="info-outline" size={20} color="#3d4a3e" />
+                  <Text style={styles.menuText}>About</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.menuItem} onPress={() => onNavigate('activities')} activeOpacity={0.85}>
+                  <MaterialIcons name="history" size={20} color="#3d4a3e" />
+                  <Text style={styles.menuText}>My Activities</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.menuItem} onPress={() => onNavigate('updates')} activeOpacity={0.85}>
+                  <MaterialIcons name="system-update" size={20} color="#3d4a3e" />
+                  <Text style={styles.menuText}>App Updates</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.menuItem} onPress={() => onNavigate('events')} activeOpacity={0.85}>
+                  <MaterialIcons name="event" size={20} color="#3d4a3e" />
+                  <Text style={styles.menuText}>Events</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.menuItem} onPress={() => onNavigate('news')} activeOpacity={0.85}>
+                  <MaterialIcons name="article" size={20} color="#3d4a3e" />
+                  <Text style={styles.menuText}>News</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.menuItem} onPress={() => onNavigate('safety')} activeOpacity={0.85}>
+                  <MaterialIcons name="security" size={20} color="#3d4a3e" />
+                  <Text style={styles.menuText}>Safety Guide</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.menuItem} onPress={() => onNavigate('support')} activeOpacity={0.85}>
+                  <MaterialIcons name="help-outline" size={20} color="#3d4a3e" />
+                  <Text style={styles.menuText}>Help & Support</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </Animated.View>
         </View>
@@ -142,18 +169,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#f3f3f3',
   },
+  menuGroup: {
+    marginTop: 10,
+  },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 11,
+    paddingVertical: 12,
     paddingHorizontal: 10,
     borderRadius: 10,
-    marginBottom: 4,
-    gap: 10,
+    marginBottom: 6,
+    gap: 12,
   },
-  logoutText: {
+  menuText: {
     fontSize: 15,
-    color: '#ba1a1a',
-    fontWeight: '700',
+    color: '#1a1c1c',
+    fontWeight: '600',
   },
 })

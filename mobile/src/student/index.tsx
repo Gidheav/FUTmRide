@@ -16,6 +16,13 @@ import BookRidePage from './pages/BookRidePage'
 import RideMatchingPage from './pages/RideMatchingPage'
 import ActiveRidePage from './pages/ActiveRidePage'
 import GarageRidePage from './pages/GarageRidePage'
+import AboutPage from './pages/AboutPage'
+import ActivitiesPage from './pages/ActivitiesPage'
+import UpdatesPage from './pages/UpdatesPage'
+import EventsPage from './pages/EventsPage'
+import NewsPage from './pages/NewsPage'
+import SafetyGuidePage from './pages/SafetyGuidePage'
+import SupportPage from './pages/SupportPage'
 import StudentLayout from './layout/StudentLayout'
 import StudentSidebar from './components/StudentSidebar'
 import type { StudentTab } from './types'
@@ -446,6 +453,15 @@ export default function StudentApp() {
           refreshKey={accountRefreshKey}
         />
       )}
+      
+      {/* Sidebar Pages */}
+      {activeTab === 'about' && <AboutPage />}
+      {activeTab === 'activities' && <ActivitiesPage />}
+      {activeTab === 'updates' && <UpdatesPage />}
+      {activeTab === 'events' && <EventsPage />}
+      {activeTab === 'news' && <NewsPage />}
+      {activeTab === 'safety' && <SafetyGuidePage />}
+      {activeTab === 'support' && <SupportPage />}
     </View>
   )
 
@@ -455,6 +471,7 @@ export default function StudentApp() {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onMenuPress={() => setIsSidebarOpen(true)}
+        onBackPress={['about', 'activities', 'updates', 'events', 'news', 'safety', 'support'].includes(activeTab) ? () => setActiveTab('home') : undefined}
         onNotificationPress={() => setNotifHistoryOpen(true)}
         unreadCount={unreadCount}
       >
@@ -514,7 +531,7 @@ export default function StudentApp() {
       <StudentSidebar
         visible={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
-        onLogout={() => { setIsSidebarOpen(false); logout() }}
+        onNavigate={(page) => { setIsSidebarOpen(false); setActiveTab(page) }}
       />
     </View>
   )

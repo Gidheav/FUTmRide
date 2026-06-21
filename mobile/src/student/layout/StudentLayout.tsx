@@ -9,6 +9,7 @@ type LayoutProps = {
   activeTab: StudentTab
   onTabChange: (tab: StudentTab) => void
   onMenuPress: () => void
+  onBackPress?: () => void
   onNotificationPress?: () => void
   unreadCount?: number
   children: ReactNode
@@ -21,7 +22,7 @@ const NAV_ITEMS: Array<{ key: StudentTab; label: string; icon: keyof typeof Mate
   { key: 'account', label: 'Account', icon: 'person' },
 ]
 
-export default function StudentLayout({ activeTab, onTabChange, onMenuPress, onNotificationPress, unreadCount = 0, children }: LayoutProps) {
+export default function StudentLayout({ activeTab, onTabChange, onMenuPress, onBackPress, onNotificationPress, unreadCount = 0, children }: LayoutProps) {
   const { user } = useAuthStore()
   
   const getInitials = () => {
@@ -40,9 +41,15 @@ export default function StudentLayout({ activeTab, onTabChange, onMenuPress, onN
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
 
       <View style={[styles.topBar, { paddingTop: insets.top }]}>
-        <TouchableOpacity style={styles.iconButton} onPress={onMenuPress} activeOpacity={0.85}>
-          <MaterialIcons name="menu" size={22} color="#6A1B9A" />
-        </TouchableOpacity>
+        {onBackPress ? (
+          <TouchableOpacity style={styles.iconButton} onPress={onBackPress} activeOpacity={0.85}>
+            <MaterialIcons name="arrow-back" size={22} color="#6A1B9A" />
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={styles.iconButton} onPress={onMenuPress} activeOpacity={0.85}>
+            <MaterialIcons name="menu" size={22} color="#6A1B9A" />
+          </TouchableOpacity>
+        )}
         <Text style={styles.brandText}>LRRIDE</Text>
         <View style={styles.topBarRight}>
           <TouchableOpacity
