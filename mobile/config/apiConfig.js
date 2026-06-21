@@ -13,11 +13,31 @@ const DEFAULT_DEV_HOST = Platform.OS === 'android'
 
 const DEV_HOST = process.env.EXPO_PUBLIC_DEV_SERVER_HOST || DEFAULT_DEV_HOST
 
-export const DEV_API_URL =
-  process.env.EXPO_PUBLIC_API_URL || `${DEV_HOST}/api/v1`
+const normalizeApiBaseUrl = (rawUrl) => {
+  if (!rawUrl) return rawUrl
+  try {
+    const url = new URL(rawUrl)
+    const path = url.pathname.replace(/\/+$/, '')
+    if (path.endsWith('/api/v1')) {
+      url.pathname = `${path}/`
+    } else if (path.endsWith('/v1')) {
+      url.pathname = `${path.slice(0, -3)}/api/v1/`
+    } else {
+      url.pathname = `${path}/api/v1/`
+    }
+    return url.toString()
+  } catch {
+    return rawUrl.endsWith('/') ? rawUrl : `${rawUrl}/`
+  }
+}
 
-export const PROD_API_URL =
+export const DEV_API_URL = normalizeApiBaseUrl(
+  process.env.EXPO_PUBLIC_API_URL || `${DEV_HOST}/api/v1`
+)
+
+export const PROD_API_URL = normalizeApiBaseUrl(
   process.env.EXPO_PUBLIC_PROD_API_URL || 'https://lrride-server.onrender.com/api/v1'
+)
 
 export const API_BASE_URL = APP_ENV === 'production' ? PROD_API_URL : DEV_API_URL
 
