@@ -13,6 +13,7 @@ import * as LocalAuthentication from 'expo-local-authentication'
 import { MaterialIcons } from '@expo/vector-icons'
 import { getStoredPinHash, hashPin } from '../../core/security'
 import { useSecurityStore } from '../../core/securityStore'
+import LoadingOverlay from '../components/LoadingOverlay'
 
 type AppLockProps = {
   onUnlocked: () => void
@@ -183,8 +184,8 @@ export default function AppLockPage({ onUnlocked, onForgotPin }: AppLockProps) {
 
   if (loading) {
     return (
-      <View style={styles.page}>
-        <ActivityIndicator size="small" color="#6A1B9A" />
+      <View style={[styles.page, { justifyContent: 'center', alignItems: 'center' }]}>
+        <LoadingOverlay visible={true} inline size={40} />
       </View>
     )
   }

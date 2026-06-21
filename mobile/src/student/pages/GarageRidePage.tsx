@@ -12,6 +12,7 @@ import { MaterialIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import api from '../../core/api'
 import useWalletStore from '../../core/walletStore'
+import LoadingOverlay from '../components/LoadingOverlay'
 
 type GarageRidePageProps = {
   qrToken: string
@@ -158,8 +159,7 @@ export default function GarageRidePage({ qrToken, onClose, onBoarded }: GarageRi
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {loading && (
           <View style={styles.loadingWrap}>
-            <ActivityIndicator size="large" color="#6A1B9A" />
-            <Text style={styles.loadingText}>Loading ride details…</Text>
+            <LoadingOverlay visible={true} inline size={40} message="Loading ride details…" />
           </View>
         )}
 

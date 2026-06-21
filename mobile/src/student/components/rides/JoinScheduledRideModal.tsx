@@ -12,6 +12,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons'
 import api from '../../../core/api'
 import { ScheduledRide } from './ScheduledTab'
+import LoadingOverlay from '../LoadingOverlay'
 
 type Stop = {
   id: string
@@ -101,7 +102,7 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined }: Prop
 
           {loading || !detail ? (
             <View style={styles.loaderWrap}>
-              <ActivityIndicator size="large" color="#6A1B9A" />
+              <LoadingOverlay visible={true} inline size={40} />
             </View>
           ) : (
             <>

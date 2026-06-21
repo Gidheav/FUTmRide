@@ -11,6 +11,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons'
 import api from '../../../core/api'
 import JoinScheduledRideModal from './JoinScheduledRideModal'
+import LoadingOverlay from '../LoadingOverlay'
 
 export type ScheduledRide = {
   id: string
@@ -124,7 +125,7 @@ export default function ScheduledTab() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#6A1B9A" />
+        <LoadingOverlay visible={true} inline size={40} />
       </View>
     )
   }

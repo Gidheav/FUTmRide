@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import api from '../../core/api'
+import LoadingOverlay from '../components/LoadingOverlay'
 
 type NotificationsPageProps = {
   onClose: () => void
@@ -267,7 +268,7 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
 
       {loading ? (
         <View style={styles.loadingWrap}>
-          <ActivityIndicator size="large" color="#6A1B9A" />
+          <LoadingOverlay visible={true} inline size={40} />
         </View>
       ) : (
         <FlatList

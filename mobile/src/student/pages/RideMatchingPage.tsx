@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import api from '../../core/api'
 import useWalletStore from '../../core/walletStore'
 import { showRideStatusNotification } from '../../core/pushNotifications'
+import LoadingOverlay from '../components/LoadingOverlay'
 
 type RideMatchingPageProps = {
   rideId?: string | null
@@ -207,7 +208,7 @@ export default function RideMatchingPage({ rideId, onBack, onMatched, onCancelle
 
         {loading && (
           <View style={styles.loadingRow}>
-            <ActivityIndicator size="small" color="#6A1B9A" />
+            <LoadingOverlay visible={true} inline size={24} />
             <Text style={styles.loadingText}>Connecting…</Text>
           </View>
         )}

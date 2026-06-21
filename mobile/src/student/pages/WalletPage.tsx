@@ -5,6 +5,7 @@ import { MaterialIcons } from '@expo/vector-icons'
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import { WebView } from 'react-native-webview'
 import * as LocalAuthentication from 'expo-local-authentication'
+import LoadingOverlay from '../components/LoadingOverlay'
 import api from '../../core/api'
 import { PAYMENT_CALLBACK_URL } from '../../../config/apiConfig'
 import useWalletStore from '../../core/walletStore'
@@ -668,7 +669,7 @@ export default function StudentWalletPage() {
             <WebView
               style={{ flex: 1 }}
               source={{ uri: webviewUrl }}
-              originWhitelist={['https://checkout.paystack.com', 'https://standard.paystack.com']}
+              originWhitelist={['*']}
               javaScriptEnabled={true}
               domStorageEnabled={true}
               injectedJavaScript={`
@@ -699,8 +700,7 @@ export default function StudentWalletPage() {
               startInLoadingState
               renderLoading={() => (
                 <View style={styles.webviewLoading}>
-                  <ActivityIndicator size="small" color="#6A1B9A" />
-                  <Text style={styles.activityTime}>Loading checkout...</Text>
+                  <LoadingOverlay visible={true} inline size={40} message="Loading checkout..." />
                 </View>
               )}
             />
@@ -986,8 +986,7 @@ export default function StudentWalletPage() {
       <View style={styles.activityList}>
         {loading ? (
           <View style={styles.activityItem}>
-            <ActivityIndicator size="small" color="#6A1B9A" />
-            <Text style={styles.activityTime}>Loading transactions...</Text>
+            <LoadingOverlay visible={true} inline size={32} message="Loading transactions..." />
           </View>
         ) : activityItems.length === 0 ? (
           <View style={styles.activityItem}>

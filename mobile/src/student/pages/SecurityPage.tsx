@@ -14,6 +14,7 @@ import * as LocalAuthentication from 'expo-local-authentication'
 import { MaterialIcons } from '@expo/vector-icons'
 import { clearStoredPinHash, getStoredPinHash, hashPin, setStoredPinHash } from '../../core/security'
 import { useSecurityStore } from '../../core/securityStore'
+import LoadingOverlay from '../components/LoadingOverlay'
 
 const TIMEOUT_OPTIONS: Array<{ label: string; value: 0 | 1 | 5 | 15 }> = [
   { label: 'Immediate', value: 0 },
@@ -266,7 +267,7 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
   if (loading) {
     return (
       <View style={styles.page}>
-        <ActivityIndicator size="small" color="#6A1B9A" />
+        <LoadingOverlay visible={true} inline size={40} />
       </View>
     )
   }

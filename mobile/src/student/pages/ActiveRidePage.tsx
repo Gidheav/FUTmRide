@@ -20,6 +20,7 @@ import useWalletStore from '../../core/walletStore'
 import { showRideStatusNotification } from '../../core/pushNotifications'
 import { WS_BASE_URL } from '../../../config/apiConfig'
 import { createAuthenticatedWebSocket } from '../../../utils/ws'
+import LoadingOverlay from '../components/LoadingOverlay'
 
 type ActiveRidePageProps = {
   rideId?: string | null
@@ -282,7 +283,7 @@ export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRi
         ) : null}
         {loading && (
           <View style={styles.loadingRow}>
-            <ActivityIndicator size="small" color="#6A1B9A" />
+            <LoadingOverlay visible={true} inline size={24} />
             <Text style={styles.loadingText}>Loading ride details…</Text>
           </View>
         )}

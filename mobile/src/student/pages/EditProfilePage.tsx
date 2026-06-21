@@ -11,6 +11,7 @@ import {
 } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import api from '../../core/api'
+import LoadingOverlay from '../components/LoadingOverlay'
 
 const LEVEL_OPTIONS = [100, 200, 300, 400, 500]
 
@@ -269,7 +270,7 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
 
       {loading ? (
         <View style={styles.loadingCard}>
-          <ActivityIndicator size="small" color="#6A1B9A" />
+          <LoadingOverlay visible={true} inline size={32} />
           <Text style={styles.loadingText}>Loading profile...</Text>
         </View>
       ) : (
