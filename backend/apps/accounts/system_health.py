@@ -109,11 +109,18 @@ def _fetch_uptimerobot_report() -> dict[str, Any]:
     except ValueError:
         logger.warning("uptimerobot_report_invalid_json", exc_info=True)
         return _provider_unavailable(base, "UptimeRobot returned an invalid JSON response.")
+    except Exception as exc:
+        logger.error("uptimerobot_report_unexpected_error", exc_info=True)
+        return _provider_unavailable(base, f"Unexpected error processing UptimeRobot: {str(exc)}")
 
-    if body.get("stat") != "ok":
+    if isinstance(body, dict) and body.get("stat") != "ok":
         return _provider_unavailable(base, "UptimeRobot returned a failed API status.")
 
-    monitors = body.get("monitors") or []
+    monitors = body.get("monitors") if isinstance(body, dict) else []
+    if not isinstance(monitors, list):
+        monitors = []
+    
+    monitors = [m for m in monitors if isinstance(m, dict)]
     items: list[dict[str, Any]] = []
     uptime_ratios: list[float] = []
     response_times: list[float] = []
@@ -212,8 +219,16 @@ def _fetch_cron_job_org_report() -> dict[str, Any]:
     except ValueError:
         logger.warning("cron_job_org_report_invalid_json", exc_info=True)
         return _provider_unavailable(base, "cron-job.org returned an invalid JSON response.")
+    except Exception as exc:
+        logger.error("cron_job_org_report_unexpected_error", exc_info=True)
+        return _provider_unavailable(base, f"Unexpected error processing cron-job.org: {str(exc)}")
 
-    jobs = body.get("jobs") or []
+    jobs = body if isinstance(body, list) else (body.get("jobs") if isinstance(body, dict) else [])
+    if not isinstance(jobs, list):
+        jobs = []
+
+    jobs = [j for j in jobs if isinstance(j, dict)]
+
     if configured_job_ids:
         jobs = [job for job in jobs if str(job.get("jobId")) in configured_job_ids]
 
