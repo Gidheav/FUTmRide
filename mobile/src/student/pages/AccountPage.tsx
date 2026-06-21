@@ -92,7 +92,13 @@ export default function StudentAccountPage({ onEditProfile, onOpenNotifications,
     try {
       setUploadingPhoto(true)
       const response = await api.patch('users/me/', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'multipart/form-data',
+        },
+        transformRequest: (data, headers) => {
+          return formData // Let Axios handle the FormData and boundary correctly
+        },
       })
       setUserProfile(response.data)
       setUser(response.data)

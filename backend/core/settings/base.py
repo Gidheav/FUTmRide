@@ -28,6 +28,8 @@ THIRD_PARTY_APPS = [
     "django_celery_beat",
     "django_celery_results",
     "anymail",
+    "cloudinary_storage",
+    "cloudinary",
 ]
 LOCAL_APPS = [
     "apps.accounts",
@@ -177,9 +179,17 @@ USE_TZ = True
 PHONENUMBER_DEFAULT_REGION = "NG"
 
 STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# Media settings
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
-STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# Cloudinary Configuration
+CLOUDINARY_URL = env("CLOUDINARY_URL", default=None)
+if CLOUDINARY_URL:
+    DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
+    # django-cloudinary-storage automatically uses the CLOUDINARY_URL env variable
 
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
