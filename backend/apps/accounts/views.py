@@ -51,6 +51,7 @@ from .serializers import (
     MapSettingsSerializer,
 )
 from .services import OTPService, EmailOTPService, StudentSignupVerificationService
+from .system_health import get_system_health_report
 from apps.pricing.models import PlatformSettings
 
 logger = logging.getLogger('apps.accounts')
@@ -221,19 +222,8 @@ class LoginView(TokenObtainPairView):
     permission_classes = [permissions.AllowAny]
     throttle_classes = AUTH_THROTTLE_CLASSES
 
-    def post(self, request, *args, **kwargs):
-        response = super().post(request, *args, **kwargs)
-        if response.status_code == 200:
-            try:
-                if request.data.get('email'):
-                    user = User.objects.get(email__iexact=request.data.get('email'))
-                else:
-                    user = User.objects.get(phone_number=request.data.get('phone_number'))
-                user.last_login_ip = request.META.get('REMOTE_ADDR')
-                user.save(update_fields=['last_login_ip'])
-            except User.DoesNotExist:
-                pass
-        return response
+    # last_login_ip is now saved by the serializer via request context.
+    # No need to re-query the user here.
 
 
 class SessionTokenRefreshView(TokenRefreshView):
@@ -777,6 +767,14 @@ class IntegrationStatusView(APIView):
             },
         }
         return Response(data)
+
+
+class SystemHealthStatusView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
+
+    def get(self, request):
+        refresh = str(request.query_params.get('refresh', '')).lower() in {'1', 'true', 'yes'}
+        return Response(get_system_health_report(force_refresh=refresh))
 
 
 class IntegrationConfigView(APIView):

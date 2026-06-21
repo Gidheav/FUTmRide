@@ -124,7 +124,8 @@ export default function StudentAccountPage({ onEditProfile, onOpenNotifications,
   ]
 
   return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.pageContent}>
+    <View style={styles.page}>
+    <ScrollView contentContainerStyle={styles.pageContent}>
       <View style={styles.profileHeader}>
         <View style={styles.avatarWrap}>
           {userProfile?.profile_photo || user?.profile_photo ? (
@@ -135,11 +136,7 @@ export default function StudentAccountPage({ onEditProfile, onOpenNotifications,
             </View>
           )}
           <TouchableOpacity style={styles.editBadge} activeOpacity={0.85} onPress={handlePickPhoto}>
-            {uploadingPhoto ? (
-              <LoadingOverlay visible={true} inline size={20} />
-            ) : (
               <MaterialIcons name="edit" size={14} color="#ffffff" />
-            )}
           </TouchableOpacity>
         </View>
         <Text style={styles.profileName}>{user?.full_name || 'Adebayo Samuel'}</Text>
@@ -200,6 +197,8 @@ export default function StudentAccountPage({ onEditProfile, onOpenNotifications,
         ))}
       </View>
     </ScrollView>
+    <LoadingOverlay visible={uploadingPhoto} />
+    </View>
   )
 }
 

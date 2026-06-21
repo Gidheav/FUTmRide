@@ -138,7 +138,7 @@ SIMPLE_JWT = {
     "REFRESH_TOKEN_LIFETIME": timedelta(days=14),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
-    "UPDATE_LAST_LOGIN": True,
+    "UPDATE_LAST_LOGIN": False,  # Handled manually in FutminnaTokenObtainPairSerializer
     "ALGORITHM": "HS256",
     "SIGNING_KEY": env("JWT_SECRET_KEY", default=env("SECRET_KEY")),
     "AUTH_HEADER_TYPES": ("Bearer",),
@@ -209,6 +209,12 @@ TERMII_API_KEY = env("TERMII_API_KEY", default="")
 TERMII_BASE_URL = env("TERMII_BASE_URL", default="https://api.ng.termii.com/api")
 TERMII_SENDER_ID = env("TERMII_SENDER_ID", default="LRRIDE")
 FCM_SERVER_KEY = env("FCM_SERVER_KEY", default="")
+UPTIMEROBOT_API_KEY = env("UPTIMEROBOT_API_KEY", default="")
+UPTIMEROBOT_MONITOR_IDS = env.list("UPTIMEROBOT_MONITOR_IDS", default=[])
+CRON_JOB_ORG_API_KEY = env("CRON_JOB_ORG_API_KEY", default="")
+CRON_JOB_ORG_JOB_IDS = env.list("CRON_JOB_ORG_JOB_IDS", default=[])
+SYSTEM_HEALTH_REQUEST_TIMEOUT_SECONDS = env.int("SYSTEM_HEALTH_REQUEST_TIMEOUT_SECONDS", default=6)
+SYSTEM_HEALTH_CACHE_SECONDS = env.int("SYSTEM_HEALTH_CACHE_SECONDS", default=60)
 ENABLE_PUSH_IN_DEBUG = env.bool("ENABLE_PUSH_IN_DEBUG", default=False)
 SHOW_API_EXCEPTION_DETAILS = env.bool("SHOW_API_EXCEPTION_DETAILS", default=False)
 ENABLE_TEST_TOOLS = env.bool("ENABLE_TEST_TOOLS", default=False)

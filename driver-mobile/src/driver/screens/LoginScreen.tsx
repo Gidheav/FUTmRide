@@ -104,29 +104,43 @@ export default function DriverLoginScreen() {
     setLoading(true)
     setError('')
 
+    const trimmedIdentifier = identifier.trim()
+    const payload = trimmedIdentifier.includes('@')
+      ? { email: trimmedIdentifier, password }
+      : { phone_number: trimmedIdentifier, password }
+
+    const MAX_RETRIES = 2
     try {
-      const trimmedIdentifier = identifier.trim()
-      const payload = trimmedIdentifier.includes('@')
-        ? { email: trimmedIdentifier, password }
-        : { phone_number: trimmedIdentifier, password }
-      const loginRes = await api.post('auth/login/', payload)
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          const loginRes = await api.post('auth/login/', payload, { timeout: 25000 })
 
-      if (loginRes.data?.two_factor_required) {
-        setTwoFactorRequired(true)
-        setTwoFactorMethods(loginRes.data.methods || [])
-        setTwoFactorChallenge(loginRes.data.login_challenge || '')
-        setTwoFactorMethod((loginRes.data.methods || [])[0] || 'totp')
-        setTwoFactorCode('')
-        return
+          if (loginRes.data?.two_factor_required) {
+            setTwoFactorRequired(true)
+            setTwoFactorMethods(loginRes.data.methods || [])
+            setTwoFactorChallenge(loginRes.data.login_challenge || '')
+            setTwoFactorMethod((loginRes.data.methods || [])[0] || 'totp')
+            setTwoFactorCode('')
+            return
+          }
+
+          // Login response includes enriched user payload — no need for a separate /users/me/ call
+          setAuth(loginRes.data.user, loginRes.data.access, loginRes.data.refresh)
+          return
+        } catch (err: any) {
+          const isNetworkError = !err?.response
+          const isRetryable = isNetworkError || err?.response?.status >= 500
+
+          if (isRetryable && attempt < MAX_RETRIES) {
+            // Exponential backoff: 1s, 2s
+            await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)))
+            continue
+          }
+
+          setError(getApiErrorMessage(err, 'Login failed. Please try again.'))
+          return
+        }
       }
-
-      const userRes = await api.get('users/me/', {
-        headers: { Authorization: `Bearer ${loginRes.data.access}` },
-      })
-
-      setAuth(userRes.data, loginRes.data.access, loginRes.data.refresh)
-    } catch (err: any) {
-      setError(getApiErrorMessage(err, 'Login failed. Please try again.'))
     } finally {
       setLoading(false)
     }

@@ -150,16 +150,29 @@ export default function StudentLoginScreen() {
     setLoading(true)
     setError('')
 
+    const MAX_RETRIES = 2
     try {
-      const loginRes = await api.post('auth/login/', { email, password })
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          const loginRes = await api.post('auth/login/', { email, password }, { timeout: 20000 })
 
-      const userRes = await api.get('users/me/', {
-        headers: { Authorization: `Bearer ${loginRes.data.access}` },
-      })
+          // Login response includes enriched user payload — no need for a separate /users/me/ call
+          setAuth(loginRes.data.user, loginRes.data.access, loginRes.data.refresh)
+          return
+        } catch (err: any) {
+          const isNetworkError = !err?.response
+          const isRetryable = isNetworkError || err?.response?.status >= 500
 
-      setAuth(userRes.data, loginRes.data.access, loginRes.data.refresh)
-    } catch (err: any) {
-      setError(getApiErrorMessage(err, 'Login failed. Please try again.'))
+          if (isRetryable && attempt < MAX_RETRIES) {
+            // Exponential backoff: 1s, 2s
+            await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)))
+            continue
+          }
+
+          setError(getApiErrorMessage(err, 'Login failed. Please try again.'))
+          return
+        }
+      }
     } finally {
       setLoading(false)
     }

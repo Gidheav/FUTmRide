@@ -258,7 +258,8 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
   }
 
   return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.pageContent}>
+    <View style={styles.page}>
+    <ScrollView contentContainerStyle={styles.pageContent} keyboardShouldPersistTaps="handled">
       <View style={styles.headerRow}>
         <TouchableOpacity style={styles.iconButton} onPress={onClose} activeOpacity={0.85}>
           <MaterialIcons name="chevron-left" size={22} color="#6A1B9A" />
@@ -366,7 +367,7 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
               activeOpacity={0.9}
               disabled={saving}
             >
-              {saving ? <LoadingOverlay visible={true} inline size={20} /> : <Text style={styles.primaryButtonText}>Save</Text>}
+              <Text style={styles.primaryButtonText}>Save</Text>
             </TouchableOpacity>
           </View>
         </>
@@ -457,6 +458,8 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
         </View>
       </Modal>
     </ScrollView>
+    <LoadingOverlay visible={saving} />
+    </View>
   )
 }
 

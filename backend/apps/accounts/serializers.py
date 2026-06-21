@@ -112,6 +112,13 @@ class FutminnaTokenObtainPairSerializer(TokenObtainPairSerializer):
 
     student_email_regex = re.compile(r"^[A-Za-z]+\.[mM]\d+@st\.futminna\.edu\.ng$")
 
+    # Prefetch related profiles + campus in a single query to avoid N+1
+    _USER_SELECT_RELATED = (
+        'student_profile__campus',
+        'driver_profile__campus',
+        'campus_admin_profile__campus',
+    )
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.username_field in self.fields:
@@ -119,14 +126,26 @@ class FutminnaTokenObtainPairSerializer(TokenObtainPairSerializer):
             self.fields[self.username_field].allow_blank = True
 
     def _build_user_payload(self, user):
+        """Build enriched user payload so clients don't need a separate /users/me/ call."""
         campus_info = None
+        wallet_balance = "0.00"
         try:
-            if user.role == UserRole.STUDENT and user.student_profile.campus:
-                campus_info = {"id": str(user.student_profile.campus.id), "name": user.student_profile.campus.name}
-            elif user.role == UserRole.DRIVER and hasattr(user, 'driver_profile') and user.driver_profile.campus:
-                campus_info = {"id": str(user.driver_profile.campus.id), "name": user.driver_profile.campus.name}
-            elif user.role == UserRole.CAMPUS_ADMIN and hasattr(user, 'campus_admin_profile'):
-                campus_info = {"id": str(user.campus_admin_profile.campus.id), "name": user.campus_admin_profile.campus.name}
+            if user.role == UserRole.STUDENT:
+                profile = getattr(user, 'student_profile', None)
+                if profile:
+                    wallet_balance = str(profile.wallet_balance)
+                    if profile.campus:
+                        campus_info = {"id": str(profile.campus.id), "name": profile.campus.name}
+            elif user.role == UserRole.DRIVER:
+                profile = getattr(user, 'driver_profile', None)
+                if profile:
+                    wallet_balance = str(profile.wallet_balance)
+                    if profile.campus:
+                        campus_info = {"id": str(profile.campus.id), "name": profile.campus.name}
+            elif user.role == UserRole.CAMPUS_ADMIN:
+                profile = getattr(user, 'campus_admin_profile', None)
+                if profile and profile.campus:
+                    campus_info = {"id": str(profile.campus.id), "name": profile.campus.name}
         except Exception:
             pass
 
@@ -139,14 +158,30 @@ class FutminnaTokenObtainPairSerializer(TokenObtainPairSerializer):
             "last_name": user.last_name,
             "role": user.role,
             "is_verified": user.is_verified,
+            "is_phone_verified": user.is_phone_verified,
+            "is_active": user.is_active,
+            "profile_photo": user.profile_photo.url if user.profile_photo else None,
+            "wallet_balance": wallet_balance,
+            "home_address": user.home_address,
             "campus": campus_info,
+            "fcm_token": user.fcm_token,
         }
 
     def _create_login_challenge(self, user):
         signer = signing.TimestampSigner()
         return signer.sign(str(user.id))
 
+    def _fetch_user(self, email=None, phone_number=None):
+        """Fetch user with select_related to avoid N+1 queries on profile/campus access."""
+        qs = User.objects.select_related(*self._USER_SELECT_RELATED)
+        if email:
+            return qs.get(email__iexact=email)
+        return qs.get(phone_number=phone_number)
+
     def validate(self, attrs):
+        import time as _time
+        _login_start = _time.monotonic()
+
         email = (attrs.get("email") or "").strip().lower()
         phone_number = (attrs.get("phone_number") or "").strip()
 
@@ -156,7 +191,7 @@ class FutminnaTokenObtainPairSerializer(TokenObtainPairSerializer):
                     "error": "Student email must match name.m1234567@st.futminna.edu.ng.",
                 })
             try:
-                user = User.objects.get(email__iexact=email)
+                user = self._fetch_user(email=email)
             except User.DoesNotExist:
                 raise serializers.ValidationError({"error": "No account found with this email."})
             if user.role != UserRole.STUDENT:
@@ -165,7 +200,7 @@ class FutminnaTokenObtainPairSerializer(TokenObtainPairSerializer):
             if not phone_number:
                 raise serializers.ValidationError({"error": "Phone number or email is required."})
             try:
-                user = User.objects.get(phone_number=phone_number)
+                user = self._fetch_user(phone_number=phone_number)
             except User.DoesNotExist:
                 raise serializers.ValidationError({"error": "No account found with this phone number."})
             if user.role == UserRole.STUDENT:
@@ -177,9 +212,18 @@ class FutminnaTokenObtainPairSerializer(TokenObtainPairSerializer):
             raise serializers.ValidationError({"error": "Invalid credentials."})
         if not user.is_active:
             raise serializers.ValidationError({"error": "This account has been deactivated."})
-        user.reset_failed_login()
+
+        # Reset failed login counter inline (avoid a separate .save() call)
+        _needs_reset = user.failed_login_attempts > 0 or user.locked_until is not None
+        if _needs_reset:
+            user.failed_login_attempts = 0
+            user.locked_until = None
+
         settings_obj, _created = UserSettings.objects.get_or_create(user=user)
         if settings_obj.two_factor_enabled and settings_obj.two_factor_methods:
+            # Still need to persist the failed_login reset if applicable
+            if _needs_reset:
+                user.save(update_fields=['failed_login_attempts', 'locked_until'])
             return {
                 "two_factor_required": True,
                 "methods": settings_obj.two_factor_methods,
@@ -187,11 +231,23 @@ class FutminnaTokenObtainPairSerializer(TokenObtainPairSerializer):
                 "user": self._build_user_payload(user),
             }
 
+        # Consolidate ALL login writes into a single .save() call
         now = timezone.now()
         user.last_login = now
         user.session_started_at = now
         user.last_refresh_at = now
-        user.save(update_fields=["last_login", "session_started_at", "last_refresh_at"])
+
+        # Get last_login_ip from request context (avoids redundant re-query in LoginView)
+        request = self.context.get('request')
+        if request:
+            user.last_login_ip = request.META.get('REMOTE_ADDR')
+
+        update_fields = [
+            "last_login", "session_started_at", "last_refresh_at", "last_login_ip",
+        ]
+        if _needs_reset:
+            update_fields.extend(["failed_login_attempts", "locked_until"])
+        user.save(update_fields=update_fields)
 
         refresh = self.get_token(user)
         data = {
@@ -199,6 +255,12 @@ class FutminnaTokenObtainPairSerializer(TokenObtainPairSerializer):
             "access": str(refresh.access_token),
             "user": self._build_user_payload(user),
         }
+
+        import logging
+        _logger = logging.getLogger('apps.accounts')
+        _elapsed = (_time.monotonic() - _login_start) * 1000
+        _logger.info('login_completed user_id=%s role=%s elapsed_ms=%.1f', str(user.id), user.role, _elapsed)
+
         return data
 
 

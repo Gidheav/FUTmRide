@@ -504,7 +504,8 @@ export default function StudentWalletPage() {
   }, [biometricEnabled, hasPin, sendTransferRequest, transferLoading])
 
   return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.pageContent}>
+    <View style={styles.page}>
+    <ScrollView contentContainerStyle={styles.pageContent} showsVerticalScrollIndicator={false}>
       <Modal
         visible={receiveModalVisible}
         animationType="fade"
@@ -557,11 +558,7 @@ export default function StudentWalletPage() {
               onPress={handleLookupFromStudentId}
               disabled={recipientLookupLoading}
             >
-              {recipientLookupLoading ? (
-                <LoadingOverlay visible={true} inline size={20} />
-              ) : (
-                <MaterialIcons name="send" size={18} color="#ffffff" />
-              )}
+              <MaterialIcons name="send" size={18} color="#ffffff" />
               <Text style={styles.primaryActionText}>Continue</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -865,11 +862,7 @@ export default function StudentWalletPage() {
                     onPress={handleTopUp}
                     disabled={topupLoading || Number(topupAmount) < 100}
                   >
-                    {topupLoading ? (
-                      <LoadingOverlay visible={true} inline size={20} />
-                    ) : (
-                      <MaterialIcons name="add-circle" size={18} color="#ffffff" />
-                    )}
+                    <MaterialIcons name="add-circle" size={18} color="#ffffff" />
                     <Text style={styles.primaryActionText}>Top Up</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -940,11 +933,7 @@ export default function StudentWalletPage() {
                     onPress={handleTransferConfirm}
                     disabled={transferLoading || Number(transferAmount) < 50}
                   >
-                    {transferLoading ? (
-                      <LoadingOverlay visible={true} inline size={20} />
-                    ) : (
-                      <MaterialIcons name="send" size={18} color="#ffffff" />
-                    )}
+                    <MaterialIcons name="send" size={18} color="#ffffff" />
                     <Text style={styles.primaryActionText}>Send</Text>
                   </TouchableOpacity>
                 </View>
@@ -1023,6 +1012,8 @@ export default function StudentWalletPage() {
         )}
       </View>
     </ScrollView>
+    <LoadingOverlay visible={topupLoading || transferLoading || recipientLookupLoading} />
+    </View>
   )
 }
 
