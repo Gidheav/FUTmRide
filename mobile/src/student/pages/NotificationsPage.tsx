@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
-  ActivityIndicator,
   FlatList,
   RefreshControl,
   ScrollView,
@@ -247,7 +246,7 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
             activeOpacity={0.85}
           >
             {markingAll ? (
-              <ActivityIndicator size="small" color="#6A1B9A" />
+              < size="small" color="#6A1B9A" />
             ) : (
               <MaterialIcons name="done-all" size={20} color="#6A1B9A" />
             )}

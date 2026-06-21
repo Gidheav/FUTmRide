@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ActivityIndicator,
   FlatList,
   ScrollView,
   StyleSheet,
@@ -369,7 +368,7 @@ export default function FindNearbyTab() {
           disabled={scanLoading}
         >
           {scanLoading ? (
-            <ActivityIndicator size="small" color="#ffffff" />
+            < size="small" color="#ffffff" />
           ) : (
             <MaterialIcons name="radar" size={18} color="#ffffff" />
           )}

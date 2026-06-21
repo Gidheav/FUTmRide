@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ActivityIndicator, Alert, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { Alert, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { CameraView, useCameraPermissions } from 'expo-camera'
@@ -558,7 +558,7 @@ export default function StudentWalletPage() {
               disabled={recipientLookupLoading}
             >
               {recipientLookupLoading ? (
-                <ActivityIndicator size="small" color="#ffffff" />
+                < size="small" color="#ffffff" />
               ) : (
                 <MaterialIcons name="send" size={18} color="#ffffff" />
               )}
@@ -866,7 +866,7 @@ export default function StudentWalletPage() {
                     disabled={topupLoading || Number(topupAmount) < 100}
                   >
                     {topupLoading ? (
-                      <ActivityIndicator size="small" color="#ffffff" />
+                      < size="small" color="#ffffff" />
                     ) : (
                       <MaterialIcons name="add-circle" size={18} color="#ffffff" />
                     )}
@@ -941,7 +941,7 @@ export default function StudentWalletPage() {
                     disabled={transferLoading || Number(transferAmount) < 50}
                   >
                     {transferLoading ? (
-                      <ActivityIndicator size="small" color="#ffffff" />
+                      < size="small" color="#ffffff" />
                     ) : (
                       <MaterialIcons name="send" size={18} color="#ffffff" />
                     )}

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  ActivityIndicator,
   Modal,
   ScrollView,
   StyleSheet,
@@ -367,7 +366,7 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
               activeOpacity={0.9}
               disabled={saving}
             >
-              {saving ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.primaryButtonText}>Save</Text>}
+              {saving ? < size="small" color="#ffffff" /> : <Text style={styles.primaryButtonText}>Save</Text>}
             </TouchableOpacity>
           </View>
         </>

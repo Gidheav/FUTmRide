@@ -18,6 +18,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera'
 import * as LocationService from 'expo-location'
 import useWalletStore from '../../core/walletStore'
 import locationData from '../Gk-location cordinate.json'
+import LoadingOverlay from '../components/LoadingOverlay'
 
 const INITIAL_REGION: Region = {
   latitude: 9.5261,
@@ -399,9 +400,6 @@ export default function StudentDashboardScreen({
           maxZoomLevel={18}
           showsCompass
           showsScale
-          loadingEnabled
-          loadingIndicatorColor="#0fa958"
-          loadingBackgroundColor="#f3f3f3"
         >
           {userLocation && (
             <Marker
@@ -449,10 +447,7 @@ export default function StudentDashboardScreen({
         </MapView>
 
         {!isMapReady && (
-          <View style={styles.mapLoadingBadge}>
-            <MaterialIcons name="map" size={16} color="#5e5e5e" />
-            <Text style={styles.mapLoadingText}>Loading Minna map...</Text>
-          </View>
+          <LoadingOverlay visible={true} size={90} />
         )}
 
         {didMapTimeout && (

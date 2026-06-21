@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -182,13 +181,7 @@ export default function AppLockPage({ onUnlocked, onForgotPin }: AppLockProps) {
     })
   }
 
-  if (loading) {
-    return (
-      <View style={[styles.page, { justifyContent: 'center', alignItems: 'center' }]}>
-        <LoadingOverlay visible={true} inline size={40} />
-      </View>
-    )
-  }
+
 
   return (
     <KeyboardAvoidingView
@@ -264,6 +257,7 @@ export default function AppLockPage({ onUnlocked, onForgotPin }: AppLockProps) {
           <Text style={styles.forgotText}>Forgot PIN?</Text>
         </Pressable>
       </View>
+      <LoadingOverlay visible={loading} />
     </KeyboardAvoidingView>
   )
 }

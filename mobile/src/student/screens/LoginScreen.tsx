@@ -7,17 +7,16 @@ import {
   ScrollView,
   Image,
   Pressable,
-  ActivityIndicator,
-  Alert,
-  Modal,
-  Keyboard,
   KeyboardAvoidingView,
   Platform,
+  Modal,
+  Keyboard,
 } from 'react-native'
 import { useEffect, useState } from 'react'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useAuthStore } from '../../core/authStore'
 import api, { API_BASE_URL } from '../../core/api'
+import LoadingOverlay from '../components/LoadingOverlay'
 
 const ILLUSTRATION_IMAGE = require('../../homeslide3-1-1024x499.png')
 const studentEmailRegex = /^[A-Za-z]+\.[mM]\d+@st\.futminna\.edu\.ng$/
@@ -299,7 +298,6 @@ export default function StudentLoginScreen() {
       setIsSignup(false)
       setIdentifier(pendingSignupData.email)
       setSignupPassword('')
-      Alert.alert('Create Account', 'Account verified and created successfully. Please log in.')
     } catch (err: any) {
       setVerificationError(getApiErrorMessage(err, 'Verification failed. Please try again.'))
     } finally {
@@ -308,6 +306,7 @@ export default function StudentLoginScreen() {
   }
 
   return (
+    <View style={{flex: 1}}>
     <KeyboardAvoidingView
       style={styles.page}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -404,14 +403,8 @@ export default function StudentLoginScreen() {
                 disabled={signupLoading}
                 activeOpacity={0.85}
               >
-                {signupLoading ? (
-                  <ActivityIndicator color="#ffffff" />
-                ) : (
-                  <>
-                    <Text style={styles.primaryButtonText}>Create Account</Text>
-                    <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
-                  </>
-                )}
+                  <Text style={styles.primaryButtonText}>Create Account</Text>
+                  <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
               </TouchableOpacity>
             </>
           ) : (
@@ -472,14 +465,8 @@ export default function StudentLoginScreen() {
                 disabled={loading}
                 activeOpacity={0.85}
               >
-                {loading ? (
-                  <ActivityIndicator color="#ffffff" />
-                ) : (
-                  <>
-                    <Text style={styles.primaryButtonText}>Login Securely</Text>
-                    <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
-                  </>
-                )}
+                  <Text style={styles.primaryButtonText}>Secure Login</Text>
+                  <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
               </TouchableOpacity>
             </>
           )}
@@ -523,14 +510,8 @@ export default function StudentLoginScreen() {
               disabled={verificationLoading || verificationResendLoading}
               activeOpacity={0.85}
             >
-              {verificationLoading ? (
-                <ActivityIndicator color="#ffffff" />
-              ) : (
-                <>
-                  <Text style={styles.primaryButtonText}>Verify and Create Account</Text>
-                  <MaterialIcons name="check-circle" size={18} color="#ffffff" />
-                </>
-              )}
+              <Text style={styles.primaryButtonText}>Verify</Text>
+              <MaterialIcons name="check-circle" size={18} color="#ffffff" />
             </TouchableOpacity>
 
             <View style={styles.verificationActionsRow}>
@@ -540,11 +521,7 @@ export default function StudentLoginScreen() {
                 disabled={verificationLoading || verificationResendLoading}
                 activeOpacity={0.75}
               >
-                {verificationResendLoading ? (
-                  <ActivityIndicator size="small" color="#5e5e5e" />
-                ) : (
-                  <Text style={styles.verificationSecondaryActionText}>Resend code</Text>
-                )}
+                <Text style={styles.resendText}>Resend Code</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -559,12 +536,11 @@ export default function StudentLoginScreen() {
           </View>
         </View>
       </Modal>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+      <LoadingOverlay visible={loading || signupLoading || verificationLoading || verificationResendLoading} />
+    </View>
   )
 }
-
-const styles = StyleSheet.create({
-  page: {
     flex: 1,
     backgroundColor: '#f9f9f9',
   },

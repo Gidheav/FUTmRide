@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
-  ActivityIndicator,
   Alert,
   ScrollView,
   StyleSheet,
@@ -330,7 +329,7 @@ export default function GarageRidePage({ qrToken, onClose, onBoarded }: GarageRi
                   activeOpacity={0.85}
                 >
                   {boarding ? (
-                    <ActivityIndicator size="small" color="#ffffff" />
+                    < size="small" color="#ffffff" />
                   ) : (
                     <>
                       <MaterialIcons name="account-balance-wallet" size={18} color="#ffffff" />

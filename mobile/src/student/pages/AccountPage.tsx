@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import LoadingOverlay from '../components/LoadingOverlay'
 import { MaterialIcons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
 import { useAuthStore } from '../../core/authStore'
@@ -135,7 +136,7 @@ export default function StudentAccountPage({ onEditProfile, onOpenNotifications,
           )}
           <TouchableOpacity style={styles.editBadge} activeOpacity={0.85} onPress={handlePickPhoto}>
             {uploadingPhoto ? (
-              <ActivityIndicator size="small" color="#ffffff" />
+              < size="small" color="#ffffff" />
             ) : (
               <MaterialIcons name="edit" size={14} color="#ffffff" />
             )}

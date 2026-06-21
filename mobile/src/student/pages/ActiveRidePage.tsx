@@ -1,6 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
 import {
-  ActivityIndicator,
   Alert,
   AppState,
   Image,

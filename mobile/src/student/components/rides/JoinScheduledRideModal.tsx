@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import {
-  ActivityIndicator,
   Modal,
   ScrollView,
   StyleSheet,
@@ -153,7 +152,7 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined }: Prop
                   disabled={joining}
                 >
                   {joining ? (
-                    <ActivityIndicator color="#ffffff" size="small" />
+                    < color="#ffffff" size="small" />
                   ) : (
                     <Text style={styles.joinBtnText}>Confirm & Pay</Text>
                   )}
