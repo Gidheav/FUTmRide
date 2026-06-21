@@ -541,6 +541,9 @@ export default function StudentLoginScreen() {
     </View>
   )
 }
+
+const styles = StyleSheet.create({
+  page: {
     flex: 1,
     backgroundColor: '#f9f9f9',
   },
