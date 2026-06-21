@@ -4,6 +4,11 @@ from django.db import models
 from django.utils import timezone
 from phonenumber_field.modelfields import PhoneNumberField
 
+def user_profile_photo_path(instance, filename):
+    role = instance.role.lower() if instance.role else 'user'
+    now = timezone.now()
+    return f"profiles/{role}/{now.year}/{now.month:02d}/{filename}"
+
 
 class UserRole(models.TextChoices):
     STUDENT = 'student', 'Student'
@@ -54,7 +59,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
     role = models.CharField(max_length=20, choices=UserRole.choices, default=UserRole.STUDENT)
-    profile_photo = models.ImageField(upload_to='profiles/%Y/%m/', null=True, blank=True)
+    profile_photo = models.ImageField(upload_to=user_profile_photo_path, null=True, blank=True)
     home_address = models.CharField(max_length=255, null=True, blank=True)
 
     is_active = models.BooleanField(default=True)
