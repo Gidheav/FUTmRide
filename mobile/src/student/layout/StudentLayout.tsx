@@ -50,7 +50,6 @@ export default function StudentLayout({ activeTab, onTabChange, onMenuPress, onB
             <MaterialIcons name="menu" size={22} color="#6A1B9A" />
           </TouchableOpacity>
         )}
-        <Text style={styles.brandText}>LRRIDE</Text>
         <View style={styles.topBarRight}>
           <TouchableOpacity
             style={styles.iconButton}

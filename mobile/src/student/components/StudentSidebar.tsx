@@ -84,7 +84,7 @@ export default function StudentSidebar({
           ]}>
             <View style={styles.sidebarContent}>
               <View style={styles.header}>
-                <Text style={styles.brand}>LR Ride</Text>
+                <Text style={styles.brand}>FUTmRide</Text>
                 <TouchableOpacity onPress={onClose} style={styles.closeButton} activeOpacity={0.85}>
                   <MaterialIcons name="close" size={20} color="#5e5e5e" />
                 </TouchableOpacity>
@@ -92,31 +92,31 @@ export default function StudentSidebar({
 
               <View style={styles.menuGroup}>
                 <TouchableOpacity style={styles.menuItem} onPress={() => onNavigate('about')} activeOpacity={0.85}>
-                  <MaterialIcons name="info-outline" size={20} color="#3d4a3e" />
+                  <MaterialIcons name="info-outline" size={20} color="#6A1B9A" />
                   <Text style={styles.menuText}>About</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.menuItem} onPress={() => onNavigate('activities')} activeOpacity={0.85}>
-                  <MaterialIcons name="history" size={20} color="#3d4a3e" />
+                  <MaterialIcons name="history" size={20} color="#6A1B9A" />
                   <Text style={styles.menuText}>My Activities</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.menuItem} onPress={() => onNavigate('updates')} activeOpacity={0.85}>
-                  <MaterialIcons name="system-update" size={20} color="#3d4a3e" />
+                  <MaterialIcons name="system-update" size={20} color="#6A1B9A" />
                   <Text style={styles.menuText}>App Updates</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.menuItem} onPress={() => onNavigate('events')} activeOpacity={0.85}>
-                  <MaterialIcons name="event" size={20} color="#3d4a3e" />
+                  <MaterialIcons name="event" size={20} color="#6A1B9A" />
                   <Text style={styles.menuText}>Events</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.menuItem} onPress={() => onNavigate('news')} activeOpacity={0.85}>
-                  <MaterialIcons name="article" size={20} color="#3d4a3e" />
+                  <MaterialIcons name="article" size={20} color="#6A1B9A" />
                   <Text style={styles.menuText}>News</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.menuItem} onPress={() => onNavigate('safety')} activeOpacity={0.85}>
-                  <MaterialIcons name="security" size={20} color="#3d4a3e" />
+                  <MaterialIcons name="security" size={20} color="#6A1B9A" />
                   <Text style={styles.menuText}>Safety Guide</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.menuItem} onPress={() => onNavigate('support')} activeOpacity={0.85}>
-                  <MaterialIcons name="help-outline" size={20} color="#3d4a3e" />
+                  <MaterialIcons name="help-outline" size={20} color="#6A1B9A" />
                   <Text style={styles.menuText}>Help & Support</Text>
                 </TouchableOpacity>
               </View>
@@ -183,7 +183,7 @@ const styles = StyleSheet.create({
   },
   menuText: {
     fontSize: 15,
-    color: '#1a1c1c',
+    color: '#6b7280',
     fontWeight: '600',
   },
 })
