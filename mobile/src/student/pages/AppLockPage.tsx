@@ -25,6 +25,7 @@ export default function AppLockPage({ onUnlocked, onForgotPin }: AppLockProps) {
   const [pinHash, setPinHash] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [unlocking, setUnlocking] = useState(false)
   const [biometricAvailable, setBiometricAvailable] = useState(false)
   const [pinAttempts, setPinAttempts] = useState(0)
   const [biometricAttempts, setBiometricAttempts] = useState(0)
@@ -111,22 +112,27 @@ export default function AppLockPage({ onUnlocked, onForgotPin }: AppLockProps) {
       return
     }
     if (value.length !== 4) return
-    const inputHash = await hashPin(value)
-    if (inputHash !== pinHash) {
-      const nextAttempts = pinAttempts + 1
-      if (nextAttempts >= MAX_PIN_ATTEMPTS) {
-        setError('Too many attempts. Please wait a moment.')
-        startLockout()
-      } else {
-        setError(`Incorrect PIN. ${MAX_PIN_ATTEMPTS - nextAttempts} tries left.`)
+    setUnlocking(true)
+    try {
+      const inputHash = await hashPin(value)
+      if (inputHash !== pinHash) {
+        const nextAttempts = pinAttempts + 1
+        if (nextAttempts >= MAX_PIN_ATTEMPTS) {
+          setError('Too many attempts. Please wait a moment.')
+          startLockout()
+        } else {
+          setError(`Incorrect PIN. ${MAX_PIN_ATTEMPTS - nextAttempts} tries left.`)
+        }
+        setPinAttempts(nextAttempts)
+        setPin('')
+        return
       }
-      setPinAttempts(nextAttempts)
-      setPin('')
-      return
+      setError('')
+      setPinAttempts(0)
+      onUnlocked()
+    } finally {
+      setUnlocking(false)
     }
-    setError('')
-    setPinAttempts(0)
-    onUnlocked()
   }
 
   const handleBiometric = async () => {
@@ -139,32 +145,37 @@ export default function AppLockPage({ onUnlocked, onForgotPin }: AppLockProps) {
       setError(`Too many attempts. Try again in ${formatCountdown(lockoutSeconds)}.`)
       return
     }
-    const res = await LocalAuthentication.authenticateAsync({
-      promptMessage: 'Unlock LR Ride',
-      cancelLabel: 'Cancel',
-      fallbackLabel: 'Use PIN',
-    })
-    if (res.success) {
-      setBiometricAttempts(0)
-      onUnlocked()
-    } else {
-      const errorCode = (res as { error?: string }).error
-      if (errorCode === 'user_cancel' || errorCode === 'system_cancel' || errorCode === 'app_cancel') {
-        return
-      }
-      const nextAttempts = biometricAttempts + 1
-      if (nextAttempts >= MAX_BIOMETRIC_ATTEMPTS) {
-        setError('Too many attempts. Please wait a moment.')
-        startLockout()
+    setUnlocking(true)
+    try {
+      const res = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Unlock LR Ride',
+        cancelLabel: 'Cancel',
+        fallbackLabel: 'Use PIN',
+      })
+      if (res.success) {
+        setBiometricAttempts(0)
+        onUnlocked()
       } else {
-        setError(`Biometric failed. ${MAX_BIOMETRIC_ATTEMPTS - nextAttempts} tries left.`)
+        const errorCode = (res as { error?: string }).error
+        if (errorCode === 'user_cancel' || errorCode === 'system_cancel' || errorCode === 'app_cancel') {
+          return
+        }
+        const nextAttempts = biometricAttempts + 1
+        if (nextAttempts >= MAX_BIOMETRIC_ATTEMPTS) {
+          setError('Too many attempts. Please wait a moment.')
+          startLockout()
+        } else {
+          setError(`Biometric failed. ${MAX_BIOMETRIC_ATTEMPTS - nextAttempts} tries left.`)
+        }
+        setBiometricAttempts(nextAttempts)
       }
-      setBiometricAttempts(nextAttempts)
+    } finally {
+      setUnlocking(false)
     }
   }
 
   const handleDigitPress = (digit: string) => {
-    if (isLockedOut) return
+    if (isLockedOut || unlocking) return
     if (digit === 'back') {
       setPin((prev) => prev.slice(0, -1))
       return
@@ -257,7 +268,7 @@ export default function AppLockPage({ onUnlocked, onForgotPin }: AppLockProps) {
           <Text style={styles.forgotText}>Forgot PIN?</Text>
         </Pressable>
       </View>
-      <LoadingOverlay visible={loading} />
+      <LoadingOverlay visible={loading || unlocking} />
     </KeyboardAvoidingView>
   )
 }
