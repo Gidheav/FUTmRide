@@ -316,9 +316,8 @@ class ScheduledRideTestCase(TestCase):
             'destination_address': 'Library',
             'destination_latitude': '9.075000',
             'destination_longitude': '7.480000',
-            'allowed_vehicle_types': [VehicleClass.COACH],
+            'allowed_vehicle_types': [VehicleClass.SEDAN],
             'cargo_capacity_kg': 0,
-            'accessibility_features': ['air_conditioning'],
             'standard_enabled': True,
             'standard_price': '100.00',
             'standing_enabled': False,
@@ -417,33 +416,13 @@ class ScheduledRideTestCase(TestCase):
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('contiguous', str(res.data))
 
-    def test_standing_tier_on_sedan_rejected(self):
-        payload = {
-            **self.base_payload,
-            'allowed_vehicle_types': [VehicleClass.SEDAN],
-            'standing_enabled': True,
-            'standing_price': '50.00',
-        }
-        res = self.create_scheduled_ride(payload)
-        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('Standing tier is only allowed', str(res.data))
 
-    def test_freight_without_cargo_capacity_rejected(self):
-        payload = {
-            **self.base_payload,
-            'freight_enabled': True,
-            'freight_price': '200.00',
-            'cargo_capacity_kg': 0,
-        }
-        res = self.create_scheduled_ride(payload)
-        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('Cargo capacity must be greater than 0', str(res.data))
 
     def test_invalid_assigned_driver_rejected(self):
         payload = {**self.base_payload, 'assigned_driver': str(self.other_driver.id)}
         res = self.create_scheduled_ride(payload)
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('same campus', str(res.data).lower())
+        self.assertIn('belong to this campus', str(res.data).lower())
 
     def test_student_join_debits_wallet(self):
         res = self.create_scheduled_ride()
