@@ -29,3 +29,4 @@ django-phonenumber-field==8.0.0
 pyotp==2.9.0
 reportlab==4.2.5
 openpyxl==3.1.5
+bcrypt==4.1.2

@@ -279,6 +279,51 @@ class IntegrationSettingsTestCase(TestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
 
 
+class SystemHealthStatusTestCase(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.url = reverse('auth-system-health-status')
+        self.admin = User.objects.create_user(
+            phone_number='+2348011111113',
+            password='SecurePass123!',
+            first_name='System',
+            last_name='Admin',
+            role=UserRole.ADMIN,
+            data_consent_given=True,
+        )
+        self.student = User.objects.create_user(
+            phone_number='+2348011111114',
+            email='health.student@st.futminna.edu.ng',
+            password='SecurePass123!',
+            first_name='Health',
+            last_name='Student',
+            role=UserRole.STUDENT,
+            data_consent_given=True,
+        )
+
+    @override_settings(
+        UPTIMEROBOT_API_KEY='',
+        CRON_JOB_ORG_API_KEY='',
+        UPTIMEROBOT_MONITOR_IDS=[],
+        CRON_JOB_ORG_JOB_IDS=[],
+        SYSTEM_HEALTH_CACHE_SECONDS=0,
+    )
+    def test_system_health_returns_unconfigured_report(self):
+        self.client.force_authenticate(user=self.admin)
+        res = self.client.get(self.url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['overall']['status'], 'unconfigured')
+        self.assertIn('uptime_robot', res.data)
+        self.assertIn('cron_job_org', res.data)
+        self.assertFalse(res.data['uptime_robot']['configured'])
+        self.assertFalse(res.data['cron_job_org']['configured'])
+
+    def test_system_health_requires_admin_or_campus_admin(self):
+        self.client.force_authenticate(user=self.student)
+        res = self.client.get(self.url)
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+
 class SeedAdminAccountsTestCase(TestCase):
     def test_seed_command_can_repair_campus_admin_password_and_unlock(self):
         user = User.objects.create_user(

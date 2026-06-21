@@ -58,6 +58,15 @@ MIDDLEWARE = [
     "core.middleware.RateLimitMiddleware",
 ]
 
+# Password hashing
+# https://docs.djangoproject.com/en/5.0/topics/auth/passwords/
+PASSWORD_HASHERS = [
+    "django.contrib.auth.hashers.BCryptSHA256PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher",
+    "django.contrib.auth.hashers.Argon2PasswordHasher",
+]
+
 CONTENT_SECURITY_POLICY = env(
     'CONTENT_SECURITY_POLICY',
     default="default-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",

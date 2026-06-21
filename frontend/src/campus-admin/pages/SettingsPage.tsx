@@ -67,6 +67,195 @@ function SecurityChecklistItem({ icon: Icon, title, text }: { icon: any; title: 
   )
 }
 
+type SystemHealthStatus = 'operational' | 'degraded' | 'down' | 'unavailable' | 'unconfigured' | 'paused' | 'pending' | string
+
+type SystemHealthItem = {
+  id?: string | number | null
+  name?: string
+  status?: SystemHealthStatus
+  status_label?: string
+  uptime_ratio_24h?: number | null
+  average_response_ms?: number | null
+  last_duration_ms?: number | null
+  last_execution?: number | null
+  next_execution?: number | null
+}
+
+type SystemHealthProvider = {
+  provider: string
+  configured: boolean
+  status: SystemHealthStatus
+  summary?: string
+  checked_at?: string
+  items?: SystemHealthItem[]
+  monitors_total?: number
+  monitors_up?: number
+  monitors_down?: number
+  uptime_ratio_24h?: number | null
+  average_response_ms?: number | null
+  jobs_total?: number
+  jobs_ok?: number
+  jobs_failed?: number
+  jobs_disabled?: number
+  jobs_unknown?: number
+  average_duration_ms?: number | null
+  last_execution?: number | null
+  next_execution?: number | null
+}
+
+type SystemHealthReport = {
+  generated_at?: string
+  cache_ttl_seconds?: number
+  overall?: {
+    status?: SystemHealthStatus
+    summary?: string
+    checked_at?: string
+  }
+  uptime_robot?: SystemHealthProvider
+  cron_job_org?: SystemHealthProvider
+}
+
+function statusLabel(status?: SystemHealthStatus) {
+  const labels: Record<string, string> = {
+    operational: 'Operational',
+    degraded: 'Degraded',
+    down: 'Down',
+    unavailable: 'Unavailable',
+    unconfigured: 'Needs Key',
+    paused: 'Paused',
+    pending: 'Pending',
+  }
+  return labels[String(status || 'pending')] || 'Unknown'
+}
+
+function statusTone(status?: SystemHealthStatus) {
+  const key = String(status || 'pending')
+  if (key === 'operational') {
+    return { color: '#10b981', bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.35)' }
+  }
+  if (key === 'down' || key === 'unavailable') {
+    return { color: '#ef4444', bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.35)' }
+  }
+  if (key === 'degraded') {
+    return { color: T.warn, bg: T.warnBg, border: 'rgba(245,158,11,0.35)' }
+  }
+  if (key === 'unconfigured') {
+    return { color: T.blue, bg: 'rgba(59,130,246,0.12)', border: 'rgba(59,130,246,0.35)' }
+  }
+  return { color: T.textMuted, bg: T.bgCard, border: T.borderLight }
+}
+
+function HealthStatusPill({ status, label }: { status?: SystemHealthStatus; label?: string }) {
+  const tone = statusTone(status)
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: tone.bg, border: `1px solid ${tone.border}`, padding: '4px 10px', borderRadius: 999, whiteSpace: 'nowrap' }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: tone.color, flexShrink: 0 }} />
+      <span style={{ fontSize: 11, fontWeight: 700, color: tone.color }}>{label || statusLabel(status)}</span>
+    </div>
+  )
+}
+
+function formatHealthPercent(value?: number | null) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return 'N/A'
+  return `${Number(value).toFixed(2)}%`
+}
+
+function formatHealthMs(value?: number | null) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return 'N/A'
+  const numeric = Number(value)
+  if (numeric >= 1000) return `${(numeric / 1000).toFixed(1)}s`
+  return `${Math.round(numeric)}ms`
+}
+
+function formatHealthDate(value?: string | number | null) {
+  if (!value) return 'Not available'
+  const date = typeof value === 'number' ? new Date(value * 1000) : new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Not available'
+  return date.toLocaleString('en-NG', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Africa/Lagos',
+  })
+}
+
+function HealthProviderCard({
+  title,
+  provider,
+  kind,
+  icon: Icon,
+}: {
+  title: string
+  provider?: SystemHealthProvider
+  kind: 'uptime' | 'cron'
+  icon: any
+}) {
+  const tone = statusTone(provider?.status)
+  const metrics = kind === 'uptime'
+    ? [
+        { label: 'Monitors Up', value: provider?.configured ? `${provider?.monitors_up ?? 0}/${provider?.monitors_total ?? 0}` : 'N/A' },
+        { label: '24h Uptime', value: provider?.configured ? formatHealthPercent(provider?.uptime_ratio_24h) : 'N/A' },
+        { label: 'Avg Response', value: provider?.configured ? formatHealthMs(provider?.average_response_ms) : 'N/A' },
+      ]
+    : [
+        { label: 'Jobs OK', value: provider?.configured ? `${provider?.jobs_ok ?? 0}/${provider?.jobs_total ?? 0}` : 'N/A' },
+        { label: 'Failed', value: provider?.configured ? String(provider?.jobs_failed ?? 0) : 'N/A' },
+        { label: 'Avg Duration', value: provider?.configured ? formatHealthMs(provider?.average_duration_ms) : 'N/A' },
+      ]
+  const rows = provider?.items?.slice(0, 3) || []
+
+  return (
+    <div style={{ background: T.bgCard, border: `1px solid ${T.borderLight}`, borderRadius: 0, padding: 16, minHeight: 250, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          <div style={{ width: 34, height: 34, borderRadius: 0, background: tone.bg, border: `1px solid ${tone.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Icon size={18} color={tone.color} />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <h4 style={{ fontSize: 13, fontWeight: 800, color: T.textPrimary, margin: 0 }}>{title}</h4>
+            <p style={{ fontSize: 11, color: T.textMuted, margin: '3px 0 0' }}>{provider?.configured ? 'Live provider report' : 'Waiting for .env key'}</p>
+          </div>
+        </div>
+        <HealthStatusPill status={provider?.status} />
+      </div>
+
+      <p style={{ fontSize: 12, lineHeight: 1.5, color: T.textSecondary, minHeight: 36, margin: 0 }}>
+        {provider?.summary || 'No provider data loaded yet.'}
+      </p>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10, borderTop: `1px solid ${T.borderLight}`, borderBottom: `1px solid ${T.borderLight}`, padding: '12px 0' }}>
+        {metrics.map(metric => (
+          <div key={metric.label} style={{ minWidth: 0 }}>
+            <p style={{ fontSize: 10, color: T.textMuted, textTransform: 'uppercase', fontWeight: 700, marginBottom: 4 }}>{metric.label}</p>
+            <p style={{ fontSize: 15, color: T.textPrimary, fontWeight: 800, margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{metric.value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 'auto' }}>
+        {rows.length > 0 ? rows.map(row => (
+          <div key={`${row.id}-${row.name}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            <div style={{ minWidth: 0 }}>
+              <p style={{ fontSize: 12, color: T.textPrimary, fontWeight: 700, margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.name || 'Monitor'}</p>
+              <p style={{ fontSize: 10, color: T.textMuted, margin: '2px 0 0' }}>
+                {kind === 'uptime'
+                  ? formatHealthPercent(row.uptime_ratio_24h)
+                  : `Next: ${formatHealthDate(row.next_execution)}`}
+              </p>
+            </div>
+            <HealthStatusPill status={row.status} label={row.status_label || statusLabel(row.status)} />
+          </div>
+        )) : (
+          <p style={{ fontSize: 11, color: T.textMuted, margin: 0 }}>
+            {provider?.configured ? 'No individual monitors or jobs returned.' : 'Add the provider API key to backend/.env.'}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
 /* ──────────────────────── Replica Section ──────────────────── */
 
 function EmailChangeSectionReplica() {
@@ -433,7 +622,7 @@ function MapGisSettingsReplica() {
   }
 
   return (
-    <div style={{ width: '100%', maxWidth: 1600, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 32 }}>
+    <div style={{ width: '100%', margin: 0, display: 'flex', flexDirection: 'column', gap: 32 }}>
 
       {actionMsg && <StatusBanner msg={actionMsg.text} type={actionMsg.ok ? 'success' : 'error'} />}
 
@@ -691,7 +880,7 @@ function SystemRulesReplica() {
   }
 
   return (
-    <div style={{ width: '100%', maxWidth: 1600, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 32 }}>
+    <div style={{ width: '100%', margin: 0, display: 'flex', flexDirection: 'column', gap: 32 }}>
       <div className="gis-grid">
         {/* Ride Logic */}
         <section style={{ ...panelStyle, gridColumn: 'span 8' }}>
@@ -905,7 +1094,7 @@ function PromotionsReplica() {
   }
 
   return (
-    <div style={{ width: '100%', maxWidth: 1600, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 32 }}>
+    <div style={{ width: '100%', margin: 0, display: 'flex', flexDirection: 'column', gap: 32 }}>
       <div className="gis-grid">
         {/* Active ROI */}
         <section style={{ ...panelStyle, gridColumn: 'span 4' }}>
@@ -1207,7 +1396,7 @@ function IntegrationsReplica() {
   const publicRevealKey = `${drawerGw}-public`
 
   return (
-    <div style={{ width: '100%', maxWidth: 1600, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 32 }}>
+    <div style={{ width: '100%', margin: 0, display: 'flex', flexDirection: 'column', gap: 32 }}>
       <div className="gis-grid">
         {/* Payment Gateways */}
         <section style={{ ...panelStyle, gridColumn: 'span 8' }}>
@@ -1672,7 +1861,7 @@ function FeatureFlagsReplica() {
     </div>
   )
   return (
-    <div style={{ width: '100%', maxWidth: 1600, margin: '0 auto' }}>
+    <div style={{ width: '100%', margin: 0 }}>
       <div className="gis-grid">
         {/* Feature Flags */}
         <section style={{ ...panelStyle, gridColumn: 'span 8' }}>
@@ -1736,7 +1925,7 @@ function SupportReplica() {
     padding: 24, display: 'flex', flexDirection: 'column' as const,
   }
   return (
-    <div style={{ width: '100%', maxWidth: 1600, margin: '0 auto' }}>
+    <div style={{ width: '100%', margin: 0 }}>
       <div className="gis-grid">
         {/* Help Desk Integration */}
         <section style={{ ...panelStyle, gridColumn: 'span 8' }}>
@@ -1877,65 +2066,176 @@ function SupportReplica() {
 }
 
 function NotificationsReplica() {
+  const [gatewayStatus, setGatewayStatus] = useState<any>(null)
+  const [systemHealth, setSystemHealth] = useState<SystemHealthReport | null>(null)
+  const [loadingHealth, setLoadingHealth] = useState(true)
+  const [healthError, setHealthError] = useState<string | null>(null)
+
   const panelStyle = {
     background: T.bgPanel, border: `1px solid ${T.border}`, borderRadius: 0,
     padding: 24, display: 'flex', flexDirection: 'column' as const,
   }
+
+  const loadHealth = async (refresh = false) => {
+    setLoadingHealth(true)
+    setHealthError(null)
+    try {
+      const [gatewayRes, systemRes] = await Promise.all([
+        api.get('/auth/settings/integrations/status/'),
+        api.get(`/auth/settings/system-health/${refresh ? '?refresh=1' : ''}`),
+      ])
+      setGatewayStatus(gatewayRes.data)
+      setSystemHealth(systemRes.data)
+    } catch (err: any) {
+      setHealthError(err.response?.data?.error?.message || 'Unable to load health reports.')
+    } finally {
+      setLoadingHealth(false)
+    }
+  }
+
+  useEffect(() => { loadHealth() }, [])
+
+  const notificationStatus = gatewayStatus?.notifications || {}
+  const gatewayItems = [
+    {
+      icon: Smartphone,
+      label: 'SMS',
+      provider: notificationStatus.sms?.provider || 'termii',
+      configured: Boolean(notificationStatus.sms?.configured),
+      value: notificationStatus.sms?.configured ? 'Ready' : 'No key',
+      desc: 'TERMII_API_KEY from backend .env',
+    },
+    {
+      icon: MailIcon,
+      label: 'Email',
+      provider: notificationStatus.email?.provider || 'console',
+      configured: Boolean(notificationStatus.email?.configured),
+      value: notificationStatus.email?.configured ? 'Ready' : 'Console',
+      desc: 'Brevo or SMTP delivery route',
+    },
+    {
+      icon: Bell,
+      label: 'Push',
+      provider: 'FCM / Expo',
+      configured: Boolean(notificationStatus.fcm?.configured || notificationStatus.expo?.configured),
+      value: notificationStatus.fcm?.configured ? 'FCM' : (notificationStatus.expo?.configured ? 'Expo' : 'No key'),
+      desc: 'Mobile push notification provider',
+    },
+  ]
+  const configuredGatewayCount = gatewayItems.filter(item => item.configured).length
+  const gatewayHealthStatus: SystemHealthStatus = healthError && !gatewayStatus
+    ? 'unavailable'
+    : configuredGatewayCount === gatewayItems.length
+      ? 'operational'
+      : configuredGatewayCount > 0
+        ? 'degraded'
+        : 'unconfigured'
+  const overallStatus: SystemHealthStatus = loadingHealth
+    ? 'pending'
+    : (systemHealth?.overall?.status || (healthError ? 'unavailable' : 'unconfigured'))
+
   return (
-    <div style={{ width: '100%', maxWidth: 1600, margin: '0 auto' }}>
+    <div style={{ width: '100%', margin: 0 }}>
+      {healthError && <StatusBanner msg={healthError} type="error" />}
+
       <div className="gis-grid">
         {/* Gateway Health */}
-        <section style={{ ...panelStyle, gridColumn: 'span 8' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `1px solid ${T.border}`, paddingBottom: 16, marginBottom: 20 }}>
+        <section style={{ ...panelStyle, gridColumn: 'span 6' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, borderBottom: `1px solid ${T.border}`, paddingBottom: 16, marginBottom: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Signal size={18} color={T.accent} />
               <h3 style={{ fontSize: 16, fontWeight: 700, color: T.textPrimary }}>Gateway Health</h3>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: `${T.accent}1a`, border: `1px solid ${T.accent}4d`, padding: '4px 10px', borderRadius: 999 }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.accent }} />
-              <span style={{ fontSize: 11, fontWeight: 600, color: T.accent }}>All Systems Operational</span>
+            {loadingHealth && !gatewayStatus ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: T.textMuted, fontSize: 12 }}>
+                <Loader2 size={14} className="spin" /> Checking
+              </div>
+            ) : (
+              <HealthStatusPill status={gatewayHealthStatus} label={gatewayHealthStatus === 'operational' ? 'All Channels Ready' : undefined} />
+            )}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14 }}>
+            {gatewayItems.map(item => {
+              const Icon = item.icon
+              const tone = statusTone(item.configured ? 'operational' : 'unconfigured')
+              return (
+                <div key={item.label} style={{ background: T.bgCard, border: `1px solid ${T.borderLight}`, padding: 16, borderRadius: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
+                    <Icon size={22} color={tone.color} />
+                    <span style={{ fontSize: 10, fontWeight: 700, color: tone.color, textTransform: 'uppercase', textAlign: 'right' }}>{item.configured ? 'Configured' : 'Needs Setup'}</span>
+                  </div>
+                  <p style={{ fontSize: 23, fontWeight: 800, color: T.textPrimary, marginBottom: 4 }}>{item.value}</p>
+                  <p style={{ fontSize: 11, color: T.textSecondary, textTransform: 'capitalize', marginBottom: 8 }}>{item.label} via {item.provider}</p>
+                  <p style={{ fontSize: 10, color: T.textMuted, lineHeight: 1.4 }}>{item.desc}</p>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+
+        {/* System Health */}
+        <section style={{ ...panelStyle, gridColumn: 'span 6' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, borderBottom: `1px solid ${T.border}`, paddingBottom: 16, marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <Activity size={18} color={T.accent} />
+              <div style={{ minWidth: 0 }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: T.textPrimary, margin: 0 }}>System Health</h3>
+                <p style={{ fontSize: 11, color: T.textMuted, marginTop: 3 }}>
+                  {systemHealth?.generated_at ? `Last checked ${formatHealthDate(systemHealth.generated_at)}` : 'UptimeRobot and cron-job.org reports'}
+                </p>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              <HealthStatusPill status={overallStatus} label={loadingHealth ? 'Checking' : undefined} />
+              <button
+                type="button"
+                onClick={() => loadHealth(true)}
+                disabled={loadingHealth}
+                title="Refresh health report"
+                style={{ width: 30, height: 30, borderRadius: 0, border: `1px solid ${T.borderLight}`, background: T.bgCard, color: T.textPrimary, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: loadingHealth ? 'wait' : 'pointer', opacity: loadingHealth ? 0.65 : 1 }}
+              >
+                {loadingHealth ? <Loader2 size={14} className="spin" /> : <RefreshCw size={14} />}
+              </button>
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-            {[{icon: Smartphone, label: 'SMS', sub: 'Active (Twilio)', val: '99.8%', desc: 'Delivery Rate (24h)'},
-              {icon: MailIcon, label: 'Email', sub: 'Active (SendGrid)', val: '1.2s', desc: 'Avg Latency'},
-              {icon: Bell, label: 'Push', sub: 'Active (FCM)', val: '45k', desc: 'Sent Today'}].map(g => (
-              <div key={g.label} style={{ background: T.bgCard, border: `1px solid ${T.borderLight}`, padding: 16, borderRadius: 0, cursor: 'pointer' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <g.icon size={24} color={T.textSecondary} />
-                  <span style={{ fontSize: 10, fontWeight: 600, color: T.accent }}>{g.sub}</span>
-                </div>
-                <p style={{ fontSize: 24, fontWeight: 800, color: T.textPrimary, marginBottom: 4 }}>{g.val}</p>
-                <p style={{ fontSize: 11, color: T.textSecondary }}>{g.desc}</p>
-              </div>
-            ))}
+
+          {systemHealth?.overall?.status !== 'unconfigured' && systemHealth?.overall?.summary ? (
+            <p style={{ fontSize: 12, color: T.textSecondary, lineHeight: 1.5, margin: '0 0 16px' }}>
+              {systemHealth.overall.summary}
+            </p>
+          ) : null}
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
+            <HealthProviderCard title="UptimeRobot" provider={systemHealth?.uptime_robot} kind="uptime" icon={Cloud} />
+            <HealthProviderCard title="cron-job.org" provider={systemHealth?.cron_job_org} kind="cron" icon={Timer} />
           </div>
         </section>
 
         {/* Global Rules */}
-        <section style={{ ...panelStyle, gridColumn: 'span 4' }}>
+        <section style={{ ...panelStyle, gridColumn: 'span 12' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${T.border}`, paddingBottom: 16, marginBottom: 20 }}>
             <Settings size={18} color={T.textMuted} />
             <h3 style={{ fontSize: 16, fontWeight: 700, color: T.textPrimary }}>Global Rules</h3>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 12, background: T.bgCard, borderRadius: 0 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, padding: 12, background: T.bgCard, borderRadius: 0 }}>
               <div>
                 <p style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary }}>Quiet Hours</p>
                 <p style={{ fontSize: 11, color: T.textSecondary }}>Suppress non-critical alerts (10PM-6AM)</p>
               </div>
               <input type="checkbox" defaultChecked style={{ width: 40, height: 20 }} />
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 12, background: T.bgCard, borderRadius: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, padding: 12, background: T.bgCard, borderRadius: 0 }}>
               <div>
                 <p style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary }}>Failover Routing</p>
                 <p style={{ fontSize: 11, color: T.textSecondary }}>SMS fallback on Push failure</p>
               </div>
               <input type="checkbox" defaultChecked style={{ width: 40, height: 20 }} />
             </div>
-            <div style={{ marginTop: 'auto', paddingTop: 16 }}>
+            <div style={{ padding: 12, background: T.bgCard, borderRadius: 0 }}>
               <label style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, marginBottom: 8, display: 'block' }}>Broadcast Throttling Rate</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: T.bgCard, border: `1px solid ${T.borderLight}`, padding: 8, borderRadius: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${T.borderLight}`, padding: 8, borderRadius: 0, maxWidth: 180 }}>
                 <input type="number" defaultValue={1000}
                   style={{ background: 'transparent', border: 'none', color: T.textPrimary, fontSize: 14, width: 80, textAlign: 'center' }} />
                 <span style={{ fontSize: 12, color: T.textSecondary }}>msg/min</span>
@@ -1954,7 +2254,7 @@ function AccessReplica() {
     padding: 24, display: 'flex', flexDirection: 'column' as const,
   }
   return (
-    <div style={{ width: '100%', maxWidth: 1600, margin: '0 auto' }}>
+    <div style={{ width: '100%', margin: 0 }}>
       <div className="gis-grid">
         {/* Profile Rules */}
         <section style={{ ...panelStyle, gridColumn: 'span 8' }}>
@@ -2068,7 +2368,7 @@ function AccessReplica() {
 
 function AccountReplica() {
   return (
-    <div style={{ width: '100%', maxWidth: 1600, margin: '0 auto', height: '100%' }}>
+    <div style={{ width: '100%', margin: 0, height: '100%' }}>
       <div className="gis-grid" style={{ height: '100%' }}>
         <section className="scroll-col" style={{ gridColumn: 'span 4', background: T.bgPanel, border: `1px solid ${T.border}`, borderRadius: 0, padding: 24, paddingRight: 24 }}>
           <EmailChangeSectionReplica />

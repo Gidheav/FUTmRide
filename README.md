@@ -47,6 +47,17 @@ python -m pytest apps/accounts/tests.py apps/rides/tests.py apps/payments/tests.
 Copy `backend/.env` and fill in real values for production.
 Never commit `.env` files.
 
+System health in the campus admin notification settings reads these backend `.env` keys:
+
+```env
+UPTIMEROBOT_API_KEY=
+UPTIMEROBOT_MONITOR_IDS=
+CRON_JOB_ORG_API_KEY=
+CRON_JOB_ORG_JOB_IDS=
+SYSTEM_HEALTH_REQUEST_TIMEOUT_SECONDS=6
+SYSTEM_HEALTH_CACHE_SECONDS=60
+```
+
 ## Portals
 
 | Portal | URL | Description |

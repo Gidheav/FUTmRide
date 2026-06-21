@@ -11,6 +11,7 @@ POST /auth/token/refresh/
 POST /auth/otp/request/
 POST /auth/otp/verify/
 POST /auth/change-password/
+GET  /auth/settings/system-health/        [admin]
 
 ## Users
 GET/PATCH /users/me/
