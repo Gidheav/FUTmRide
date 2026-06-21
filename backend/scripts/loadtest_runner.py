@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 # -- Config --
-BASE_URL = 'https://futmride.onrender.com/api/v1'
+BASE_URL = 'https://lrride-server.onrender.com/api/v1'
 PASSWORD = 'LoadTest2026!'
 NUM_DRIVERS = 5
 NUM_STUDENTS = 15
@@ -381,7 +381,7 @@ async def main():
     print('=' * 60)
     print()
     print('  Open your Campus Admin dashboard to watch in real-time:')
-    print('  https://futmride.onrender.com/campus-admin/')
+    print('  https://lrride-server.onrender.com/campus-admin/')
     print()
 
     result = TestResult()

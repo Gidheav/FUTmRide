@@ -16,7 +16,7 @@ The Student Mobile Application comprises the following primary screens:
 
 | Screen | Description | Key UI Elements |
 |--------|-------------|-----------------|
-| **Splash / Onboarding** | Displayed on first launch; introduces the app to new users | FUT Minna branding, app name "FUTmRide", purple gradient theme (#5B2D8E), 'Get Started' button |
+| **Splash / Onboarding** | Displayed on first launch; introduces the app to new users | FUT Minna branding, app name "LRRIDE", purple gradient theme (#5B2D8E), 'Get Started' button |
 | **Login Screen** (`LoginScreen.tsx`) | JWT-based authentication with email and password | Email field, password field, login button, 'Register' link, role-aware routing |
 | **Dashboard / Live Map** (`DashboardScreen.tsx`) | Core screen displaying a full-screen interactive Google Map with campus locations | Google Map widget (React Native Maps), campus location markers for Bosso and Gidan Kwano, categorised location directory (Lecture Theatres, Labs, Admin Blocks), ride booking entry point |
 | **Book Ride** (`BookRidePage.tsx`) | Ride request creation interface with location and vehicle selection | Pickup/dropoff location selectors, vehicle type picker (Motorcycle, Tricycle, Sedan, SUV, Minivan), seat count, payment method selector (Wallet/Cash), fare estimate display, 'Book Ride' button |

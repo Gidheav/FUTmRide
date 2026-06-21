@@ -17,7 +17,7 @@ export const DEV_API_URL =
   process.env.EXPO_PUBLIC_API_URL || `${DEV_HOST}/api/v1`
 
 export const PROD_API_URL =
-  process.env.EXPO_PUBLIC_PROD_API_URL || 'https://futmride.onrender.com/api/v1'
+  process.env.EXPO_PUBLIC_PROD_API_URL || 'https://lrride-server.onrender.com/api/v1'
 
 export const API_BASE_URL = APP_ENV === 'production' ? PROD_API_URL : DEV_API_URL
 
@@ -38,7 +38,7 @@ const buildCallbackUrl = () => {
     const origin = new URL(API_BASE_URL).origin
     return `${origin}/student/wallet`
   } catch {
-    return 'https://futmride.onrender.com/student/wallet'
+    return 'https://lrride-server.onrender.com/student/wallet'
   }
 }
 

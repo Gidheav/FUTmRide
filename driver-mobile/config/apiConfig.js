@@ -44,7 +44,7 @@ export const DEV_API_URL = normalizeApiBaseUrl(
 )
 
 export const PROD_API_URL = normalizeApiBaseUrl(
-  process.env.EXPO_PUBLIC_PROD_API_URL || 'https://futmride.onrender.com/api/v1'
+  process.env.EXPO_PUBLIC_PROD_API_URL || 'https://lrride-server.onrender.com/api/v1'
 )
 
 export const API_BASE_URL = APP_ENV === 'production' ? PROD_API_URL : DEV_API_URL

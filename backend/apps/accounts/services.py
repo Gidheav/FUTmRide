@@ -74,22 +74,22 @@ class OTPService:
         expiry = settings.OTP_EXPIRY_MINUTES
         messages = {
             OTPVerification.Purpose.PHONE_VERIFICATION: (
-                f'Your FUTMINNA Ride verification code is {code}. Valid for {expiry} minutes. Do not share.'
+                f'Your LR Ride verification code is {code}. Valid for {expiry} minutes. Do not share.'
             ),
             OTPVerification.Purpose.LOGIN: (
-                f'Your FUTMINNA Ride login code is {code}. Valid for {expiry} minutes.'
+                f'Your LR Ride login code is {code}. Valid for {expiry} minutes.'
             ),
             OTPVerification.Purpose.PASSWORD_RESET: (
-                f'Your FUTMINNA Ride password reset code is {code}. Valid for {expiry} minutes. Ignore if unsolicited.'
+                f'Your LR Ride password reset code is {code}. Valid for {expiry} minutes. Ignore if unsolicited.'
             ),
             OTPVerification.Purpose.TRANSACTION_PIN: (
-                f'Your FUTMINNA Ride transaction code is {code}. Valid for {expiry} minutes.'
+                f'Your LR Ride transaction code is {code}. Valid for {expiry} minutes.'
             ),
             OTPVerification.Purpose.TWO_FACTOR: (
-                f'Your FUTMINNA Ride 2FA code is {code}. Valid for {expiry} minutes.'
+                f'Your LR Ride 2FA code is {code}. Valid for {expiry} minutes.'
             ),
         }
-        return messages.get(purpose, f'Your FUTMINNA Ride code is {code}.')
+        return messages.get(purpose, f'Your LR Ride code is {code}.')
 
     @staticmethod
     def verify(phone_number: str, code: str, purpose: str) -> tuple:
