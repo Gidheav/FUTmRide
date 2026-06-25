@@ -188,8 +188,14 @@ MEDIA_ROOT = BASE_DIR / "media"
 # Cloudinary Configuration
 CLOUDINARY_URL = env("CLOUDINARY_URL", default=None)
 if CLOUDINARY_URL:
-    DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
-    # django-cloudinary-storage automatically uses the CLOUDINARY_URL env variable
+    STORAGES = {
+        "default": {
+            "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+    }
 
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
