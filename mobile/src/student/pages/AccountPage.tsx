@@ -96,9 +96,7 @@ export default function StudentAccountPage({ onEditProfile, onOpenNotifications,
           Accept: 'application/json',
           'Content-Type': 'multipart/form-data',
         },
-        transformRequest: (data, headers) => {
-          return formData // Let Axios handle the FormData and boundary correctly
-        },
+        transformRequest: (data) => data,
       })
       setUserProfile(response.data)
       setUser(response.data)
