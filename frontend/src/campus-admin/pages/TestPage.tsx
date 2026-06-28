@@ -193,12 +193,6 @@ export default function TestPage() {
             <div style={{ fontSize: 10, color: T.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Test data lab</div>
             <h1 style={{ fontSize: 16, color: T.textPrimary, margin: 0, fontWeight: 700 }}>Bulk app testing</h1>
           </div>
-          <div style={{ width: 1, height: 24, background: T.border, margin: '0 4px' }} />
-          <div style={s.areaTabs}>
-            <button style={tabStyle(area === 'account')} onClick={() => setArea('account')}>Account</button>
-            <button style={tabStyle(area === 'rides')} onClick={() => setArea('rides')}>Rides</button>
-            <button style={tabStyle(area === 'map')} onClick={() => setArea('map')}>Map Data</button>
-          </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
