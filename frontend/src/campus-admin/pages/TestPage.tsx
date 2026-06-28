@@ -16,6 +16,7 @@ import {
   Map as MapIcon,
   Globe,
 } from 'lucide-react'
+import { GoogleMap, useJsApiLoader } from '@react-google-maps/api'
 import apiService from '../../services/api.service'
 import { T } from '../theme'
 import { campusPanel } from '../shared/campusPanelStyles'
@@ -71,6 +72,10 @@ const clampCount = (value: string) => {
 }
 
 export default function TestPage() {
+  const { isLoaded } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? '',
+  })
   const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const queryArea = searchParams.get('area')
@@ -184,33 +189,22 @@ export default function TestPage() {
   const busy = runAction.isPending
 
   return (
-    <div style={campusPanel.shell}>
+    <div style={{ ...campusPanel.shell, position: 'relative', overflow: 'hidden', padding: 0 }}>
       <style>{'@keyframes test-spin { to { transform: rotate(360deg); } }'}</style>
       
-      <div style={{ ...campusPanel.toolbar, justifyContent: 'space-between', flexWrap: 'nowrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div>
-            <div style={{ fontSize: 10, color: T.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Test data lab</div>
-            <h1 style={{ fontSize: 16, color: T.textPrimary, margin: 0, fontWeight: 700 }}>Bulk app testing</h1>
-          </div>
+      {isLoaded && (
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0 }}>
+          <GoogleMap
+            mapContainerStyle={{ width: '100%', height: '100%' }}
+            center={{ lat: 9.53, lng: 6.45 }}
+            zoom={15}
+            options={{ disableDefaultUI: true, mapId: '3fa6c5fb12b509bc' }}
+          />
         </div>
+      )}
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {summary && !summary.enabled && (
-            <div style={s.warning}>
-              <AlertTriangle size={14} />
-              <span>Test tools are disabled on this backend.</span>
-            </div>
-          )}
-          <button style={campusPanel.btnSecondary} onClick={() => summaryQuery.refetch()} disabled={summaryQuery.isFetching}>
-            {summaryQuery.isFetching ? <Loader2 size={13} style={s.spin} /> : <RefreshCcw size={13} />}
-            Refresh
-          </button>
-        </div>
-      </div>
-
-      <div style={{ ...campusPanel.scrollMain, ...campusPanel.thinScroll, padding: 16 }}>
-        <div style={s.contentGrid}>
+      <div style={{ ...campusPanel.scrollMain, ...campusPanel.thinScroll, padding: 16, position: 'relative', zIndex: 1, pointerEvents: 'none' }}>
+        <div style={{ ...s.contentGrid, pointerEvents: 'auto' }}>
           <div style={s.contentCol}>
             
             {area !== 'map' && (
