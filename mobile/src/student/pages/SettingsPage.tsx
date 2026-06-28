@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Switch, Platform } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
@@ -12,6 +12,7 @@ type SettingsPageProps = {
 export default function SettingsPage({ onClose }: SettingsPageProps) {
   const insets = useSafeAreaInsets()
   const { enabledCategories, toggleCategory } = useSettingsStore()
+  const [isCategoriesExpanded, setIsCategoriesExpanded] = useState(false)
 
   return (
     <View style={styles.page}>
@@ -30,12 +31,23 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
         <View style={styles.section}>
           <Text style={styles.sectionHeader}>MAP DISPLAY</Text>
           <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Quick Categories</Text>
-              <Text style={styles.cardSubtitle}>Choose which locations appear on your map dashboard.</Text>
-            </View>
+            <TouchableOpacity 
+              style={styles.cardHeader} 
+              activeOpacity={0.7}
+              onPress={() => setIsCategoriesExpanded(!isCategoriesExpanded)}
+            >
+              <View style={styles.cardHeaderContent}>
+                <Text style={styles.cardTitle}>Quick Categories</Text>
+                <Text style={styles.cardSubtitle}>Choose which locations appear on your map dashboard.</Text>
+              </View>
+              <MaterialIcons 
+                name={isCategoriesExpanded ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} 
+                size={24} 
+                color="#8e8e93" 
+              />
+            </TouchableOpacity>
 
-            {QUICK_ITEMS.map((item, index) => {
+            {isCategoriesExpanded && QUICK_ITEMS.map((item, index) => {
               const isEnabled = enabledCategories.includes(item.category)
               const isLast = index === QUICK_ITEMS.length - 1
               
@@ -58,35 +70,6 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
           </View>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionHeader}>ACCOUNT</Text>
-          <View style={styles.card}>
-            <TouchableOpacity style={[styles.row, styles.rowBorder, styles.actionRow]} activeOpacity={0.7}>
-              <View style={styles.rowIcon}>
-                <MaterialIcons name="notifications-none" size={22} color="#5e5e5e" />
-              </View>
-              <Text style={styles.rowLabel}>Notifications</Text>
-              <MaterialIcons name="chevron-right" size={22} color="#b0b0b0" />
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={[styles.row, styles.rowBorder, styles.actionRow]} activeOpacity={0.7}>
-              <View style={styles.rowIcon}>
-                <MaterialIcons name="lock-outline" size={22} color="#5e5e5e" />
-              </View>
-              <Text style={styles.rowLabel}>Privacy & Security</Text>
-              <MaterialIcons name="chevron-right" size={22} color="#b0b0b0" />
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={[styles.row, styles.actionRow]} activeOpacity={0.7}>
-              <View style={styles.rowIcon}>
-                <MaterialIcons name="help-outline" size={22} color="#5e5e5e" />
-              </View>
-              <Text style={styles.rowLabel}>Help & Support</Text>
-              <MaterialIcons name="chevron-right" size={22} color="#b0b0b0" />
-            </TouchableOpacity>
-          </View>
-        </View>
-        
         <Text style={styles.versionText}>LR-Ride v1.0.0 (Beta)</Text>
       </ScrollView>
     </View>
@@ -146,10 +129,17 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#f2f2f7',
     backgroundColor: '#fafafa',
+  },
+  cardHeaderContent: {
+    flex: 1,
+    paddingRight: 16,
   },
   cardTitle: {
     fontSize: 15,
@@ -168,9 +158,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     minHeight: 52,
-  },
-  actionRow: {
-    minHeight: 48,
   },
   rowBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
