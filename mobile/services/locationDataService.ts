@@ -204,10 +204,8 @@ const LocationDataService = {
 
       // ── Stage 2: VALIDATE ─────────────────────────────────────────────
       onStage?.('validate', 'running')
-      if (!Array.isArray(downloadRes.data) || downloadRes.data.length === 0) {
-        const detail = !Array.isArray(downloadRes.data)
-          ? `Expected JSON array, got ${typeof downloadRes.data}`
-          : 'Server returned 0 locations'
+      if (!Array.isArray(downloadRes.data)) {
+        const detail = `Expected JSON array, got ${typeof downloadRes.data}`
         onStage?.('validate', 'error', detail)
         return { success: false, error: `Validation failed: ${detail}` }
       }
