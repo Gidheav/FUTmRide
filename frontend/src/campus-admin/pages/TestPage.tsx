@@ -213,14 +213,16 @@ export default function TestPage() {
         <div style={s.contentGrid}>
           <div style={s.contentCol}>
             
-            <div style={s.stats}>
-              <Stat label="Campus" value={summary?.campus || 'Unavailable'} />
-              <Stat label="Students" value={summary?.counts.students ?? 0} />
-              <Stat label="Drivers" value={summary?.counts.drivers ?? 0} />
-              <Stat label="Admins" value={summary?.counts.admins ?? 0} />
-              <Stat label="Schedules" value={summary?.counts.scheduled_rides ?? 0} />
-              <Stat label="On-Demand" value={summary?.counts.ondemand_rides ?? 0} />
-            </div>
+            {area !== 'map' && (
+              <div style={s.stats}>
+                <Stat label="Campus" value={summary?.campus || 'Unavailable'} />
+                <Stat label="Students" value={summary?.counts.students ?? 0} />
+                <Stat label="Drivers" value={summary?.counts.drivers ?? 0} />
+                <Stat label="Admins" value={summary?.counts.admins ?? 0} />
+                <Stat label="Schedules" value={summary?.counts.scheduled_rides ?? 0} />
+                <Stat label="On-Demand" value={summary?.counts.ondemand_rides ?? 0} />
+              </div>
+            )}
 
             <div style={campusPanel.card}>
               {area === 'map' ? (
