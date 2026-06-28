@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, useCallback, type CSSProperties, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import {
@@ -16,7 +16,7 @@ import {
   Map as MapIcon,
   Globe,
 } from 'lucide-react'
-import { GoogleMap, useJsApiLoader } from '@react-google-maps/api'
+import { GoogleMap, useJsApiLoader, Marker, MapMouseEvent } from '@react-google-maps/api'
 import apiService from '../../services/api.service'
 import { T } from '../theme'
 import { campusPanel } from '../shared/campusPanelStyles'
@@ -73,6 +73,17 @@ const clampCount = (value: string) => {
 
 const GMAP_LIBS: ('drawing' | 'geometry' | 'places')[] = ['drawing', 'geometry', 'places']
 
+// Haversine distance in metres between two lat/lng points
+const haversineM = (a: {lat:number,lng:number}, b: {lat:number,lng:number}) => {
+  const R = 6371000
+  const dLat = (b.lat - a.lat) * Math.PI / 180
+  const dLng = (b.lng - a.lng) * Math.PI / 180
+  const sinDLat = Math.sin(dLat / 2)
+  const sinDLng = Math.sin(dLng / 2)
+  const aVal = sinDLat * sinDLat + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * sinDLng * sinDLng
+  return R * 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal))
+}
+
 export default function TestPage() {
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
@@ -99,6 +110,25 @@ export default function TestPage() {
   const [result, setResult] = useState<ResultState | null>(null)
   const [jsonInput, setJsonInput] = useState('')
   const [mapEditorBanner, setMapEditorBanner] = useState(false)
+  
+  const [sidebarTab, setSidebarTab] = useState<'builder' | 'locations' | 'console'>('builder')
+  const [editorLocations, setEditorLocations] = useState<any[]>([])
+  const [draftLocation, setDraftLocation] = useState<{lat: number, lng: number, name: string, category: string, id: string} | null>(null)
+
+  const handleMapClick = useCallback((e: MapMouseEvent) => {
+    if (!e.latLng || sidebarTab !== 'builder') return
+    const lat = e.latLng.lat()
+    const lng = e.latLng.lng()
+    const newPoint = { lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) }
+    
+    // 5 m dedup: skip if any existing location is within 5 metres
+    const tooClose = editorLocations.some(loc => haversineM(newPoint, { lat: loc.lat, lng: loc.lng }) <= 5)
+    if (tooClose) return
+    
+    const idStr = `loc_${Math.random().toString(36).substring(2, 8)}`
+    setEditorLocations(prev => [...prev, { ...newPoint, name: '', category: 'gate', id: idStr }])
+    setDraftLocation({ ...newPoint, name: '', category: 'gate', id: idStr })
+  }, [sidebarTab, editorLocations])
   const [labError, setLabError] = useState<string | null>(null)
   const [labSuccess, setLabSuccess] = useState<string | null>(null)
   const [isImporting, setIsImporting] = useState(false)
@@ -202,7 +232,37 @@ export default function TestPage() {
             center={{ lat: 9.53, lng: 6.45 }}
             zoom={15}
             options={{ disableDefaultUI: true, mapId: '3fa6c5fb12b509bc' }}
-          />
+            onClick={handleMapClick}
+          >
+            {editorLocations.map((loc, idx) => (
+              <Marker
+                key={loc.id || idx}
+                position={{ lat: loc.lat, lng: loc.lng }}
+                icon={{
+                  path: window.google?.maps?.SymbolPath?.CIRCLE,
+                  scale: 6,
+                  fillColor: '#8b5cf6',
+                  fillOpacity: 0.9,
+                  strokeWeight: 2,
+                  strokeColor: '#fff',
+                }}
+              />
+            ))}
+            {draftLocation && (
+              <Marker
+                position={{ lat: draftLocation.lat, lng: draftLocation.lng }}
+                icon={{
+                  path: window.google?.maps?.SymbolPath?.CIRCLE,
+                  scale: 8,
+                  fillColor: '#eab308',
+                  fillOpacity: 1,
+                  strokeWeight: 2,
+                  strokeColor: '#000',
+                }}
+                zIndex={100}
+              />
+            )}
+          </GoogleMap>
         </div>
       )}
 
@@ -224,168 +284,300 @@ export default function TestPage() {
             <div style={campusPanel.card}>
               {area === 'map' ? (
                 <>
-                  <div style={s.subTabs}>
-                    <button style={subTabStyle(section === 'manage')} onClick={() => switchSection('manage')}>Locations</button>
-                  </div>
-                  <div style={campusPanel.cardBody}>
-                    <PanelTitle icon={<Globe size={16} />} title="Publish Location Data" />
-                    <p style={{ fontSize: 13, color: T.textSecondary, marginBottom: 16, marginTop: 0 }}>
-                      Publish a new optimized snapshot of all currently imported campus locations. The mobile app detects and downloads this update automatically.
-                    </p>
-                    <div style={s.buttonRow}>
-                      <button
-                        style={campusPanel.btnPrimary}
-                        onClick={() => runAction.mutate('publishLocations')}
-                        disabled={busy}
-                      >
-                        {busy ? <Loader2 size={13} style={s.spin} /> : <UploadCloud size={13} />}
-                        Publish New Snapshot
-                      </button>
-                    </div>
+              <div style={s.subTabs}>
+                <button style={subTabStyle(sidebarTab === 'builder')} onClick={() => setSidebarTab('builder')}>Builder</button>
+                <button style={subTabStyle(sidebarTab === 'locations')} onClick={() => setSidebarTab('locations')}>Locations</button>
+                <button style={subTabStyle(sidebarTab === 'console')} onClick={() => setSidebarTab('console')}>Console</button>
+              </div>
 
-                    <div style={{ marginTop: 32, paddingTop: 24, borderTop: `1px solid ${T.border}` }}>
-                      <PanelTitle icon={<MapIcon size={16} />} title="Bulk Import Locations" />
-                      <p style={{ fontSize: 13, color: T.textSecondary, marginBottom: 12, marginTop: 0 }}>
-                        Paste or review a JSON array of locations to seed/update the database, then publish when ready.
-                        Each entry requires: <code style={{ background: T.bgCard, padding: '1px 5px', borderRadius: 3, fontSize: 11 }}>id, name, latitude, longitude, category</code>.
-                      </p>
+              {sidebarTab === 'builder' && (
+                <div style={{ flex: 1, padding: 16 }}>
+                  <PanelTitle icon={<MapPin size={16} />} title="Location Builder" />
+                  <p style={{ fontSize: 13, color: T.textSecondary, marginBottom: 12, marginTop: 0 }}>
+                    Click the map to place pins. Pins within 5m of each other are deduplicated. When finished, you can copy the JSON to import.
+                  </p>
+                  
+                  {draftLocation && (
+                    <div style={{ background: T.bgInput, border: `1px solid ${T.accent}44`, borderRadius: 6, padding: 12, marginBottom: 14 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 10, color: T.accent, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <MapPin size={12} /> Editing last pin
+                      </div>
 
-                      {/* Banner: data came from Map Editor */}
-                      {mapEditorBanner && (
-                        <div style={{ background: `${T.accent}18`, border: `1px solid ${T.accent}55`, borderRadius: 6, padding: '8px 12px', fontSize: 12, color: T.accent, marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
-                          <MapIcon size={14} style={{ flexShrink: 0 }} />
-                          <span>
-                            <strong>Loaded from Map Editor</strong> — Review the pinned locations below, then <strong>Import</strong> followed by <strong>Publish</strong>.
-                          </span>
-                          <button
-                            style={{ marginLeft: 'auto', background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', fontSize: 14, padding: 0 }}
-                            onClick={() => setMapEditorBanner(false)}
-                          >✕</button>
-                        </div>
-                      )}
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ fontSize: 10, color: T.textMuted, marginBottom: 3 }}>NAME *</div>
+                        <input
+                          autoFocus
+                          style={{ ...s.input, padding: '5px 8px' }}
+                          value={draftLocation.name}
+                          onChange={e => {
+                            const updated = { ...draftLocation, name: e.target.value }
+                            setDraftLocation(updated)
+                            setEditorLocations(prev => prev.map(l => l.id === draftLocation.id ? { ...l, name: e.target.value } : l))
+                          }}
+                          placeholder="e.g. Main Gate"
+                        />
+                      </div>
 
-                      {/* Error / success inline banners */}
-                      {labError && (
-                        <div style={{ background: '#7f1d1d22', border: `1px solid #ef4444`, borderRadius: 6, padding: '8px 12px', fontSize: 12, color: '#ef4444', marginBottom: 12, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                          <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
-                          <div style={{ flex: 1, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{labError}</div>
-                          <button style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 14, padding: 0, marginLeft: 8 }} onClick={() => setLabError(null)}>✕</button>
-                        </div>
-                      )}
-                      {labSuccess && (
-                        <div style={{ background: '#14532d22', border: `1px solid #22c55e`, borderRadius: 6, padding: '8px 12px', fontSize: 12, color: '#22c55e', marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
-                          <CheckCircle2 size={14} style={{ flexShrink: 0 }} />
-                          <span style={{ flex: 1 }}>{labSuccess}</span>
-                          <button style={{ background: 'none', border: 'none', color: '#22c55e', cursor: 'pointer', fontSize: 14, padding: 0 }} onClick={() => setLabSuccess(null)}>✕</button>
-                        </div>
-                      )}
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ fontSize: 10, color: T.textMuted, marginBottom: 3 }}>ID</div>
+                        <input
+                          style={{ ...s.input, padding: '5px 8px' }}
+                          value={draftLocation.id}
+                          onChange={e => {
+                            const updated = { ...draftLocation, id: e.target.value }
+                            setDraftLocation(updated)
+                            setEditorLocations(prev => prev.map(l => l.id === draftLocation.id ? { ...l, id: e.target.value } : l))
+                          }}
+                          placeholder="e.g. loc_main_gate"
+                        />
+                      </div>
 
-                      <textarea
-                        style={{ ...s.input, minHeight: 220, resize: 'vertical', fontFamily: '"JetBrains Mono", "Fira Code", monospace', fontSize: 11 }}
-                        placeholder='[{"id": "loc_1", "name": "Main Gate", "latitude": 9.53, "longitude": 6.45, "category": "gate"}]'
-                        value={jsonInput}
-                        onChange={(e) => { setJsonInput(e.target.value); setLabError(null); setLabSuccess(null) }}
-                      />
-
-                      {/* Live parse indicator */}
-                      {jsonInput.trim() && (() => {
-                        try {
-                          const arr = JSON.parse(jsonInput)
-                          if (!Array.isArray(arr)) return <div style={{ fontSize: 11, color: '#f97316', marginTop: 6 }}>⚠ JSON must be an array (got {typeof arr})</div>
-                          return <div style={{ fontSize: 11, color: '#22c55e', marginTop: 6 }}>✓ Valid JSON — {arr.length} location(s) ready to import</div>
-                        } catch (e: any) {
-                          return <div style={{ fontSize: 11, color: '#ef4444', marginTop: 6 }}>✗ Parse error: {e.message}</div>
-                        }
-                      })()}
-
-                      <div style={{ ...s.buttonRow, marginTop: 12, gap: 8 }}>
-                        <button
-                          style={{ ...campusPanel.btnSecondary, color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.3)' }}
-                          disabled={isImporting || isPublishing}
-                          onClick={async () => {
-                            if (!window.confirm("Are you sure you want to completely wipe the locations database? This will clear all existing locations so you can start fresh.")) return;
-                            setLabError(null)
-                            setLabSuccess(null)
-                            setIsImporting(true)
-                            try {
-                              const res = await apiService.wipeLocations()
-                              setHasUnpublishedChanges(false)
-                              setLabSuccess(`✓ Wiped ${res?.count ?? '?'} location(s). Database is now empty.`)
-                            } catch (e: any) {
-                              setLabError(`Wipe failed: ${e.message}`)
-                            } finally {
-                              setIsImporting(false)
-                            }
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ fontSize: 10, color: T.textMuted, marginBottom: 3 }}>CATEGORY</div>
+                        <select
+                          style={{ ...s.input, padding: '5px 8px' }}
+                          value={draftLocation.category}
+                          onChange={e => {
+                            const updated = { ...draftLocation, category: e.target.value }
+                            setDraftLocation(updated)
+                            setEditorLocations(prev => prev.map(l => l.id === draftLocation.id ? { ...l, category: e.target.value } : l))
                           }}
                         >
-                          <Trash2 size={13} /> Wipe DB
-                        </button>
+                          <option value="lecture">Lecture Theatre</option>
+                          <option value="hostel">Hostel</option>
+                          <option value="gate">Gate</option>
+                          <option value="library">Library</option>
+                          <option value="blocks">Admin / General Block</option>
+                          <option value="medical">Medical Centre</option>
+                          <option value="sports">Sports Facility</option>
+                          <option value="ict">ICT Centre</option>
+                          <option value="canteen">Canteen / Cafeteria</option>
+                          <option value="mosque">Mosque</option>
+                          <option value="laboratory">Laboratory</option>
+                        </select>
+                      </div>
 
+                      <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
                         <button
-                          style={campusPanel.btnSecondary}
-                          disabled={isImporting || !jsonInput.trim()}
-                          onClick={async () => {
-                            setLabError(null)
-                            setLabSuccess(null)
-                            let data: unknown[]
-                            try { data = JSON.parse(jsonInput) } catch (e: any) { setLabError(`JSON parse error: ${e.message}`); return }
-                            if (!Array.isArray(data)) { setLabError('The JSON must be an array of location objects.'); return }
-                            setIsImporting(true)
-                            try {
-                              const res = await apiService.importLocations(data)
-                              setHasUnpublishedChanges(true)
-                              
-                              const inactiveCount = data.filter((d: any) => d.is_active === false).length
-                              const msg = inactiveCount > 0 
-                                ? `✓ Imported ${res?.created ?? '?'} new, ${res?.updated ?? '?'} updated. (Note: ${inactiveCount} are marked is_active:false and won't publish)`
-                                : `✓ Imported ${res?.created ?? '?'} new, ${res?.updated ?? '?'} updated. You can now Publish.`
-                                
-                              setLabSuccess(msg)
-                            } catch (e: any) {
-                              const errData = e?.response?.data
-                              let msg = errData?.detail || errData?.error || errData?.message
-                              if (!msg && errData && typeof errData === 'object') {
-                                msg = Object.entries(errData).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' | ')
-                              }
-                              setLabError(`Import failed: ${msg || e.message || 'Unknown error'}`)
-                            } finally {
-                              setIsImporting(false)
-                            }
-                          }}
-                        >
-                          {isImporting ? <Loader2 size={13} style={s.spin} /> : <CheckCircle2 size={13} />}
-                          {isImporting ? 'Importing…' : 'Import JSON'}
-                        </button>
-
+                          style={{ ...campusPanel.btnPrimary, flex: 1, padding: '6px 0', fontSize: 11 }}
+                          onClick={() => setDraftLocation(null)}
+                        >Done</button>
                         <button
-                          style={hasUnpublishedChanges ? campusPanel.btnPrimary : { ...campusPanel.btnPrimary, opacity: 0.5 }}
-                          disabled={isPublishing || !hasUnpublishedChanges}
-                          onClick={async () => {
-                            setLabError(null)
-                            setLabSuccess(null)
-                            setIsPublishing(true)
-                            try {
-                              const res = await apiService.publishLocations()
-                              setHasUnpublishedChanges(false)
-                              setLabSuccess(`✓ Published snapshot v${res?.version ?? '?'} — ${res?.count ?? '?'} active location(s) live for mobile clients.`)
-                            } catch (e: any) {
-                              const errData = e?.response?.data
-                              let msg = errData?.detail || errData?.error || errData?.message
-                              if (!msg && errData && typeof errData === 'object') {
-                                msg = Object.entries(errData).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' | ')
-                              }
-                              setLabError(`Publish failed: ${msg || e.message || 'Unknown error'}`)
-                            } finally {
-                              setIsPublishing(false)
-                            }
+                          style={s.dangerButton}
+                          onClick={() => {
+                            setEditorLocations(prev => prev.filter(l => l.id !== draftLocation.id))
+                            setDraftLocation(null)
                           }}
-                        >
-                          {isPublishing ? <Loader2 size={13} style={s.spin} /> : <UploadCloud size={13} />}
-                          {isPublishing ? 'Publishing…' : 'Publish Snapshot'}
-                        </button>
+                        ><Trash2 size={12} /></button>
                       </div>
                     </div>
+                  )}
+
+                  <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 8, color: T.textPrimary, display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Pinned ({editorLocations.length})</span>
                   </div>
+                  {editorLocations.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '24px 10px', color: T.textMuted, border: `2px dashed ${T.border}`, borderRadius: 6 }}>
+                      <MapPin size={22} style={{ margin: '0 auto 8px', display: 'block', opacity: 0.4 }} />
+                      No pins yet.<br/>Click the map to start building locations.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {editorLocations.slice().reverse().map((loc, idx) => (
+                        <div key={loc.id || idx} style={{ display: 'flex', alignItems: 'center', gap: 8, background: T.bgInput, padding: '6px 10px', borderRadius: 4, border: `1px solid ${T.border}` }}>
+                          <MapPin size={14} color={T.accent} style={{ flexShrink: 0 }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: T.textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{loc.name || 'Unnamed'}</div>
+                            <div style={{ fontSize: 9, color: T.textMuted }}>{loc.category} &bull; {loc.lat}, {loc.lng}</div>
+                          </div>
+                          <button
+                            style={{ background: 'transparent', border: 'none', color: T.error, padding: 4, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                            onClick={() => {
+                              setEditorLocations(prev => prev.filter(l => l.id !== loc.id))
+                              if (draftLocation?.id === loc.id) setDraftLocation(null)
+                            }}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {editorLocations.length > 0 && (
+                    <div style={{ marginTop: 16 }}>
+                      <button 
+                        style={{ ...campusPanel.btnSecondary, width: '100%' }}
+                        onClick={() => {
+                          setJsonInput(JSON.stringify(editorLocations, null, 2))
+                          setSidebarTab('locations')
+                        }}
+                      >
+                        Copy {editorLocations.length} pins to JSON Importer
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {sidebarTab === 'locations' && (
+                <div style={campusPanel.cardBody}>
+                  <PanelTitle icon={<Globe size={16} />} title="Publish Location Data" />
+                  <p style={{ fontSize: 13, color: T.textSecondary, marginBottom: 16, marginTop: 0 }}>
+                    Publish a new optimized snapshot of all currently imported campus locations. The mobile app detects and downloads this update automatically.
+                  </p>
+                  <div style={s.buttonRow}>
+                    <button
+                      style={campusPanel.btnPrimary}
+                      onClick={() => runAction.mutate('publishLocations')}
+                      disabled={busy}
+                    >
+                      {busy ? <Loader2 size={13} style={s.spin} /> : <UploadCloud size={13} />}
+                      Publish New Snapshot
+                    </button>
+                  </div>
+
+                  <div style={{ marginTop: 32, paddingTop: 24, borderTop: `1px solid ${T.border}` }}>
+                    <PanelTitle icon={<MapIcon size={16} />} title="Bulk Import Locations" />
+                    <p style={{ fontSize: 13, color: T.textSecondary, marginBottom: 12, marginTop: 0 }}>
+                      Paste or review a JSON array of locations to seed/update the database, then publish when ready.
+                    </p>
+
+                    {/* Error / success inline banners */}
+                    {labError && (
+                      <div style={{ background: '#7f1d1d22', border: `1px solid #ef4444`, borderRadius: 6, padding: '8px 12px', fontSize: 12, color: '#ef4444', marginBottom: 12, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                        <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+                        <div style={{ flex: 1, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{labError}</div>
+                        <button style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 14, padding: 0, marginLeft: 8 }} onClick={() => setLabError(null)}>✕</button>
+                      </div>
+                    )}
+                    {labSuccess && (
+                      <div style={{ background: '#14532d22', border: `1px solid #22c55e`, borderRadius: 6, padding: '8px 12px', fontSize: 12, color: '#22c55e', marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <CheckCircle2 size={14} style={{ flexShrink: 0 }} />
+                        <span style={{ flex: 1 }}>{labSuccess}</span>
+                        <button style={{ background: 'none', border: 'none', color: '#22c55e', cursor: 'pointer', fontSize: 14, padding: 0 }} onClick={() => setLabSuccess(null)}>✕</button>
+                      </div>
+                    )}
+
+                    <textarea
+                      style={{ ...s.input, minHeight: 220, resize: 'vertical', fontFamily: '"JetBrains Mono", "Fira Code", monospace', fontSize: 11 }}
+                      placeholder='[{"id": "loc_1", "name": "Main Gate", "latitude": 9.53, "longitude": 6.45, "category": "gate"}]'
+                      value={jsonInput}
+                      onChange={(e) => { setJsonInput(e.target.value); setLabError(null); setLabSuccess(null) }}
+                    />
+
+                    {/* Live parse indicator */}
+                    {jsonInput.trim() && (() => {
+                      try {
+                        const arr = JSON.parse(jsonInput)
+                        if (!Array.isArray(arr)) return <div style={{ fontSize: 11, color: '#f97316', marginTop: 6 }}>⚠ JSON must be an array (got {typeof arr})</div>
+                        return <div style={{ fontSize: 11, color: '#22c55e', marginTop: 6 }}>✓ Valid JSON — {arr.length} location(s) ready to import</div>
+                      } catch (e: any) {
+                        return <div style={{ fontSize: 11, color: '#ef4444', marginTop: 6 }}>✗ Parse error: {e.message}</div>
+                      }
+                    })()}
+
+                    <div style={{ ...s.buttonRow, marginTop: 12, gap: 8 }}>
+                      <button
+                        style={{ ...campusPanel.btnSecondary, color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.3)' }}
+                        disabled={isImporting || isPublishing}
+                        onClick={async () => {
+                          if (!window.confirm("Are you sure you want to completely wipe the locations database? This will clear all existing locations so you can start fresh.")) return;
+                          setLabError(null)
+                          setLabSuccess(null)
+                          setIsImporting(true)
+                          try {
+                            const res = await apiService.wipeLocations()
+                            setHasUnpublishedChanges(false)
+                            setLabSuccess(`✓ Wiped ${res?.count ?? '?'} location(s). Database is now empty.`)
+                          } catch (e: any) {
+                            setLabError(`Wipe failed: ${e.message}`)
+                          } finally {
+                            setIsImporting(false)
+                          }
+                        }}
+                      >
+                        <Trash2 size={13} /> Wipe DB
+                      </button>
+
+                      <button
+                        style={campusPanel.btnSecondary}
+                        disabled={isImporting || !jsonInput.trim()}
+                        onClick={async () => {
+                          setLabError(null)
+                          setLabSuccess(null)
+                          let data: unknown[]
+                          try { data = JSON.parse(jsonInput) } catch (e: any) { setLabError(`JSON parse error: ${e.message}`); return }
+                          if (!Array.isArray(data)) { setLabError('The JSON must be an array of location objects.'); return }
+                          setIsImporting(true)
+                          try {
+                            const res = await apiService.importLocations(data)
+                            setHasUnpublishedChanges(true)
+                            
+                            const inactiveCount = data.filter((d: any) => d.is_active === false).length
+                            const msg = inactiveCount > 0 
+                              ? `✓ Imported ${res?.created ?? '?'} new, ${res?.updated ?? '?'} updated. (Note: ${inactiveCount} are marked is_active:false and won't publish)`
+                              : `✓ Imported ${res?.created ?? '?'} new, ${res?.updated ?? '?'} updated. You can now Publish.`
+                              
+                            setLabSuccess(msg)
+                          } catch (e: any) {
+                            const errData = e?.response?.data
+                            let msg = errData?.detail || errData?.error || errData?.message
+                            if (!msg && errData && typeof errData === 'object') {
+                              msg = Object.entries(errData).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' | ')
+                            }
+                            setLabError(`Import failed: ${msg || e.message || 'Unknown error'}`)
+                          } finally {
+                            setIsImporting(false)
+                          }
+                        }}
+                      >
+                        {isImporting ? <Loader2 size={13} style={s.spin} /> : <CheckCircle2 size={13} />}
+                        {isImporting ? 'Importing…' : 'Import JSON'}
+                      </button>
+
+                      <button
+                        style={hasUnpublishedChanges ? campusPanel.btnPrimary : { ...campusPanel.btnPrimary, opacity: 0.5 }}
+                        disabled={isPublishing || !hasUnpublishedChanges}
+                        onClick={async () => {
+                          setLabError(null)
+                          setLabSuccess(null)
+                          setIsPublishing(true)
+                          try {
+                            const res = await apiService.publishLocations()
+                            setHasUnpublishedChanges(false)
+                            setLabSuccess(`✓ Published snapshot v${res?.version ?? '?'} — ${res?.count ?? '?'} active location(s) live for mobile clients.`)
+                          } catch (e: any) {
+                            const errData = e?.response?.data
+                            let msg = errData?.detail || errData?.error || errData?.message
+                            if (!msg && errData && typeof errData === 'object') {
+                              msg = Object.entries(errData).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' | ')
+                            }
+                            setLabError(`Publish failed: ${msg || e.message || 'Unknown error'}`)
+                          } finally {
+                            setIsPublishing(false)
+                          }
+                        }}
+                      >
+                        {isPublishing ? <Loader2 size={13} style={s.spin} /> : <UploadCloud size={13} />}
+                        {isPublishing ? 'Publishing…' : 'Publish Snapshot'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {sidebarTab === 'console' && (
+                <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                  <div style={s.consoleHeader}>
+                    <span style={campusPanel.cardTitle}>{result?.title || 'Console Output'}</span>
+                    {result?.isError && <AlertTriangle size={15} color={T.error} />}
+                  </div>
+                  <div style={{ padding: 12, background: T.bgInput, flex: 1 }}>
+                    <pre style={s.pre}>{result ? JSON.stringify(result.payload, null, 2) : 'Run an action to see response details.'}</pre>
+                  </div>
+                </div>
+              )}
                 </>
               ) : area === 'account' ? (
                 <>
@@ -589,15 +781,6 @@ export default function TestPage() {
           </div>
 
           <aside style={s.sidebar}>
-            <div style={campusPanel.card}>
-              <div style={s.consoleHeader}>
-                <span style={campusPanel.cardTitle}>{result?.title || 'Console Output'}</span>
-                {result?.isError && <AlertTriangle size={15} color={T.error} />}
-              </div>
-              <div style={{ padding: 12, background: T.bgInput }}>
-                <pre style={s.pre}>{result ? JSON.stringify(result.payload, null, 2) : 'Run an action to see response details.'}</pre>
-              </div>
-            </div>
           </aside>
         </div>
       </div>
