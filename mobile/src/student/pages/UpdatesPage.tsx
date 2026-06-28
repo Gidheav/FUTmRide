@@ -66,9 +66,13 @@ export default function UpdatesPage() {
       if (result.success) {
         animateTo(100)
         setStatus('updated')
+        // Update localVersion in UI to reflect what's now on device
         setVersionInfo((prev) => prev ? { ...prev, localVersion: result.version ?? check.serverVersion } : prev)
-        setMessage(`Updated to v${result.version ?? check.serverVersion} \u2014 ${result.locationCount ?? check.locationCount} locations loaded`)
+        setMessage(
+          `Updated to v${result.version ?? check.serverVersion} — ${result.locationCount ?? check.locationCount} location(s) now on device`
+        )
       } else {
+        // Download failed — version on device is still the old one
         setStatus('error')
         animateTo(0)
         setMessage(result.error ?? 'Download failed. Please try again.')

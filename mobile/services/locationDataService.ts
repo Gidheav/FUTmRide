@@ -20,7 +20,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as Crypto from 'expo-crypto'
-import * as FileSystem from 'expo-file-system'
+import * as FileSystem from 'expo-file-system/legacy'
 import { useEffect, useState } from 'react'
 
 import api from './api'
@@ -128,6 +128,7 @@ const LocationDataService = {
 
     const response = await api.get<MetaResponse>(META_ENDPOINT, {
       timeout: 8000,
+      params: { ts: Date.now() },
     })
     const { version: serverVersion, checksum, location_count, published_at } = response.data
 
@@ -154,7 +155,10 @@ const LocationDataService = {
   ): Promise<DownloadResult> {
     try {
       // Step 1: get meta to know expected checksum and version
-      const metaRes = await api.get<MetaResponse>(META_ENDPOINT, { timeout: 8000 })
+      const metaRes = await api.get<MetaResponse>(META_ENDPOINT, { 
+        timeout: 8000,
+        params: { ts: Date.now() },
+      })
       const { version, checksum: expectedChecksum } = metaRes.data
 
       if (version === 0) {
@@ -169,6 +173,7 @@ const LocationDataService = {
       const downloadRes = await api.get<CampusLocation[]>(DOWNLOAD_ENDPOINT, {
         timeout: 30000,
         responseType: 'json',
+        params: { ts: Date.now() },
       })
       onProgress?.(0.6)
 
@@ -211,7 +216,7 @@ const LocationDataService = {
 
       // Step 6: write to private document directory
       await FileSystem.writeAsStringAsync(LOCATIONS_FILE_PATH, jsonString, {
-        encoding: FileSystem.EncodingType.UTF8,
+        encoding: 'utf8' as any,
       })
       onProgress?.(0.9)
 
@@ -245,7 +250,7 @@ async function _loadLocalFile(): Promise<void> {
     }
 
     const raw = await FileSystem.readAsStringAsync(LOCATIONS_FILE_PATH, {
-      encoding: FileSystem.EncodingType.UTF8,
+      encoding: 'utf8' as any,
     })
     const parsed = JSON.parse(raw)
     if (Array.isArray(parsed) && parsed.length > 0) {
@@ -276,7 +281,11 @@ async function _silentBackgroundUpdate(): Promise<void> {
 
 /**
  * useLocations() — returns the current location array from memory.
- * Updates automatically when a background download completes.
+ * - On mount: immediately returns whatever is in cache (fast, sync).
+ * - After mount: re-reads from disk once (catches updates that happened
+ *   while this component was unmounted, e.g. user downloaded on Updates page).
+ * - Subscribes to live cache updates — auto-updates whenever a background
+ *   or foreground download completes.
  */
 export function useLocations(): CampusLocation[] {
   const [locations, setLocations] = useState<CampusLocation[]>(
@@ -284,9 +293,14 @@ export function useLocations(): CampusLocation[] {
   )
 
   useEffect(() => {
-    // Subscribe to cache updates (fires when a download completes)
+    // Subscribe to future cache updates (fires when any download completes)
     const update = () => setLocations([...LocationDataService.getLocations()])
     _listeners.push(update)
+
+    // Also eagerly re-read from disk in case a download finished while
+    // this component was unmounted (e.g. user was on the Updates tab)
+    _loadLocalFile()
+
     return () => {
       _listeners = _listeners.filter((fn) => fn !== update)
     }

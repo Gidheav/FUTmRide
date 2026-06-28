@@ -50,18 +50,20 @@ class LocationDownloadView(APIView):
     GET /api/v1/locations/download/
 
     Requires valid JWT (student or any authenticated role).
-    Serves the current snapshot's gzipped JSON bytes directly.
+    Serves the current snapshot's location data.
 
-    Supports ETag / If-None-Match for efficient caching:
-    - Client sends  If-None-Match: "abc123..."
-    - If checksum matches → 304 Not Modified (no body, saves bandwidth)
+    - If the client sends Accept-Encoding: gzip  → serves raw gzip bytes
+      (browser / curl / CDN edge — fast bandwidth-efficient path)
+    - Otherwise → decompresses on the server and serves plain JSON
+      (React Native / mobile axios — cannot auto-decompress gzip)
 
-    Response headers tell the client (and any CDN) the version and checksum
-    so the app can verify integrity without an extra /meta/ round-trip.
+    Supports ETag / If-None-Match for efficient caching.
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        import gzip as _gzip
+
         snapshot = LocationSnapshot.get_current()
 
         if snapshot is None:
@@ -80,12 +82,22 @@ class LocationDownloadView(APIView):
             response['X-Location-Version'] = str(snapshot.version)
             return response
 
-        # Serve the raw gzip bytes
         gz_bytes = bytes(snapshot.data)
+        accept_encoding = request.META.get('HTTP_ACCEPT_ENCODING', '')
+        client_accepts_gzip = 'gzip' in accept_encoding
 
-        response = HttpResponse(gz_bytes, content_type='application/json')
-        response['Content-Encoding'] = 'gzip'
-        response['Content-Length'] = str(len(gz_bytes))
+        if client_accepts_gzip:
+            # Fast path: serve raw gzip bytes (browsers, CDN, curl)
+            response = HttpResponse(gz_bytes, content_type='application/json')
+            response['Content-Encoding'] = 'gzip'
+            response['Content-Length'] = str(len(gz_bytes))
+        else:
+            # Mobile path: decompress on server, serve plain JSON
+            # React Native axios does not auto-decompress gzip responses
+            json_bytes = _gzip.decompress(gz_bytes)
+            response = HttpResponse(json_bytes, content_type='application/json; charset=utf-8')
+            response['Content-Length'] = str(len(json_bytes))
+
         response['ETag'] = etag
         response['X-Location-Version'] = str(snapshot.version)
         response['X-Location-Checksum'] = snapshot.checksum

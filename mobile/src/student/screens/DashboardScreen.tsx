@@ -135,6 +135,11 @@ const MODAL_CATEGORIES: Record<string, string> = {
   laboratory: 'Laboratories',
   blocks: 'Admin Blocks',
   mosque: 'Mosques',
+  library: 'Libraries',
+  medical: 'Medical Centers',
+  sports: 'Sports Facilities',
+  ict: 'ICT Centers',
+  canteen: 'Canteens',
 }
 
 type QuickItem = {
@@ -149,13 +154,13 @@ const QUICK_ITEMS: QuickItem[] = [
   { id: 'lecture', label: 'Lecture', icon: 'school', category: 'lecture', hasModal: true },
   { id: 'laboratory', label: 'Lab', icon: 'science', category: 'laboratory', hasModal: true },
   { id: 'hostel', label: 'Hostel', icon: 'apartment', category: 'hostel', hasModal: true },
-  { id: 'library', label: 'Library', icon: 'local-library', category: 'library', hasModal: false },
+  { id: 'library', label: 'Library', icon: 'local-library', category: 'library', hasModal: true },
   { id: 'gate', label: 'Gate', icon: 'meeting-room', category: 'gate', hasModal: true },
   { id: 'blocks', label: 'Blocks', icon: 'business', category: 'blocks', hasModal: true },
-  { id: 'medical', label: 'Medical', icon: 'local-hospital', category: 'medical', hasModal: false },
-  { id: 'sports', label: 'Sports', icon: 'sports-soccer', category: 'sports', hasModal: false },
-  { id: 'ict', label: 'ICT', icon: 'computer', category: 'ict', hasModal: false },
-  { id: 'canteen', label: 'Canteen', icon: 'restaurant', category: 'canteen', hasModal: false },
+  { id: 'medical', label: 'Medical', icon: 'local-hospital', category: 'medical', hasModal: true },
+  { id: 'sports', label: 'Sports', icon: 'sports-soccer', category: 'sports', hasModal: true },
+  { id: 'ict', label: 'ICT', icon: 'computer', category: 'ict', hasModal: true },
+  { id: 'canteen', label: 'Canteen', icon: 'restaurant', category: 'canteen', hasModal: true },
   { id: 'mosque', label: 'Mosque', icon: 'account-balance', category: 'mosque', hasModal: true },
 ]
 
@@ -295,7 +300,7 @@ export default function StudentDashboardScreen({
       return [location.name, location.description, location.category]
         .some((field) => isFuzzyMatch(query, field))
     })
-  }, [searchQuery])
+  }, [searchQuery, ALL_LOCATIONS])
 
   const searchResultsVisible = searchActive && searchQuery.trim().length > 0
 
