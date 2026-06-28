@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import {
@@ -9,9 +9,12 @@ import {
   RefreshCcw,
   ShieldCheck,
   Trash2,
+  UploadCloud,
   UserCog,
   UserPlus,
   Users,
+  Map as MapIcon,
+  Globe,
 } from 'lucide-react'
 import apiService from '../../services/api.service'
 import { T } from '../theme'
@@ -70,8 +73,9 @@ const clampCount = (value: string) => {
 export default function TestPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
-  const area = searchParams.get('area') === 'rides' ? 'rides' : 'account'
-  const defaultSection = area === 'rides' ? 'create' : 'student'
+  const queryArea = searchParams.get('area')
+  const area = queryArea === 'rides' ? 'rides' : queryArea === 'map' ? 'map' : 'account'
+  const defaultSection = area === 'rides' ? 'create' : area === 'map' ? 'manage' : 'student'
   const section = searchParams.get('section') || defaultSection
   const [counts, setCounts] = useState({
     student: '10',
@@ -85,6 +89,29 @@ export default function TestPage() {
   })
   const [selectedRideId, setSelectedRideId] = useState('')
   const [result, setResult] = useState<ResultState | null>(null)
+  const [jsonInput, setJsonInput] = useState('')
+  const [mapEditorBanner, setMapEditorBanner] = useState(false)
+  const [labError, setLabError] = useState<string | null>(null)
+  const [labSuccess, setLabSuccess] = useState<string | null>(null)
+  const [isImporting, setIsImporting] = useState(false)
+  const [isPublishing, setIsPublishing] = useState(false)
+
+  // Auto-load from Map Editor via sessionStorage
+  useEffect(() => {
+    if (area === 'map') {
+      const stored = sessionStorage.getItem('map_editor_locations')
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored)
+          setJsonInput(JSON.stringify(parsed, null, 2))
+          setMapEditorBanner(true)
+          sessionStorage.removeItem('map_editor_locations')
+        } catch {
+          // ignore malformed
+        }
+      }
+    }
+  }, [area])
 
   const summaryQuery = useQuery<TestSummary>({
     queryKey: ['test-tools-summary'],
@@ -107,10 +134,10 @@ export default function TestPage() {
     setSearchParams(params)
   }
 
-  const setArea = (nextArea: 'account' | 'rides') => {
+  const setArea = (nextArea: 'account' | 'rides' | 'map') => {
     const params = new URLSearchParams()
     params.set('area', nextArea)
-    params.set('section', nextArea === 'rides' ? 'create' : 'student')
+    params.set('section', nextArea === 'rides' ? 'create' : nextArea === 'map' ? 'manage' : 'student')
     setSearchParams(params)
   }
 
@@ -128,6 +155,12 @@ export default function TestPage() {
         joinRide: () => apiService.joinTestScheduledRide(selectedRide?.id || '', clampCount(counts.join)),
         createOnDemand: () => apiService.createTestOnDemandRides(clampCount(counts.ondemandRides)),
         deleteOnDemand: () => apiService.deleteTestOnDemandRides(clampCount(counts.deleteOnDemand)),
+        importLocations: () => {
+          let data;
+          try { data = JSON.parse(jsonInput) } catch (err) { throw new Error('Invalid JSON array') }
+          return apiService.importLocations(data)
+        },
+        publishLocations: () => apiService.publishLocations(),
       }
       if (action === 'joinRide' && !selectedRide?.id) {
         throw new Error('Select or create a scheduled ride first.')
@@ -163,6 +196,7 @@ export default function TestPage() {
           <div style={s.areaTabs}>
             <button style={tabStyle(area === 'account')} onClick={() => setArea('account')}>Account</button>
             <button style={tabStyle(area === 'rides')} onClick={() => setArea('rides')}>Rides</button>
+            <button style={tabStyle(area === 'map')} onClick={() => setArea('map')}>Map Data</button>
           </div>
         </div>
 
@@ -194,7 +228,142 @@ export default function TestPage() {
             </div>
 
             <div style={campusPanel.card}>
-              {area === 'account' ? (
+              {area === 'map' ? (
+                <>
+                  <div style={s.subTabs}>
+                    <button style={subTabStyle(section === 'manage')} onClick={() => switchSection('manage')}>Locations</button>
+                  </div>
+                  <div style={campusPanel.cardBody}>
+                    <PanelTitle icon={<Globe size={16} />} title="Publish Location Data" />
+                    <p style={{ fontSize: 13, color: T.textSecondary, marginBottom: 16, marginTop: 0 }}>
+                      Publish a new optimized snapshot of all currently imported campus locations. The mobile app detects and downloads this update automatically.
+                    </p>
+                    <div style={s.buttonRow}>
+                      <button
+                        style={campusPanel.btnPrimary}
+                        onClick={() => runAction.mutate('publishLocations')}
+                        disabled={busy}
+                      >
+                        {busy ? <Loader2 size={13} style={s.spin} /> : <UploadCloud size={13} />}
+                        Publish New Snapshot
+                      </button>
+                    </div>
+
+                    <div style={{ marginTop: 32, paddingTop: 24, borderTop: `1px solid ${T.border}` }}>
+                      <PanelTitle icon={<MapIcon size={16} />} title="Bulk Import Locations" />
+                      <p style={{ fontSize: 13, color: T.textSecondary, marginBottom: 12, marginTop: 0 }}>
+                        Paste or review a JSON array of locations to seed/update the database, then publish when ready.
+                        Each entry requires: <code style={{ background: T.bgCard, padding: '1px 5px', borderRadius: 3, fontSize: 11 }}>id, name, latitude, longitude, category</code>.
+                      </p>
+
+                      {/* Banner: data came from Map Editor */}
+                      {mapEditorBanner && (
+                        <div style={{ background: `${T.accent}18`, border: `1px solid ${T.accent}55`, borderRadius: 6, padding: '8px 12px', fontSize: 12, color: T.accent, marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <MapIcon size={14} style={{ flexShrink: 0 }} />
+                          <span>
+                            <strong>Loaded from Map Editor</strong> — Review the pinned locations below, then <strong>Import</strong> followed by <strong>Publish</strong>.
+                          </span>
+                          <button
+                            style={{ marginLeft: 'auto', background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', fontSize: 14, padding: 0 }}
+                            onClick={() => setMapEditorBanner(false)}
+                          >✕</button>
+                        </div>
+                      )}
+
+                      {/* Error / success inline banners */}
+                      {labError && (
+                        <div style={{ background: '#7f1d1d22', border: `1px solid #ef4444`, borderRadius: 6, padding: '8px 12px', fontSize: 12, color: '#ef4444', marginBottom: 12, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                          <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+                          <div style={{ flex: 1, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{labError}</div>
+                          <button style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 14, padding: 0, marginLeft: 8 }} onClick={() => setLabError(null)}>✕</button>
+                        </div>
+                      )}
+                      {labSuccess && (
+                        <div style={{ background: '#14532d22', border: `1px solid #22c55e`, borderRadius: 6, padding: '8px 12px', fontSize: 12, color: '#22c55e', marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <CheckCircle2 size={14} style={{ flexShrink: 0 }} />
+                          <span style={{ flex: 1 }}>{labSuccess}</span>
+                          <button style={{ background: 'none', border: 'none', color: '#22c55e', cursor: 'pointer', fontSize: 14, padding: 0 }} onClick={() => setLabSuccess(null)}>✕</button>
+                        </div>
+                      )}
+
+                      <textarea
+                        style={{ ...s.input, minHeight: 220, resize: 'vertical', fontFamily: '"JetBrains Mono", "Fira Code", monospace', fontSize: 11 }}
+                        placeholder='[{"id": "loc_1", "name": "Main Gate", "latitude": 9.53, "longitude": 6.45, "category": "gate"}]'
+                        value={jsonInput}
+                        onChange={(e) => { setJsonInput(e.target.value); setLabError(null); setLabSuccess(null) }}
+                      />
+
+                      {/* Live parse indicator */}
+                      {jsonInput.trim() && (() => {
+                        try {
+                          const arr = JSON.parse(jsonInput)
+                          if (!Array.isArray(arr)) return <div style={{ fontSize: 11, color: '#f97316', marginTop: 6 }}>⚠ JSON must be an array (got {typeof arr})</div>
+                          return <div style={{ fontSize: 11, color: '#22c55e', marginTop: 6 }}>✓ Valid JSON — {arr.length} location(s) ready to import</div>
+                        } catch (e: any) {
+                          return <div style={{ fontSize: 11, color: '#ef4444', marginTop: 6 }}>✗ Parse error: {e.message}</div>
+                        }
+                      })()}
+
+                      <div style={{ ...s.buttonRow, marginTop: 12, gap: 8 }}>
+                        <button
+                          style={campusPanel.btnSecondary}
+                          disabled={isImporting || !jsonInput.trim()}
+                          onClick={async () => {
+                            setLabError(null)
+                            setLabSuccess(null)
+                            let data: unknown[]
+                            try { data = JSON.parse(jsonInput) } catch (e: any) { setLabError(`JSON parse error: ${e.message}`); return }
+                            if (!Array.isArray(data)) { setLabError('The JSON must be an array of location objects.'); return }
+                            setIsImporting(true)
+                            try {
+                              const res = await apiService.importLocations(data)
+                              setLabSuccess(`✓ Imported ${res?.imported ?? data.length} location(s) successfully. You can now Publish.`)
+                            } catch (e: any) {
+                              const errData = e?.response?.data
+                              let msg = errData?.detail || errData?.error || errData?.message
+                              if (!msg && errData && typeof errData === 'object') {
+                                msg = Object.entries(errData).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' | ')
+                              }
+                              setLabError(`Import failed: ${msg || e.message || 'Unknown error'}`)
+                            } finally {
+                              setIsImporting(false)
+                            }
+                          }}
+                        >
+                          {isImporting ? <Loader2 size={13} style={s.spin} /> : <CheckCircle2 size={13} />}
+                          {isImporting ? 'Importing…' : 'Import JSON'}
+                        </button>
+
+                        <button
+                          style={campusPanel.btnPrimary}
+                          disabled={isPublishing}
+                          onClick={async () => {
+                            setLabError(null)
+                            setLabSuccess(null)
+                            setIsPublishing(true)
+                            try {
+                              const res = await apiService.publishLocations()
+                              setLabSuccess(`✓ Published snapshot v${res?.version ?? '?'} — ${res?.location_count ?? '?'} location(s) live for mobile clients.`)
+                            } catch (e: any) {
+                              const errData = e?.response?.data
+                              let msg = errData?.detail || errData?.error || errData?.message
+                              if (!msg && errData && typeof errData === 'object') {
+                                msg = Object.entries(errData).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' | ')
+                              }
+                              setLabError(`Publish failed: ${msg || e.message || 'Unknown error'}`)
+                            } finally {
+                              setIsPublishing(false)
+                            }
+                          }}
+                        >
+                          {isPublishing ? <Loader2 size={13} style={s.spin} /> : <UploadCloud size={13} />}
+                          {isPublishing ? 'Publishing…' : 'Publish Snapshot'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : area === 'account' ? (
                 <>
                   <div style={s.subTabs}>
                     <button style={subTabStyle(section === 'student')} onClick={() => switchSection('student')}>Student</button>
@@ -425,6 +594,8 @@ function actionLabel(action: string) {
     joinRide: 'Join scheduled ride',
     createOnDemand: 'Create on-demand rides',
     deleteOnDemand: 'Delete on-demand rides',
+    importLocations: 'Bulk import locations',
+    publishLocations: 'Publish location snapshot',
   } as Record<string, string>)[action] || 'Test action'
 }
 

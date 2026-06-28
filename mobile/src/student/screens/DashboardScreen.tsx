@@ -17,8 +17,7 @@ import MapView, { Marker, Callout, Circle, Region, PROVIDER_GOOGLE } from 'react
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import * as LocationService from 'expo-location'
 import useWalletStore from '../../core/walletStore'
-import locationData from '../Gk-location cordinate.json'
-import LoadingOverlay from '../components/LoadingOverlay'
+import { useLocations } from '../../../services/locationDataService'
 
 const INITIAL_REGION: Region = {
   latitude: 9.5261,
@@ -100,8 +99,6 @@ type Location = {
   category: string
 }
 
-const ALL_LOCATIONS: Location[] = locationData as Location[]
-
 const LOCATION_BUFFER_KM = 25
 
 const computeBounds = (locations: Location[], bufferKm: number) => {
@@ -120,8 +117,6 @@ const computeBounds = (locations: Location[], bufferKm: number) => {
     southWest: { latitude: minLat - latBuffer, longitude: minLng - lngBuffer },
   }
 }
-
-const MINNA_BOUNDS = computeBounds(ALL_LOCATIONS, LOCATION_BUFFER_KM)
 
 const isWithinBounds = (
   coords: { latitude: number; longitude: number },
@@ -164,13 +159,6 @@ const QUICK_ITEMS: QuickItem[] = [
   { id: 'mosque', label: 'Mosque', icon: 'account-balance', category: 'mosque', hasModal: true },
 ]
 
-const SCAN_DISABLED_STATUSES = new Set([
-  'driver_assigned',
-  'driver_en_route',
-  'driver_arrived',
-  'in_progress',
-])
-
 type StudentDashboardScreenProps = {
   onNavigateToWallet?: () => void
   onBookRide?: () => void
@@ -199,6 +187,13 @@ export default function StudentDashboardScreen({
   const [currentMapRegion, setCurrentMapRegion] = useState<Region>(INITIAL_REGION)
   const [activeModal, setActiveModal] = useState<string | null>(null)
   const [activePin, setActivePin] = useState<Location | null>(null)
+
+  // OTA location data — updates automatically after silent background download
+  const ALL_LOCATIONS = useLocations() as Location[]
+  const MINNA_BOUNDS = useMemo(
+    () => (ALL_LOCATIONS.length > 0 ? computeBounds(ALL_LOCATIONS, LOCATION_BUFFER_KM) : computeBounds([{ latitude: 9.5255, longitude: 6.4498 } as Location], LOCATION_BUFFER_KM)),
+    [ALL_LOCATIONS],
+  )
   const [scannerVisible, setScannerVisible] = useState(false)
   const [scanned, setScanned] = useState(false)
   const [permission, requestPermission] = useCameraPermissions()
@@ -206,6 +201,7 @@ export default function StudentDashboardScreen({
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null)
   const [locationMessage, setLocationMessage] = useState<string | null>(null)
   const walletBalance = useWalletStore((state) => state.walletBalance)
+  const SCAN_DISABLED_STATUSES = new Set(['driver_assigned', 'in_progress', 'arrived'])
   const isScanDisabled = Boolean(activeRide && SCAN_DISABLED_STATUSES.has(activeRide.status))
 
   const formatAmount = useCallback((value: number | string | null) => {
@@ -400,6 +396,9 @@ export default function StudentDashboardScreen({
           maxZoomLevel={18}
           showsCompass
           showsScale
+          loadingEnabled
+          loadingIndicatorColor="#0fa958"
+          loadingBackgroundColor="#f3f3f3"
         >
           {userLocation && (
             <Marker
@@ -447,7 +446,10 @@ export default function StudentDashboardScreen({
         </MapView>
 
         {!isMapReady && (
-          <LoadingOverlay visible={true} size={90} />
+          <View style={styles.mapLoadingBadge}>
+            <MaterialIcons name="map" size={16} color="#5e5e5e" />
+            <Text style={styles.mapLoadingText}>Loading Minna map...</Text>
+          </View>
         )}
 
         {didMapTimeout && (

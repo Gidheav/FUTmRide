@@ -2179,12 +2179,12 @@ function NotificationsReplica() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, borderBottom: `1px solid ${T.border}`, paddingBottom: 16, marginBottom: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
               <Activity size={18} color={T.accent} />
-              <div style={{ minWidth: 0 }}>
-                <h3 style={{ fontSize: 16, fontWeight: 700, color: T.textPrimary, margin: 0 }}>System Health</h3>
-                <p style={{ fontSize: 11, color: T.textMuted, marginTop: 3 }}>
-                  {systemHealth?.generated_at ? `Last checked ${formatHealthDate(systemHealth.generated_at)}` : 'UptimeRobot and cron-job.org reports'}
-                </p>
-              </div>
+                  <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <h3 style={{ fontSize: 16, fontWeight: 700, color: T.textPrimary, margin: 0 }}>System Health</h3>
+                    <span style={{ fontSize: 11, color: T.textMuted, margin: 0 }}>
+                      {systemHealth?.generated_at ? `Last checked ${formatHealthDate(systemHealth.generated_at)}` : 'UptimeRobot and cron-job.org reports'}
+                    </span>
+                  </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
               <HealthStatusPill status={overallStatus} label={loadingHealth ? 'Checking' : undefined} />
@@ -2200,7 +2200,7 @@ function NotificationsReplica() {
             </div>
           </div>
 
-          {systemHealth?.overall?.status !== 'unconfigured' && systemHealth?.overall?.summary ? (
+          {systemHealth?.overall?.status !== 'unconfigured' && systemHealth?.overall?.summary && systemHealth.overall.summary !== 'All monitored systems are operational.' ? (
             <p style={{ fontSize: 12, color: T.textSecondary, lineHeight: 1.5, margin: '0 0 16px' }}>
               {systemHealth.overall.summary}
             </p>

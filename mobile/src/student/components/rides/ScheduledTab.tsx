@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
-import api from '../../../core/api'
+import api, { classifyApiError } from '../../../core/api'
 import JoinScheduledRideModal from './JoinScheduledRideModal'
 import LoadingOverlay from '../LoadingOverlay'
 
@@ -55,7 +55,14 @@ export default function ScheduledTab() {
       const res = await api.get('rides/scheduled/available/')
       setRides(Array.isArray(res.data?.results) ? res.data.results : (res.data || []))
     } catch (err: any) {
-      setError(err?.response?.data?.detail || err.message || 'Failed to load scheduled rides.')
+      const kind = classifyApiError(err)
+      if (kind === 'network') {
+        setError('No internet connection. Check your network and pull down to retry.')
+      } else if (kind === 'session_expired') {
+        setError('Your session has expired. Please log in again.')
+      } else {
+        setError(err?.response?.data?.detail || 'Failed to load scheduled rides.')
+      }
     } finally {
       setLoading(false)
       setRefreshing(false)

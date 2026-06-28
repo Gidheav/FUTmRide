@@ -4,6 +4,7 @@ import {
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Plus, X, Search,
   Layers, Pencil, MousePointer2, Ruler, Square, Circle,
   ZoomIn, ZoomOut, Crosshair, Maximize2, Undo2, Redo2, Trash2,
+  MapPin, Map as MapIcon, Download, UploadCloud,
 } from 'lucide-react'
 import { GoogleMap, useJsApiLoader, DrawingManager, Polyline, Marker, InfoWindow, Circle as MapCircle } from '@react-google-maps/api'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -197,10 +198,15 @@ export default function DashboardPage() {
   const searchParams = new URLSearchParams(location.search)
   const isOpenRequestsPanelParam = searchParams.get('panel') === 'open'
 
-  // Panel collapsed states (collapsed by default)
   const [isLeftPanelOpen, setIsLeftPanelOpen] = useState(false)
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(false)
   const [isDataFeedOpen, setIsDataFeedOpen] = useState(false)
+
+  // Map Editor State
+  const dashboardMode = searchParams.get('mode') === 'map-editor' ? 'map-editor' : 'live'
+  const [editorLocations, setEditorLocations] = useState<any[]>([])
+  const [draftLocation, setDraftLocation] = useState<{lat: number, lng: number, name: string, category: string, id: string} | null>(null)
+  const [isEditorPublishing, setIsEditorPublishing] = useState(false)
 
   const setOpenRequestsPanel = (open: boolean) => {
     const params = new URLSearchParams(location.search)
@@ -642,10 +648,32 @@ export default function DashboardPage() {
   }
   const handleFullscreen = () => setIsFullscreen(f => !f)
 
+  // Haversine distance in metres between two lat/lng points
+  const haversineM = (a: {lat:number,lng:number}, b: {lat:number,lng:number}) => {
+    const R = 6371000
+    const dLat = (b.lat - a.lat) * Math.PI / 180
+    const dLng = (b.lng - a.lng) * Math.PI / 180
+    const sinDLat = Math.sin(dLat / 2)
+    const sinDLng = Math.sin(dLng / 2)
+    const aVal = sinDLat * sinDLat + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * sinDLng * sinDLng
+    return R * 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal))
+  }
+
   const handleMapClick = useCallback((e: google.maps.MapMouseEvent) => {
     if (!e.latLng) return
     const lat = e.latLng.lat()
     const lng = e.latLng.lng()
+
+    if (dashboardMode === 'map-editor') {
+      const newPoint = { lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) }
+      // 5 m dedup: skip if any existing location is within 5 metres
+      const tooClose = editorLocations.some(loc => haversineM(newPoint, { lat: loc.lat, lng: loc.lng }) <= 5)
+      if (tooClose) return
+      const idStr = `loc_${Math.random().toString(36).substring(2, 8)}`
+      setEditorLocations(prev => [...prev, { ...newPoint, name: '', category: 'gate', id: idStr }])
+      setDraftLocation({ ...newPoint, name: '', category: 'gate', id: idStr })
+      return
+    }
 
     if (activeWaypointIndex !== null) {
       const isIntermediateStop = activeWaypointIndex > 0 && activeWaypointIndex < waypoints.length - 1
@@ -689,7 +717,7 @@ export default function DashboardPage() {
         setSelectedLocation({ lat, lng, address: `Coordinates: ${lat.toFixed(5)}, ${lng.toFixed(5)}` })
       }
     })
-  }, [activeTool, activeWaypointIndex, projectStopOntoRoute, routeRoadPath, updateWaypoint, waypoints.length])
+  }, [dashboardMode, activeTool, activeWaypointIndex, projectStopOntoRoute, routeRoadPath, updateWaypoint, waypoints.length])
 
   const formatRouteStatus = useCallback((route: MeasuredRoadRoute, routeIndex: number, routeCount: number) => {
     return `${route.distanceText} | ${route.durationText} (Route ${routeIndex + 1}/${routeCount})`
@@ -1228,7 +1256,7 @@ export default function DashboardPage() {
       <div style={s.content}>
 
         {/* ────────────────── LEFT: Open Requests ─────────────────────── */}
-        {!isFullscreen && (
+        {!isFullscreen && dashboardMode === 'live' && (
           isLeftPanelOpen ? (
             <div style={s.leftPanel}>
               <div style={s.panelHeader}>
@@ -1350,7 +1378,9 @@ export default function DashboardPage() {
               )}
             </div>
             <div style={s.toolbarRight}>
-              {/* Undo / Redo */}
+              {dashboardMode === 'live' && (
+                <Fragment>
+                  {/* Undo / Redo */}
               <button
                 style={{ ...s.toolBtn, opacity: undoStack.length === 0 ? 0.35 : 1 }}
                 onClick={handleUndo}
@@ -1389,6 +1419,8 @@ export default function DashboardPage() {
               <button style={s.filterBtn} onClick={handleClear} title={activeTool ? `Clear ${activeTool} work` : 'Clear all'}>
                 <Trash2 size={13} /> Clear{activeTool ? ` ${activeTool}` : ''}
               </button>
+                </Fragment>
+              )}
             </div>
           </div>
 
@@ -1530,6 +1562,38 @@ export default function DashboardPage() {
                     ) : null
                   ))}
 
+                  {dashboardMode === 'map-editor' && editorLocations.map((loc, idx) => (
+                    <Marker
+                      key={loc.id || idx}
+                      position={{ lat: loc.lat, lng: loc.lng }}
+                      label={{ text: (loc.name?.[0] || '?').toUpperCase(), color: '#fff', fontSize: '10px', fontWeight: 'bold' }}
+                      icon={{
+                        path: google.maps.SymbolPath.CIRCLE,
+                        fillColor: T.accent,
+                        fillOpacity: 1,
+                        strokeColor: '#fff',
+                        strokeWeight: 2,
+                        scale: 12,
+                      }}
+                      title={loc.name}
+                    />
+                  ))}
+                  
+                  {dashboardMode === 'map-editor' && draftLocation && (
+                    <Marker
+                      position={{ lat: draftLocation.lat, lng: draftLocation.lng }}
+                      icon={{
+                        path: google.maps.SymbolPath.CIRCLE,
+                        fillColor: T.warn,
+                        fillOpacity: 1,
+                        strokeColor: '#fff',
+                        strokeWeight: 3,
+                        scale: 14,
+                      }}
+                      title="Draft Location"
+                    />
+                  )}
+
                   {/* Custom POI / Location InfoWindow */}
                   {selectedLocation && (
                     <Marker
@@ -1626,8 +1690,8 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* Map overlay panel: Traffic Layers */}
-            <div style={s.mapOverlayPanel}>
+            {/* Map overlay panel: Traffic Layers — live mode only */}
+            {dashboardMode === 'live' && <div style={s.mapOverlayPanel}>
               <div style={s.overlaySection}>
                 <button style={s.overlaySectionHeader} onClick={() => setTrafficOpen(!trafficOpen)}>
                   <span>Traffic Layers</span>
@@ -1708,26 +1772,7 @@ export default function DashboardPage() {
                   </div>
                 )}
               </div>
-            </div>
-
-            {/* Floating active request tooltips */}
-            <div style={{ ...s.mapTooltip, top: '18%', right: '30%' }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: T.textWhite, marginBottom: 4 }}>
-                Active Requests
-              </div>
-              <div style={s.ttRow}><span style={s.ttLabel}>Route Match</span><span style={s.ttVal}>92 %</span></div>
-              <div style={s.ttRow}><span style={s.ttLabel}>Estimated Fare:</span><span style={s.ttVal}>$85.00</span></div>
-              <div style={s.ttRow}><span style={s.ttLabel}>Coordinates:</span><span style={s.ttVal}>-235.35.97</span></div>
-            </div>
-
-            <div style={{ ...s.mapTooltip, bottom: '28%', right: '22%' }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: T.textWhite, marginBottom: 4 }}>
-                Active Requests
-              </div>
-              <div style={s.ttRow}><span style={s.ttLabel}>Route Match</span><span style={s.ttVal}>92 %</span></div>
-              <div style={s.ttRow}><span style={s.ttLabel}>Estimated Fare:</span><span style={s.ttVal}>$85.00</span></div>
-              <div style={s.ttRow}><span style={s.ttLabel}>Coordinates:</span><span style={s.ttVal}>-233.89.28</span></div>
-            </div>
+            </div>}
 
             {/* Map zoom controls */}
             <div style={s.mapZoom}>
@@ -1737,18 +1782,20 @@ export default function DashboardPage() {
               <button style={{ ...s.zoomBtn, ...(isFullscreen ? { background: T.accent, color: '#fff', borderColor: T.accent } : {}) }} onClick={handleFullscreen} title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}><Maximize2 size={14} /></button>
             </div>
 
-            {/* Bottom bar inside map */}
-            <div style={s.mapBottomBar}>
-              <button style={s.mapBottomBtn}>Measure</button>
-              <button style={s.mapBottomBtn}>Measure</button>
-              <button style={{ ...s.mapBottomBtn, background: 'transparent', border: `1px solid ${T.border}` }}>
-                All Filters
-              </button>
-            </div>
+            {/* Bottom bar inside map — live mode only */}
+            {dashboardMode === 'live' && (
+              <div style={s.mapBottomBar}>
+                <button style={s.mapBottomBtn}>Measure</button>
+                <button style={s.mapBottomBtn}>Measure</button>
+                <button style={{ ...s.mapBottomBtn, background: 'transparent', border: `1px solid ${T.border}` }}>
+                  All Filters
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Data feed */}
-          {!isFullscreen && (
+          {!isFullscreen && dashboardMode === 'live' && (
             <div style={{ ...s.dataFeed, height: isDataFeedOpen ? 110 : 33 }}>
               <button
                 style={{ ...s.dataFeedHeader, background: 'none', border: 'none', width: '100%', textAlign: 'left', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
@@ -1769,7 +1816,7 @@ export default function DashboardPage() {
         </div>
 
         {/* ────────────────── RIGHT: Quick Ride Creation ──────────────── */}
-        {!isFullscreen && (
+        {!isFullscreen && dashboardMode === 'live' && (
           isRightPanelOpen ? (
             <div style={s.rightPanel}>
               <div style={s.rpHeader}>
@@ -1970,6 +2017,185 @@ export default function DashboardPage() {
               </div>
             </div>
           )
+        )}
+
+        {/* ────────────────── RIGHT: Location Builder (Map Editor) ──────────────── */}
+        {!isFullscreen && dashboardMode === 'map-editor' && (
+          <div style={{ ...s.rightPanel, width: 300 }}>
+            <div style={s.rpHeader}>
+              <span style={s.panelTitle}>Location Builder</span>
+              <span style={{ fontSize: 10, color: T.textMuted }}>{editorLocations.length} pins</span>
+            </div>
+
+            {/* Tip: click map to pin */}
+            <div style={{ padding: '8px 12px', background: T.accentBg, borderBottom: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <MapPin size={13} color={T.accent} style={{ flexShrink: 0 }} />
+              <span style={{ fontSize: 10, color: T.accent }}>Click map to instantly pin a location. Pins within 5 m of an existing one are ignored.</span>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
+              {/* Inline editor for the most recently pinned (draftLocation tracks it) */}
+              {draftLocation && (
+                <div style={{ background: T.bgInput, border: `1px solid ${T.accent}44`, borderRadius: 6, padding: 12, marginBottom: 14 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 10, color: T.accent, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <MapPin size={12} /> Editing last pin
+                  </div>
+
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 10, color: T.textMuted, marginBottom: 3 }}>NAME *</div>
+                    <input
+                      autoFocus
+                      style={{ ...s.rpInput, background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 4, padding: '5px 8px', width: '100%', boxSizing: 'border-box' }}
+                      value={draftLocation.name}
+                      onChange={e => {
+                        const updated = { ...draftLocation, name: e.target.value }
+                        setDraftLocation(updated)
+                        setEditorLocations(prev => prev.map(l => l.id === draftLocation.id ? { ...l, name: e.target.value } : l))
+                      }}
+                      placeholder="e.g. Main Gate"
+                    />
+                  </div>
+
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 10, color: T.textMuted, marginBottom: 3 }}>ID</div>
+                    <input
+                      style={{ ...s.rpInput, background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 4, padding: '5px 8px', width: '100%', boxSizing: 'border-box' }}
+                      value={draftLocation.id}
+                      onChange={e => {
+                        const updated = { ...draftLocation, id: e.target.value }
+                        setDraftLocation(updated)
+                        setEditorLocations(prev => prev.map(l => l.id === draftLocation.id ? { ...l, id: e.target.value } : l))
+                      }}
+                      placeholder="e.g. loc_main_gate"
+                    />
+                  </div>
+
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 10, color: T.textMuted, marginBottom: 3 }}>CATEGORY</div>
+                    <select
+                      style={{ ...s.rpInput, background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 4, padding: '5px 8px', width: '100%', boxSizing: 'border-box' }}
+                      value={draftLocation.category}
+                      onChange={e => {
+                        const updated = { ...draftLocation, category: e.target.value }
+                        setDraftLocation(updated)
+                        setEditorLocations(prev => prev.map(l => l.id === draftLocation.id ? { ...l, category: e.target.value } : l))
+                      }}
+                    >
+                      <option value="lecture">Lecture Theatre</option>
+                      <option value="hostel">Hostel</option>
+                      <option value="gate">Gate</option>
+                      <option value="library">Library</option>
+                      <option value="blocks">Admin / General Block</option>
+                      <option value="medical">Medical Centre</option>
+                      <option value="sports">Sports Facility</option>
+                      <option value="ict">ICT Centre</option>
+                      <option value="canteen">Canteen / Cafeteria</option>
+                      <option value="mosque">Mosque</option>
+                      <option value="laboratory">Laboratory</option>
+                    </select>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                    <button
+                      style={{ ...s.scheduleBtn, flex: 1, padding: '6px 0', fontSize: 11 }}
+                      onClick={() => setDraftLocation(null)}
+                    >Done</button>
+                    <button
+                      style={{ ...s.filterBtn, color: T.error }}
+                      onClick={() => {
+                        setEditorLocations(prev => prev.filter(l => l.id !== draftLocation.id))
+                        setDraftLocation(null)
+                      }}
+                    ><Trash2 size={12} /></button>
+                  </div>
+                </div>
+              )}
+
+              {/* Pinned locations list */}
+              <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 8, color: T.textPrimary, display: 'flex', justifyContent: 'space-between' }}>
+                <span>Pinned ({editorLocations.length})</span>
+              </div>
+              {editorLocations.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '24px 10px', color: T.textMuted, border: `2px dashed ${T.border}`, borderRadius: 6 }}>
+                  <MapPin size={22} style={{ margin: '0 auto 8px', display: 'block', opacity: 0.4 }} />
+                  <div style={{ fontSize: 11 }}>Click map to start pinning</div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {editorLocations.map((loc, idx) => (
+                    <div
+                      key={loc.id}
+                      onClick={() => setDraftLocation(loc)}
+                      style={{
+                        background: draftLocation?.id === loc.id ? T.accentBg : T.bgInput,
+                        border: `1px solid ${draftLocation?.id === loc.id ? T.accent : T.border}`,
+                        borderRadius: 5, padding: '7px 10px',
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        cursor: 'pointer', transition: 'all 0.12s',
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 11, color: loc.name ? T.textPrimary : T.textMuted, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {loc.name || <em>Unnamed pin {idx + 1}</em>}
+                        </div>
+                        <div style={{ fontSize: 9, color: T.textMuted, marginTop: 2 }}>{loc.id} · {loc.category}</div>
+                        <div style={{ fontSize: 9, color: T.textMuted, fontFamily: 'monospace' }}>{loc.lat.toFixed(5)}, {loc.lng.toFixed(5)}</div>
+                      </div>
+                      <button
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.textMuted, padding: 4, flexShrink: 0 }}
+                        onClick={e => { e.stopPropagation(); setEditorLocations(prev => prev.filter((_, i) => i !== idx)); if (draftLocation?.id === loc.id) setDraftLocation(null) }}
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <div style={{ padding: 12, borderTop: `1px solid ${T.border}`, display: 'flex', gap: 8, flexDirection: 'column' }}>
+              {/* Validation banner */}
+              {editorLocations.some(l => !l.name.trim()) && (
+                <div style={{ background: '#7c2d1222', border: `1px solid #f97316`, borderRadius: 5, padding: '6px 10px', fontSize: 10, color: '#f97316', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                  ⚠️ {editorLocations.filter(l => !l.name.trim()).length} pin(s) have no name — they will be labelled "Unnamed" in the export.
+                </div>
+              )}
+              <button
+                style={{ ...s.filterBtn, justifyContent: 'center' }}
+                onClick={() => {
+                  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(editorLocations.map(l => ({id: l.id, name: l.name || `Unnamed_${l.id}`, category: l.category, latitude: l.lat, longitude: l.lng})), null, 2))
+                  const dl = document.createElement('a')
+                  dl.setAttribute("href", dataStr)
+                  dl.setAttribute("download", "locations.json")
+                  dl.click()
+                }}
+              >
+                <Download size={14} /> Export JSON
+              </button>
+              <button
+                style={{
+                  ...s.scheduleBtn,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  opacity: editorLocations.length === 0 ? 0.6 : 1,
+                }}
+                disabled={editorLocations.length === 0}
+                onClick={() => {
+                  if (editorLocations.length === 0) return
+                  const payload = editorLocations.map(l => ({
+                    id: l.id,
+                    name: l.name || `Unnamed_${l.id}`,
+                    category: l.category,
+                    latitude: l.lat,
+                    longitude: l.lng,
+                  }))
+                  sessionStorage.setItem('map_editor_locations', JSON.stringify(payload))
+                  navigate('/test?area=map&section=manage')
+                }}
+              >
+                <MapIcon size={14} /> Open in Lab ({editorLocations.length} pins)
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </>

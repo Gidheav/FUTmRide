@@ -11,6 +11,8 @@ import { isDriverUnlockFresh, useAppLockStore } from '../core/appLockStore'
 import {
   fetchDriverSessionSnapshot,
   getSessionErrorMessage,
+  isLikelyNetworkError,
+  kickoffProactiveRefresh,
   pingDriverSession,
   prefetchDriverEssentials,
   refreshAndFetchDriverSession,
@@ -105,6 +107,10 @@ export default function DriverApp() {
     setLockError('')
     setLockStatus('')
     setSessionWarning('')
+    // Kick off a background token refresh so screens that mount immediately
+    // after unlock queue on the in-flight promise via the 401 interceptor,
+    // rather than hitting stale tokens and racing to refresh simultaneously.
+    void kickoffProactiveRefresh()
     void prefetchDriverEssentials()
   }
 
@@ -254,7 +260,7 @@ export default function DriverApp() {
           pingDriverSession()
             .then(() => setSessionWarning(''))
             .catch((error) => {
-              if (!error?.response) {
+              if (isLikelyNetworkError(error)) {
                 setSessionWarning('You are offline. Live driver actions may fail until internet returns.')
               }
             })
@@ -285,7 +291,7 @@ export default function DriverApp() {
       pingDriverSession()
         .then(() => setSessionWarning(''))
         .catch((error) => {
-          if (!error?.response) {
+          if (isLikelyNetworkError(error)) {
             setSessionWarning('You are offline. Live driver actions may fail until internet returns.')
           }
         })
@@ -442,9 +448,17 @@ export default function DriverApp() {
 
     setLockBusy(true)
     setLockError('')
-    setLockStatus('Verifying with server...')
+    setLockStatus('Verifying PIN...')
     try {
-      await refreshDriverSessionTokens()
+      // Kick off a proactive token refresh in the background (non-blocking).
+      // This primes the refresh mutex BEFORE we call completeUnlock() and
+      // screens start mounting. All concurrent API calls from newly-mounted
+      // screens will queue on this promise via the 401 interceptor.
+      void kickoffProactiveRefresh()
+
+      // Verify the PIN against the server. The PIN API call goes through the
+      // regular interceptor, so if the proactive refresh is still in-flight,
+      // this request will queue behind it automatically.
       await settingsApi.verifyPin({ pin })
       const snapshot = await fetchDriverSessionSnapshot()
       const hasUnlockMethod = Boolean(snapshot.settings.has_pin || snapshot.settings.biometric_enabled)
@@ -482,8 +496,12 @@ export default function DriverApp() {
     }
 
     setLockBusy(true)
-    setLockStatus('Verifying with server...')
+    setLockStatus('Verifying session...')
     try {
+      // Biometric driver unlock keeps the server-verification model to confirm
+      // the session is still valid. Kick off proactive refresh first so the
+      // server call queues on it if a token refresh is needed.
+      void kickoffProactiveRefresh()
       const snapshot = await refreshAndFetchDriverSession()
       const hasUnlockMethod = Boolean(snapshot.settings.has_pin || snapshot.settings.biometric_enabled)
 

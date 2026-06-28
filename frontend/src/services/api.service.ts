@@ -512,6 +512,14 @@ class ApiService {
   async deleteTestOnDemandRides(count: number): Promise<any> {
     return this.post('rides/test-tools/ondemand-rides/delete/', { count }, TEST_TOOL_REQUEST_CONFIG)
   }
+
+  async importLocations(locations: any[]): Promise<any> {
+    return this.post('locations/admin/bulk-import/', locations)
+  }
+
+  async publishLocations(): Promise<any> {
+    return this.post('locations/admin/publish/')
+  }
 }
 
 export const apiService = new ApiService()

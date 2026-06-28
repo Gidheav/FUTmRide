@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { AppState, BackHandler, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useAuthStore } from '../core/authStore'
 import { useSecurityStore } from '../core/securityStore'
-import { fetchCurrentUser, refreshSession } from '../core/session'
+import { fetchCurrentUser, refreshStudentSessionTokens } from '../core/session'
 import { StudentLoginScreen, StudentDashboardScreen } from './screens'
 import StudentRidesPage from './pages/RidesPage'
 import StudentWalletPage from './pages/WalletPage'
@@ -11,6 +11,7 @@ import StudentEditProfilePage from './pages/EditProfilePage'
 import StudentNotificationsPage from './pages/NotificationsPage'
 import StudentNotificationSettingsPage from './pages/NotificationSettingsPage'
 import SecurityPage from './pages/SecurityPage'
+import SettingsPage from './pages/SettingsPage'
 import AppLockPage from './pages/AppLockPage'
 import BookRidePage from './pages/BookRidePage'
 import RideMatchingPage from './pages/RideMatchingPage'
@@ -30,6 +31,7 @@ import { clearStoredPinHash } from '../core/security'
 import api from '../core/api'
 import { registerStudentPushToken, addNotificationResponseListener, addNotificationReceivedListener } from '../core/pushNotifications'
 import useWalletStore from '../core/walletStore'
+import LocationDataService from '../../services/locationDataService'
 
 // Statuses where we show the matching (searching) screen
 const MATCHING_STATUSES = ['requested', 'searching']
@@ -37,7 +39,7 @@ const MATCHING_STATUSES = ['requested', 'searching']
 type RideScreen = 'none' | 'booking' | 'matching' | 'active' | 'garage'
 
 export default function StudentApp() {
-  const { isAuthenticated, user, refreshToken, setTokens, setUser, logout } = useAuthStore()
+  const { isAuthenticated, user, setTokens, setUser, logout, hasHydrated, hydrateTokens } = useAuthStore()
   const {
     appLockEnabled,
     biometricEnabled,
@@ -55,7 +57,7 @@ export default function StudentApp() {
 
   const [activeTab, setActiveTab] = useState<StudentTab>('home')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const [accountMode, setAccountMode] = useState<'view' | 'edit' | 'notifications' | 'security'>('view')
+  const [accountMode, setAccountMode] = useState<'view' | 'edit' | 'notifications' | 'security' | 'settings'>('view')
   const [accountRefreshKey, setAccountRefreshKey] = useState(0)
   const [openPinOnLoad, setOpenPinOnLoad] = useState(false)
   const [skipPinVerify, setSkipPinVerify] = useState(false)
@@ -108,6 +110,12 @@ export default function StudentApp() {
     void checkActiveRide()
   }, [isAuthenticated, locked, checkActiveRide])
 
+  // Initialize OTA location data once after auth (non-blocking, silent)
+  useEffect(() => {
+    if (!isAuthenticated || locked) return
+    void LocationDataService.initialize()
+  }, [isAuthenticated, locked])
+
   // Re-check whenever we return to the dashboard (ride screen becomes 'none')
   useEffect(() => {
     if (rideScreen === 'none' && isAuthenticated && !locked) {
@@ -115,14 +123,25 @@ export default function StudentApp() {
     }
   }, [rideScreen, isAuthenticated, locked, checkActiveRide])
 
-  // ─── Session sync ─────────────────────────────────────────────────────────
-  const syncSession = async (silent = false) => {
-    if (!refreshToken || syncInFlight.current) return
+  // ─── Boot: hydrate tokens from SecureStore into Zustand ──────────────────
+  // Tokens are NOT persisted to AsyncStorage (only user + isAuthenticated are).
+  // On cold start, accessToken/refreshToken in Zustand are null until we load
+  // them here. This must complete before any authenticated API calls fire.
+  useEffect(() => {
+    void hydrateTokens()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // run once on mount only
+
+  // ─── Session sync (fresh email/password login only) ─────────────────────
+  // Only fires when the user just completed a full login (not after PIN unlock).
+  // PIN unlock uses the proactive refresh in AppLockPage + the 401 interceptor.
+  const syncSession = async () => {
+    if (syncInFlight.current) return
     syncInFlight.current = true
     try {
-      const tokens = await refreshSession(refreshToken)
-      if (tokens.access) {
-        setTokens(tokens.access, tokens.refresh || refreshToken)
+      const tokens = await refreshStudentSessionTokens()
+      if (tokens.accessToken) {
+        setTokens(tokens.accessToken, tokens.refreshToken)
       }
       const profile = await fetchCurrentUser()
       if (profile) {
@@ -132,10 +151,8 @@ export default function StudentApp() {
         }
       }
     } catch {
-      // If called silently (e.g. from AppLock unlock), don't logout on refresh failure.
-      // The refresh token may have been rotated/invalidated by the server migration.
-      // The user will be logged out naturally when they next make an authenticated API call.
-      if (!silent) logout()
+      // Sync failure on login is non-fatal — the interceptor will handle
+      // the next 401 transparently.
     } finally {
       syncInFlight.current = false
     }
@@ -176,9 +193,12 @@ export default function StudentApp() {
   }, [appLockEnabled, lastUnlockAt, lockTimeoutMinutes, setLocked])
 
   useEffect(() => {
+    // Only sync session after a fresh email/password login, not after PIN unlock.
+    // PIN unlock is handled by AppLockPage's kickoffProactiveRefresh + interceptor.
     if (!isAuthenticated || locked) return
     void syncSession()
-  }, [isAuthenticated, locked])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]) // intentionally omit locked — only fires on auth change
 
   useEffect(() => {
     if (!isAuthenticated || !user || user.role !== 'student') return
@@ -305,9 +325,13 @@ export default function StudentApp() {
     return (
       <AppLockPage
         onUnlocked={() => {
+          // Note: kickoffProactiveRefresh() is called inside AppLockPage
+          // BEFORE onUnlocked fires, so the refresh mutex is already primed
+          // when these state updates trigger screen re-renders.
           setLocked(false)
           setLastUnlockAt(Date.now())
-          void syncSession(true)
+          // Do NOT call syncSession() here — it reads from Zustand (null on boot).
+          // The 401 interceptor handles stale tokens transparently.
         }}
         onForgotPin={() => {
           setPinRecoveryRequired(true)
@@ -444,10 +468,16 @@ export default function StudentApp() {
           skipCurrentPin={skipPinVerify}
         />
       )}
+      {activeTab === 'account' && accountMode === 'settings' && (
+        <SettingsPage
+          onClose={() => setAccountMode('view')}
+        />
+      )}
       {activeTab === 'account' && accountMode === 'view' && (
         <StudentAccountPage
           onEditProfile={() => setAccountMode('edit')}
           onOpenNotifications={() => setAccountMode('notifications')}
+          onOpenSettings={() => setAccountMode('settings')}
           onOpenSecurity={() => setAccountMode('security')}
           onLogout={logout}
           refreshKey={accountRefreshKey}

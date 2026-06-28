@@ -1,0 +1,226 @@
+[
+  {
+    "id": "lt1",
+    "name": "Lecture Theatre 1",
+    "description": "Main lecture hall · GK Campus",
+    "latitude": 9.5255,
+    "longitude": 6.4498,
+    "category": "lecture"
+  },
+  {
+    "id": "lt2",
+    "name": "Lecture Theatre 2",
+    "description": "Main lecture hall · GK Campus",
+    "latitude": 9.5252,
+    "longitude": 6.4503,
+    "category": "lecture"
+  },
+  {
+    "id": "lt3",
+    "name": "Lecture Theatre 3",
+    "description": "Main lecture hall · GK Campus",
+    "latitude": 9.5248,
+    "longitude": 6.4508,
+    "category": "lecture"
+  },
+  {
+    "id": "lt4",
+    "name": "New Lecture Theatre",
+    "description": "New lecture complex · GK Campus",
+    "latitude": 9.5244,
+    "longitude": 6.4512,
+    "category": "lecture"
+  },
+  {
+    "id": "lt5",
+    "name": "Environmental Lecture Theatre",
+    "description": "Environmental Sciences · GK Campus",
+    "latitude": 9.534997775445076,
+    "longitude": 6.450366393423209,
+    "category": "lecture"
+  },
+  {
+    "id": "lt-eng",
+    "name": "Engineering Lecture Theatre",
+    "description": "School of Engineering · GK Campus",
+    "latitude": 9.534012244407375,
+    "longitude": 6.449614829712623,
+    "category": "lecture"
+  },
+  {
+    "id": "h-male-a",
+    "name": "Male Hostel A Block",
+    "description": "Male student hostel · GK Campus",
+    "latitude": 9.5308,
+    "longitude": 6.444,
+    "category": "hostel"
+  },
+  {
+    "id": "h-male-b",
+    "name": "Male Hostel B Block",
+    "description": "Male student hostel · GK Campus",
+    "latitude": 9.531,
+    "longitude": 6.4436,
+    "category": "hostel"
+  },
+  {
+    "id": "h-male-c",
+    "name": "Male Hostel C Block",
+    "description": "Male student hostel · GK Campus",
+    "latitude": 9.5306,
+    "longitude": 6.4432,
+    "category": "hostel"
+  },
+  {
+    "id": "h-female-a",
+    "name": "Female Hostel A Block",
+    "description": "Female student hostel · GK Campus",
+    "latitude": 9.5302,
+    "longitude": 6.4444,
+    "category": "hostel"
+  },
+  {
+    "id": "h-female-b",
+    "name": "Female Hostel B Block",
+    "description": "Female student hostel · GK Campus",
+    "latitude": 9.5298,
+    "longitude": 6.444,
+    "category": "hostel"
+  },
+  {
+    "id": "h-female-c",
+    "name": "Female Hostel C Block",
+    "description": "Female student hostel · GK Campus",
+    "latitude": 9.5294,
+    "longitude": 6.4436,
+    "category": "hostel"
+  },
+  {
+    "id": "gate-main",
+    "name": "Main Gate",
+    "description": "Main entrance · GK Campus",
+    "latitude": 9.52428,
+    "longitude": 6.45338,
+    "category": "gate"
+  },
+  {
+    "id": "gate-2",
+    "name": "Gate 2",
+    "description": "Secondary entrance · GK Campus",
+    "latitude": 9.53741,
+    "longitude": 6.44706,
+    "category": "gate"
+  },
+  {
+    "id": "gate-3",
+    "name": "Gate 3",
+    "description": "Hostel area entrance · GK Campus",
+    "latitude": 9.52844,
+    "longitude": 6.44067,
+    "category": "gate"
+  },
+  {
+    "id": "library",
+    "name": "Main Library",
+    "description": "University library · GK Campus",
+    "latitude": 9.5258,
+    "longitude": 6.4505,
+    "category": "library"
+  },
+  {
+    "id": "admin",
+    "name": "Admin Block",
+    "description": "Administrative offices · GK Campus",
+    "latitude": 9.5262,
+    "longitude": 6.451,
+    "category": "blocks"
+  },
+  {
+    "id": "senate",
+    "name": "Senate Building",
+    "description": "Senate and management · GK Campus",
+    "latitude": 9.5265,
+    "longitude": 6.4515,
+    "category": "blocks"
+  },
+  {
+    "id": "workshop",
+    "name": "Engineering Workshop",
+    "description": "Engineering practical complex · GK Campus",
+    "latitude": 9.535527785671598,
+    "longitude": 6.448740540140867,
+    "category": "blocks"
+  },
+  {
+    "id": "security",
+    "name": "Security Post",
+    "description": "Campus security headquarters · GK Campus",
+    "latitude": 9.52457,
+    "longitude": 6.45329,
+    "category": "blocks"
+  },
+  {
+    "id": "futminna-transmission",
+    "name": "Futminna Transmission Station",
+    "description": "Radio & TV station · GK Campus",
+    "latitude": 9.537360528544333,
+    "longitude": 6.444505149829051,
+    "category": "blocks"
+  },
+  {
+    "id": "medical",
+    "name": "Medical Centre",
+    "description": "Student health services · GK Campus",
+    "latitude": 9.527,
+    "longitude": 6.4528,
+    "category": "medical"
+  },
+  {
+    "id": "sports",
+    "name": "Sports Complex",
+    "description": "Sports & recreation · GK Campus",
+    "latitude": 9.533310455367369,
+    "longitude": 6.4476637354082875,
+    "category": "sports"
+  },
+  {
+    "id": "ict",
+    "name": "ICT Centre",
+    "description": "Computer & tech lab · GK Campus",
+    "latitude": 9.5255,
+    "longitude": 6.452,
+    "category": "ict"
+  },
+  {
+    "id": "canteen",
+    "name": "Cafeteria",
+    "description": "Student dining · GK Campus",
+    "latitude": 9.5258,
+    "longitude": 6.4515,
+    "category": "canteen"
+  },
+  {
+    "id": "mosque",
+    "name": "Central Mosque",
+    "description": "Campus mosque · GK Campus",
+    "latitude": 9.5275,
+    "longitude": 6.4525,
+    "category": "mosque"
+  },
+  {
+    "id": "mosque-hostel",
+    "name": "Hostel Mosque",
+    "description": "Hostel area mosque · GK Campus",
+    "latitude": 9.532318867522317,
+    "longitude": 6.4437135453661485,
+    "category": "mosque"
+  },
+  {
+    "id": "lab1",
+    "name": "Central Engineering Laboratory",
+    "description": "Engineering complex · GK Campus",
+    "latitude": 9.534871621207879,
+    "longitude": 6.4487832265655305,
+    "category": "laboratory"
+  }
+]

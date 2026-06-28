@@ -12,6 +12,7 @@ import * as LocalAuthentication from 'expo-local-authentication'
 import { MaterialIcons } from '@expo/vector-icons'
 import { getStoredPinHash, hashPin } from '../../core/security'
 import { useSecurityStore } from '../../core/securityStore'
+import { kickoffProactiveRefresh } from '../../core/session'
 import LoadingOverlay from '../components/LoadingOverlay'
 
 type AppLockProps = {
@@ -129,6 +130,11 @@ export default function AppLockPage({ onUnlocked, onForgotPin }: AppLockProps) {
       }
       setError('')
       setPinAttempts(0)
+      // Kick off a background token refresh BEFORE navigating away.
+      // This primes the refresh mutex so all screens that mount immediately
+      // after unlock will queue on the in-flight refresh rather than racing
+      // with stale tokens. onUnlocked() is called synchronously — no delay.
+      void kickoffProactiveRefresh()
       onUnlocked()
     } finally {
       setUnlocking(false)
@@ -154,6 +160,9 @@ export default function AppLockPage({ onUnlocked, onForgotPin }: AppLockProps) {
       })
       if (res.success) {
         setBiometricAttempts(0)
+        // Same proactive refresh pattern as PIN unlock — prime the mutex before
+        // screens mount so they queue on the in-flight refresh rather than racing.
+        void kickoffProactiveRefresh()
         onUnlocked()
       } else {
         const errorCode = (res as { error?: string }).error

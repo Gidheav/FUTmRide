@@ -5,7 +5,7 @@ import {
   Download, Megaphone, UserPlus,
   ArrowLeft, ChevronRight, History, ShieldAlert, UserX,
   Radio, Crosshair, Activity, Zap, Route, Monitor, Bell, Sliders, ShieldCheck,
-  Wrench, Ticket, Plug, Flag, LifeBuoy, Banknote, Calculator, FlaskConical
+  Wrench, Ticket, Plug, Flag, LifeBuoy, Banknote, Calculator, FlaskConical, Map
 } from 'lucide-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { CSSProperties } from 'react'
@@ -242,7 +242,7 @@ export default function CampusAdminTopNav() {
         ) : (
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3 }}>
-              Elite Driver Logistics Command
+              Elite Command
             </div>
             <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
               Replacing Pro Rides &amp; Dispatch Center
@@ -449,28 +449,58 @@ export default function CampusAdminTopNav() {
             <span>Rides</span>
           </button>
         </nav>
+      ) : location.pathname === '/' ? (
+        <nav style={s.topNav}>
+          <button
+            type="button"
+            onClick={() => {
+              const params = new URLSearchParams(location.search)
+              params.set('mode', 'live')
+              navigate({ pathname: location.pathname, search: `?${params.toString()}` })
+            }}
+            style={{
+              ...s.topNavBtn,
+              color: searchParams.get('mode') !== 'map-editor' ? T.accent : T.textSecondary,
+              background: searchParams.get('mode') !== 'map-editor' ? T.accentBg : 'transparent',
+            }}
+          >
+            <Activity size={13} strokeWidth={1.8} />
+            <span>Live Operations</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const params = new URLSearchParams(location.search)
+              params.set('mode', 'map-editor')
+              navigate({ pathname: location.pathname, search: `?${params.toString()}` })
+            }}
+            style={{
+              ...s.topNavBtn,
+              color: searchParams.get('mode') === 'map-editor' ? T.accent : T.textSecondary,
+              background: searchParams.get('mode') === 'map-editor' ? T.accentBg : 'transparent',
+            }}
+          >
+            <Map size={13} strokeWidth={1.8} />
+            <span>Map Editor</span>
+          </button>
+          <div style={{ width: 1, height: 16, background: T.border, margin: '0 8px' }} />
+          <button
+            type="button"
+            onClick={toggleOpenRequestsPanel}
+            style={{
+              ...s.topNavBtn,
+              color: isOpenRequestsPanel ? T.accent : T.textSecondary,
+              background: isOpenRequestsPanel ? T.accentBg : 'transparent',
+            }}
+          >
+            <FolderOpen size={13} strokeWidth={1.8} />
+            <span>Open Requests</span>
+          </button>
+        </nav>
       ) : (
         <nav style={s.topNav}>
-          {(location.pathname === '/' ? dashboardNavItems : NAV_ITEMS).map((t) => {
+          {NAV_ITEMS.map((t) => {
             const Icon = t.icon
-            if (t.path === '/rides' && location.pathname === '/') {
-              return (
-                <button
-                  key={t.label}
-                  type="button"
-                  onClick={toggleOpenRequestsPanel}
-                  style={{
-                    ...s.topNavBtn,
-                    color: isOpenRequestsPanel ? T.accent : T.textSecondary,
-                    background: isOpenRequestsPanel ? T.accentBg : 'transparent',
-                  }}
-                >
-                  <Icon size={13} strokeWidth={1.8} />
-                  <span>{t.label}</span>
-                </button>
-              )
-            }
-
             const isActive = location.pathname === t.path
             return (
               <Link

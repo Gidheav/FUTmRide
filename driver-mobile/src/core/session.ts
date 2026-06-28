@@ -2,8 +2,10 @@ import axios from 'axios'
 import api, {
   API_ROOT_URL,
   authApi,
+  classifyApiError,
   driverApi,
   driverWalletApi,
+  kickoffProactiveRefresh,
   settingsApi,
 } from './api'
 import { useAuthStore, type AuthUser } from './authStore'
@@ -13,13 +15,15 @@ import { useDriverRidesStore } from './driverRidesStore'
 import { useDriverProfileStore } from './driverProfileStore'
 import { getAuthTokens, setAuthTokens } from '../../utils/secureStorage'
 
+export { kickoffProactiveRefresh, classifyApiError }
+
 export type DriverSessionSnapshot = {
   user: AuthUser
   settings: SettingsApiPayload
 }
 
 export const isLikelyNetworkError = (error: any) => {
-  return !error?.response
+  return classifyApiError(error) === 'network'
 }
 
 export const getSessionErrorMessage = (error: any, fallback = 'Unable to verify your session.') => {

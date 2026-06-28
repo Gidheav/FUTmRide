@@ -28,6 +28,7 @@ urlpatterns = [
     path("api/v1/analytics/", include("apps.analytics.urls")),
     path("api/v1/support/", include("apps.support.urls")),
     path("api/v1/reports/", include("apps.reports.urls")),
+    path("api/v1/locations/", include("apps.locations.urls")),
 ]
 
 if settings.DEBUG:

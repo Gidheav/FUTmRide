@@ -9,12 +9,13 @@ import api from '../../core/api'
 type AccountPageProps = {
   onEditProfile: () => void
   onOpenNotifications: () => void
+  onOpenSettings: () => void
   onOpenSecurity: () => void
   onLogout: () => void
   refreshKey: number
 }
 
-export default function StudentAccountPage({ onEditProfile, onOpenNotifications, onOpenSecurity, onLogout, refreshKey }: AccountPageProps) {
+export default function StudentAccountPage({ onEditProfile, onOpenNotifications, onOpenSettings, onOpenSecurity, onLogout, refreshKey }: AccountPageProps) {
   const { user, setUser } = useAuthStore()
 
   const getInitials = () => {
@@ -122,6 +123,7 @@ export default function StudentAccountPage({ onEditProfile, onOpenNotifications,
 
   const settings = [
     { icon: 'manage-accounts', label: 'Edit Profile', danger: false, chevron: true },
+    { icon: 'settings', label: 'Settings', danger: false, chevron: true },
     { icon: 'tune', label: 'Notification Settings', danger: false, chevron: true },
     { icon: 'security', label: 'Security', danger: false, chevron: true },
     { icon: 'logout', label: 'Log Out', danger: true, chevron: false },
@@ -177,6 +179,8 @@ export default function StudentAccountPage({ onEditProfile, onOpenNotifications,
             onPress={
               item.label === 'Edit Profile'
                 ? onEditProfile
+                : item.label === 'Settings'
+                  ? onOpenSettings
                 : item.label === 'Notification Settings'
                   ? onOpenNotifications
                 : item.label === 'Security'

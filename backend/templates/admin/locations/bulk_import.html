@@ -1,0 +1,42 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}Bulk Import Locations{% endblock %}
+
+{% block content %}
+<h1>Bulk Import Locations from JSON</h1>
+<p style="color:#555;margin-bottom:20px;">
+  Paste a JSON array of location objects. Each object must include:
+  <code>id</code>, <code>name</code>, <code>description</code>,
+  <code>latitude</code>, <code>longitude</code>, <code>category</code>.<br>
+  Valid categories: <code>lecture, hostel, gate, library, blocks, medical, sports, ict, canteen, mosque, laboratory</code><br>
+  Existing records with the same <code>id</code> will be <strong>updated</strong>. New ids will be created.
+</p>
+
+{% if messages %}
+  {% for message in messages %}
+    <div class="messagelist">
+      <div class="{{ message.tags }}">{{ message }}</div>
+    </div>
+  {% endfor %}
+{% endif %}
+
+<form method="post">
+  {% csrf_token %}
+  <div style="margin-bottom:16px;">
+    <label style="font-weight:bold;display:block;margin-bottom:8px;">
+      JSON Array
+    </label>
+    {{ form.json_data }}
+    {% if form.json_data.help_text %}
+      <p class="help">{{ form.json_data.help_text }}</p>
+    {% endif %}
+  </div>
+  <div>
+    <button type="submit" class="button default" style="background:#0c5460;color:#fff;padding:10px 24px;border:none;border-radius:4px;font-size:14px;font-weight:bold;cursor:pointer;">
+      Import
+    </button>
+    <a href="../../" style="margin-left:12px;">Cancel</a>
+  </div>
+</form>
+{% endblock %}

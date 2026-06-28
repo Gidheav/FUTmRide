@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as LocationService from 'expo-location'
 import api from '../../core/api'
 import useWalletStore from '../../core/walletStore'
-import locationData from '../Gk-location cordinate.json'
+import { useLocations } from '../../../services/locationDataService'
 import MapPickerPage from './MapPickerPage'
 
 const VEHICLES = [
@@ -54,23 +54,6 @@ type BookRidePageProps = {
   onRideCreated: (rideId: string) => void
 }
 
-const ALL_LOCATIONS: LocationOption[] = (locationData as Location[]).map((loc) => ({
-  id: loc.id,
-  label: loc.name,
-  description: loc.description,
-  latitude: roundCoord(loc.latitude),
-  longitude: roundCoord(loc.longitude),
-}))
-
-const filterLocations = (query: string) => {
-  const normalized = query.trim().toLowerCase()
-  if (!normalized) return ALL_LOCATIONS
-  return ALL_LOCATIONS.filter((item) => {
-    const haystack = `${item.label} ${item.description}`.toLowerCase()
-    return haystack.includes(normalized)
-  })
-}
-
 const getSeatLimit = (vehicleId: string) => {
   if (vehicleId === 'motorbike') return 2
   if (vehicleId === 'tricycle') return 4
@@ -97,6 +80,19 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
   const insets = useSafeAreaInsets()
   const [activePicker, setActivePicker] = useState<'pickup' | 'dropoff' | 'vehicle' | 'time' | 'seats' | null>(null)
   const [showMapPicker, setShowMapPicker] = useState(false)
+
+  // OTA location data — refreshes after silent background download
+  const rawLocations = useLocations()
+  const ALL_LOCATIONS = useMemo<LocationOption[]>(
+    () => (rawLocations as Location[]).map((loc) => ({
+      id: loc.id,
+      label: loc.name,
+      description: loc.description,
+      latitude: roundCoord(loc.latitude),
+      longitude: roundCoord(loc.longitude),
+    })),
+    [rawLocations],
+  )
 
   const openPicker = useCallback((type: 'pickup' | 'dropoff' | 'vehicle' | 'time' | 'seats') => {
     setActivePicker(type)
@@ -136,8 +132,13 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
   // Only compute filtered locations when a location picker is actually open
   const filteredLocations = useMemo(() => {
     if (activePicker !== 'pickup' && activePicker !== 'dropoff') return ALL_LOCATIONS
-    return filterLocations(query)
-  }, [query, activePicker])
+    const normalized = query.trim().toLowerCase()
+    if (!normalized) return ALL_LOCATIONS
+    return ALL_LOCATIONS.filter((item) => {
+      const haystack = `${item.label} ${item.description}`.toLowerCase()
+      return haystack.includes(normalized)
+    })
+  }, [query, activePicker, ALL_LOCATIONS])
 
   const handleUseCurrentLocation = async () => {
     const status = await LocationService.getForegroundPermissionsAsync()

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import LoadingOverlay from '../../components/LoadingOverlay'
 import {
   FlatList,
   ScrollView,
@@ -11,8 +12,8 @@ import {
 } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import * as LocationService from 'expo-location'
-import api from '../../../core/api'
-import locationData from '../../Gk-location cordinate.json'
+import api, { classifyApiError } from '../../../core/api'
+import { useLocations } from '../../../../services/locationDataService'
 import ActiveRidePage from '../../pages/ActiveRidePage'
 import RideMatchingPage from '../../pages/RideMatchingPage'
 import BookRidePage from '../../pages/BookRidePage'
@@ -63,23 +64,6 @@ type ScanParams = {
   radius_km: number
 }
 
-const ALL_LOCATIONS: LocationOption[] = (locationData as Location[]).map((loc) => ({
-  id: loc.id,
-  label: loc.name,
-  description: loc.description,
-  latitude: roundCoord(loc.latitude),
-  longitude: roundCoord(loc.longitude),
-}))
-
-const filterLocations = (query: string) => {
-  const normalized = query.trim().toLowerCase()
-  if (!normalized) return ALL_LOCATIONS
-  return ALL_LOCATIONS.filter((item) => {
-    const haystack = `${item.label} ${item.description}`.toLowerCase()
-    return haystack.includes(normalized)
-  })
-}
-
 const formatRemaining = (ms: number) => {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000))
   const minutes = Math.floor(totalSeconds / 60)
@@ -98,6 +82,19 @@ export default function FindNearbyTab() {
   const [query, setQuery] = useState('')
   const [locationPickerOpen, setLocationPickerOpen] = useState(false)
 
+  // OTA location data — refreshes after silent background download
+  const rawLocations = useLocations()
+  const ALL_LOCATIONS = useMemo<LocationOption[]>(
+    () => (rawLocations as Location[]).map((loc) => ({
+      id: loc.id,
+      label: loc.name,
+      description: loc.description,
+      latitude: roundCoord(loc.latitude),
+      longitude: roundCoord(loc.longitude),
+    })),
+    [rawLocations],
+  )
+
   const [radiusKm, setRadiusKm] = useState(DEFAULT_RADIUS_KM)
   const [scanError, setScanError] = useState<string | null>(null)
   const [scanLoading, setScanLoading] = useState(false)
@@ -114,9 +111,14 @@ export default function FindNearbyTab() {
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const filteredLocations = useMemo(() => {
-    if (!locationPickerOpen) return [] // Prevent mapping 275 items when closed
-    return filterLocations(query)
-  }, [query, locationPickerOpen])
+    if (!locationPickerOpen) return [] // Prevent mapping items when closed
+    const normalized = query.trim().toLowerCase()
+    if (!normalized) return ALL_LOCATIONS
+    return ALL_LOCATIONS.filter((item) => {
+      const haystack = `${item.label} ${item.description}`.toLowerCase()
+      return haystack.includes(normalized)
+    })
+  }, [query, locationPickerOpen, ALL_LOCATIONS])
 
   useEffect(() => {
     const handleBack = () => {
@@ -157,8 +159,15 @@ export default function FindNearbyTab() {
       setLastUpdatedAt(new Date())
       setScanError(null)
     } catch (err: any) {
-      const message = err?.response?.data?.error?.message || 'Unable to fetch available rides.'
-      setScanError(String(message))
+      const kind = classifyApiError(err)
+      if (kind === 'network') {
+        setScanError('No internet connection. Please check your network.')
+      } else if (kind === 'session_expired') {
+        setScanError('Your session has expired. Please log in again.')
+      } else {
+        const message = err?.response?.data?.error?.message || 'Unable to fetch available rides.'
+        setScanError(String(message))
+      }
     }
   }, [])
 
