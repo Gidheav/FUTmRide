@@ -71,10 +71,13 @@ const clampCount = (value: string) => {
   return Math.min(2000, Math.max(1, parsed))
 }
 
+const GMAP_LIBS: ('drawing' | 'geometry' | 'places')[] = ['drawing', 'geometry', 'places']
+
 export default function TestPage() {
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? '',
+    libraries: GMAP_LIBS,
   })
   const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
@@ -722,9 +725,18 @@ const subTabStyle = (active: boolean): CSSProperties => ({
 })
 
 const s: Record<string, CSSProperties> = {
-  contentGrid: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: 16, alignItems: 'start', maxWidth: 1600, margin: '0 auto' },
+  contentGrid: { 
+    display: 'flex', 
+    flexDirection: 'column', 
+    gap: 16, 
+    width: '400px', 
+    maxWidth: '40vw', 
+    marginLeft: 'auto',
+    marginRight: 16,
+    alignItems: 'stretch'
+  },
   contentCol: { display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 },
-  sidebar: { position: 'sticky', top: 0, display: 'flex', flexDirection: 'column', gap: 16 },
+  sidebar: { display: 'flex', flexDirection: 'column', gap: 16 },
   
   areaTabs: { display: 'flex', gap: 4, background: T.bgInput, padding: 4 },
   
