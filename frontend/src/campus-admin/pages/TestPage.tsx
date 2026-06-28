@@ -95,6 +95,7 @@ export default function TestPage() {
   const [labSuccess, setLabSuccess] = useState<string | null>(null)
   const [isImporting, setIsImporting] = useState(false)
   const [isPublishing, setIsPublishing] = useState(false)
+  const [hasUnpublishedChanges, setHasUnpublishedChanges] = useState(false)
 
   // Auto-load from Map Editor via sessionStorage
   useEffect(() => {
@@ -315,6 +316,7 @@ export default function TestPage() {
                             setIsImporting(true)
                             try {
                               const res = await apiService.wipeLocations()
+                              setHasUnpublishedChanges(false)
                               setLabSuccess(`✓ Wiped ${res?.count ?? '?'} location(s). Database is now empty.`)
                             } catch (e: any) {
                               setLabError(`Wipe failed: ${e.message}`)
@@ -338,7 +340,14 @@ export default function TestPage() {
                             setIsImporting(true)
                             try {
                               const res = await apiService.importLocations(data)
-                              setLabSuccess(`✓ Imported ${res?.imported ?? data.length} location(s) successfully. You can now Publish.`)
+                              setHasUnpublishedChanges(true)
+                              
+                              const inactiveCount = data.filter((d: any) => d.is_active === false).length
+                              const msg = inactiveCount > 0 
+                                ? `✓ Imported ${res?.created ?? '?'} new, ${res?.updated ?? '?'} updated. (Note: ${inactiveCount} are marked is_active:false and won't publish)`
+                                : `✓ Imported ${res?.created ?? '?'} new, ${res?.updated ?? '?'} updated. You can now Publish.`
+                                
+                              setLabSuccess(msg)
                             } catch (e: any) {
                               const errData = e?.response?.data
                               let msg = errData?.detail || errData?.error || errData?.message
@@ -356,15 +365,16 @@ export default function TestPage() {
                         </button>
 
                         <button
-                          style={campusPanel.btnPrimary}
-                          disabled={isPublishing}
+                          style={hasUnpublishedChanges ? campusPanel.btnPrimary : { ...campusPanel.btnPrimary, opacity: 0.5 }}
+                          disabled={isPublishing || !hasUnpublishedChanges}
                           onClick={async () => {
                             setLabError(null)
                             setLabSuccess(null)
                             setIsPublishing(true)
                             try {
                               const res = await apiService.publishLocations()
-                              setLabSuccess(`✓ Published snapshot v${res?.version ?? '?'} — ${res?.count ?? '?'} location(s) live for mobile clients.`)
+                              setHasUnpublishedChanges(false)
+                              setLabSuccess(`✓ Published snapshot v${res?.version ?? '?'} — ${res?.count ?? '?'} active location(s) live for mobile clients.`)
                             } catch (e: any) {
                               const errData = e?.response?.data
                               let msg = errData?.detail || errData?.error || errData?.message
