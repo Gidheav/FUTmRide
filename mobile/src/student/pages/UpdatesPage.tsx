@@ -167,7 +167,7 @@ export default function UpdatesPage() {
                 <MaterialIcons name="check-circle" size={56} color="#1a7340" />
                 <Text style={styles.modalStateTitle}>Up to Date</Text>
                 <Text style={styles.modalStateText}>{modalMessage}</Text>
-                <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#1a7340' }]} onPress={closeModal}>
+                <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#6A1B9A' }]} onPress={closeModal}>
                   <Text style={styles.modalButtonText}>Done</Text>
                 </TouchableOpacity>
               </View>
@@ -180,9 +180,9 @@ export default function UpdatesPage() {
                 <Text style={styles.modalStateTextError}>{modalMessage}</Text>
                 <View style={styles.modalButtonRow}>
                   <TouchableOpacity style={[styles.modalButton, styles.modalButtonOutline]} onPress={closeModal}>
-                    <Text style={[styles.modalButtonText, { color: '#ba1a1a' }]}>Cancel</Text>
+                    <Text style={[styles.modalButtonText, { color: '#6A1B9A' }]}>Cancel</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#ba1a1a' }]} onPress={handleRun}>
+                  <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#6A1B9A' }]} onPress={handleRun}>
                     <Text style={styles.modalButtonText}>Retry</Text>
                   </TouchableOpacity>
                 </View>
@@ -339,7 +339,7 @@ const styles = StyleSheet.create({
   modalButtonOutline: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: '#ba1a1a',
+    borderColor: '#6A1B9A',
   },
   modalButtonRow: {
     flexDirection: 'row',
