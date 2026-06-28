@@ -13,6 +13,9 @@ import {
   FlatList,
 } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useAuthStore } from '../../core/authStore'
+import { useSettingsStore } from '../../core/settingsStore'
 import MapView, { Marker, Callout, Circle, Region, PROVIDER_GOOGLE } from 'react-native-maps'
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import * as LocationService from 'expo-location'
@@ -150,7 +153,7 @@ type QuickItem = {
   hasModal: boolean
 }
 
-const QUICK_ITEMS: QuickItem[] = [
+export const QUICK_ITEMS: QuickItem[] = [
   { id: 'lecture', label: 'Lecture', icon: 'school', category: 'lecture', hasModal: true },
   { id: 'laboratory', label: 'Lab', icon: 'science', category: 'laboratory', hasModal: true },
   { id: 'hostel', label: 'Hostel', icon: 'apartment', category: 'hostel', hasModal: true },
@@ -179,6 +182,9 @@ export default function StudentDashboardScreen({
   onQrScanned,
   activeRide,
 }: StudentDashboardScreenProps) {
+  const insets = useSafeAreaInsets()
+  const { user } = useAuthStore()
+  const { enabledCategories } = useSettingsStore()
   const mapRef = useRef<MapView | null>(null)
   const markerRef = useRef<any>(null)
   const searchInputRef = useRef<TextInput | null>(null)
@@ -567,7 +573,7 @@ export default function StudentDashboardScreen({
               contentContainerStyle={styles.quickAccessRow}
               style={styles.quickAccessScroll}
             >
-              {QUICK_ITEMS.map((item) => (
+              {QUICK_ITEMS.filter(item => enabledCategories.includes(item.category)).map((item) => (
                 <TouchableOpacity
                   key={item.id}
                   style={styles.quickButton}
