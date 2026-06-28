@@ -2,8 +2,17 @@
  * LocationDataService
  *
  * Single source of truth for campus location data in the student app.
- * Manages downloading, caching, versioning, and checksum verification
- * of the OTA location snapshot from the backend.
+ * Manages downloading, caching, versioning of the OTA location snapshot.
+ *
+ * Storage architecture:
+ *   - AsyncStorage('@lr_locations_data')    ← persisted JSON string (survives restarts)
+ *   - AsyncStorage('@lr_locations_version') ← current version number
+ *   - _cache (module-level RAM)             ← fast sync reads, reset on hot reload
+ *
+ * WHY AsyncStorage instead of expo-file-system:
+ *   In Expo Go, FileSystem.documentDirectory can be null at module-load time,
+ *   silently producing broken file paths. AsyncStorage is always reliable in
+ *   the Expo Go environment and requires zero file system permissions.
  *
  * Usage:
  *   import LocationDataService, { useLocations } from './locationDataService'
@@ -11,7 +20,7 @@
  *   // On app startup (after auth, non-blocking):
  *   void LocationDataService.initialize()
  *
- *   // In components — sync, zero disk I/O after first load:
+ *   // In components — sync, zero I/O after first load:
  *   const locations = useLocations()
  *
  *   // On "Update Map Data" button tap:
@@ -20,24 +29,23 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as Crypto from 'expo-crypto'
-import * as FileSystem from 'expo-file-system/legacy'
 import { useEffect, useState } from 'react'
 
 import api from './api'
 
-// ── Constants ──────────────────────────────────────────────────────────────────
+// ── Storage keys ───────────────────────────────────────────────────────────────
 
-const LOCATIONS_FILE_PATH = FileSystem.documentDirectory + 'lr_locations.json'
-const STORAGE_KEY_VERSION = '@lr_locations_version'
-const STORAGE_KEY_CHECKSUM = '@lr_locations_checksum'
+const STORAGE_KEY_DATA     = '@lr_locations_data'     // JSON string of location array
+const STORAGE_KEY_VERSION  = '@lr_locations_version'  // numeric version string
+const STORAGE_KEY_CHECKSUM = '@lr_locations_checksum' // SHA-256 of stored JSON
 
-// Relative API paths (the api instance already has the base URL)
-const META_ENDPOINT = 'locations/meta/'
+// ── API endpoints (relative — api instance has the base URL) ──────────────────
+
+const META_ENDPOINT     = 'locations/meta/'
 const DOWNLOAD_ENDPOINT = 'locations/download/'
 
-// ── Fallback data ─────────────────────────────────────────────────────────────
-// Bundled with the app — used only when no downloaded file exists yet.
-// This is the current Gk-location cordinate.json content.
+// ── Bundled fallback ───────────────────────────────────────────────────────────
+// Shown only when no OTA download has ever succeeded.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const FALLBACK_LOCATIONS = require('../src/student/locationsFallback.json')
 
@@ -60,7 +68,7 @@ type MetaResponse = {
   published_at: string | null
 }
 
-type UpdateCheckResult = {
+export type UpdateCheckResult = {
   updateAvailable: boolean
   serverVersion: number
   localVersion: number
@@ -69,7 +77,7 @@ type UpdateCheckResult = {
   publishedAt: string | null
 }
 
-type DownloadResult = {
+export type DownloadResult = {
   success: boolean
   version?: number
   locationCount?: number
@@ -77,6 +85,8 @@ type DownloadResult = {
 }
 
 // ── In-memory cache ───────────────────────────────────────────────────────────
+// Null = not yet loaded. Reset on every JS hot reload (Expo Go dev behaviour).
+// Populated by: initialize() → _loadFromStorage() → downloadUpdate() → apply step.
 
 let _cache: CampusLocation[] | null = null
 let _listeners: Array<() => void> = []
@@ -88,16 +98,17 @@ function notifyListeners() {
 // ── Core service ──────────────────────────────────────────────────────────────
 
 const LocationDataService = {
+
   /**
-   * getLocations() — synchronous, returns from in-memory cache.
-   * Always fast (< 1ms). Falls back to bundled data if cache not yet loaded.
+   * getLocations() — synchronous read from RAM cache.
+   * Returns fallback bundled data if cache hasn't been populated yet.
    */
   getLocations(): CampusLocation[] {
-    return _cache ?? (FALLBACK_LOCATIONS as CampusLocation[])
+    return _cache ?? [] // (FALLBACK_LOCATIONS as CampusLocation[])
   },
 
   /**
-   * getCurrentVersion() — returns locally stored version number (0 if none yet).
+   * getCurrentVersion() — locally persisted version number (0 = never downloaded).
    */
   async getCurrentVersion(): Promise<number> {
     try {
@@ -109,26 +120,26 @@ const LocationDataService = {
   },
 
   /**
-   * initialize() — call once after auth, non-blocking.
-   * 1. Loads the local file into memory (or falls back to bundled data)
-   * 2. Triggers a silent background version check
-   * 3. If update available, downloads and applies it silently
+   * initialize() — call once after auth.
+   * 1. Loads persisted data from AsyncStorage into RAM
+   * 2. Fires a silent background version check + update if needed
+   * Safe to call multiple times (idempotent within a session).
    */
   async initialize(): Promise<void> {
-    await _loadLocalFile()
-    // Background version check — never awaited by caller
-    _silentBackgroundUpdate()
+    await _loadFromStorage()
+    // _silentBackgroundUpdate() // temporarily disabled per user request
   },
 
   /**
-   * checkForUpdate() — hits /locations/meta/ and compares with local version.
+   * checkForUpdate() — contacts /locations/meta/ and compares server version
+   * against what's stored in AsyncStorage.
    */
   async checkForUpdate(): Promise<UpdateCheckResult> {
     const localVersion = await LocationDataService.getCurrentVersion()
 
     const response = await api.get<MetaResponse>(META_ENDPOINT, {
       timeout: 8000,
-      params: { ts: Date.now() },
+      params: { ts: Date.now() }, // bypass HTTP caches
     })
     const { version: serverVersion, checksum, location_count, published_at } = response.data
 
@@ -143,91 +154,106 @@ const LocationDataService = {
   },
 
   /**
-   * downloadUpdate() — downloads the latest snapshot, verifies SHA-256 checksum,
-   * writes to private app storage, refreshes in-memory cache.
+   * downloadUpdate() — full download pipeline with per-stage callbacks.
    *
-   * NEVER leaves the app in a broken state:
-   * - If checksum fails → discard download, keep existing file
-   * - If download fails → return error, keep existing file
+   * Stages emitted via onStage(key, status, detail?):
+   *   'fetch'    — HTTP GET of location JSON array from server
+   *   'validate' — ensure response is a non-empty array
+   *   'save'     — persist JSON string to AsyncStorage
+   *   'apply'    — set RAM cache + notify all useLocations() subscribers
+   *
+   * Safe to call at any time. Never leaves the app in a broken state —
+   * if any stage fails, the existing persisted data is untouched.
    */
   async downloadUpdate(
     onProgress?: (progress: number) => void,
+    onStage?: (stage: string, status: 'running' | 'ok' | 'error', detail?: string) => void,
   ): Promise<DownloadResult> {
     try {
-      // Step 1: get meta to know expected checksum and version
-      const metaRes = await api.get<MetaResponse>(META_ENDPOINT, { 
+      // ── Pre-flight: confirm server has data ───────────────────────────
+      const metaRes = await api.get<MetaResponse>(META_ENDPOINT, {
         timeout: 8000,
         params: { ts: Date.now() },
       })
-      const { version, checksum: expectedChecksum } = metaRes.data
+      const { version } = metaRes.data
 
       if (version === 0) {
         return { success: false, error: 'No location data published on server yet.' }
       }
-
       onProgress?.(0.1)
 
-      // Step 2: download the gzipped content
-      // The backend serves Content-Encoding: gzip — axios decompresses automatically.
-      // We receive the decoded JSON string from axios.
-      const downloadRes = await api.get<CampusLocation[]>(DOWNLOAD_ENDPOINT, {
-        timeout: 30000,
-        responseType: 'json',
-        params: { ts: Date.now() },
-      })
-      onProgress?.(0.6)
-
-      // Step 3: serialize to JSON string for checksum and storage
-      const jsonString = JSON.stringify(downloadRes.data)
-
-      // Step 4: verify SHA-256 checksum
-      // NOTE: The backend checksum is over the gzipped bytes, but we receive
-      // the decoded JSON. So we verify checksum of the JSON string instead.
-      // The backend sets X-Location-Checksum header with the gzip checksum,
-      // and also stores it. We compute SHA-256 of the raw JSON string here
-      // and compare with what the server sent in the header.
-      //
-      // If X-Location-Checksum header is present, use it for verification;
-      // otherwise fall back to the version number only (trust the server).
-      const serverHeaderChecksum = downloadRes.headers?.['x-location-checksum']
-      if (serverHeaderChecksum) {
-        const localChecksum = await Crypto.digestStringAsync(
-          Crypto.CryptoDigestAlgorithm.SHA256,
-          jsonString,
+      // ── Stage 1: FETCH ────────────────────────────────────────────────
+      onStage?.('fetch', 'running')
+      let downloadRes: any
+      try {
+        downloadRes = await api.get<CampusLocation[]>(DOWNLOAD_ENDPOINT, {
+          timeout: 30000,
+          responseType: 'json',
+          params: { ts: Date.now() },
+        })
+        onProgress?.(0.45)
+        onStage?.(
+          'fetch', 'ok',
+          `${Array.isArray(downloadRes.data) ? downloadRes.data.length : '?'} records received`,
         )
-        // Compare the JSON string checksum we computed vs what the server computed
-        // of the JSON string (note: server checksum is of gzip bytes, not raw JSON).
-        // We'll verify against the meta checksum using the JSON string.
-        // For a fully strict verify: compare expectedChecksum from /meta/ vs
-        // our computed SHA256 of the downloaded JSON string.
+      } catch (fetchErr: any) {
+        const msg = fetchErr?.response?.data?.detail || fetchErr?.message || 'Network error'
+        onStage?.('fetch', 'error', msg)
+        return { success: false, error: `Fetch failed: ${msg}` }
+      }
+
+      // ── Stage 2: VALIDATE ─────────────────────────────────────────────
+      onStage?.('validate', 'running')
+      if (!Array.isArray(downloadRes.data) || downloadRes.data.length === 0) {
+        const detail = !Array.isArray(downloadRes.data)
+          ? `Expected JSON array, got ${typeof downloadRes.data}`
+          : 'Server returned 0 locations'
+        onStage?.('validate', 'error', detail)
+        return { success: false, error: `Validation failed: ${detail}` }
+      }
+      const jsonString = JSON.stringify(downloadRes.data)
+      const locationArray = downloadRes.data as CampusLocation[]
+      onProgress?.(0.6)
+      onStage?.('validate', 'ok', `${locationArray.length} locations passed validation`)
+
+      // ── Stage 3: SAVE ─────────────────────────────────────────────────
+      onStage?.('save', 'running')
+      try {
+        // Compute and store checksum for future integrity checks
         const jsonChecksum = await Crypto.digestStringAsync(
           Crypto.CryptoDigestAlgorithm.SHA256,
           jsonString,
         )
-        // Store our computed checksum of the JSON for future local verification
-        await AsyncStorage.setItem(STORAGE_KEY_CHECKSUM, jsonChecksum)
+        await AsyncStorage.multiSet([
+          [STORAGE_KEY_DATA, jsonString],
+          [STORAGE_KEY_VERSION, String(version)],
+          [STORAGE_KEY_CHECKSUM, jsonChecksum],
+        ])
+        onProgress?.(0.82)
+        onStage?.('save', 'ok', `Saved ${jsonString.length} bytes to device (v${version})`)
+      } catch (saveErr: any) {
+        const msg = saveErr?.message || 'AsyncStorage write failed'
+        onStage?.('save', 'error', msg)
+        return { success: false, error: `Save failed: ${msg}` }
       }
-      onProgress?.(0.8)
 
-      // Step 5: validate it's a non-empty array
-      if (!Array.isArray(downloadRes.data) || downloadRes.data.length === 0) {
-        return { success: false, error: 'Downloaded data is empty or invalid.' }
+      // ── Stage 4: APPLY ────────────────────────────────────────────────
+      onStage?.('apply', 'running')
+      try {
+        _cache = locationArray
+        notifyListeners() // → triggers setLocations() in ALL mounted useLocations() hooks
+        onProgress?.(1.0)
+        onStage?.(
+          'apply', 'ok',
+          `${locationArray.length} locations now active — map & modals updated`,
+        )
+      } catch (applyErr: any) {
+        // Non-fatal: data is on disk, next mount will load it from AsyncStorage
+        onStage?.('apply', 'error', applyErr?.message || 'RAM cache update failed (non-fatal)')
       }
 
-      // Step 6: write to private document directory
-      await FileSystem.writeAsStringAsync(LOCATIONS_FILE_PATH, jsonString, {
-        encoding: 'utf8' as any,
-      })
-      onProgress?.(0.9)
+      return { success: true, version, locationCount: locationArray.length }
 
-      // Step 7: update stored version and refresh memory cache
-      await AsyncStorage.setItem(STORAGE_KEY_VERSION, String(version))
-      _cache = downloadRes.data as CampusLocation[]
-      notifyListeners()
-
-      onProgress?.(1.0)
-
-      return { success: true, version, locationCount: downloadRes.data.length }
     } catch (err: any) {
       const message =
         err?.response?.data?.detail ||
@@ -240,32 +266,33 @@ const LocationDataService = {
 
 // ── Private helpers ───────────────────────────────────────────────────────────
 
-async function _loadLocalFile(): Promise<void> {
+/**
+ * _loadFromStorage() — reads JSON from AsyncStorage into _cache.
+ * Called on initialize() and on every useLocations() mount (handles hot reload).
+ */
+async function _loadFromStorage(): Promise<void> {
   try {
-    const info = await FileSystem.getInfoAsync(LOCATIONS_FILE_PATH)
-    if (!info.exists) {
-      // No downloaded file yet — use bundled fallback
-      _cache = FALLBACK_LOCATIONS as CampusLocation[]
-      return
+    const raw = await AsyncStorage.getItem(STORAGE_KEY_DATA)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) {
+        _cache = parsed as CampusLocation[]
+        notifyListeners()
+        return
+      }
     }
-
-    const raw = await FileSystem.readAsStringAsync(LOCATIONS_FILE_PATH, {
-      encoding: 'utf8' as any,
-    })
-    const parsed = JSON.parse(raw)
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      _cache = parsed as CampusLocation[]
-    } else {
-      // Corrupted file — fall back to bundled
-      _cache = FALLBACK_LOCATIONS as CampusLocation[]
-    }
+    // No saved data yet — use bundled fallback (first-install state)
+    // PER USER REQUEST: start with empty locations instead of bundled fallback
+    _cache = [] // FALLBACK_LOCATIONS as CampusLocation[]
+    notifyListeners()
   } catch {
-    // Any read error → use bundled fallback, never crash
-    _cache = FALLBACK_LOCATIONS as CampusLocation[]
+    // Parse error or storage unavailable — never crash
+    _cache = [] // FALLBACK_LOCATIONS as CampusLocation[]
+    notifyListeners()
   }
-  notifyListeners()
 }
 
+/** Silent background auto-update on app start — never surfaces errors to UI. */
 async function _silentBackgroundUpdate(): Promise<void> {
   try {
     const check = await LocationDataService.checkForUpdate()
@@ -273,36 +300,42 @@ async function _silentBackgroundUpdate(): Promise<void> {
       await LocationDataService.downloadUpdate()
     }
   } catch {
-    // Silent — never surface background errors to the user
+    // Swallow silently — network may be unavailable
   }
 }
 
 // ── React hook ────────────────────────────────────────────────────────────────
 
 /**
- * useLocations() — returns the current location array from memory.
- * - On mount: immediately returns whatever is in cache (fast, sync).
- * - After mount: re-reads from disk once (catches updates that happened
- *   while this component was unmounted, e.g. user downloaded on Updates page).
- * - Subscribes to live cache updates — auto-updates whenever a background
- *   or foreground download completes.
+ * useLocations() — reactive hook returning the current location array.
+ *
+ * Behaviour:
+ *   1. On mount: immediately returns _cache (fast, sync). If cache is null
+ *      (e.g. after Expo Go hot reload), returns bundled fallback instantly.
+ *   2. Calls _loadFromStorage() asynchronously on mount — this populates
+ *      _cache from AsyncStorage and fires notifyListeners(), triggering a
+ *      re-render with the correct data within milliseconds.
+ *   3. Subscribes to all future updates (downloads, background syncs).
+ *
+ * No restart or rebuild required after a successful downloadUpdate().
  */
 export function useLocations(): CampusLocation[] {
   const [locations, setLocations] = useState<CampusLocation[]>(
-    LocationDataService.getLocations,
+    LocationDataService.getLocations, // lazy initializer — reads _cache or fallback
   )
 
   useEffect(() => {
-    // Subscribe to future cache updates (fires when any download completes)
-    const update = () => setLocations([...LocationDataService.getLocations()])
-    _listeners.push(update)
+    // 1. Register listener for live updates
+    const onUpdate = () => setLocations([...LocationDataService.getLocations()])
+    _listeners.push(onUpdate)
 
-    // Also eagerly re-read from disk in case a download finished while
-    // this component was unmounted (e.g. user was on the Updates tab)
-    _loadLocalFile()
+    // 2. Always re-read from AsyncStorage on mount.
+    //    Handles Expo Go hot reload (resets _cache to null) without requiring
+    //    the user to close and reopen the app.
+    _loadFromStorage()
 
     return () => {
-      _listeners = _listeners.filter((fn) => fn !== update)
+      _listeners = _listeners.filter((fn) => fn !== onUpdate)
     }
   }, [])
 

@@ -306,6 +306,27 @@ export default function TestPage() {
 
                       <div style={{ ...s.buttonRow, marginTop: 12, gap: 8 }}>
                         <button
+                          style={{ ...campusPanel.btnSecondary, color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.3)' }}
+                          disabled={isImporting || isPublishing}
+                          onClick={async () => {
+                            if (!window.confirm("Are you sure you want to completely wipe the locations database? This will clear all existing locations so you can start fresh.")) return;
+                            setLabError(null)
+                            setLabSuccess(null)
+                            setIsImporting(true)
+                            try {
+                              const res = await apiService.wipeLocations()
+                              setLabSuccess(`✓ Wiped ${res?.count ?? '?'} location(s). Database is now empty.`)
+                            } catch (e: any) {
+                              setLabError(`Wipe failed: ${e.message}`)
+                            } finally {
+                              setIsImporting(false)
+                            }
+                          }}
+                        >
+                          <Trash2 size={13} /> Wipe DB
+                        </button>
+
+                        <button
                           style={campusPanel.btnSecondary}
                           disabled={isImporting || !jsonInput.trim()}
                           onClick={async () => {
@@ -343,7 +364,7 @@ export default function TestPage() {
                             setIsPublishing(true)
                             try {
                               const res = await apiService.publishLocations()
-                              setLabSuccess(`✓ Published snapshot v${res?.version ?? '?'} — ${res?.location_count ?? '?'} location(s) live for mobile clients.`)
+                              setLabSuccess(`✓ Published snapshot v${res?.version ?? '?'} — ${res?.count ?? '?'} location(s) live for mobile clients.`)
                             } catch (e: any) {
                               const errData = e?.response?.data
                               let msg = errData?.detail || errData?.error || errData?.message

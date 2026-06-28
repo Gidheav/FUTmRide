@@ -180,3 +180,20 @@ class LocationAdminPublishView(APIView):
             'size_bytes': result['size_bytes'],
             'checksum': result['checksum'],
         })
+
+
+class LocationAdminWipeView(APIView):
+    """
+    POST /api/v1/locations/admin/wipe/
+    Requires Admin privileges.
+    Deletes ALL locations in the database.
+    """
+    permission_classes = [IsAdminUser]
+
+    def post(self, request):
+        count, _ = Location.objects.all().delete()
+        return JsonResponse({
+            'message': f'Successfully wiped {count} location(s). Database is now empty.',
+            'count': count,
+        })
+
