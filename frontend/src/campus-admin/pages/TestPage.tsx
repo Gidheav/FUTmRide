@@ -15,10 +15,11 @@ import {
   Users,
   Map as MapIcon,
   Globe,
+  MapPin,
 } from 'lucide-react'
-import { GoogleMap, useJsApiLoader, Marker, MapMouseEvent } from '@react-google-maps/api'
+import { GoogleMap, useJsApiLoader, Marker, Circle } from '@react-google-maps/api'
 import apiService from '../../services/api.service'
-import { T } from '../theme'
+import { T, useCampusThemeStore } from '../theme'
 import { campusPanel } from '../shared/campusPanelStyles'
 
 type TestRide = {
@@ -96,6 +97,7 @@ export default function TestPage() {
   const area = queryArea === 'rides' ? 'rides' : queryArea === 'map' ? 'map' : 'account'
   const defaultSection = area === 'rides' ? 'create' : area === 'map' ? 'manage' : 'student'
   const section = searchParams.get('section') || defaultSection
+  const { mode } = useCampusThemeStore()
   const [counts, setCounts] = useState({
     student: '10',
     driver: '10',
@@ -113,22 +115,36 @@ export default function TestPage() {
   
   const [sidebarTab, setSidebarTab] = useState<'builder' | 'locations' | 'console'>('builder')
   const [editorLocations, setEditorLocations] = useState<any[]>([])
-  const [draftLocation, setDraftLocation] = useState<{lat: number, lng: number, name: string, category: string, id: string} | null>(null)
+  const [draftLocation, setDraftLocation] = useState<{lat: number, lng: number, name: string, category: string, id: string, overlapWarning?: boolean, allowOverlap?: boolean} | null>(null)
 
-  const handleMapClick = useCallback((e: MapMouseEvent) => {
+  const existingLocationsQuery = useQuery({
+    queryKey: ['existing-locations-snapshot'],
+    queryFn: () => apiService.getLocationsSnapshot(),
+    refetchOnWindowFocus: false,
+    enabled: area === 'map',
+  })
+  const existingLocations = Array.isArray(existingLocationsQuery.data) ? existingLocationsQuery.data : []
+
+  const handleMapClick = useCallback((e: google.maps.MapMouseEvent) => {
     if (!e.latLng || sidebarTab !== 'builder') return
     const lat = e.latLng.lat()
     const lng = e.latLng.lng()
     const newPoint = { lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) }
     
     // 5 m dedup: skip if any existing location is within 5 metres
-    const tooClose = editorLocations.some(loc => haversineM(newPoint, { lat: loc.lat, lng: loc.lng }) <= 5)
-    if (tooClose) return
+    const tooCloseEditor = editorLocations.some(loc => haversineM(newPoint, { lat: loc.lat, lng: loc.lng }) <= 5)
+    const tooCloseExisting = existingLocations.some((loc: any) => haversineM(newPoint, { lat: loc.latitude, lng: loc.longitude }) <= 5)
+    if (tooCloseEditor || tooCloseExisting) return
+    
+    const overlapsEditor = editorLocations.some(loc => haversineM(newPoint, { lat: loc.lat, lng: loc.lng }) <= 100)
+    const overlapsExisting = existingLocations.some((loc: any) => haversineM(newPoint, { lat: loc.latitude, lng: loc.longitude }) <= 100)
+    const overlapWarning = overlapsEditor || overlapsExisting
     
     const idStr = `loc_${Math.random().toString(36).substring(2, 8)}`
-    setEditorLocations(prev => [...prev, { ...newPoint, name: '', category: 'gate', id: idStr }])
-    setDraftLocation({ ...newPoint, name: '', category: 'gate', id: idStr })
-  }, [sidebarTab, editorLocations])
+    const newLoc = { ...newPoint, name: '', category: 'gate', id: idStr, overlapWarning }
+    setEditorLocations(prev => [...prev, newLoc])
+    setDraftLocation(newLoc)
+  }, [sidebarTab, editorLocations, existingLocations])
   const [labError, setLabError] = useState<string | null>(null)
   const [labSuccess, setLabSuccess] = useState<string | null>(null)
   const [isImporting, setIsImporting] = useState(false)
@@ -221,6 +237,31 @@ export default function TestPage() {
 
   const busy = runAction.isPending
 
+  const mapContainerStyle = useMemo(() => ({ width: '100%', height: '100%' }), [])
+  const mapCenter = useMemo(() => ({ lat: 9.53, lng: 6.45 }), [])
+  const mapOptions = useMemo(() => ({
+    disableDefaultUI: true,
+    backgroundColor: mode === 'dark' ? '#0f1117' : '#ffffff',
+    styles: mode === 'dark' ? [
+      { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+      { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
+      { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+      { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
+      { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
+      { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#263c3f" }] },
+      { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#6b9a76" }] },
+      { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
+      { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#212a37" }] },
+      { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#9ca5b3" }] },
+      { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#746855" }] },
+      { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#1f2835" }] },
+      { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#f3d19c" }] },
+      { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] },
+      { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#515c6d" }] },
+      { featureType: "water", elementType: "labels.text.stroke", stylers: [{ color: "#17263c" }] },
+    ] : [],
+  }), [mode])
+
   return (
     <div style={{ ...campusPanel.shell, position: 'relative', overflow: 'hidden', padding: 0 }}>
       <style>{'@keyframes test-spin { to { transform: rotate(360deg); } }'}</style>
@@ -228,23 +269,70 @@ export default function TestPage() {
       {isLoaded && (
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0 }}>
           <GoogleMap
-            mapContainerStyle={{ width: '100%', height: '100%' }}
-            center={{ lat: 9.53, lng: 6.45 }}
+            mapContainerStyle={mapContainerStyle}
+            center={mapCenter}
             zoom={15}
-            options={{ disableDefaultUI: true, mapId: '3fa6c5fb12b509bc' }}
+            options={mapOptions}
             onClick={handleMapClick}
           >
+            {existingLocations.map((loc: any) => (
+              <Marker
+                key={`ex_${loc.id}`}
+                position={{ lat: loc.latitude, lng: loc.longitude }}
+                icon={{
+                  path: google.maps.SymbolPath.CIRCLE,
+                  fillColor: '#9ca3af',
+                  fillOpacity: 1,
+                  strokeColor: '#374151',
+                  strokeWeight: 1,
+                  scale: 6,
+                }}
+                title={loc.name}
+              />
+            ))}
+            {existingLocations.map((loc: any) => (
+              <Circle
+                key={`ex_c_${loc.id}`}
+                center={{ lat: loc.latitude, lng: loc.longitude }}
+                radius={100}
+                options={{
+                  fillColor: '#ef4444',
+                  fillOpacity: 0.05,
+                  strokeColor: '#ef4444',
+                  strokeOpacity: 0.2,
+                  strokeWeight: 1,
+                  clickable: false,
+                }}
+              />
+            ))}
             {editorLocations.map((loc, idx) => (
               <Marker
                 key={loc.id || idx}
                 position={{ lat: loc.lat, lng: loc.lng }}
                 icon={{
-                  path: window.google?.maps?.SymbolPath?.CIRCLE,
-                  scale: 6,
-                  fillColor: '#8b5cf6',
-                  fillOpacity: 0.9,
+                  path: google.maps.SymbolPath.CIRCLE,
+                  fillColor: '#6366f1',
+                  fillOpacity: 1,
+                  strokeColor: '#ffffff',
                   strokeWeight: 2,
-                  strokeColor: '#fff',
+                  scale: 7,
+                }}
+                label={{ text: (idx + 1).toString(), color: '#ffffff', fontSize: '9px', fontWeight: 'bold' }}
+                title={loc.name}
+              />
+            ))}
+            {editorLocations.map((loc, idx) => (
+              <Circle
+                key={`ed_c_${loc.id || idx}`}
+                center={{ lat: loc.lat, lng: loc.lng }}
+                radius={100}
+                options={{
+                  fillColor: '#ef4444',
+                  fillOpacity: 0.05,
+                  strokeColor: '#ef4444',
+                  strokeOpacity: 0.2,
+                  strokeWeight: 1,
+                  clickable: false,
                 }}
               />
             ))}
@@ -266,7 +354,7 @@ export default function TestPage() {
         </div>
       )}
 
-      <div style={{ ...campusPanel.scrollMain, ...campusPanel.thinScroll, padding: 16, position: 'relative', zIndex: 1, pointerEvents: 'none' }}>
+      <div style={{ ...campusPanel.scrollMain, ...campusPanel.thinScroll, padding: 0, position: 'relative', zIndex: 1, pointerEvents: 'none' }}>
         <div style={{ ...s.contentGrid, pointerEvents: 'auto' }}>
           <div style={s.contentCol}>
             
@@ -281,7 +369,7 @@ export default function TestPage() {
               </div>
             )}
 
-            <div style={campusPanel.card}>
+            <div style={{ ...campusPanel.card, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
               {area === 'map' ? (
                 <>
               <div style={s.subTabs}>
@@ -291,7 +379,7 @@ export default function TestPage() {
               </div>
 
               {sidebarTab === 'builder' && (
-                <div style={{ flex: 1, padding: 16 }}>
+                <div style={{ flex: 1, padding: 16, overflowY: 'auto' }}>
                   <PanelTitle icon={<MapPin size={16} />} title="Location Builder" />
                   <p style={{ fontSize: 13, color: T.textSecondary, marginBottom: 12, marginTop: 0 }}>
                     Click the map to place pins. Pins within 5m of each other are deduplicated. When finished, you can copy the JSON to import.
@@ -357,9 +445,31 @@ export default function TestPage() {
                         </select>
                       </div>
 
+                      {draftLocation.overlapWarning && (
+                        <div style={{ background: '#7f1d1d22', border: `1px solid #ef4444`, borderRadius: 4, padding: '8px', marginBottom: 8, marginTop: 8 }}>
+                          <div style={{ fontSize: 10, color: '#ef4444', marginBottom: 6, display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                            <AlertTriangle size={12} style={{ flexShrink: 0, marginTop: 1 }} />
+                            <span>This pin is within 100m of an existing location. Adding overlapping locations may confuse users.</span>
+                          </div>
+                          <label style={{ fontSize: 11, color: T.textPrimary, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={!!draftLocation.allowOverlap}
+                              onChange={e => {
+                                const updated = { ...draftLocation, allowOverlap: e.target.checked }
+                                setDraftLocation(updated)
+                                setEditorLocations(prev => prev.map(l => l.id === draftLocation.id ? { ...l, allowOverlap: e.target.checked } : l))
+                              }}
+                            />
+                            Exception: Allow 100m overlap
+                          </label>
+                        </div>
+                      )}
+
                       <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
                         <button
-                          style={{ ...campusPanel.btnPrimary, flex: 1, padding: '6px 0', fontSize: 11 }}
+                          style={{ ...campusPanel.btnPrimary, flex: 1, padding: '6px 0', fontSize: 11, opacity: (draftLocation.overlapWarning && !draftLocation.allowOverlap) ? 0.5 : 1 }}
+                          disabled={!!(draftLocation.overlapWarning && !draftLocation.allowOverlap)}
                           onClick={() => setDraftLocation(null)}
                         >Done</button>
                         <button
@@ -409,7 +519,15 @@ export default function TestPage() {
                       <button 
                         style={{ ...campusPanel.btnSecondary, width: '100%' }}
                         onClick={() => {
-                          setJsonInput(JSON.stringify(editorLocations, null, 2))
+                          const exportData = editorLocations.map(l => ({
+                            id: l.id,
+                            name: l.name || 'Unnamed',
+                            category: l.category,
+                            latitude: l.lat,
+                            longitude: l.lng,
+                            allow_overlap: l.allowOverlap || false
+                          }))
+                          setJsonInput(JSON.stringify(exportData, null, 2))
                           setSidebarTab('locations')
                         }}
                       >
@@ -421,7 +539,7 @@ export default function TestPage() {
               )}
 
               {sidebarTab === 'locations' && (
-                <div style={campusPanel.cardBody}>
+                <div style={{ ...campusPanel.cardBody, flex: 1, overflowY: 'auto' }}>
                   <PanelTitle icon={<Globe size={16} />} title="Publish Location Data" />
                   <p style={{ fontSize: 13, color: T.textSecondary, marginBottom: 16, marginTop: 0 }}>
                     Publish a new optimized snapshot of all currently imported campus locations. The mobile app detects and downloads this update automatically.
@@ -568,7 +686,7 @@ export default function TestPage() {
               )}
 
               {sidebarTab === 'console' && (
-                <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
                   <div style={s.consoleHeader}>
                     <span style={campusPanel.cardTitle}>{result?.title || 'Console Output'}</span>
                     {result?.isError && <AlertTriangle size={15} color={T.error} />}
@@ -909,13 +1027,15 @@ const subTabStyle = (active: boolean): CSSProperties => ({
 
 const s: Record<string, CSSProperties> = {
   contentGrid: { 
+    position: 'absolute',
+    top: 5,
+    bottom: 5,
+    right: 5,
+    width: '400px', 
+    maxWidth: '40vw', 
     display: 'flex', 
     flexDirection: 'column', 
     gap: 16, 
-    width: '400px', 
-    maxWidth: '40vw', 
-    marginLeft: 'auto',
-    marginRight: 16,
     alignItems: 'stretch'
   },
   contentCol: { display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 },

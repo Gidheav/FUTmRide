@@ -1242,7 +1242,7 @@ export default function DashboardPage() {
       <div style={s.content}>
 
         {/* ────────────────── LEFT: Open Requests ─────────────────────── */}
-        {!isFullscreen && dashboardMode === 'live' && (
+        {!isFullscreen && (
           isLeftPanelOpen ? (
             <div style={s.leftPanel}>
               <div style={s.panelHeader}>
@@ -1364,7 +1364,7 @@ export default function DashboardPage() {
               )}
             </div>
             <div style={s.toolbarRight}>
-              {dashboardMode === 'live' && (
+              {true && (
                 <Fragment>
                   {/* Undo / Redo */}
               <button
@@ -1646,7 +1646,7 @@ export default function DashboardPage() {
             )}
 
             {/* Map overlay panel: Traffic Layers — live mode only */}
-            {dashboardMode === 'live' && <div style={s.mapOverlayPanel}>
+            {true && <div style={s.mapOverlayPanel}>
               <div style={s.overlaySection}>
                 <button style={s.overlaySectionHeader} onClick={() => setTrafficOpen(!trafficOpen)}>
                   <span>Traffic Layers</span>
@@ -1738,7 +1738,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Bottom bar inside map — live mode only */}
-            {dashboardMode === 'live' && (
+            {true && (
               <div style={s.mapBottomBar}>
                 <button style={s.mapBottomBtn}>Measure</button>
                 <button style={s.mapBottomBtn}>Measure</button>
@@ -1750,7 +1750,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Data feed */}
-          {!isFullscreen && dashboardMode === 'live' && (
+          {!isFullscreen && (
             <div style={{ ...s.dataFeed, height: isDataFeedOpen ? 110 : 33 }}>
               <button
                 style={{ ...s.dataFeedHeader, background: 'none', border: 'none', width: '100%', textAlign: 'left', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
@@ -1771,7 +1771,7 @@ export default function DashboardPage() {
         </div>
 
         {/* ────────────────── RIGHT: Quick Ride Creation ──────────────── */}
-        {!isFullscreen && dashboardMode === 'live' && (
+        {!isFullscreen && (
           isRightPanelOpen ? (
             <div style={s.rightPanel}>
               <div style={s.rpHeader}>

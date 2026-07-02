@@ -275,6 +275,7 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
           renderItem={renderItem}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
+          ItemSeparatorComponent={() => <View style={styles.listSeparator} />}
           ListEmptyComponent={renderEmpty}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={['#6A1B9A']} />
@@ -331,8 +332,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     backgroundColor: '#faf5ff',
     borderBottomWidth: 1,
     borderBottomColor: '#ede5f5',
@@ -348,18 +349,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   listContent: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 40,
+    paddingHorizontal: 5,
+    paddingTop: 0,
+    paddingBottom: 24,
+  },
+  listSeparator: {
+    height: 0,
   },
   // Notification card
   notifCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 12,
-    padding: 14,
-    marginBottom: 8,
-    borderRadius: 14,
+    gap: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    borderRadius: 2,
     backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: '#f0f0f0',
@@ -369,15 +373,15 @@ const styles = StyleSheet.create({
     borderColor: '#ede5f5',
   },
   notifIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   notifContent: {
     flex: 1,
-    gap: 3,
+    gap: 2,
   },
   notifTitleRow: {
     flexDirection: 'row',
@@ -391,20 +395,20 @@ const styles = StyleSheet.create({
     color: '#1a1c1c',
   },
   unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: '#6A1B9A',
   },
   notifBody: {
     fontSize: 13,
     color: '#6b7280',
-    lineHeight: 18,
+    lineHeight: 17,
   },
   notifTime: {
     fontSize: 11,
     color: '#9ca3af',
-    marginTop: 2,
+    marginTop: 1,
   },
   // Empty state
   emptyWrap: {
@@ -436,7 +440,7 @@ const styles = StyleSheet.create({
   },
   // Details/Receipt view
   detailsContent: {
-    padding: 20,
+    padding: 5,
     paddingBottom: 40,
   },
   receiptAmount: {
@@ -448,9 +452,9 @@ const styles = StyleSheet.create({
   receiptCard: {
     width: '100%',
     backgroundColor: '#ffffff',
-    borderRadius: 20,
+    borderRadius: 10,
     padding: 24,
-    elevation: 4,
+    elevation: 0,
     borderWidth: 1,
     borderColor: '#f0f0f0',
   },

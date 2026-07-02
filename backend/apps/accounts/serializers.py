@@ -367,6 +367,16 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
         return raw
 
+    def validate(self, attrs):
+        user = self.instance
+        if user and user.role == UserRole.STUDENT and user.email:
+            first_name = attrs.get('first_name')
+            if first_name is not None:
+                expected_first_name = user.email.split('@')[0].split('.')[0]
+                if first_name.strip().lower() != expected_first_name.lower():
+                    raise serializers.ValidationError({"non_field_errors": "Incorrect name"})
+        return super().validate(attrs)
+
 
 class UserSettingsSerializer(serializers.ModelSerializer):
     has_pin = serializers.SerializerMethodField()

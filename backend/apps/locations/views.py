@@ -4,6 +4,16 @@ from rest_framework.views import APIView
 
 from .models import Location, LocationSnapshot
 from .publish import publish_locations
+import math
+from django.db import transaction
+
+def haversine_m(lat1, lon1, lat2, lon2):
+    R = 6371000
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return R * c
 
 
 class LocationMetaView(APIView):
@@ -119,43 +129,71 @@ class LocationAdminBulkImportView(APIView):
         if not isinstance(records, list):
             return JsonResponse({'error': 'Root element must be a JSON array.'}, status=400)
 
+        existing_locs = list(Location.objects.values('id', 'name', 'latitude', 'longitude'))
+
         created = 0
         updated = 0
         errors = []
 
-        for i, rec in enumerate(records):
-            try:
-                # Basic validation
-                for key in ['id', 'name', 'latitude', 'longitude', 'category']:
-                    if key not in rec:
-                        raise ValueError(f"Missing required key: {key}")
+        try:
+            with transaction.atomic():
+                for i, rec in enumerate(records):
+                    # Basic validation
+                    for key in ['id', 'name', 'latitude', 'longitude', 'category']:
+                        if key not in rec:
+                            raise ValueError(f"Missing required key: {key}")
 
-                loc, was_created = Location.objects.update_or_create(
-                    id=rec['id'],
-                    defaults={
-                        'name': rec['name'],
-                        'description': rec.get('description', ''),
-                        'latitude': rec['latitude'],
-                        'longitude': rec['longitude'],
-                        'category': rec['category'],
-                        'is_active': rec.get('is_active', True),
-                    },
-                )
-                if was_created:
-                    created += 1
-                else:
-                    updated += 1
-            except Exception as exc:
-                errors.append(f'Row {i} ({rec.get("id", "unknown")}): {exc}')
+                    lat = float(rec['latitude'])
+                    lon = float(rec['longitude'])
+                    allow_overlap = rec.get('allow_overlap', False)
 
-        if errors and created == 0 and updated == 0:
-            return JsonResponse({'error': 'Import failed.', 'details': errors}, status=400)
+                    if not allow_overlap:
+                        # Check against existing DB locations
+                        for el in existing_locs:
+                            if str(el['id']) != str(rec['id']):
+                                dist = haversine_m(lat, lon, float(el['latitude']), float(el['longitude']))
+                                if dist <= 100:
+                                    raise ValueError(f"Location is within 100m of existing location '{el['name']}' ({dist:.1f}m). Use 'allow_overlap': true to bypass.")
+
+                    loc, was_created = Location.objects.update_or_create(
+                        id=rec['id'],
+                        defaults={
+                            'name': rec['name'],
+                            'description': rec.get('description', ''),
+                            'latitude': lat,
+                            'longitude': lon,
+                            'category': rec['category'],
+                            'is_active': rec.get('is_active', True),
+                        },
+                    )
+
+                    if was_created:
+                        existing_locs.append({
+                            'id': rec['id'],
+                            'name': rec['name'],
+                            'latitude': lat,
+                            'longitude': lon,
+                        })
+                        created += 1
+                    else:
+                        # Update the existing_locs cache just in case we moved it
+                        for el in existing_locs:
+                            if str(el['id']) == str(rec['id']):
+                                el['latitude'] = lat
+                                el['longitude'] = lon
+                                el['name'] = rec['name']
+                                break
+                        updated += 1
+
+        except ValueError as exc:
+            return JsonResponse({'error': f'Row {i} ({rec.get("id", "unknown")}): {exc}'}, status=400)
+        except Exception as exc:
+            return JsonResponse({'error': f'Row {i} ({rec.get("id", "unknown")}): {exc}'}, status=400)
 
         return JsonResponse({
             'message': f'Import complete. {created} created, {updated} updated.',
             'created': created,
             'updated': updated,
-            'errors': errors[:10] if errors else None,
         })
 
 

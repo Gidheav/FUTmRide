@@ -513,18 +513,20 @@ class ApiService {
     return this.post('rides/test-tools/ondemand-rides/delete/', { count }, TEST_TOOL_REQUEST_CONFIG)
   }
 
-  async importLocations(locations: any[]) {
-    const res = await this.client.post('/locations/admin/bulk-import/', locations)
-    return res.data
+  async importLocations(locations: any[]): Promise<any> {
+    return this.post('locations/admin/bulk-import/', locations)
   }
 
-  async wipeLocations() {
-    const res = await this.client.post('/locations/admin/wipe/')
-    return res.data
+  async wipeLocations(): Promise<any> {
+    return this.post('locations/admin/wipe/')
   }
 
   async publishLocations(): Promise<any> {
     return this.post('locations/admin/publish/')
+  }
+
+  async getLocationsSnapshot(): Promise<any> {
+    return this.get('locations/download/')
   }
 }
 

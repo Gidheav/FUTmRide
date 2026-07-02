@@ -93,6 +93,8 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
   const [phoneNumber, setPhoneNumber] = useState('')
   const [matricNumber, setMatricNumber] = useState('')
   const [department, setDepartment] = useState('')
@@ -122,6 +124,8 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
         if (isMounted) {
           const profile = profileRes.data || {}
           const userProfile = userRes.data || {}
+          setFirstName(userProfile.first_name || '')
+          setLastName(userProfile.last_name || '')
           setPhoneNumber(userProfile.phone_number ? String(userProfile.phone_number) : '')
           const savedMatric = profile.matric_number
           setMatricNumber(savedMatric && matricRegex.test(String(savedMatric)) ? String(savedMatric) : '')
@@ -204,6 +208,14 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
   const selectedDepartmentLabel = department || 'Select department'
 
   const validate = () => {
+    if (!firstName.trim()) {
+      setError('First name is required.')
+      return false
+    }
+    if (!lastName.trim()) {
+      setError('Surname is required.')
+      return false
+    }
     if (phoneNumber && !phoneRegex.test(phoneNumber.trim())) {
       setError('Enter a valid phone number (e.g. +2348012345678).')
       return false
@@ -230,6 +242,8 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
     setError('')
     try {
       await api.patch('users/me/', {
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
         phone_number: phoneNumber ? phoneNumber.trim() : null,
       })
 
@@ -247,6 +261,7 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
       onSaved()
     } catch (err: any) {
       const message = err?.response?.data?.error?.message ||
+        err?.response?.data?.non_field_errors?.[0] ||
         err?.response?.data?.phone_number?.[0] ||
         err?.response?.data?.matric_number?.[0] ||
         err?.response?.data?.campus_id?.[0] ||
@@ -279,6 +294,32 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
 
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Student Details</Text>
+
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>First Name</Text>
+              <View style={styles.inputWrap}>
+                <MaterialIcons name="person" size={18} color="#6A1B9A" />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter first name"
+                  value={firstName}
+                  onChangeText={setFirstName}
+                />
+              </View>
+            </View>
+
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Surname</Text>
+              <View style={styles.inputWrap}>
+                <MaterialIcons name="person-outline" size={18} color="#6A1B9A" />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter surname"
+                  value={lastName}
+                  onChangeText={setLastName}
+                />
+              </View>
+            </View>
 
             <View style={styles.fieldGroup}>
               <Text style={styles.label}>Phone Number</Text>
