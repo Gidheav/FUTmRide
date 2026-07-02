@@ -13,6 +13,10 @@ from .views import (
     DriverAcceptRideView,
     AvailableRidesView,
 )
+from .operations_views import (
+    AdminLivePassengersView,
+    TicketVerificationView,
+)
 from .garage_views import (
     GarageRideCreateView,
     DriverGarageRideListView,
@@ -156,4 +160,8 @@ urlpatterns = [
 
     # Admin
     path('', AdminRideListView.as_view(), name='admin-ride-list'),
+    
+    # Operations Hub
+    path('operations/passengers/live/', AdminLivePassengersView.as_view(), name='operations-live-passengers'),
+    path('tickets/verify/<str:ticket_ref>/', TicketVerificationView.as_view(), name='ticket-verification'),
 ]

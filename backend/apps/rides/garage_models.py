@@ -108,6 +108,7 @@ class GarageRidePassenger(models.Model):
     Each row = one seat purchase.
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    ticket_ref = models.CharField(max_length=12, unique=True, db_index=True, blank=True, null=True)
     garage_ride = models.ForeignKey(
         GarageRide,
         on_delete=models.PROTECT,
@@ -135,6 +136,18 @@ class GarageRidePassenger(models.Model):
 
     def __str__(self):
         return f'GaragePassenger(ride={self.garage_ride.reference} student={self.student_id} seats={self.seats_booked})'
+
+    def save(self, *args, **kwargs):
+        if not self.ticket_ref:
+            from django.utils.crypto import get_random_string
+            from apps.rides.scheduled_models import ScheduledRidePassenger
+            while True:
+                candidate = f'TCK-{get_random_string(length=6, allowed_chars="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")}'
+                if not GarageRidePassenger.objects.filter(ticket_ref=candidate).exists() and \
+                   not ScheduledRidePassenger.objects.filter(ticket_ref=candidate).exists():
+                    self.ticket_ref = candidate
+                    break
+        super().save(*args, **kwargs)
 
 
 class DriverSavedRoute(models.Model):

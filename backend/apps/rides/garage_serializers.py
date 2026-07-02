@@ -157,6 +157,7 @@ class GarageRidePassengerSerializer(serializers.ModelSerializer):
         model = GarageRidePassenger
         fields = [
             'id',
+            'ticket_ref',
             'student',
             'seats_booked',
             'amount_paid',

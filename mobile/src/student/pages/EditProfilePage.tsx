@@ -296,19 +296,6 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
             <Text style={styles.sectionTitle}>Student Details</Text>
 
             <View style={styles.fieldGroup}>
-              <Text style={styles.label}>First Name</Text>
-              <View style={styles.inputWrap}>
-                <MaterialIcons name="person" size={18} color="#6A1B9A" />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter first name"
-                  value={firstName}
-                  onChangeText={setFirstName}
-                />
-              </View>
-            </View>
-
-            <View style={styles.fieldGroup}>
               <Text style={styles.label}>Surname</Text>
               <View style={styles.inputWrap}>
                 <MaterialIcons name="person-outline" size={18} color="#6A1B9A" />
@@ -317,6 +304,19 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
                   placeholder="Enter surname"
                   value={lastName}
                   onChangeText={setLastName}
+                />
+              </View>
+            </View>
+
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>First Name</Text>
+              <View style={styles.inputWrap}>
+                <MaterialIcons name="person" size={18} color="#6A1B9A" />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter first name"
+                  value={firstName}
+                  onChangeText={setFirstName}
                 />
               </View>
             </View>

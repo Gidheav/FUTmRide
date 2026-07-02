@@ -305,6 +305,7 @@ class ScheduledRidePassenger(models.Model):
     """A student ticket for a scheduled ride."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    ticket_ref = models.CharField(max_length=12, unique=True, db_index=True, blank=True, null=True)
     ride = models.ForeignKey(ScheduledRide, on_delete=models.PROTECT, related_name='passengers')
     student = models.ForeignKey(User, on_delete=models.PROTECT, related_name='scheduled_ride_bookings')
     pricing_tier = models.CharField(max_length=20, choices=PricingTier.choices)
@@ -355,6 +356,17 @@ class ScheduledRidePassenger(models.Model):
     def __str__(self):
         return f'Passenger({self.ride.reference} {self.student_id} {self.pricing_tier})'
 
+    def save(self, *args, **kwargs):
+        if not self.ticket_ref:
+            from django.utils.crypto import get_random_string
+            from apps.rides.garage_models import GarageRidePassenger
+            while True:
+                candidate = f'TCK-{get_random_string(length=6, allowed_chars="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")}'
+                if not ScheduledRidePassenger.objects.filter(ticket_ref=candidate).exists() and \
+                   not GarageRidePassenger.objects.filter(ticket_ref=candidate).exists():
+                    self.ticket_ref = candidate
+                    break
+        super().save(*args, **kwargs)
 
 class ScheduledRideDriverInterest(models.Model):
     """Tracks a driver's interest in taking a scheduled ride."""

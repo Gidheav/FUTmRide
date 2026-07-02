@@ -584,7 +584,7 @@ class ScheduledRidePassengerReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = ScheduledRidePassenger
         fields = [
-            'id', 'student', 'student_name', 'pricing_tier', 'boarding_stop',
+            'id', 'ticket_ref', 'student', 'student_name', 'pricing_tier', 'boarding_stop',
             'boarding_stop_name', 'alighting_stop', 'alighting_stop_name',
             'amount_paid', 'payment_reference', 'cargo_description', 'cargo_weight_kg',
             'status', 'joined_at',

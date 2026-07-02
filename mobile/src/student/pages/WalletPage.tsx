@@ -974,7 +974,7 @@ export default function StudentWalletPage() {
 
       <View style={styles.activityList}>
         {loading ? (
-          <View style={styles.activityItem}>
+          <View style={styles.activityLoadingWrap}>
             <LoadingOverlay visible={true} inline size={32} message="Loading transactions..." />
           </View>
         ) : activityItems.length === 0 ? (
@@ -1023,7 +1023,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f9f9f9',
   },
   pageContent: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingTop: 10,
     paddingBottom: 22,
     gap: 24,
@@ -1059,7 +1059,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f3f3f3',
     borderRadius: 999,
     padding: 4,
-    gap: 6,
+    gap: 8,
   },
   tabButton: {
     flex: 1,
@@ -1583,22 +1583,27 @@ const styles = StyleSheet.create({
     color: '#6A1B9A',
   },
   activityList: {
-    gap: 12,
+    gap: 2,
+  },
+  activityLoadingWrap: {
+    minHeight: 96,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   activityItem: {
     backgroundColor: '#ffffff',
-    borderRadius: 12,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: '#f3f3f3',
     padding: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    shadowColor: '#000000',
+    shadowColor: '#00000079',
     shadowOpacity: 0.04,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+    elevation: 1,
   },
   activityLeft: {
     flexDirection: 'row',
