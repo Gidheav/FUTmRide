@@ -821,6 +821,11 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 10,
   },
+  resendText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#16a34a', // Using a green color for primary secondary action, adjust as needed
+  },
   verificationSecondaryActionText: {
     fontSize: 13,
     fontWeight: '600',

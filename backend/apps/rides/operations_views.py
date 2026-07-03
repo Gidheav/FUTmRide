@@ -2,7 +2,7 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.utils import timezone
-from apps.accounts.permissions import IsAdminUser
+from apps.accounts.permissions import IsAdminOrCampusAdmin
 from apps.rides.scheduled_models import ScheduledRidePassenger
 from apps.rides.garage_models import GarageRidePassenger
 
@@ -11,7 +11,7 @@ class AdminLivePassengersView(APIView):
     Returns today's passengers across both scheduled and garage rides 
     for the Operations Hub.
     """
-    permission_classes = [permissions.IsAuthenticated, IsAdminUser]
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
 
     def get(self, request):
         today = timezone.now().date()

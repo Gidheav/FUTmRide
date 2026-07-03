@@ -89,7 +89,7 @@ export default function DriverLoginScreen() {
 
     if (!err?.response) {
       const msg = err?.message ? ` (${err.message})` : ''
-      return `Cannot reach server${msg}. Ensure backend is reachable at ${API_BASE_URL}`
+      return `h server${msg}. Ensure backend is reachable at ${API_BASE_URL}`
     }
 
     return fallback
@@ -262,223 +262,223 @@ export default function DriverLoginScreen() {
               bounces={false}
             >
               <View style={styles.formArea}>
-            <View style={styles.tabs}>
-              <Pressable
-                style={[styles.tab, !isRegistering && styles.tabActive]}
-                onPress={() => handleTabSwitch(false)}
-              >
-                <Text style={!isRegistering ? styles.tabActiveText : styles.tabText}>Login</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.tab, isRegistering && styles.tabActive]}
-                onPress={() => handleTabSwitch(true)}
-              >
-                <Text style={isRegistering ? styles.tabActiveText : styles.tabText}>Create Account</Text>
-              </Pressable>
-            </View>
-
-            {isRegistering ? (
-              <>
-                <View style={styles.inputGroup}>
-                  <MaterialIcons name="person" size={20} color="#5e5e5e" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="First Name"
-                    placeholderTextColor="#7b7b7b"
-                    value={registerFirstName}
-                    onChangeText={setRegisterFirstName}
-                    autoCapitalize="words"
-                    editable={!registerLoading}
-                  />
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <MaterialIcons name="person" size={20} color="#5e5e5e" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Last Name"
-                    placeholderTextColor="#7b7b7b"
-                    value={registerLastName}
-                    onChangeText={setRegisterLastName}
-                    autoCapitalize="words"
-                    editable={!registerLoading}
-                  />
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <MaterialIcons name="phone" size={20} color="#5e5e5e" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Phone Number"
-                    placeholderTextColor="#7b7b7b"
-                    value={registerPhone}
-                    onChangeText={setRegisterPhone}
-                    autoCapitalize="none"
-                    keyboardType="phone-pad"
-                    editable={!registerLoading}
-                  />
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <MaterialIcons name="lock" size={20} color="#5e5e5e" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Password"
-                    placeholderTextColor="#7b7b7b"
-                    value={registerPassword}
-                    onChangeText={setRegisterPassword}
-                    secureTextEntry={!showPassword}
-                    editable={!registerLoading}
-                  />
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <MaterialIcons name="lock" size={20} color="#5e5e5e" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Confirm Password"
-                    placeholderTextColor="#7b7b7b"
-                    value={registerConfirmPassword}
-                    onChangeText={setRegisterConfirmPassword}
-                    secureTextEntry={!showPassword}
-                    editable={!registerLoading}
-                  />
-                  <Pressable onPress={() => setShowPassword((prev) => !prev)} style={styles.eyeButton}>
-                    <MaterialIcons name={showPassword ? 'visibility-off' : 'visibility'} size={20} color="#5e5e5e" />
+                <View style={styles.tabs}>
+                  <Pressable
+                    style={[styles.tab, !isRegistering && styles.tabActive]}
+                    onPress={() => handleTabSwitch(false)}
+                  >
+                    <Text style={!isRegistering ? styles.tabActiveText : styles.tabText}>Login</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.tab, isRegistering && styles.tabActive]}
+                    onPress={() => handleTabSwitch(true)}
+                  >
+                    <Text style={isRegistering ? styles.tabActiveText : styles.tabText}>Create Account</Text>
                   </Pressable>
                 </View>
 
-                <Pressable
-                  style={styles.consentRow}
-                  onPress={() => setRegisterConsent((prev) => !prev)}
-                >
-                  <MaterialIcons
-                    name={registerConsent ? 'check-box' : 'check-box-outline-blank'}
-                    size={20}
-                    color={registerConsent ? '#6A1B9A' : '#7b7b7b'}
-                  />
-                  <Text style={styles.consentText}>I accept the data consent policy</Text>
-                </Pressable>
-
-                <TouchableOpacity
-                  style={[styles.primaryButton, registerLoading && styles.primaryButtonDisabled]}
-                  onPress={handleRegister}
-                  disabled={registerLoading}
-                  activeOpacity={0.9}
-                >
-                  <Text style={styles.primaryButtonText}>Create Driver Account</Text>
-                  <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
-                </TouchableOpacity>
-
-              </>
-            ) : (
-              <>
-                {twoFactorRequired ? (
+                {isRegistering ? (
                   <>
-                    <Text style={styles.sectionTitle}>Two-Factor Verification</Text>
-                    <View style={styles.methodRow}>
-                      {availableTwoFactorMethods.includes('totp') ? (
-                        <TouchableOpacity
-                          style={[styles.methodChip, twoFactorMethod === 'totp' && styles.methodChipActive]}
-                          onPress={() => handleTwoFactorRequest('totp')}
-                        >
-                          <Text style={twoFactorMethod === 'totp' ? styles.methodChipTextActive : styles.methodChipText}>TOTP</Text>
-                        </TouchableOpacity>
-                      ) : null}
-                      {availableTwoFactorMethods.includes('sms') ? (
-                        <TouchableOpacity
-                          style={[styles.methodChip, twoFactorMethod === 'sms' && styles.methodChipActive]}
-                          onPress={() => handleTwoFactorRequest('sms')}
-                        >
-                          <Text style={twoFactorMethod === 'sms' ? styles.methodChipTextActive : styles.methodChipText}>SMS</Text>
-                        </TouchableOpacity>
-                      ) : null}
-                      {availableTwoFactorMethods.includes('email') ? (
-                        <TouchableOpacity
-                          style={[styles.methodChip, twoFactorMethod === 'email' && styles.methodChipActive]}
-                          onPress={() => handleTwoFactorRequest('email')}
-                        >
-                          <Text style={twoFactorMethod === 'email' ? styles.methodChipTextActive : styles.methodChipText}>Email</Text>
-                        </TouchableOpacity>
-                      ) : null}
-                    </View>
                     <View style={styles.inputGroup}>
-                      <MaterialIcons name="verified-user" size={20} color="#5e5e5e" style={styles.inputIcon} />
+                      <MaterialIcons name="person" size={20} color="#5e5e5e" style={styles.inputIcon} />
                       <TextInput
                         style={styles.input}
-                        placeholder="Verification code"
+                        placeholder="First Name"
                         placeholderTextColor="#7b7b7b"
-                        value={twoFactorCode}
-                        onChangeText={setTwoFactorCode}
-                        keyboardType="number-pad"
-                        editable={!twoFactorBusy}
+                        value={registerFirstName}
+                        onChangeText={setRegisterFirstName}
+                        autoCapitalize="words"
+                        editable={!registerLoading}
                       />
                     </View>
+
+                    <View style={styles.inputGroup}>
+                      <MaterialIcons name="person" size={20} color="#5e5e5e" style={styles.inputIcon} />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Last Name"
+                        placeholderTextColor="#7b7b7b"
+                        value={registerLastName}
+                        onChangeText={setRegisterLastName}
+                        autoCapitalize="words"
+                        editable={!registerLoading}
+                      />
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                      <MaterialIcons name="phone" size={20} color="#5e5e5e" style={styles.inputIcon} />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Phone Number"
+                        placeholderTextColor="#7b7b7b"
+                        value={registerPhone}
+                        onChangeText={setRegisterPhone}
+                        autoCapitalize="none"
+                        keyboardType="phone-pad"
+                        editable={!registerLoading}
+                      />
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                      <MaterialIcons name="lock" size={20} color="#5e5e5e" style={styles.inputIcon} />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Password"
+                        placeholderTextColor="#7b7b7b"
+                        value={registerPassword}
+                        onChangeText={setRegisterPassword}
+                        secureTextEntry={!showPassword}
+                        editable={!registerLoading}
+                      />
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                      <MaterialIcons name="lock" size={20} color="#5e5e5e" style={styles.inputIcon} />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Confirm Password"
+                        placeholderTextColor="#7b7b7b"
+                        value={registerConfirmPassword}
+                        onChangeText={setRegisterConfirmPassword}
+                        secureTextEntry={!showPassword}
+                        editable={!registerLoading}
+                      />
+                      <Pressable onPress={() => setShowPassword((prev) => !prev)} style={styles.eyeButton}>
+                        <MaterialIcons name={showPassword ? 'visibility-off' : 'visibility'} size={20} color="#5e5e5e" />
+                      </Pressable>
+                    </View>
+
+                    <Pressable
+                      style={styles.consentRow}
+                      onPress={() => setRegisterConsent((prev) => !prev)}
+                    >
+                      <MaterialIcons
+                        name={registerConsent ? 'check-box' : 'check-box-outline-blank'}
+                        size={20}
+                        color={registerConsent ? '#6A1B9A' : '#7b7b7b'}
+                      />
+                      <Text style={styles.consentText}>I accept the data consent policy</Text>
+                    </Pressable>
+
                     <TouchableOpacity
-                      style={[styles.primaryButton, twoFactorBusy && styles.primaryButtonDisabled]}
-                      onPress={handleTwoFactorVerify}
-                      disabled={twoFactorBusy}
+                      style={[styles.primaryButton, registerLoading && styles.primaryButtonDisabled]}
+                      onPress={handleRegister}
+                      disabled={registerLoading}
                       activeOpacity={0.9}
                     >
-                      <Text style={styles.primaryButtonText}>Verify & Continue</Text>
+                      <Text style={styles.primaryButtonText}>Create Driver Account</Text>
                       <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
                     </TouchableOpacity>
+
                   </>
                 ) : (
                   <>
-                <View style={styles.inputGroup}>
-                  <MaterialIcons name="person" size={20} color="#5e5e5e" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Email or Phone Number"
-                    placeholderTextColor="#7b7b7b"
-                    value={identifier}
-                    onChangeText={setIdentifier}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    editable={!loading}
-                  />
-                </View>
+                    {twoFactorRequired ? (
+                      <>
+                        <Text style={styles.sectionTitle}>Two-Factor Verification</Text>
+                        <View style={styles.methodRow}>
+                          {availableTwoFactorMethods.includes('totp') ? (
+                            <TouchableOpacity
+                              style={[styles.methodChip, twoFactorMethod === 'totp' && styles.methodChipActive]}
+                              onPress={() => handleTwoFactorRequest('totp')}
+                            >
+                              <Text style={twoFactorMethod === 'totp' ? styles.methodChipTextActive : styles.methodChipText}>TOTP</Text>
+                            </TouchableOpacity>
+                          ) : null}
+                          {availableTwoFactorMethods.includes('sms') ? (
+                            <TouchableOpacity
+                              style={[styles.methodChip, twoFactorMethod === 'sms' && styles.methodChipActive]}
+                              onPress={() => handleTwoFactorRequest('sms')}
+                            >
+                              <Text style={twoFactorMethod === 'sms' ? styles.methodChipTextActive : styles.methodChipText}>SMS</Text>
+                            </TouchableOpacity>
+                          ) : null}
+                          {availableTwoFactorMethods.includes('email') ? (
+                            <TouchableOpacity
+                              style={[styles.methodChip, twoFactorMethod === 'email' && styles.methodChipActive]}
+                              onPress={() => handleTwoFactorRequest('email')}
+                            >
+                              <Text style={twoFactorMethod === 'email' ? styles.methodChipTextActive : styles.methodChipText}>Email</Text>
+                            </TouchableOpacity>
+                          ) : null}
+                        </View>
+                        <View style={styles.inputGroup}>
+                          <MaterialIcons name="verified-user" size={20} color="#5e5e5e" style={styles.inputIcon} />
+                          <TextInput
+                            style={styles.input}
+                            placeholder="Verification code"
+                            placeholderTextColor="#7b7b7b"
+                            value={twoFactorCode}
+                            onChangeText={setTwoFactorCode}
+                            keyboardType="number-pad"
+                            editable={!twoFactorBusy}
+                          />
+                        </View>
+                        <TouchableOpacity
+                          style={[styles.primaryButton, twoFactorBusy && styles.primaryButtonDisabled]}
+                          onPress={handleTwoFactorVerify}
+                          disabled={twoFactorBusy}
+                          activeOpacity={0.9}
+                        >
+                          <Text style={styles.primaryButtonText}>Verify & Continue</Text>
+                          <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
+                        </TouchableOpacity>
+                      </>
+                    ) : (
+                      <>
+                        <View style={styles.inputGroup}>
+                          <MaterialIcons name="person" size={20} color="#5e5e5e" style={styles.inputIcon} />
+                          <TextInput
+                            style={styles.input}
+                            placeholder="Email or Phone Number"
+                            placeholderTextColor="#7b7b7b"
+                            value={identifier}
+                            onChangeText={setIdentifier}
+                            autoCapitalize="none"
+                            keyboardType="email-address"
+                            editable={!loading}
+                          />
+                        </View>
 
-                <View style={styles.inputGroup}>
-                  <MaterialIcons name="lock" size={20} color="#5e5e5e" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Password or PIN"
-                    placeholderTextColor="#7b7b7b"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry={!showPassword}
-                    editable={!loading}
-                  />
-                  <Pressable onPress={() => setShowPassword((prev) => !prev)} style={styles.eyeButton}>
-                    <MaterialIcons name={showPassword ? 'visibility-off' : 'visibility'} size={20} color="#5e5e5e" />
-                  </Pressable>
-                </View>
+                        <View style={styles.inputGroup}>
+                          <MaterialIcons name="lock" size={20} color="#5e5e5e" style={styles.inputIcon} />
+                          <TextInput
+                            style={styles.input}
+                            placeholder="Password or PIN"
+                            placeholderTextColor="#7b7b7b"
+                            value={password}
+                            onChangeText={setPassword}
+                            secureTextEntry={!showPassword}
+                            editable={!loading}
+                          />
+                          <Pressable onPress={() => setShowPassword((prev) => !prev)} style={styles.eyeButton}>
+                            <MaterialIcons name={showPassword ? 'visibility-off' : 'visibility'} size={20} color="#5e5e5e" />
+                          </Pressable>
+                        </View>
 
-                <View style={styles.forgotWrap}>
-                  <Text style={styles.forgotText}>Forgot Password?</Text>
-                </View>
+                        <View style={styles.forgotWrap}>
+                          <Text style={styles.forgotText}>Forgot Password?</Text>
+                        </View>
 
-                <TouchableOpacity
-                  style={[styles.primaryButton, loading && styles.primaryButtonDisabled]}
-                  onPress={handleLogin}
-                  disabled={loading}
-                  activeOpacity={0.9}
-                >
-                  <Text style={styles.primaryButtonText}>Secure Login</Text>
-                  <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
-                </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.primaryButton, loading && styles.primaryButtonDisabled]}
+                          onPress={handleLogin}
+                          disabled={loading}
+                          activeOpacity={0.9}
+                        >
+                          <Text style={styles.primaryButtonText}>Secure Login</Text>
+                          <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
+                        </TouchableOpacity>
 
+                      </>
+                    )}
                   </>
                 )}
-              </>
-            )}
 
-            <View style={styles.securityBadge}>
-              <MaterialIcons name="verified-user" size={14} color="#7b7b7b" />
-              <Text style={styles.securityText}>VERIFIED SECURE PORTAL</Text>
-            </View>
+                <View style={styles.securityBadge}>
+                  <MaterialIcons name="verified-user" size={14} color="#7b7b7b" />
+                  <Text style={styles.securityText}>VERIFIED SECURE PORTAL</Text>
+                </View>
               </View>
             </ScrollView>
           </View>
