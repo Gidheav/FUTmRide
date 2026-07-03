@@ -1,11 +1,11 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, FolderOpen, CalendarClock, BarChart3, Settings,
+  LayoutDashboard, CalendarClock, BarChart3, Settings,
   LogOut, User as UserIcon, Sun, Moon,
   Download, Megaphone, UserPlus,
   ArrowLeft, ChevronRight, History, ShieldAlert, UserX,
   Radio, Crosshair, Activity, Zap, Route, Monitor, Bell, Sliders, ShieldCheck,
-  Wrench, Ticket, Plug, Flag, LifeBuoy, Banknote, Calculator, FlaskConical, Map
+  Wrench, Ticket, Plug, Flag, LifeBuoy, Banknote, Calculator, FlaskConical, Map, FolderOpen
 } from 'lucide-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { CSSProperties } from 'react'
@@ -29,7 +29,6 @@ const OPERATIONS_NAV_ITEMS: Array<{ label: string; tab: OperationsTab }> = [
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/' },
-  { label: 'Open Requests', icon: FolderOpen, path: '/rides' },
   { label: 'Operations Hub', icon: Radio, path: '/operations' },
   { label: 'Analytics', icon: BarChart3, path: '/analytics' },
   { label: 'Finance', icon: Banknote, path: '/financial' },
@@ -56,6 +55,15 @@ export default function CampusAdminTopNav() {
   const { activeTab: engineTab, setActiveTab: setEngineTab } = useEngineStore()
   const { activeTab: operationsTab, setActiveTab: setOperationsTab } = useOperationsStore()
 
+  // Live unread notification count
+  const { data: unreadData } = useQuery<{ unread_count: number }>({
+    queryKey: ['notif-unread-count'],
+    queryFn: () => api.get('/notifications/unread-count/').then(r => r.data),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  })
+  const unreadCount = unreadData?.unread_count ?? 0
+
   const verifyMatch = location.pathname.match(/\/users\/(.*)\/verify/)
   const verifyDriverId = verifyMatch ? verifyMatch[1] : null
   const searchParams = new URLSearchParams(location.search)
@@ -64,7 +72,7 @@ export default function CampusAdminTopNav() {
   const testAreaMatch = searchParams.get('area')
   const testArea = testAreaMatch === 'rides' ? 'rides' : testAreaMatch === 'map' ? 'map' : 'account'
 
-  const dashboardNavItems = NAV_ITEMS.filter((item) => item.path === '/' || item.path === '/rides')
+  const dashboardNavItems = NAV_ITEMS.filter((item) => item.path === '/')
 
   const toggleOpenRequestsPanel = () => {
     const params = new URLSearchParams(location.search)
@@ -238,6 +246,16 @@ export default function CampusAdminTopNav() {
             </div>
             <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
               Bulk account and ride data tools
+            </div>
+          </div>
+        ) : location.pathname === '/notifications' ? (
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3, display: 'flex', alignItems: 'center' }}>
+              <Bell size={16} color={T.accent} style={{ marginRight: 8 }} />
+              Notification Center
+            </div>
+            <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
+              System alerts, broadcasts, and activity feed
             </div>
           </div>
         ) : (
@@ -506,6 +524,17 @@ export default function CampusAdminTopNav() {
             <span>Open Requests</span>
           </button>
         </nav>
+      ) : location.pathname === '/notifications' ? (
+        <nav style={s.topNav}>
+          <button
+            type="button"
+            style={{ ...s.topNavBtn, color: T.textSecondary, background: 'transparent' }}
+            onClick={() => navigate('/')}
+          >
+            <LayoutDashboard size={13} strokeWidth={1.8} />
+            <span>Dashboard</span>
+          </button>
+        </nav>
       ) : (
         <nav style={s.topNav}>
           {NAV_ITEMS.map((t) => {
@@ -540,6 +569,27 @@ export default function CampusAdminTopNav() {
           <>
             <button style={s.topIconBtn} onClick={toggleMode}>
               {mode === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+            </button>
+            {/* Bell Notification Badge */}
+            <button
+              style={{ ...s.topIconBtn, position: 'relative' }}
+              onClick={() => navigate('/notifications')}
+              title="Notifications"
+            >
+              <Bell size={14} color={location.pathname === '/notifications' ? T.accent : T.textSecondary} />
+              {unreadCount > 0 && (
+                <span style={{
+                  position: 'absolute', top: 2, right: 2,
+                  minWidth: 14, height: 14, borderRadius: 999,
+                  background: '#ef4444', color: '#fff',
+                  fontSize: 9, fontWeight: 800, lineHeight: '14px',
+                  textAlign: 'center', padding: '0 3px',
+                  border: `1.5px solid ${T.topBar}`,
+                  pointerEvents: 'none',
+                }}>
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
             </button>
             <Link to="/profile" style={s.topAvatar}>
               <UserIcon size={16} color={T.textSecondary} />

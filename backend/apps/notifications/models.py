@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 from django.db import models
 from apps.accounts.models import User
 
@@ -13,6 +13,9 @@ class Notification(models.Model):
         RIDE_CANCELLED = 'ride_cancelled', 'Ride Cancelled'
         PAYMENT_RECEIVED = 'payment_received', 'Payment Received'
         ACCOUNT_APPROVED = 'account_approved', 'Account Approved'
+        VERIFICATION_SUBMITTED = 'verification_submitted', 'Verification Submitted'
+        BROADCAST = 'broadcast', 'Broadcast'
+        SYSTEM_ALERT = 'system_alert', 'System Alert'
         GENERAL = 'general', 'General'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

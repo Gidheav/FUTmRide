@@ -431,11 +431,11 @@ function PasswordChangeSectionReplica() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <label style={{ fontSize: 11, fontWeight: 600, color: T.textMuted }}>Current Password</label>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-            <div style={{ position: 'relative', width: 320 }}>
+            <div style={{ position: 'relative', width: '100%', maxWidth: 320 }}>
               <Lock size={16} style={{ color: T.textMuted, position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
               <input type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} style={inputDarkStyle} placeholder="Enter current password" />
             </div>
-            <button type="button" onClick={handleRequestOTP} disabled={loading} style={{ background: T.bgCardHover, color: T.textPrimary, padding: '8px 16px', borderRadius: 0, fontSize: 13, fontWeight: 700, border: `1px solid ${T.borderLight}`, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, whiteSpace: 'nowrap' }}>
+            <button type="button" onClick={handleRequestOTP} disabled={loading} style={{ width: '100%', maxWidth: 320, background: T.bgCardHover, color: T.textPrimary, padding: '8px 16px', borderRadius: 0, fontSize: 13, fontWeight: 700, border: `1px solid ${T.borderLight}`, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, whiteSpace: 'nowrap' }}>
               {loading && step === 'request' ? <Loader2 size={14} className="spin" /> : null}
               Request Code
             </button>
@@ -463,7 +463,7 @@ function PasswordChangeSectionReplica() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <label style={{ fontSize: 11, fontWeight: 600, color: T.textMuted }}>New Password</label>
-              <div style={{ position: 'relative', width: 320 }}>
+              <div style={{ position: 'relative', width: '100%', maxWidth: 320 }}>
                 <Key size={16} style={{ color: T.textMuted, position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
                 <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} style={inputDarkStyle} placeholder="Must be at least 8 characters" />
               </div>
@@ -471,14 +471,14 @@ function PasswordChangeSectionReplica() {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <label style={{ fontSize: 11, fontWeight: 600, color: T.textMuted }}>Confirm Password</label>
-              <div style={{ position: 'relative', width: 320 }}>
+              <div style={{ position: 'relative', width: '100%', maxWidth: 320 }}>
                 <Key size={16} style={{ color: T.textMuted, position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
                 <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} style={inputDarkStyle} placeholder="Re-enter new password" />
               </div>
             </div>
           </div>
 
-          <button type="button" onClick={handleConfirm} disabled={loading} style={{ width: 320, background: T.accent, color: T.textWhite, opacity: loading && step === 'confirm' ? 0.7 : 1, padding: '10px 16px', borderRadius: 0, fontSize: 13, fontWeight: 700, border: 'none', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 16 }}>
+          <button type="button" onClick={handleConfirm} disabled={loading} style={{ width: '100%', maxWidth: 320, background: T.accent, color: T.textWhite, opacity: loading && step === 'confirm' ? 0.7 : 1, padding: '10px 16px', borderRadius: 0, fontSize: 13, fontWeight: 700, border: 'none', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 16 }}>
             {loading && step === 'confirm' ? <Loader2 size={14} className="spin" /> : null}
             Confirm & Update Password
           </button>
@@ -559,6 +559,10 @@ function MapGisSettingsReplica() {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    loadData()
+  }, [])
 
   const handleUpdate = (updates: any) => {
     setSettings((prev: any) => ({ ...prev, ...updates }))
@@ -1292,7 +1296,9 @@ function IntegrationsReplica() {
     }
   }
 
-  useState(() => { loadData() })
+  useEffect(() => {
+    loadData()
+  }, [])
 
   const primaryGateway = config?.payments_primary_gateway || 'paystack'
 
@@ -2370,13 +2376,13 @@ function AccountReplica() {
   return (
     <div style={{ width: '100%', margin: 0, height: '100%' }}>
       <div className="gis-grid" style={{ height: '100%' }}>
-        <section className="scroll-col" style={{ gridColumn: 'span 4', background: T.bgPanel, border: `1px solid ${T.border}`, borderRadius: 0, padding: 24, paddingRight: 24 }}>
+        <section className="scroll-col" style={{ gridColumn: 'span 4', minWidth: 0, overflowX: 'hidden', background: T.bgPanel, border: `1px solid ${T.border}`, borderRadius: 0, padding: 24, paddingRight: 24 }}>
           <EmailChangeSectionReplica />
         </section>
-        <section className="scroll-col" style={{ gridColumn: 'span 4', background: T.bgPanel, border: `1px solid ${T.border}`, borderRadius: 0, padding: 24, paddingRight: 24 }}>
+        <section className="scroll-col" style={{ gridColumn: 'span 4', minWidth: 0, overflowX: 'hidden', background: T.bgPanel, border: `1px solid ${T.border}`, borderRadius: 0, padding: 24, paddingRight: 24 }}>
           <PasswordChangeSectionReplica />
         </section>
-        <section className="scroll-col" style={{ gridColumn: 'span 4', background: T.bgPanel, border: `1px solid ${T.border}`, borderRadius: 0, padding: 24, paddingRight: 24 }}>
+        <section className="scroll-col" style={{ gridColumn: 'span 4', minWidth: 0, overflowX: 'hidden', background: T.bgPanel, border: `1px solid ${T.border}`, borderRadius: 0, padding: 24, paddingRight: 24 }}>
           <SettingsRightSidebarReplica />
         </section>
       </div>
@@ -2473,6 +2479,11 @@ export default function SettingsPage() {
           display: grid;
           grid-template-columns: repeat(12, 1fr);
           gap: 2px;
+        }
+
+        .gis-grid > section {
+          min-width: 0;
+          overflow-x: hidden;
         }
 
         @media (max-width: 1080px) {

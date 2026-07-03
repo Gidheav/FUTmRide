@@ -17,7 +17,6 @@ import CampusAdminUsers from "../campus-admin/pages/UsersPage"
 import CampusAdminVerification from "../campus-admin/pages/VerificationPage"
 import CampusAdminAccountVerification from "../campus-admin/pages/AccountVerificationPage"
 import CampusAdminUnifiedVerification from "../campus-admin/pages/UnifiedVerificationPage"
-import CampusAdminRides from "../campus-admin/pages/RidesPage"
 import CampusAdminDispatch from "../campus-admin/pages/DispatchPage"
 import CampusAdminOperations from "../campus-admin/pages/OperationsPage"
 import CampusAdminAnalytics from "../campus-admin/pages/AnalyticsPage"
@@ -120,7 +119,6 @@ export default function AppRouter() {
         <Route path="/users/verification" element={<CampusAdminVerification />} />
         <Route path="/users/account-verification" element={<CampusAdminAccountVerification />} />
         <Route path="/users/:driverId/verify" element={<CampusAdminUnifiedVerification />} />
-        <Route path="/rides" element={<CampusAdminRides />} />
         <Route path="/dispatch" element={null} />
         <Route path="/operations" element={<CampusAdminOperations />} />
         <Route path="/analytics" element={<CampusAdminAnalytics />} />
