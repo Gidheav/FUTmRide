@@ -66,6 +66,11 @@ class InAppAnnouncement(models.Model):
     )
     cta_label = models.CharField(max_length=30, default='Got it')
     is_active = models.BooleanField(default=False, db_index=True)
+    send_push_notification = models.BooleanField(
+        default=False,
+        help_text='If checked, this announcement will also be sent to the notification page and as a push notification.',
+    )
+    push_sent = models.BooleanField(default=False, editable=False)
     starts_at = models.DateTimeField(null=True, blank=True, db_index=True)
     ends_at = models.DateTimeField(null=True, blank=True, db_index=True)
     priority = models.PositiveSmallIntegerField(default=0, db_index=True)

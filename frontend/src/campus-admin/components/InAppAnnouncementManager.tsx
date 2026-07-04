@@ -28,6 +28,7 @@ type InAppAnnouncement = {
   icon_name: string
   cta_label: string
   is_active: boolean
+  send_push_notification: boolean
   starts_at: string | null
   ends_at: string | null
   priority: number
@@ -44,6 +45,7 @@ type FormState = {
   icon_name: string
   cta_label: string
   is_active: boolean
+  send_push_notification: boolean
   starts_at: string
   ends_at: string
   priority: string
@@ -57,6 +59,7 @@ const emptyForm: FormState = {
   icon_name: 'campaign',
   cta_label: 'Got it',
   is_active: false,
+  send_push_notification: false,
   starts_at: '',
   ends_at: '',
   priority: '0',
@@ -121,6 +124,7 @@ const formFromAnnouncement = (item: InAppAnnouncement): FormState => ({
   icon_name: item.icon_name || 'campaign',
   cta_label: item.cta_label || 'Got it',
   is_active: item.is_active,
+  send_push_notification: item.send_push_notification || false,
   starts_at: toDateInput(item.starts_at),
   ends_at: toDateInput(item.ends_at),
   priority: String(item.priority ?? 0),
@@ -153,6 +157,7 @@ export default function InAppAnnouncementManager() {
         icon_name: form.icon_name.trim() || 'campaign',
         cta_label: form.cta_label.trim() || 'Got it',
         is_active: form.is_active,
+        send_push_notification: form.send_push_notification,
         starts_at: toApiStartDateTime(form.starts_at),
         ends_at: toApiEndDateTime(form.ends_at),
         priority: Number(form.priority || 0),
@@ -319,6 +324,19 @@ export default function InAppAnnouncementManager() {
                 >
                   <Power size={13} />
                   {form.is_active ? 'Active' : 'Inactive'}
+                </button>
+              </label>
+
+              <label style={s.field}>
+                <span style={s.label}>Notifications</span>
+                <button
+                  type="button"
+                  onClick={() => setForm((prev) => ({ ...prev, send_push_notification: !prev.send_push_notification }))}
+                  style={{ ...s.toggleButton, ...(form.send_push_notification ? s.toggleButtonActive : {}) }}
+                  title="If enabled, this will also send a push notification to all students."
+                >
+                  <Megaphone size={13} />
+                  {form.send_push_notification ? 'Send Push' : 'No Push'}
                 </button>
               </label>
 

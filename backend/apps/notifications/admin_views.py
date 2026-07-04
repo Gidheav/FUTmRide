@@ -20,6 +20,29 @@ def _campus_admin_campus_id(user):
         return None
 
 
+def _send_announcement_push(announcement, request_user):
+    if announcement.send_push_notification and announcement.is_active and not announcement.push_sent:
+        qs = User.objects.filter(is_active=True, role='student')
+        notifications = [
+            Notification(
+                user=user,
+                notification_type=Notification.NotificationType.BROADCAST,
+                title=announcement.title,
+                body=announcement.body,
+                data={'campaign_id': announcement.campaign_id, 'in_app_announcement': True},
+            )
+            for user in qs
+        ]
+        Notification.objects.bulk_create(notifications, ignore_conflicts=True)
+        
+        for user in qs:
+            if user.fcm_token:
+                PushNotificationService.send(user.fcm_token, announcement.title, announcement.body, {'campaign_id': announcement.campaign_id})
+        
+        announcement.push_sent = True
+        announcement.save(update_fields=['push_sent'])
+
+
 class AdminInAppAnnouncementListCreateView(generics.ListCreateAPIView):
     serializer_class = AdminInAppAnnouncementSerializer
     permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
@@ -36,9 +59,10 @@ class AdminInAppAnnouncementListCreateView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         campus_id = _campus_admin_campus_id(self.request.user)
         if campus_id:
-            serializer.save(campus_id=campus_id)
-            return
-        serializer.save()
+            announcement = serializer.save(campus_id=campus_id)
+        else:
+            announcement = serializer.save()
+        _send_announcement_push(announcement, self.request.user)
 
 
 class AdminInAppAnnouncementDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -57,9 +81,10 @@ class AdminInAppAnnouncementDetailView(generics.RetrieveUpdateDestroyAPIView):
     def perform_update(self, serializer):
         campus_id = _campus_admin_campus_id(self.request.user)
         if campus_id:
-            serializer.save(campus_id=campus_id)
-            return
-        serializer.save()
+            announcement = serializer.save(campus_id=campus_id)
+        else:
+            announcement = serializer.save()
+        _send_announcement_push(announcement, self.request.user)
 
 
 class AdminBroadcastView(APIView):
