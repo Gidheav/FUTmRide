@@ -22,7 +22,14 @@ def _campus_admin_campus_id(user):
 
 def _send_announcement_push(announcement, request_user):
     if announcement.send_push_notification and announcement.is_active and not announcement.push_sent:
-        qs = User.objects.filter(is_active=True, role='student')
+        qs = User.objects.filter(is_active=True)
+        if announcement.audience == 'student':
+            qs = qs.filter(role='student')
+        elif announcement.audience == 'driver':
+            qs = qs.filter(role='driver')
+        else:
+            qs = qs.filter(role__in=['student', 'driver'])
+            
         notifications = [
             Notification(
                 user=user,

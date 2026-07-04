@@ -13,13 +13,13 @@ class NotificationAdmin(admin.ModelAdmin):
 
 @admin.register(InAppAnnouncement)
 class InAppAnnouncementAdmin(admin.ModelAdmin):
-    list_display = ['campaign_id', 'title', 'campus', 'is_active', 'send_push_notification', 'priority', 'starts_at', 'ends_at', 'updated_at']
-    list_filter = ['is_active', 'send_push_notification', 'campus', 'starts_at', 'ends_at']
+    list_display = ['campaign_id', 'title', 'campus', 'audience', 'is_active', 'send_push_notification', 'priority', 'starts_at', 'ends_at', 'updated_at']
+    list_filter = ['is_active', 'send_push_notification', 'audience', 'campus', 'starts_at', 'ends_at']
     search_fields = ['campaign_id', 'title', 'body', 'campus__name']
     readonly_fields = ['id', 'created_at', 'updated_at']
     fieldsets = (
         ('Campaign', {
-            'fields': ('campaign_id', 'campus', 'title', 'body', 'cta_label'),
+            'fields': ('campaign_id', 'campus', 'audience', 'title', 'body', 'cta_label'),
         }),
         ('Visual', {
             'fields': ('image_url', 'icon_name'),

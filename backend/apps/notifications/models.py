@@ -40,7 +40,18 @@ class Notification(models.Model):
 
 
 class InAppAnnouncement(models.Model):
+    class Audience(models.TextChoices):
+        STUDENT = 'student', 'Student'
+        DRIVER = 'driver', 'Driver'
+        ALL = 'all', 'All'
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    audience = models.CharField(
+        max_length=20,
+        choices=Audience.choices,
+        default=Audience.ALL,
+        help_text='Who should see this announcement (Student, Driver, or All).',
+    )
     campus = models.ForeignKey(
         Campus,
         on_delete=models.CASCADE,

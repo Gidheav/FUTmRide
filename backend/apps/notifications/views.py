@@ -4,7 +4,7 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import IsStudentUser
+# IsStudentUser removed
 from .models import InAppAnnouncement, Notification
 from .serializers import InAppAnnouncementSerializer, NotificationSerializer
 
@@ -47,13 +47,16 @@ class UnreadCountView(APIView):
 
 
 class ActiveInAppAnnouncementView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsStudentUser]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         now = timezone.now()
+        audience_filter = Q(audience__in=['all', request.user.role])
+
         announcement = (
             InAppAnnouncement.objects
             .filter(is_active=True)
+            .filter(audience_filter)
             .filter(Q(starts_at__isnull=True) | Q(starts_at__lte=now))
             .filter(Q(ends_at__isnull=True) | Q(ends_at__gte=now))
             .order_by('-priority', '-created_at')

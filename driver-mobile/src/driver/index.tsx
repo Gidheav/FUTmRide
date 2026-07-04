@@ -29,6 +29,12 @@ import {
 const stopRideForegroundService = async () => { /* no-op */ }
 import { useDriverWalletStore } from '../core/driverWalletStore'
 import { useDriverRidesStore } from '../core/driverRidesStore'
+import {
+  getPendingInAppAnnouncement,
+  markInAppAnnouncementSeen,
+  type DriverInAppAnnouncement,
+} from './services/inAppAnnouncement'
+import InAppAnnouncementModal from './components/InAppAnnouncementModal'
 import DriverLoginScreen from './screens/LoginScreen'
 import DriverDashboardScreen from './screens/DashboardScreen'
 import AccountVerificationScreen from './screens/AccountVerificationScreen'
@@ -83,6 +89,10 @@ export default function DriverApp() {
   const [lockStatus, setLockStatus] = useState('')
   const [sessionWarning, setSessionWarning] = useState('')
   const [pinSetupRequired, setPinSetupRequired] = useState(false)
+  const [pendingAnnouncement, setPendingAnnouncement] = useState<DriverInAppAnnouncement | null>(null)
+  const [announcementGateVisible, setAnnouncementGateVisible] = useState(false)
+  const [announcementRefreshKey, setAnnouncementRefreshKey] = useState(0)
+  const announcementCheckRef = useRef<string | null>(null)
   const lastBackPressRef = useRef(0)
   const lastRideNotificationKey = useRef<string | null>(null)
   const rideClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -249,6 +259,8 @@ export default function DriverApp() {
         return
       }
 
+      setAnnouncementRefreshKey((value) => value + 1)
+
       // App returned to foreground
       const leftAt = wentBackgroundAtRef.current
       wentBackgroundAtRef.current = null
@@ -412,6 +424,36 @@ export default function DriverApp() {
       }, 1500)
     }
   }, [garageRide, garagePassengers.length, sessionActive])
+
+  // ── In-App Announcements ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (!sessionActive || !user) return
+
+    const checkAnnouncements = async () => {
+      // Prevent overlapping checks
+      const checkId = Math.random().toString(36).slice(2)
+      announcementCheckRef.current = checkId
+
+      const announcement = await getPendingInAppAnnouncement(user.id)
+      
+      // If a newer check started, abandon this one
+      if (announcementCheckRef.current !== checkId) return
+
+      if (announcement) {
+        setPendingAnnouncement(announcement)
+        setAnnouncementGateVisible(true)
+      }
+    }
+
+    void checkAnnouncements()
+  }, [sessionActive, user, announcementRefreshKey])
+
+  const handleDismissAnnouncement = async () => {
+    setAnnouncementGateVisible(false)
+    if (user && pendingAnnouncement) {
+      await markInAppAnnouncementSeen(user.id, pendingAnnouncement.campaignId)
+    }
+  }
 
   // Fetch verification progress for the banner
   const { data: progressData } = useQuery({
@@ -744,6 +786,11 @@ export default function DriverApp() {
           </View>
         ) : null}
         {renderPage()}
+        <InAppAnnouncementModal
+          announcement={pendingAnnouncement}
+          visible={announcementGateVisible}
+          onDismiss={handleDismissAnnouncement}
+        />
       </DriverLayout>
     </SafeAreaProvider>
   )

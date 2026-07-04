@@ -53,6 +53,7 @@ class AdminInAppAnnouncementSerializer(serializers.ModelSerializer):
             'icon_name',
             'cta_label',
             'is_active',
+            'audience',
             'send_push_notification',
             'starts_at',
             'ends_at',

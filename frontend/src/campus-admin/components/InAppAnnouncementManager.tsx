@@ -27,6 +27,7 @@ type InAppAnnouncement = {
   image_url: string
   icon_name: string
   cta_label: string
+  audience: 'all' | 'student' | 'driver'
   is_active: boolean
   send_push_notification: boolean
   starts_at: string | null
@@ -44,6 +45,7 @@ type FormState = {
   image_url: string
   icon_name: string
   cta_label: string
+  audience: 'all' | 'student' | 'driver'
   is_active: boolean
   send_push_notification: boolean
   starts_at: string
@@ -58,6 +60,7 @@ const emptyForm: FormState = {
   image_url: '',
   icon_name: 'campaign',
   cta_label: 'Got it',
+  audience: 'all',
   is_active: false,
   send_push_notification: false,
   starts_at: '',
@@ -112,7 +115,12 @@ const getErrorMessage = (error: any) => {
   const firstKey = Object.keys(data)[0]
   const firstValue = firstKey ? data[firstKey] : null
   if (Array.isArray(firstValue)) return `${firstKey}: ${firstValue[0]}`
-  if (firstValue) return `${firstKey}: ${String(firstValue)}`
+  if (typeof firstValue === 'object' && firstValue !== null) {
+    return `${firstKey}: ${JSON.stringify(firstValue)}`
+  }
+  if (firstValue !== undefined && firstValue !== null) {
+    return `${firstKey}: ${String(firstValue)}`
+  }
   return 'Request failed. Please check the form.'
 }
 
@@ -123,6 +131,7 @@ const formFromAnnouncement = (item: InAppAnnouncement): FormState => ({
   image_url: item.image_url || '',
   icon_name: item.icon_name || 'campaign',
   cta_label: item.cta_label || 'Got it',
+  audience: item.audience || 'all',
   is_active: item.is_active,
   send_push_notification: item.send_push_notification || false,
   starts_at: toDateInput(item.starts_at),
@@ -156,6 +165,7 @@ export default function InAppAnnouncementManager() {
         image_url: form.image_url.trim(),
         icon_name: form.icon_name.trim() || 'campaign',
         cta_label: form.cta_label.trim() || 'Got it',
+        audience: form.audience,
         is_active: form.is_active,
         send_push_notification: form.send_push_notification,
         starts_at: toApiStartDateTime(form.starts_at),
@@ -316,6 +326,19 @@ export default function InAppAnnouncementManager() {
               </label>
 
               <label style={s.field}>
+                <span style={s.label}>Audience</span>
+                <select
+                  value={form.audience}
+                  onChange={(e) => setForm((prev) => ({ ...prev, audience: e.target.value as any }))}
+                  style={s.input}
+                >
+                  <option value="all">All (Students & Drivers)</option>
+                  <option value="student">Students Only</option>
+                  <option value="driver">Drivers Only</option>
+                </select>
+              </label>
+
+              <label style={s.field}>
                 <span style={s.label}>Status</span>
                 <button
                   type="button"
@@ -424,6 +447,7 @@ export default function InAppAnnouncementManager() {
 
               <div style={s.metaRow}>
                 <span style={s.metaItem}><Calendar size={12} /> {formatDate(item.starts_at)}</span>
+                <span style={s.metaItem}>Audience: {item.audience === 'all' ? 'All' : item.audience === 'student' ? 'Students' : 'Drivers'}</span>
                 <span style={s.metaItem}>Priority {item.priority}</span>
                 <span style={s.metaItem}>{item.campus?.code || 'Global'}</span>
               </div>
