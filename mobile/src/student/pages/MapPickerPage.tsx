@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import {
   Platform,
   StyleSheet,
@@ -9,8 +9,11 @@ import {
 import { MaterialIcons } from '@expo/vector-icons'
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useAuthStore } from '../../core/authStore'
+import { useStudentProfileStore } from '../../core/studentProfileStore'
+import { getCampusCenter } from '../../core/campus'
 
-const DEFAULT_REGION: Region = {
+const DEFAULT_REGION_BASE: Region = {
   latitude: 9.5261,
   longitude: 6.4514,
   latitudeDelta: 0.02,
@@ -27,6 +30,22 @@ type MapPickerPageProps = {
 
 export default function MapPickerPage({ onClose, onConfirm, initialCoords }: MapPickerPageProps) {
   const insets = useSafeAreaInsets()
+  const userId = useAuthStore((state) => state.user?.id || null)
+  const authCampus = useAuthStore((state) => state.user?.campus)
+  const cachedProfileEntry = useStudentProfileStore((state) => userId ? state.profilesByUserId[userId] : null)
+  const campusValue =
+    cachedProfileEntry?.studentProfile?.campus?.name ??
+    cachedProfileEntry?.studentProfile?.campus?.id ??
+    authCampus?.name ??
+    authCampus?.id
+  const initialRegion = useMemo<Region>(() => {
+    const center = initialCoords ?? getCampusCenter(campusValue)
+    return {
+      ...DEFAULT_REGION_BASE,
+      latitude: center.latitude,
+      longitude: center.longitude,
+    }
+  }, [campusValue, initialCoords])
   const [pin, setPin] = useState<{ latitude: number; longitude: number } | null>(
     initialCoords || null
   )
@@ -53,7 +72,7 @@ export default function MapPickerPage({ onClose, onConfirm, initialCoords }: Map
         <MapView
           style={styles.map}
           provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-          initialRegion={DEFAULT_REGION}
+          initialRegion={initialRegion}
           onPress={handleMapPress}
           showsUserLocation
           showsMyLocationButton

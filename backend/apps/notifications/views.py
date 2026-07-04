@@ -1,8 +1,12 @@
-﻿from rest_framework import generics, permissions, status
+from django.db.models import Case, IntegerField, Q, Value, When
+from django.utils import timezone
+from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from .models import Notification
-from .serializers import NotificationSerializer
+
+from apps.accounts.permissions import IsStudentUser
+from .models import InAppAnnouncement, Notification
+from .serializers import InAppAnnouncementSerializer, NotificationSerializer
 
 
 class NotificationListView(generics.ListAPIView):
@@ -40,3 +44,38 @@ class UnreadCountView(APIView):
     def get(self, request):
         count = Notification.objects.filter(user=request.user, is_read=False).count()
         return Response({'unread_count': count})
+
+
+class ActiveInAppAnnouncementView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsStudentUser]
+
+    def get(self, request):
+        now = timezone.now()
+        try:
+            campus_id = request.user.student_profile.campus_id
+        except Exception:
+            campus_id = None
+
+        campus_filter = Q(campus__isnull=True)
+        if campus_id:
+            campus_filter |= Q(campus_id=campus_id)
+
+        announcement = (
+            InAppAnnouncement.objects
+            .filter(is_active=True)
+            .filter(campus_filter)
+            .filter(Q(starts_at__isnull=True) | Q(starts_at__lte=now))
+            .filter(Q(ends_at__isnull=True) | Q(ends_at__gte=now))
+            .annotate(
+                campus_match=Case(
+                    When(campus_id=campus_id, then=Value(1)),
+                    default=Value(0),
+                    output_field=IntegerField(),
+                )
+            )
+            .order_by('-priority', '-campus_match', '-created_at')
+            .first()
+        )
+        if not announcement:
+            return Response({'announcement': None})
+        return Response({'announcement': InAppAnnouncementSerializer(announcement).data})

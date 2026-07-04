@@ -1,6 +1,5 @@
 import { useState, useCallback, type CSSProperties } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
 import {
   Bell, CheckCheck, Megaphone, X, Send,
   Car, CreditCard, ShieldCheck, AlertTriangle,
@@ -9,6 +8,7 @@ import {
 } from 'lucide-react'
 import api from '../../core/api'
 import { T } from '../theme'
+import InAppAnnouncementManager from '../components/InAppAnnouncementManager'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface Notification {
@@ -22,6 +22,7 @@ interface Notification {
 }
 
 type CategoryFilter = 'all' | 'rides' | 'payments' | 'verifications' | 'support' | 'system' | 'broadcasts'
+type Workspace = 'inbox' | 'in_app'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const TYPE_CATEGORY: Record<string, CategoryFilter> = {
@@ -271,8 +272,8 @@ function NotifCard({ n, onRead }: { n: Notification; onRead: (id: string) => voi
 export default function NotificationsPage() {
   const [category, setCategory] = useState<CategoryFilter>('all')
   const [showBroadcast, setShowBroadcast] = useState(false)
+  const [workspace, setWorkspace] = useState<Workspace>('inbox')
   const qc = useQueryClient()
-  const navigate = useNavigate()
 
   const { data: notifications = [], isLoading } = useQuery<Notification[]>({
     queryKey: ['admin-notifications'],
@@ -346,8 +347,32 @@ export default function NotificationsPage() {
           </div>
         </div>
 
+        <div style={s.workspaceSection}>
+          <div style={s.catTitle}>Workspace</div>
+          <button
+            type="button"
+            onClick={() => setWorkspace('inbox')}
+            style={{ ...s.catBtn, ...(workspace === 'inbox' ? s.catBtnActive : {}) }}
+          >
+            <Bell size={14} color={workspace === 'inbox' ? T.accent : T.textMuted} />
+            <span style={{ flex: 1, textAlign: 'left', fontSize: 12, color: workspace === 'inbox' ? T.accent : T.textSecondary, fontWeight: workspace === 'inbox' ? 600 : 400 }}>
+              Notification Inbox
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setWorkspace('in_app')}
+            style={{ ...s.catBtn, ...(workspace === 'in_app' ? s.catBtnActive : {}) }}
+          >
+            <Megaphone size={14} color={workspace === 'in_app' ? T.accent : T.textMuted} />
+            <span style={{ flex: 1, textAlign: 'left', fontSize: 12, color: workspace === 'in_app' ? T.accent : T.textSecondary, fontWeight: workspace === 'in_app' ? 600 : 400 }}>
+              In-app Campaigns
+            </span>
+          </button>
+        </div>
+
         {/* Categories */}
-        <div style={s.catSection}>
+        {workspace === 'inbox' && <div style={s.catSection}>
           <div style={s.catTitle}>Categories</div>
           {CATEGORIES.map(c => {
             const Icon = c.icon
@@ -367,16 +392,18 @@ export default function NotificationsPage() {
               </button>
             )
           })}
-        </div>
+        </div>}
 
         {/* Actions */}
         <div style={s.sideActions}>
-          <button onClick={() => markAllReadMutation.mutate()}
-            disabled={unreadCount === 0 || markAllReadMutation.isPending}
-            style={{ ...s.actionBtn, opacity: unreadCount === 0 ? 0.5 : 1 }}>
-            <CheckCheck size={13} />
-            Mark All Read
-          </button>
+          {workspace === 'inbox' && (
+            <button onClick={() => markAllReadMutation.mutate()}
+              disabled={unreadCount === 0 || markAllReadMutation.isPending}
+              style={{ ...s.actionBtn, opacity: unreadCount === 0 ? 0.5 : 1 }}>
+              <CheckCheck size={13} />
+              Mark All Read
+            </button>
+          )}
           <button onClick={() => setShowBroadcast(true)} style={{ ...s.actionBtn, ...s.broadcastBtn }}>
             <Megaphone size={13} />
             Broadcast
@@ -385,6 +412,11 @@ export default function NotificationsPage() {
       </aside>
 
       {/* ── Main Feed ── */}
+      {workspace === 'in_app' ? (
+        <main style={s.main}>
+          <InAppAnnouncementManager />
+        </main>
+      ) : (
       <main style={s.main}>
         <div style={s.feedHeader}>
           <div>
@@ -418,6 +450,7 @@ export default function NotificationsPage() {
           )}
         </div>
       </main>
+      )}
     </div>
   )
 }
@@ -436,6 +469,7 @@ const s: Record<string, CSSProperties> = {
   },
   statRow: { display: 'flex', borderBottom: `1px solid ${T.border}` },
   statBox: { flex: 1, padding: '12px 8px', textAlign: 'center', borderRight: `1px solid ${T.border}` },
+  workspaceSection: { padding: '12px 10px', borderBottom: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', gap: 4 },
   catSection: { padding: '12px 10px', flex: 1 },
   catTitle: { fontSize: 10, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8, paddingLeft: 6 },
   catBtn: {

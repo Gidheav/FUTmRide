@@ -135,6 +135,8 @@ export default function SupportPage() {
   const insets = useSafeAreaInsets()
   const [viewMode, setViewMode] = useState<ViewMode>('home')
   const [formVisible, setFormVisible] = useState(false)
+  const [ticketActionsVisible, setTicketActionsVisible] = useState(false)
+  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null)
   const [selectedOption, setSelectedOption] = useState<SupportOption>(SUPPORT_OPTIONS[0])
   const [category, setCategory] = useState<TicketCategory>(SUPPORT_OPTIONS[0].category)
   const [subject, setSubject] = useState('')
@@ -218,11 +220,30 @@ export default function SupportPage() {
     void fetchTickets(true)
   }
 
+  const openTicketActions = (ticket: Ticket) => {
+    setSelectedTicket(ticket)
+    setTicketActionsVisible(true)
+  }
+
+  const closeTicketActions = () => {
+    setTicketActionsVisible(false)
+    setSelectedTicket(null)
+  }
+
+  const handleTicketAction = () => {
+    closeTicketActions()
+  }
+
   const renderTicket = ({ item }: { item: Ticket }) => {
     const status = STATUS_STYLE[item.status] || STATUS_STYLE.open
     const priorityStyle = PRIORITY_STYLE[item.priority] || PRIORITY_STYLE.medium
     return (
-      <View style={styles.ticketCard}>
+      <TouchableOpacity
+        style={styles.ticketCard}
+        activeOpacity={0.92}
+        onLongPress={() => openTicketActions(item)}
+        delayLongPress={250}
+      >
         <View style={styles.ticketHeader}>
           <View style={styles.ticketIconWrap}>
             <MaterialIcons name="confirmation-number" size={18} color="#6A1B9A" />
@@ -248,7 +269,7 @@ export default function SupportPage() {
             <Text style={styles.resolutionText}>{item.resolution_notes}</Text>
           </View>
         ) : null}
-      </View>
+      </TouchableOpacity>
     )
   }
 
@@ -301,22 +322,6 @@ export default function SupportPage() {
                 <MaterialIcons name="chevron-right" size={22} color="#9ca3af" />
               </TouchableOpacity>
             ))}
-          </View>
-
-          <View style={styles.infoCard}>
-            <Text style={styles.sectionTitle}>When to use each one</Text>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Rating</Text>
-              <Text style={styles.infoText}>Use after a completed ride to score your driver.</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Feedback</Text>
-              <Text style={styles.infoText}>Use for app ideas, experience comments, and product suggestions.</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Complaint</Text>
-              <Text style={styles.infoText}>Use when admin should investigate a ride, driver, payment, or safety issue.</Text>
-            </View>
           </View>
 
           <Text style={styles.sectionTitle}>Quick Help</Text>
@@ -436,6 +441,39 @@ export default function SupportPage() {
           </ScrollView>
 
           <LoadingOverlay visible={submitting} />
+        </View>
+      </Modal>
+
+      <Modal
+        visible={ticketActionsVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeTicketActions}
+      >
+        <View style={styles.actionSheetOverlay}>
+          <TouchableOpacity style={styles.actionSheetBackdrop} activeOpacity={1} onPress={closeTicketActions} />
+          <View style={[styles.actionSheet, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+            <View style={styles.actionSheetHandle} />
+            <Text style={styles.actionSheetTitle}>Ticket actions</Text>
+            <Text style={styles.actionSheetSubtitle} numberOfLines={1}>
+              {selectedTicket?.reference} · {selectedTicket ? categoryLabel(selectedTicket.category) : ''}
+            </Text>
+
+            <TouchableOpacity style={styles.actionRow} activeOpacity={0.85} onPress={handleTicketAction}>
+              <MaterialIcons name="visibility-off" size={20} color="#6b7280" />
+              <Text style={styles.actionText}>Dismiss</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionRow} activeOpacity={0.85} onPress={handleTicketAction}>
+              <MaterialIcons name="archive" size={20} color="#6b7280" />
+              <Text style={styles.actionText}>Archive</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionRowDanger} activeOpacity={0.85} onPress={handleTicketAction}>
+              <MaterialIcons name="delete-outline" size={20} color="#dc2626" />
+              <Text style={styles.actionTextDanger}>Delete</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </Modal>
     </View>
@@ -688,6 +726,68 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     textAlign: 'center',
     lineHeight: 18,
+  },
+  actionSheetOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(17, 24, 39, 0.45)',
+  },
+  actionSheetBackdrop: {
+    flex: 1,
+  },
+  actionSheet: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 10,
+    paddingHorizontal: 16,
+  },
+  actionSheetHandle: {
+    alignSelf: 'center',
+    width: 42,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: '#d1d5db',
+    marginBottom: 12,
+  },
+  actionSheetTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#1a1c1c',
+    textAlign: 'center',
+  },
+  actionSheetSubtitle: {
+    marginTop: 4,
+    marginBottom: 14,
+    fontSize: 12,
+    color: '#6b7280',
+    textAlign: 'center',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+  },
+  actionRowDanger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+  },
+  actionText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1f2937',
+  },
+  actionTextDanger: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#dc2626',
   },
   modalPage: {
     flex: 1,

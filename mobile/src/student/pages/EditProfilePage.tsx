@@ -13,6 +13,14 @@ import api from '../../core/api'
 import LoadingOverlay from '../components/LoadingOverlay'
 import { useAuthStore } from '../../core/authStore'
 import { useStudentProfileStore } from '../../core/studentProfileStore'
+import {
+  STATIC_CAMPUSES,
+  getCampusKey,
+  getCampusLabel,
+  normalizeCampusOptions,
+  type CampusApiItem,
+  type CampusOption,
+} from '../../core/campus'
 
 const LEVEL_OPTIONS = [100, 200, 300, 400, 500]
 
@@ -63,27 +71,9 @@ const DEPARTMENT_OPTIONS = [
   'Water Resources, Aquaculture & Fisheries Technology',
 ]
 
-const STATIC_CAMPUSES = [
-  { id: 'gidan-kwano', name: 'Gidan Kwano (FUTMINNA)' },
-  { id: 'bosso', name: 'Bosso (FUTMINNA)' },
-]
-
 const matricRegex = /^\d{4}\/\d\/\d{5}[A-Za-z]{0,3}$/
 const phoneRegex = /^(0\d{10}|\+234\d{10})$/
 const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-
-type CampusOption = {
-  id: string
-  name: string
-  code?: string
-  key?: string
-}
-
-type CampusApiItem = {
-  id: string | number
-  name: string
-  code?: string | null
-}
 
 type EditProfileProps = {
   onClose: () => void
@@ -96,7 +86,9 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
   const cachedProfileEntry = useStudentProfileStore((state) => userId ? state.profilesByUserId[userId] : null)
   const setCachedStudentProfile = useStudentProfileStore((state) => state.setStudentProfile)
   const setCachedUserProfile = useStudentProfileStore((state) => state.setUserProfile)
-  const [loading, setLoading] = useState(true)
+  const setCachedCampusOptions = useStudentProfileStore((state) => state.setCampusOptions)
+  const hasCachedProfile = Boolean(cachedProfileEntry?.studentProfile || cachedProfileEntry?.userProfile)
+  const [loading, setLoading] = useState(() => !hasCachedProfile)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -109,8 +101,12 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
   const [campusId, setCampusId] = useState<string | null>(null)
   const [campusName, setCampusName] = useState('')
 
-  const [campusOptions, setCampusOptions] = useState<CampusOption[]>([])
-  const [campusSource, setCampusSource] = useState<'api' | 'fallback'>('api')
+  const [campusOptions, setCampusOptions] = useState<CampusOption[]>(
+    () => cachedProfileEntry?.campusOptions?.length ? cachedProfileEntry.campusOptions : STATIC_CAMPUSES,
+  )
+  const [campusSource, setCampusSource] = useState<'api' | 'cache' | 'fallback'>(
+    () => cachedProfileEntry?.campusOptions?.length ? 'cache' : 'fallback',
+  )
 
   const [levelModalVisible, setLevelModalVisible] = useState(false)
   const [campusModalVisible, setCampusModalVisible] = useState(false)
@@ -130,7 +126,12 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
       setDepartment(profile.department || '')
       setLevel(profile.level || null)
       setCampusId(profile.campus?.id ? String(profile.campus.id) : null)
-      setCampusName(profile.campus?.name || '')
+      const campusKey = getCampusKey(profile.campus?.name) ?? getCampusKey(profile.campus?.id)
+      setCampusName(campusKey ? getCampusLabel(campusKey) : (profile.campus?.name || ''))
+    }
+    if (cachedProfileEntry?.campusOptions?.length) {
+      setCampusOptions(cachedProfileEntry.campusOptions)
+      setCampusSource('cache')
     }
   }, [cachedProfileEntry])
 
@@ -138,12 +139,15 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
     let isMounted = true
     const requestUserId = userId
     const loadProfile = async () => {
-      setLoading(true)
+      const cachedCampusOptions = cachedProfileEntry?.campusOptions ?? []
+      if (!cachedProfileEntry?.studentProfile && !cachedProfileEntry?.userProfile) {
+        setLoading(true)
+      }
       setError('')
       try {
         const [profileRes, campusRes, userRes] = await Promise.all([
           api.get('users/me/student-profile/'),
-          api.get('users/campuses/'),
+          cachedCampusOptions.length ? Promise.resolve(null) : api.get('users/campuses/'),
           api.get('users/me/'),
         ])
 
@@ -162,60 +166,35 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
           setDepartment(profile.department || '')
           setLevel(profile.level || null)
           setCampusId(profile.campus?.id || null)
-          setCampusName(profile.campus?.name || '')
+          const campusKey = getCampusKey(profile.campus?.name) ?? getCampusKey(profile.campus?.id)
+          setCampusName(campusKey ? getCampusLabel(campusKey) : (profile.campus?.name || ''))
 
-          const payload = campusRes.data
-          const list: CampusApiItem[] = Array.isArray(payload)
-            ? payload
-            : Array.isArray(payload?.results)
-              ? payload.results
-              : []
-          const normalized: CampusOption[] = list.map((item) => {
-            const rawName = String(item.name)
-            const nameLower = rawName.toLowerCase()
-            const key = nameLower.includes('gidan') && nameLower.includes('kwano')
-              ? 'gk'
-              : nameLower.includes('bosso')
-                ? 'bosso'
-                : rawName.toLowerCase()
-            const displayName = key === 'gk'
-              ? 'Gidan Kwano (FUTMINNA)'
-              : key === 'bosso'
-                ? 'Bosso (FUTMINNA)'
-                : rawName
-            return {
-              id: String(item.id),
-              name: displayName,
-              code: item.code ? String(item.code) : undefined,
-              key,
+          if (campusRes) {
+            const payload = campusRes.data
+            const list: CampusApiItem[] = Array.isArray(payload)
+              ? payload
+              : Array.isArray(payload?.results)
+                ? payload.results
+                : []
+            const deduped = normalizeCampusOptions(list)
+            if (deduped.length > 0) {
+              setCampusOptions(deduped)
+              setCampusSource('api')
+              if (requestUserId && useAuthStore.getState().user?.id === requestUserId) {
+                setCachedCampusOptions(requestUserId, deduped)
+              }
+            } else {
+              setCampusOptions(STATIC_CAMPUSES)
+              setCampusSource('fallback')
             }
-          })
-          const deduped = normalized.reduce((acc: CampusOption[], item: CampusOption) => {
-            const existing = acc.find((entry: CampusOption) => entry.key === item.key)
-            if (!existing) {
-              acc.push(item)
-              return acc
-            }
-            if (existing && existing.code && !item.code) return acc
-            if (existing && !existing.code && item.code) {
-              const index = acc.indexOf(existing)
-              acc[index] = item
-              return acc
-            }
-            return acc
-          }, [])
-          if (deduped.length > 0) {
-            setCampusOptions(deduped)
-            setCampusSource('api')
-          } else {
-            setCampusOptions(STATIC_CAMPUSES)
-            setCampusSource('fallback')
           }
         }
       } catch (err) {
         if (isMounted) {
-          setCampusOptions(STATIC_CAMPUSES)
-          setCampusSource('fallback')
+          if (!campusOptions.length) {
+            setCampusOptions(STATIC_CAMPUSES)
+            setCampusSource('fallback')
+          }
         }
       } finally {
         if (isMounted) setLoading(false)
@@ -226,7 +205,7 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
     return () => {
       isMounted = false
     }
-  }, [setCachedStudentProfile, setCachedUserProfile, userId])
+  }, [setCachedCampusOptions, setCachedStudentProfile, setCachedUserProfile, userId])
 
   const selectedCampusLabel = useMemo(() => {
     if (campusName) return campusName

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AppState, BackHandler, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, AppState, BackHandler, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useAuthStore } from '../core/authStore'
 import { useSecurityStore } from '../core/securityStore'
 import { fetchCurrentUser, refreshStudentSessionTokens } from '../core/session'
@@ -25,6 +25,7 @@ import NewsPage from './pages/NewsPage'
 import SafetyGuidePage from './pages/SafetyGuidePage'
 import SupportPage from './pages/SupportPage'
 import StudentLayout from './layout/StudentLayout'
+import InAppAnnouncementModal from './components/InAppAnnouncementModal'
 import StudentSidebar from './components/StudentSidebar'
 import type { StudentTab } from './types'
 import { clearStoredPinHash } from '../core/security'
@@ -32,6 +33,11 @@ import api from '../core/api'
 import { registerStudentPushToken, addNotificationResponseListener, addNotificationReceivedListener } from '../core/pushNotifications'
 import useWalletStore from '../core/walletStore'
 import LocationDataService from '../../services/locationDataService'
+import {
+  getPendingInAppAnnouncement,
+  markInAppAnnouncementSeen,
+  type StudentInAppAnnouncement,
+} from './services/inAppAnnouncement'
 
 // Statuses where we show the matching (searching) screen
 const MATCHING_STATUSES = ['requested', 'searching']
@@ -63,9 +69,13 @@ export default function StudentApp() {
   const [skipPinVerify, setSkipPinVerify] = useState(false)
   const [notifHistoryOpen, setNotifHistoryOpen] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
+  const [pendingAnnouncement, setPendingAnnouncement] = useState<StudentInAppAnnouncement | null>(null)
+  const [announcementGateVisible, setAnnouncementGateVisible] = useState(false)
   const syncInFlight = useRef(false)
   const lastBackPressAt = useRef(0)
   const lastWalletSyncAt = useRef(0)
+  const appStateRef = useRef(AppState.currentState)
+  const announcementCheckRef = useRef<string | null>(null)
   // Track previous auth state so we can detect a fresh email/password login
   const prevIsAuthenticatedRef = useRef(isAuthenticated)
   const setWalletBalance = useWalletStore((state) => state.setWalletBalance)
@@ -182,14 +192,30 @@ export default function StudentApp() {
   }, [appLockEnabled, biometricEnabled, hasPin, lastUnlockAt, lockTimeoutMinutes, setAppLockEnabled, setLocked])
 
   useEffect(() => {
-    const sub = AppState.addEventListener('change', (state) => {
+    const handleChange = (state: string) => {
+      const previousState = appStateRef.current
+      appStateRef.current = state as typeof appStateRef.current
+
       if (!appLockEnabled) return
-      if (state === 'background' || state === 'inactive') { setLocked(true); return }
-      if (state === 'active' && lockTimeoutMinutes !== 0 && lastUnlockAt) {
-        if ((Date.now() - lastUnlockAt) / 60000 >= lockTimeoutMinutes) setLocked(true)
+      if (state === 'background' || state === 'inactive') {
+        setLocked(true)
+        return
       }
-    })
-    return () => sub.remove()
+      if (state === 'active' && previousState !== 'active') {
+        if (lockTimeoutMinutes === 0) {
+          setLocked(true)
+          return
+        }
+        if (lastUnlockAt && (Date.now() - lastUnlockAt) / 60000 >= lockTimeoutMinutes) {
+          setLocked(true)
+        }
+      }
+    }
+
+    const changeSub = AppState.addEventListener('change', handleChange)
+    return () => {
+      changeSub.remove()
+    }
   }, [appLockEnabled, lastUnlockAt, lockTimeoutMinutes, setLocked])
 
   useEffect(() => {
@@ -199,6 +225,52 @@ export default function StudentApp() {
     void syncSession()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]) // intentionally omit locked — only fires on auth change
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setPendingAnnouncement(null)
+      setAnnouncementGateVisible(false)
+      announcementCheckRef.current = null
+      return
+    }
+    if (!user || user.role !== 'student' || locked || pinRecoveryRequired) {
+      setAnnouncementGateVisible(false)
+      return
+    }
+
+    const checkKey = user.id
+    if (announcementCheckRef.current === checkKey) return
+    announcementCheckRef.current = checkKey
+
+    let cancelled = false
+    setAnnouncementGateVisible(true)
+    const loadAnnouncement = async () => {
+      const announcement = await getPendingInAppAnnouncement(user.id)
+      if (cancelled) return
+      setPendingAnnouncement(announcement)
+      setAnnouncementGateVisible(false)
+    }
+
+    void loadAnnouncement()
+    return () => {
+      cancelled = true
+    }
+  }, [isAuthenticated, locked, pinRecoveryRequired, user?.id, user?.role])
+
+  const handleDismissAnnouncement = useCallback(async () => {
+    if (!pendingAnnouncement || !user?.id) {
+      setPendingAnnouncement(null)
+      return
+    }
+
+    const campaignId = pendingAnnouncement.campaignId
+    setPendingAnnouncement(null)
+    try {
+      await markInAppAnnouncementSeen(user.id, campaignId)
+    } catch {
+      // Non-fatal: the user should never be trapped by local storage failure.
+    }
+  }, [pendingAnnouncement, user?.id])
 
   useEffect(() => {
     if (!isAuthenticated || !user || user.role !== 'student') return
@@ -563,11 +635,35 @@ export default function StudentApp() {
         onClose={() => setIsSidebarOpen(false)}
         onNavigate={(page) => { setIsSidebarOpen(false); setActiveTab(page) }}
       />
+
+      <Modal
+        visible={announcementGateVisible && !pendingAnnouncement}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => undefined}
+      >
+        <View style={styles.announcementGate}>
+          <ActivityIndicator size="large" color="#6A1B9A" />
+        </View>
+      </Modal>
+
+      <InAppAnnouncementModal
+        visible={Boolean(pendingAnnouncement)}
+        announcement={pendingAnnouncement}
+        onDismiss={handleDismissAnnouncement}
+      />
     </View>
   )
 }
 
 const styles = StyleSheet.create({
+  announcementGate: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+  },
   recoveryBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',

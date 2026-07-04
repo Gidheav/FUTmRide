@@ -16,6 +16,7 @@ export interface AuthUser {
   profile_photo?: string | null
   wallet_balance?: string
   fcm_token?: string | null
+  campus?: { id?: string | number | null; name?: string | null } | null
 }
 
 interface AuthStore {

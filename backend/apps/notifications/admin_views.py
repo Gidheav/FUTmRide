@@ -1,12 +1,65 @@
 from rest_framework import permissions, status
+from rest_framework import generics
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.contrib.auth import get_user_model
 from apps.accounts.permissions import IsAdminOrCampusAdmin
-from .models import Notification
+from .models import InAppAnnouncement, Notification
+from .serializers import AdminInAppAnnouncementSerializer
 from .services import PushNotificationService
 
 User = get_user_model()
+
+
+def _campus_admin_campus_id(user):
+    if getattr(user, 'role', None) != 'campus_admin':
+        return None
+    try:
+        return user.campus_admin_profile.campus_id
+    except Exception:
+        return None
+
+
+class AdminInAppAnnouncementListCreateView(generics.ListCreateAPIView):
+    serializer_class = AdminInAppAnnouncementSerializer
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
+
+    def get_queryset(self):
+        queryset = InAppAnnouncement.objects.select_related('campus').order_by('-created_at')
+        campus_id = _campus_admin_campus_id(self.request.user)
+        if getattr(self.request.user, 'role', None) == 'campus_admin':
+            if not campus_id:
+                return queryset.none()
+            queryset = queryset.filter(campus_id=campus_id)
+        return queryset
+
+    def perform_create(self, serializer):
+        campus_id = _campus_admin_campus_id(self.request.user)
+        if campus_id:
+            serializer.save(campus_id=campus_id)
+            return
+        serializer.save()
+
+
+class AdminInAppAnnouncementDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = AdminInAppAnnouncementSerializer
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
+
+    def get_queryset(self):
+        queryset = InAppAnnouncement.objects.select_related('campus')
+        campus_id = _campus_admin_campus_id(self.request.user)
+        if getattr(self.request.user, 'role', None) == 'campus_admin':
+            if not campus_id:
+                return queryset.none()
+            queryset = queryset.filter(campus_id=campus_id)
+        return queryset
+
+    def perform_update(self, serializer):
+        campus_id = _campus_admin_campus_id(self.request.user)
+        if campus_id:
+            serializer.save(campus_id=campus_id)
+            return
+        serializer.save()
 
 
 class AdminBroadcastView(APIView):

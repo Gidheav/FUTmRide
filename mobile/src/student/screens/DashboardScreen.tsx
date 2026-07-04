@@ -16,13 +16,16 @@ import { MaterialIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuthStore } from '../../core/authStore'
 import { useSettingsStore } from '../../core/settingsStore'
+import { useUIPreferencesStore } from '../../core/uiPreferencesStore'
 import MapView, { Marker, Callout, Circle, Region, PROVIDER_GOOGLE } from 'react-native-maps'
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import * as LocationService from 'expo-location'
 import useWalletStore from '../../core/walletStore'
 import { useLocations } from '../../../services/locationDataService'
+import { useStudentProfileStore } from '../../core/studentProfileStore'
+import { getCampusCenter } from '../../core/campus'
 
-const INITIAL_REGION: Region = {
+const DEFAULT_REGION: Region = {
   latitude: 9.5261,
   longitude: 6.4514,
   latitudeDelta: 0.02,
@@ -184,18 +187,33 @@ export default function StudentDashboardScreen({
 }: StudentDashboardScreenProps) {
   const insets = useSafeAreaInsets()
   const { user } = useAuthStore()
+  const userId = user?.id || null
+  const cachedProfileEntry = useStudentProfileStore((state) => userId ? state.profilesByUserId[userId] : null)
+  const campusValue =
+    cachedProfileEntry?.studentProfile?.campus?.name ??
+    cachedProfileEntry?.studentProfile?.campus?.id ??
+    user?.campus?.name ??
+    user?.campus?.id
+  const campusMapRegion = useMemo<Region>(() => {
+    const center = getCampusCenter(campusValue)
+    return {
+      ...DEFAULT_REGION,
+      latitude: center.latitude,
+      longitude: center.longitude,
+    }
+  }, [campusValue])
   const { enabledCategories } = useSettingsStore()
   const mapRef = useRef<MapView | null>(null)
   const markerRef = useRef<any>(null)
   const searchInputRef = useRef<TextInput | null>(null)
-  const savedMapRegionRef = useRef<Region>(INITIAL_REGION)
+  const savedMapRegionRef = useRef<Region>(campusMapRegion)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchActive, setSearchActive] = useState(false)
   const [isActionPanelExpanded, setIsActionPanelExpanded] = useState(true)
   const [isMapReady, setIsMapReady] = useState(false)
   const [didMapTimeout, setDidMapTimeout] = useState(false)
   const [mapInstanceKey, setMapInstanceKey] = useState(0)
-  const [currentMapRegion, setCurrentMapRegion] = useState<Region>(INITIAL_REGION)
+  const [currentMapRegion, setCurrentMapRegion] = useState<Region>(campusMapRegion)
   const [activeModal, setActiveModal] = useState<string | null>(null)
   const [activePin, setActivePin] = useState<Location | null>(null)
 
@@ -212,6 +230,8 @@ export default function StudentDashboardScreen({
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null)
   const [locationMessage, setLocationMessage] = useState<string | null>(null)
   const walletBalance = useWalletStore((state) => state.walletBalance)
+  const hideBalance = useUIPreferencesStore((state) => state.hideBalance)
+  const setUIHideBalance = useUIPreferencesStore((state) => state.setHideBalance)
   const SCAN_DISABLED_STATUSES = new Set(['driver_assigned', 'in_progress', 'arrived'])
   const isScanDisabled = Boolean(activeRide && SCAN_DISABLED_STATUSES.has(activeRide.status))
 
@@ -233,6 +253,12 @@ export default function StudentDashboardScreen({
     const timer = setTimeout(() => { if (!isMapReady) setDidMapTimeout(true) }, 12000)
     return () => clearTimeout(timer)
   }, [isMapReady, mapInstanceKey])
+
+  useEffect(() => {
+    savedMapRegionRef.current = campusMapRegion
+    setCurrentMapRegion(campusMapRegion)
+    mapRef.current?.animateToRegion(campusMapRegion, 350)
+  }, [campusMapRegion])
 
   useEffect(() => {
     if (mapRef.current && savedMapRegionRef.current) {
@@ -597,12 +623,22 @@ export default function StudentDashboardScreen({
 
             <View style={styles.walletCard}>
               <View style={styles.walletInfo}>
-                <View style={styles.walletIcon}>
-                  <MaterialIcons name="account-balance-wallet" size={18} color="#5e5e5e" />
-                </View>
+                <TouchableOpacity
+                  style={styles.walletIcon}
+                  onPress={() => setUIHideBalance(!hideBalance)}
+                  activeOpacity={0.7}
+                >
+                  <MaterialIcons
+                    name="account-balance-wallet"
+                    size={18}
+                    color={hideBalance ? '#9ca3af' : '#6A1B9A'}
+                  />
+                </TouchableOpacity>
                 <View>
                   <Text style={styles.walletLabel}>Wallet Balance</Text>
-                  <Text style={styles.walletValue}>{formatAmount(walletBalance)}</Text>
+                  <Text style={styles.walletValue}>
+                    {hideBalance ? '●●●●●●' : formatAmount(walletBalance)}
+                  </Text>
                 </View>
               </View>
               <TouchableOpacity style={styles.topUpButton} onPress={onNavigateToWallet}>

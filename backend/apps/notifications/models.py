@@ -1,6 +1,6 @@
 import uuid
 from django.db import models
-from apps.accounts.models import User
+from apps.accounts.models import Campus, User
 
 
 class Notification(models.Model):
@@ -37,3 +37,47 @@ class Notification(models.Model):
 
     def __str__(self):
         return f'Notification({self.user.phone_number} {self.notification_type})'
+
+
+class InAppAnnouncement(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    campus = models.ForeignKey(
+        Campus,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='in_app_announcements',
+        help_text='Optional campus scope. Leave blank for a global student announcement.',
+    )
+    campaign_id = models.CharField(
+        max_length=80,
+        unique=True,
+        db_index=True,
+        help_text='Stable ID used by mobile clients to show this campaign once.',
+    )
+    title = models.CharField(max_length=120)
+    body = models.TextField()
+    image_url = models.URLField(blank=True)
+    icon_name = models.CharField(
+        max_length=50,
+        blank=True,
+        default='campaign',
+        help_text='Optional MaterialIcons name used when no image URL is supplied.',
+    )
+    cta_label = models.CharField(max_length=30, default='Got it')
+    is_active = models.BooleanField(default=False, db_index=True)
+    starts_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    ends_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    priority = models.PositiveSmallIntegerField(default=0, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'in_app_announcements'
+        ordering = ['-priority', '-created_at']
+        indexes = [
+            models.Index(fields=['is_active', 'starts_at', 'ends_at']),
+        ]
+
+    def __str__(self):
+        return f'InAppAnnouncement({self.campaign_id})'

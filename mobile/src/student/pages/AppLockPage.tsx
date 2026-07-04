@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  AppState,
+  type AppStateStatus,
+  BackHandler,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -24,14 +27,17 @@ export default function AppLockPage({ onUnlocked, onForgotPin }: AppLockProps) {
   const { biometricEnabled, hasPin } = useSecurityStore()
   const [pin, setPin] = useState('')
   const [pinHash, setPinHash] = useState<string | null>(null)
+  const [pinHashReady, setPinHashReady] = useState(false)
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(true)
   const [unlocking, setUnlocking] = useState(false)
+  const [finishingUnlock, setFinishingUnlock] = useState(false)
   const [biometricAvailable, setBiometricAvailable] = useState(false)
   const [pinAttempts, setPinAttempts] = useState(0)
   const [biometricAttempts, setBiometricAttempts] = useState(0)
   const [lockoutUntil, setLockoutUntil] = useState<number | null>(null)
   const [lockoutSeconds, setLockoutSeconds] = useState(0)
+  const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState)
+  const didAutoPromptBiometric = useRef(false)
   const keypadRows = useMemo(() => ([
     ['1', '2', '3'],
     ['4', '5', '6'],
@@ -53,31 +59,53 @@ export default function AppLockPage({ onUnlocked, onForgotPin }: AppLockProps) {
 
   useEffect(() => {
     let isMounted = true
-    const load = async () => {
-      setLoading(true)
+    const loadPinHash = async () => {
       try {
-        const [storedHash, hasHardware, enrolled] = await Promise.all([
-          getStoredPinHash(),
-          LocalAuthentication.hasHardwareAsync(),
-          LocalAuthentication.isEnrolledAsync(),
-        ])
+        const storedHash = await getStoredPinHash()
         if (isMounted) {
           setPinHash(storedHash)
-          setBiometricAvailable(hasHardware && enrolled)
         }
       } catch (err) {
         if (isMounted) {
           setPinHash(null)
-          setBiometricAvailable(false)
         }
       } finally {
-        if (isMounted) setLoading(false)
+        if (isMounted) setPinHashReady(true)
       }
     }
-    load()
+
+    const loadBiometricAvailability = async () => {
+      if (!biometricEnabled) return
+      try {
+        const [hasHardware, enrolled] = await Promise.all([
+          LocalAuthentication.hasHardwareAsync(),
+          LocalAuthentication.isEnrolledAsync(),
+        ])
+        if (isMounted) {
+          setBiometricAvailable(hasHardware && enrolled)
+        }
+      } catch {
+        if (isMounted) {
+          setBiometricAvailable(false)
+        }
+      }
+    }
+
+    void loadPinHash()
+    void loadBiometricAvailability()
     return () => {
       isMounted = false
     }
+  }, [biometricEnabled])
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => true)
+    return () => subscription.remove()
+  }, [])
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', setAppState)
+    return () => subscription.remove()
   }, [])
 
   useEffect(() => {
@@ -103,7 +131,16 @@ export default function AppLockPage({ onUnlocked, onForgotPin }: AppLockProps) {
     setBiometricAttempts(0)
   }
 
+  const finishUnlock = () => {
+    setFinishingUnlock(true)
+    void kickoffProactiveRefresh()
+    setTimeout(onUnlocked, 120)
+  }
+
   const handleUnlock = async (value: string) => {
+    if (!pinHashReady) {
+      return
+    }
     if (!pinHash) {
       setError('PIN is not set. Please set a PIN in Security settings.')
       return
@@ -130,12 +167,7 @@ export default function AppLockPage({ onUnlocked, onForgotPin }: AppLockProps) {
       }
       setError('')
       setPinAttempts(0)
-      // Kick off a background token refresh BEFORE navigating away.
-      // This primes the refresh mutex so all screens that mount immediately
-      // after unlock will queue on the in-flight refresh rather than racing
-      // with stale tokens. onUnlocked() is called synchronously — no delay.
-      void kickoffProactiveRefresh()
-      onUnlocked()
+      finishUnlock()
     } finally {
       setUnlocking(false)
     }
@@ -160,10 +192,7 @@ export default function AppLockPage({ onUnlocked, onForgotPin }: AppLockProps) {
       })
       if (res.success) {
         setBiometricAttempts(0)
-        // Same proactive refresh pattern as PIN unlock — prime the mutex before
-        // screens mount so they queue on the in-flight refresh rather than racing.
-        void kickoffProactiveRefresh()
-        onUnlocked()
+        finishUnlock()
       } else {
         const errorCode = (res as { error?: string }).error
         if (errorCode === 'user_cancel' || errorCode === 'system_cancel' || errorCode === 'app_cancel') {
@@ -183,8 +212,25 @@ export default function AppLockPage({ onUnlocked, onForgotPin }: AppLockProps) {
     }
   }
 
+  useEffect(() => {
+    if (
+      unlocking ||
+      finishingUnlock ||
+      isLockedOut ||
+      didAutoPromptBiometric.current ||
+      appState !== 'active' ||
+      !biometricEnabled ||
+      !biometricAvailable
+    ) {
+      return
+    }
+
+    didAutoPromptBiometric.current = true
+    void handleBiometric()
+  }, [appState, biometricAvailable, biometricEnabled, finishingUnlock, isLockedOut, unlocking])
+
   const handleDigitPress = (digit: string) => {
-    if (isLockedOut || unlocking) return
+    if (isLockedOut || unlocking || finishingUnlock || !pinHashReady) return
     if (digit === 'back') {
       setPin((prev) => prev.slice(0, -1))
       return
@@ -277,7 +323,7 @@ export default function AppLockPage({ onUnlocked, onForgotPin }: AppLockProps) {
           <Text style={styles.forgotText}>Forgot PIN?</Text>
         </Pressable>
       </View>
-      <LoadingOverlay visible={loading || unlocking} />
+      <LoadingOverlay visible={finishingUnlock} />
     </KeyboardAvoidingView>
   )
 }
