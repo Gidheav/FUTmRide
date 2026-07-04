@@ -64,15 +64,25 @@ const emptyForm: FormState = {
 
 const toList = (data: any): InAppAnnouncement[] => data?.results ?? data ?? []
 
-const toDateTimeLocal = (value?: string | null) => {
+const toDateInput = (value?: string | null) => {
   if (!value) return ''
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
-  return local.toISOString().slice(0, 16)
+  return local.toISOString().slice(0, 10)
 }
 
-const toApiDateTime = (value: string) => value ? new Date(value).toISOString() : null
+const toApiStartDateTime = (value: string) => {
+  if (!value) return null
+  const [year, month, day] = value.split('-').map(Number)
+  return new Date(year, month - 1, day, 0, 0, 0, 0).toISOString()
+}
+
+const toApiEndDateTime = (value: string) => {
+  if (!value) return null
+  const [year, month, day] = value.split('-').map(Number)
+  return new Date(year, month - 1, day, 23, 59, 59, 999).toISOString()
+}
 
 const formatDate = (value?: string | null) => {
   if (!value) return 'Any time'
@@ -111,8 +121,8 @@ const formFromAnnouncement = (item: InAppAnnouncement): FormState => ({
   icon_name: item.icon_name || 'campaign',
   cta_label: item.cta_label || 'Got it',
   is_active: item.is_active,
-  starts_at: toDateTimeLocal(item.starts_at),
-  ends_at: toDateTimeLocal(item.ends_at),
+  starts_at: toDateInput(item.starts_at),
+  ends_at: toDateInput(item.ends_at),
   priority: String(item.priority ?? 0),
 })
 
@@ -143,8 +153,8 @@ export default function InAppAnnouncementManager() {
         icon_name: form.icon_name.trim() || 'campaign',
         cta_label: form.cta_label.trim() || 'Got it',
         is_active: form.is_active,
-        starts_at: toApiDateTime(form.starts_at),
-        ends_at: toApiDateTime(form.ends_at),
+        starts_at: toApiStartDateTime(form.starts_at),
+        ends_at: toApiEndDateTime(form.ends_at),
         priority: Number(form.priority || 0),
       }
       if (editing) {
@@ -313,21 +323,21 @@ export default function InAppAnnouncementManager() {
               </label>
 
               <label style={s.field}>
-                <span style={s.label}>Starts</span>
+                <span style={s.label}>Start date</span>
                 <input
                   value={form.starts_at}
                   onChange={(event) => setForm((prev) => ({ ...prev, starts_at: event.target.value }))}
-                  type="datetime-local"
+                  type="date"
                   style={s.input}
                 />
               </label>
 
               <label style={s.field}>
-                <span style={s.label}>Ends</span>
+                <span style={s.label}>End date</span>
                 <input
                   value={form.ends_at}
                   onChange={(event) => setForm((prev) => ({ ...prev, ends_at: event.target.value }))}
-                  type="datetime-local"
+                  type="date"
                   style={s.input}
                 />
               </label>

@@ -57,8 +57,12 @@ class ActiveInAppAnnouncementView(APIView):
             campus_id = None
 
         campus_filter = Q(campus__isnull=True)
+        campus_match_when = When(campus__isnull=False, then=Value(1))
         if campus_id:
             campus_filter |= Q(campus_id=campus_id)
+            campus_match_when = When(campus_id=campus_id, then=Value(1))
+        else:
+            campus_filter |= Q(campus__isnull=False)
 
         announcement = (
             InAppAnnouncement.objects
@@ -68,7 +72,7 @@ class ActiveInAppAnnouncementView(APIView):
             .filter(Q(ends_at__isnull=True) | Q(ends_at__gte=now))
             .annotate(
                 campus_match=Case(
-                    When(campus_id=campus_id, then=Value(1)),
+                    campus_match_when,
                     default=Value(0),
                     output_field=IntegerField(),
                 )

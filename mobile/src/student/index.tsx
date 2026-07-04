@@ -71,6 +71,7 @@ export default function StudentApp() {
   const [unreadCount, setUnreadCount] = useState(0)
   const [pendingAnnouncement, setPendingAnnouncement] = useState<StudentInAppAnnouncement | null>(null)
   const [announcementGateVisible, setAnnouncementGateVisible] = useState(false)
+  const [announcementRefreshKey, setAnnouncementRefreshKey] = useState(0)
   const syncInFlight = useRef(false)
   const lastBackPressAt = useRef(0)
   const lastWalletSyncAt = useRef(0)
@@ -196,6 +197,10 @@ export default function StudentApp() {
       const previousState = appStateRef.current
       appStateRef.current = state as typeof appStateRef.current
 
+      if (state === 'active' && previousState !== 'active') {
+        setAnnouncementRefreshKey((value) => value + 1)
+      }
+
       if (!appLockEnabled) return
       if (state === 'background' || state === 'inactive') {
         setLocked(true)
@@ -238,24 +243,27 @@ export default function StudentApp() {
       return
     }
 
-    const checkKey = user.id
+    const firstCheckForUser = announcementCheckRef.current
+      ? !announcementCheckRef.current.startsWith(`${user.id}:`)
+      : true
+    const checkKey = `${user.id}:${announcementRefreshKey}`
     if (announcementCheckRef.current === checkKey) return
     announcementCheckRef.current = checkKey
 
     let cancelled = false
-    setAnnouncementGateVisible(true)
+    if (firstCheckForUser) setAnnouncementGateVisible(true)
     const loadAnnouncement = async () => {
       const announcement = await getPendingInAppAnnouncement(user.id)
       if (cancelled) return
       setPendingAnnouncement(announcement)
-      setAnnouncementGateVisible(false)
+      if (firstCheckForUser) setAnnouncementGateVisible(false)
     }
 
     void loadAnnouncement()
     return () => {
       cancelled = true
     }
-  }, [isAuthenticated, locked, pinRecoveryRequired, user?.id, user?.role])
+  }, [announcementRefreshKey, isAuthenticated, locked, pinRecoveryRequired, user?.id, user?.role])
 
   const handleDismissAnnouncement = useCallback(async () => {
     if (!pendingAnnouncement || !user?.id) {

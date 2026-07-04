@@ -129,6 +129,22 @@ class ActiveInAppAnnouncementTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['announcement']['campaign_id'], 'main_campus_v1')
 
+    def test_campusless_student_can_receive_active_campus_announcement(self):
+        campus = Campus.objects.create(name='FUTMINNA', code='FUTMINNA')
+        InAppAnnouncement.objects.create(
+            campaign_id='campus_fallback_v1',
+            title='Campus Update',
+            body='Visible even before the student profile has a campus.',
+            campus=campus,
+            is_active=True,
+        )
+
+        self.client.force_authenticate(self.student)
+        response = self.client.get(self.endpoint)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['announcement']['campaign_id'], 'campus_fallback_v1')
+
 
 class AdminInAppAnnouncementTests(APITestCase):
     endpoint = '/api/v1/notifications/announcements/admin/'
