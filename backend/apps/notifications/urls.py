@@ -10,6 +10,7 @@ from .admin_views import (
     AdminBroadcastView,
     AdminInAppAnnouncementDetailView,
     AdminInAppAnnouncementListCreateView,
+    AdminInAppAnnouncementRetriggerView,
 )
 
 urlpatterns = [

@@ -2,6 +2,7 @@ from rest_framework import permissions, status
 from rest_framework import generics
 from rest_framework.response import Response
 from rest_framework.views import APIView
+import time
 from django.contrib.auth import get_user_model
 from apps.accounts.permissions import IsAdminOrCampusAdmin
 from .models import InAppAnnouncement, Notification
@@ -42,9 +43,11 @@ def _send_announcement_push(announcement, request_user):
         ]
         Notification.objects.bulk_create(notifications, ignore_conflicts=True)
         
+        sent_tokens = set()
         for user in qs:
-            if user.fcm_token:
+            if user.fcm_token and user.fcm_token not in sent_tokens:
                 PushNotificationService.send(user.fcm_token, announcement.title, announcement.body, {'campaign_id': announcement.campaign_id})
+                sent_tokens.add(user.fcm_token)
         
         announcement.push_sent = True
         announcement.save(update_fields=['push_sent'])
@@ -94,6 +97,40 @@ class AdminInAppAnnouncementDetailView(generics.RetrieveUpdateDestroyAPIView):
         _send_announcement_push(announcement, self.request.user)
 
 
+class AdminInAppAnnouncementRetriggerView(APIView):
+    """
+    Retrigger an announcement: changes the campaign_id slightly so clients
+    who already dismissed it will see it again, and resets push_sent to send pushes again.
+    """
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
+
+    def post(self, request, pk):
+        try:
+            announcement = InAppAnnouncement.objects.get(pk=pk)
+        except InAppAnnouncement.DoesNotExist:
+            return Response({'error': 'Announcement not found.'}, status=404)
+            
+        campus_id = _campus_admin_campus_id(request.user)
+        if getattr(request.user, 'role', None) == 'campus_admin':
+            if announcement.campus_id != campus_id:
+                return Response({'error': 'You do not have permission to retrigger this announcement.'}, status=403)
+
+        # Change campaign_id to force mobile apps to show it again
+        base_id = announcement.campaign_id.split('_retrigger')[0]
+        # Keep it under 80 chars (max_length)
+        announcement.campaign_id = f"{base_id[:50]}_retrigger_{int(time.time())}"
+        announcement.push_sent = False
+        announcement.save(update_fields=['campaign_id', 'push_sent'])
+
+        _send_announcement_push(announcement, request.user)
+
+        return Response({
+            'status': 'success',
+            'message': 'Announcement retriggered successfully.',
+            'new_campaign_id': announcement.campaign_id
+        })
+
+
 class AdminBroadcastView(APIView):
     """
     Admin-only endpoint to broadcast a notification to a group of users.
@@ -141,11 +178,13 @@ class AdminBroadcastView(APIView):
 
         # Send push notifications to users who have FCM tokens
         sent_push = 0
+        sent_tokens = set()
         for user in qs:
-            if user.fcm_token:
+            if user.fcm_token and user.fcm_token not in sent_tokens:
                 ok = PushNotificationService.send(user.fcm_token, title, body, {'broadcast': True})
                 if ok:
                     sent_push += 1
+                sent_tokens.add(user.fcm_token)
 
         return Response({
             'sent_count': len(notifications),

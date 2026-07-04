@@ -7,6 +7,7 @@ import {
   Megaphone,
   Plus,
   Power,
+  RefreshCw,
   Trash2,
   X,
 } from 'lucide-react'
@@ -108,20 +109,36 @@ const slugify = (value: string) =>
 
 const getErrorMessage = (error: any) => {
   const data = error?.response?.data
-  if (!data) return 'Request failed. Please try again.'
+  if (!data) return error?.message || 'Request failed. Please try again.'
   if (typeof data === 'string') return data
   if (data.detail) return String(data.detail)
   if (data.error) return String(data.error)
-  const firstKey = Object.keys(data)[0]
-  const firstValue = firstKey ? data[firstKey] : null
-  if (Array.isArray(firstValue)) return `${firstKey}: ${firstValue[0]}`
-  if (typeof firstValue === 'object' && firstValue !== null) {
-    return `${firstKey}: ${JSON.stringify(firstValue)}`
+  
+  // Try to parse the first key/value pair nicely
+  try {
+    const firstKey = Object.keys(data)[0]
+    const firstValue = firstKey ? data[firstKey] : null
+    
+    let messageStr = ''
+    if (Array.isArray(firstValue)) {
+      messageStr = typeof firstValue[0] === 'object' ? JSON.stringify(firstValue[0]) : String(firstValue[0])
+    } else if (typeof firstValue === 'object' && firstValue !== null) {
+      messageStr = JSON.stringify(firstValue)
+    } else if (firstValue !== undefined && firstValue !== null) {
+      messageStr = String(firstValue)
+    }
+    
+    if (messageStr) return `${firstKey}: ${messageStr}`
+  } catch (e) {
+    // Ignore and fallback
   }
-  if (firstValue !== undefined && firstValue !== null) {
-    return `${firstKey}: ${String(firstValue)}`
+
+  // Fallback to full JSON stringification
+  try {
+    return JSON.stringify(data)
+  } catch {
+    return 'Request failed. Please check the form.'
   }
-  return 'Request failed. Please check the form.'
 }
 
 const formFromAnnouncement = (item: InAppAnnouncement): FormState => ({
@@ -199,6 +216,15 @@ export default function InAppAnnouncementManager() {
     onError: (error) => alert(getErrorMessage(error)),
   })
 
+  const retriggerMutation = useMutation({
+    mutationFn: (id: string) => api.post(`/notifications/announcements/admin/${id}/retrigger/`),
+    onSuccess: (data: any) => {
+      qc.invalidateQueries({ queryKey: ['in-app-announcements'] })
+      alert(data?.data?.message || 'Announcement retriggered successfully! It will now show up again for all users.')
+    },
+    onError: (error) => alert(getErrorMessage(error)),
+  })
+
   const openCreate = () => {
     setEditing(null)
     setForm(emptyForm)
@@ -229,6 +255,11 @@ export default function InAppAnnouncementManager() {
   const handleDelete = (item: InAppAnnouncement) => {
     if (!confirm(`Delete "${item.title}"?`)) return
     deleteMutation.mutate(item.id)
+  }
+
+  const handleRetrigger = (item: InAppAnnouncement) => {
+    if (!confirm(`Are you sure you want to retrigger "${item.title}"? This will reset its ID so users who have already seen it will see it again, and it will re-send the push notification if active.`)) return
+    retriggerMutation.mutate(item.id)
   }
 
   return (
@@ -460,6 +491,15 @@ export default function InAppAnnouncementManager() {
                 <button type="button" onClick={() => toggleMutation.mutate(item)} style={s.secondaryButton}>
                   <Power size={13} />
                   {item.is_active ? 'Deactivate' : 'Activate'}
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => handleRetrigger(item)} 
+                  style={s.secondaryButton}
+                  title="Force this campaign to display again for everyone"
+                >
+                  <RefreshCw size={13} />
+                  Retrigger
                 </button>
                 <button type="button" onClick={() => handleDelete(item)} style={s.dangerButton}>
                   <Trash2 size={13} />
