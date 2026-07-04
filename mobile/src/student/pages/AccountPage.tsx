@@ -4,6 +4,7 @@ import LoadingOverlay from '../components/LoadingOverlay'
 import { MaterialIcons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
 import { useAuthStore } from '../../core/authStore'
+import { useStudentProfileStore } from '../../core/studentProfileStore'
 import api from '../../core/api'
 
 type AccountPageProps = {
@@ -17,6 +18,10 @@ type AccountPageProps = {
 
 export default function StudentAccountPage({ onEditProfile, onOpenNotifications, onOpenSettings, onOpenSecurity, onLogout, refreshKey }: AccountPageProps) {
   const { user, setUser } = useAuthStore()
+  const userId = user?.id || null
+  const cachedProfileEntry = useStudentProfileStore((state) => userId ? state.profilesByUserId[userId] : null)
+  const setCachedStudentProfile = useStudentProfileStore((state) => state.setStudentProfile)
+  const setCachedUserProfile = useStudentProfileStore((state) => state.setUserProfile)
 
   const getInitials = () => {
     if (!user?.full_name) return '?'
@@ -27,37 +32,41 @@ export default function StudentAccountPage({ onEditProfile, onOpenNotifications,
     return parts[0][0].toUpperCase()
   }
 
-  const [profile, setProfile] = useState<any>(null)
-  const [userProfile, setUserProfile] = useState<any>(null)
+  const profile = cachedProfileEntry?.studentProfile || null
+  const userProfile = cachedProfileEntry?.userProfile || null
+  const [refreshingProfile, setRefreshingProfile] = useState(false)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [photoError, setPhotoError] = useState('')
   const matricRegex = /^\d{4}\/\d\/\d{5}[A-Za-z]{0,3}$/
 
   useEffect(() => {
+    if (!userId) return
     let isMounted = true
+    const requestUserId = userId
     const loadProfile = async () => {
+      setRefreshingProfile(true)
       try {
         const [profileRes, userRes] = await Promise.all([
           api.get('users/me/student-profile/'),
           api.get('users/me/'),
         ])
-        if (isMounted) {
-          setProfile(profileRes.data)
-          setUserProfile(userRes.data)
+        const currentUserId = useAuthStore.getState().user?.id
+        if (isMounted && currentUserId === requestUserId) {
+          setCachedStudentProfile(requestUserId, profileRes.data)
+          setCachedUserProfile(requestUserId, userRes.data)
           setUser(userRes.data)
         }
       } catch (err) {
-        if (isMounted) {
-          setProfile(null)
-          setUserProfile(null)
-        }
+        // Keep the last good cached profile on transient network/API failures.
+      } finally {
+        if (isMounted) setRefreshingProfile(false)
       }
     }
     loadProfile()
     return () => {
       isMounted = false
     }
-  }, [refreshKey])
+  }, [refreshKey, setCachedStudentProfile, setCachedUserProfile, setUser, userId])
 
   const handlePickPhoto = async () => {
     setPhotoError('')
@@ -99,8 +108,11 @@ export default function StudentAccountPage({ onEditProfile, onOpenNotifications,
         },
         transformRequest: (data) => data,
       })
-      setUserProfile(response.data)
-      setUser(response.data)
+      const currentUserId = useAuthStore.getState().user?.id
+      if (userId && currentUserId === userId) {
+        setCachedUserProfile(userId, response.data)
+        setUser(response.data)
+      }
     } catch (err: any) {
       const message = err?.response?.data?.error?.message || 'Unable to upload profile photo.'
       setPhotoError(String(message))
@@ -109,16 +121,17 @@ export default function StudentAccountPage({ onEditProfile, onOpenNotifications,
     }
   }
 
-  const matricValue = profile?.matric_number && matricRegex.test(profile.matric_number)
+  const emptyValue = refreshingProfile && !profile ? 'Loading...' : 'Not set'
+  const matricValue = profile?.matric_number && matricRegex.test(String(profile.matric_number))
     ? profile.matric_number
-    : 'Not set'
+    : emptyValue
 
   const details = [
-    { icon: 'phone', label: 'Phone Number', value: userProfile?.phone_number || user?.phone_number || 'Not set' },
+    { icon: 'phone', label: 'Phone Number', value: userProfile?.phone_number || user?.phone_number || emptyValue },
     { icon: 'badge', label: 'Matric Number', value: matricValue },
-    { icon: 'school', label: 'Department', value: profile?.department || 'Not set' },
-    { icon: 'business', label: 'Campus', value: profile?.campus?.name || 'Not set' },
-    { icon: 'trending-up', label: 'Level', value: profile?.level ? `${profile.level} Level` : 'Not set' },
+    { icon: 'school', label: 'Department', value: profile?.department || emptyValue },
+    { icon: 'business', label: 'Campus', value: profile?.campus?.name || emptyValue },
+    { icon: 'trending-up', label: 'Level', value: profile?.level ? `${profile.level} Level` : emptyValue },
   ]
 
   const settings = [
@@ -128,14 +141,15 @@ export default function StudentAccountPage({ onEditProfile, onOpenNotifications,
     { icon: 'security', label: 'Security', danger: false, chevron: true },
     { icon: 'logout', label: 'Log Out', danger: true, chevron: false },
   ]
+  const avatarUri = userProfile?.profile_photo || user?.profile_photo || null
 
   return (
     <View style={styles.page}>
     <ScrollView contentContainerStyle={styles.pageContent}>
       <View style={styles.profileHeader}>
         <View style={styles.avatarWrap}>
-          {userProfile?.profile_photo || user?.profile_photo ? (
-            <Image source={{ uri: userProfile?.profile_photo || user?.profile_photo }} style={styles.avatar} />
+          {avatarUri ? (
+            <Image source={{ uri: avatarUri }} style={styles.avatar} />
           ) : (
             <View style={styles.initialsContainer}>
               <Text style={styles.initialsText}>{getInitials()}</Text>

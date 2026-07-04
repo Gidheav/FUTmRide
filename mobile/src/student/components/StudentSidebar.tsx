@@ -84,7 +84,7 @@ export default function StudentSidebar({
           ]}>
             <View style={styles.sidebarContent}>
               <View style={styles.header}>
-                <Text style={styles.brand}>LR-Ride</Text>
+                <Text style={styles.brand}>TESSERA</Text>
                 <TouchableOpacity onPress={onClose} style={styles.closeButton} activeOpacity={0.85}>
                   <MaterialIcons name="close" size={20} color="#5e5e5e" />
                 </TouchableOpacity>

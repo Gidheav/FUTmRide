@@ -702,7 +702,7 @@ export default function StudentDashboardScreen({
           <View style={styles.scannerOverlay}>
             <View style={styles.scannerFrameBox} />
           </View>
-          <View style={styles.scannerTopBar}>
+          <View style={[styles.scannerTopBar, { paddingTop: Math.max(insets.top, 10) }]}>
             <TouchableOpacity style={styles.scannerClose} onPress={() => setScannerVisible(false)}>
               <MaterialIcons name="close" size={20} color="#ffffff" />
             </TouchableOpacity>
@@ -988,9 +988,8 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 64,
     paddingHorizontal: 16,
-    paddingTop: 10,
+    paddingBottom: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

@@ -16,6 +16,7 @@ class Notification(models.Model):
         VERIFICATION_SUBMITTED = 'verification_submitted', 'Verification Submitted'
         BROADCAST = 'broadcast', 'Broadcast'
         SYSTEM_ALERT = 'system_alert', 'System Alert'
+        SUPPORT_TICKET = 'support_ticket', 'Support Ticket'
         GENERAL = 'general', 'General'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

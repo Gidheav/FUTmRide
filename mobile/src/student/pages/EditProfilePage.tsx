@@ -11,6 +11,8 @@ import {
 import { MaterialIcons } from '@expo/vector-icons'
 import api from '../../core/api'
 import LoadingOverlay from '../components/LoadingOverlay'
+import { useAuthStore } from '../../core/authStore'
+import { useStudentProfileStore } from '../../core/studentProfileStore'
 
 const LEVEL_OPTIONS = [100, 200, 300, 400, 500]
 
@@ -89,6 +91,11 @@ type EditProfileProps = {
 }
 
 export default function StudentEditProfilePage({ onClose, onSaved }: EditProfileProps) {
+  const userId = useAuthStore((state) => state.user?.id || null)
+  const setUser = useAuthStore((state) => state.setUser)
+  const cachedProfileEntry = useStudentProfileStore((state) => userId ? state.profilesByUserId[userId] : null)
+  const setCachedStudentProfile = useStudentProfileStore((state) => state.setStudentProfile)
+  const setCachedUserProfile = useStudentProfileStore((state) => state.setUserProfile)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -110,7 +117,26 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
   const [departmentModalVisible, setDepartmentModalVisible] = useState(false)
 
   useEffect(() => {
+    if (cachedProfileEntry?.userProfile) {
+      const userProfile = cachedProfileEntry.userProfile
+      setFirstName(userProfile.first_name || '')
+      setLastName(userProfile.last_name || '')
+      setPhoneNumber(userProfile.phone_number ? String(userProfile.phone_number) : '')
+    }
+    if (cachedProfileEntry?.studentProfile) {
+      const profile = cachedProfileEntry.studentProfile
+      const savedMatric = profile.matric_number
+      setMatricNumber(savedMatric && matricRegex.test(String(savedMatric)) ? String(savedMatric) : '')
+      setDepartment(profile.department || '')
+      setLevel(profile.level || null)
+      setCampusId(profile.campus?.id ? String(profile.campus.id) : null)
+      setCampusName(profile.campus?.name || '')
+    }
+  }, [cachedProfileEntry])
+
+  useEffect(() => {
     let isMounted = true
+    const requestUserId = userId
     const loadProfile = async () => {
       setLoading(true)
       setError('')
@@ -124,6 +150,10 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
         if (isMounted) {
           const profile = profileRes.data || {}
           const userProfile = userRes.data || {}
+          if (requestUserId && useAuthStore.getState().user?.id === requestUserId) {
+            setCachedStudentProfile(requestUserId, profile)
+            setCachedUserProfile(requestUserId, userProfile)
+          }
           setFirstName(userProfile.first_name || '')
           setLastName(userProfile.last_name || '')
           setPhoneNumber(userProfile.phone_number ? String(userProfile.phone_number) : '')
@@ -196,7 +226,7 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [setCachedStudentProfile, setCachedUserProfile, userId])
 
   const selectedCampusLabel = useMemo(() => {
     if (campusName) return campusName
@@ -241,7 +271,7 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
     setSaving(true)
     setError('')
     try {
-      await api.patch('users/me/', {
+      const userRes = await api.patch('users/me/', {
         first_name: firstName.trim(),
         last_name: lastName.trim(),
         phone_number: phoneNumber ? phoneNumber.trim() : null,
@@ -257,7 +287,13 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
         payload.campus_id = campusId
       }
 
-      await api.patch('users/me/student-profile/', payload)
+      const profileRes = await api.patch('users/me/student-profile/', payload)
+      const currentUserId = useAuthStore.getState().user?.id
+      if (userId && currentUserId === userId) {
+        setCachedUserProfile(userId, userRes.data)
+        setCachedStudentProfile(userId, profileRes.data)
+        setUser(userRes.data)
+      }
       onSaved()
     } catch (err: any) {
       const message = err?.response?.data?.error?.message ||

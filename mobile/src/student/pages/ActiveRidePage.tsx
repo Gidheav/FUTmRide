@@ -4,10 +4,12 @@ import {
   AppState,
   Image,
   Linking,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native'
@@ -54,6 +56,11 @@ export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRi
   const [cancelling, setCancelling] = useState(false)
   const lastStatusRef = useRef<string | null>(null)
   const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null)
+  const [ratingVisible, setRatingVisible] = useState(false)
+  const [ratingScore, setRatingScore] = useState(0)
+  const [ratingComment, setRatingComment] = useState('')
+  const [submittingRating, setSubmittingRating] = useState(false)
+  const [ratingSubmitted, setRatingSubmitted] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
 
   useEffect(() => {
@@ -208,6 +215,68 @@ export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRi
         }
       ]
     )
+  }
+
+  const submitLowRatingComplaint = async () => {
+    if (!ride) return
+    const ref = ride.reference || ride.id
+    await api.post('support/tickets/', {
+      category: 'driver_complaint',
+      priority: 'high',
+      subject: `Driver complaint for ride ${ref}`,
+      description: ratingComment.trim()
+        ? `Low driver rating (${ratingScore}/5). Student comment: ${ratingComment.trim()}`
+        : `Low driver rating (${ratingScore}/5) for ride ${ref}.`,
+    })
+  }
+
+  const handleSubmitRating = async () => {
+    if (!ride?.id || ratingScore < 1) {
+      Alert.alert('Select a rating', 'Please choose a star rating before submitting.')
+      return
+    }
+
+    setSubmittingRating(true)
+    try {
+      await api.post('ratings/', {
+        ride: ride.id,
+        score: ratingScore,
+        comment: ratingComment.trim(),
+      })
+      setRatingSubmitted(true)
+      setRatingVisible(false)
+
+      if (ratingScore <= 2) {
+        Alert.alert(
+          'Report this ride?',
+          'Your rating has been saved. Would you also like to submit this as a formal driver complaint for admin review?',
+          [
+            { text: 'No', style: 'cancel' },
+            {
+              text: 'Submit Complaint',
+              style: 'destructive',
+              onPress: async () => {
+                try {
+                  await submitLowRatingComplaint()
+                  Alert.alert('Complaint submitted', 'Admin has been notified about this ride.')
+                } catch {
+                  Alert.alert('Complaint failed', 'Your rating was saved, but the complaint could not be submitted.')
+                }
+              },
+            },
+          ],
+        )
+      } else {
+        Alert.alert('Thanks for rating', 'Your driver rating has been submitted.')
+      }
+    } catch (err: any) {
+      const message = err?.response?.data?.non_field_errors?.[0] ||
+        err?.response?.data?.error?.message ||
+        'Unable to submit rating. You may have already rated this ride.'
+      Alert.alert('Rating failed', String(message))
+    } finally {
+      setSubmittingRating(false)
+    }
   }
 
   // Derived data from API response
@@ -393,9 +462,17 @@ export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRi
 
         {/* Actions */}
         {isTerminal ? (
-          <TouchableOpacity style={styles.primaryButton} onPress={onRideEnded || onBack} activeOpacity={0.85}>
-            <Text style={styles.primaryButtonText}>Back to Dashboard</Text>
-          </TouchableOpacity>
+          <View style={styles.terminalActions}>
+            {isCompleted && driver && !ratingSubmitted ? (
+              <TouchableOpacity style={styles.rateButton} onPress={() => setRatingVisible(true)} activeOpacity={0.85}>
+                <MaterialIcons name="star-rate" size={20} color="#ffffff" />
+                <Text style={styles.primaryButtonText}>Rate Driver</Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity style={styles.primaryButton} onPress={onRideEnded || onBack} activeOpacity={0.85}>
+              <Text style={styles.primaryButtonText}>Back to Dashboard</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
           <View style={styles.actionsRow}>
             {canCancel && (
@@ -422,6 +499,57 @@ export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRi
           </View>
         )}
       </ScrollView>
+
+      <Modal visible={ratingVisible} animationType="slide" transparent onRequestClose={() => setRatingVisible(false)}>
+        <View style={styles.ratingBackdrop}>
+          <View style={styles.ratingCard}>
+            <View style={styles.ratingHeader}>
+              <Text style={styles.ratingTitle}>Rate your driver</Text>
+              <TouchableOpacity style={styles.ratingClose} onPress={() => setRatingVisible(false)} activeOpacity={0.85}>
+                <MaterialIcons name="close" size={20} color="#1a1c1c" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.ratingSubtitle}>
+              This rating is tied to the completed ride and helps improve driver quality.
+            </Text>
+
+            <View style={styles.starRow}>
+              {[1, 2, 3, 4, 5].map((score) => (
+                <TouchableOpacity key={score} onPress={() => setRatingScore(score)} activeOpacity={0.8}>
+                  <MaterialIcons
+                    name={score <= ratingScore ? 'star' : 'star-border'}
+                    size={38}
+                    color={score <= ratingScore ? '#F9A825' : '#d1d5db'}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TextInput
+              value={ratingComment}
+              onChangeText={setRatingComment}
+              placeholder="Optional comment"
+              placeholderTextColor="#9ca3af"
+              multiline
+              textAlignVertical="top"
+              maxLength={500}
+              style={styles.ratingInput}
+            />
+            <Text style={styles.ratingHelper}>
+              For serious issues, give your rating first, then submit the complaint prompt if shown.
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.ratingSubmit, submittingRating && { opacity: 0.7 }]}
+              onPress={handleSubmitRating}
+              disabled={submittingRating}
+              activeOpacity={0.9}
+            >
+              <Text style={styles.ratingSubmitText}>{submittingRating ? 'Submitting...' : 'Submit Rating'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   )
 }
@@ -755,6 +883,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#ffffff',
   },
+  terminalActions: {
+    gap: 10,
+  },
+  rateButton: {
+    backgroundColor: '#F9A825',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
   sosButton: {
     backgroundColor: '#dc2626',
     borderRadius: 14,
@@ -769,5 +909,76 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#ffffff',
     letterSpacing: 0.5,
+  },
+  ratingBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  ratingCard: {
+    width: '100%',
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    padding: 20,
+    gap: 14,
+  },
+  ratingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  ratingTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1a1c1c',
+  },
+  ratingClose: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ratingSubtitle: {
+    fontSize: 13,
+    color: '#6b7280',
+    lineHeight: 18,
+  },
+  starRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 4,
+  },
+  ratingInput: {
+    minHeight: 100,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: '#1a1c1c',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  ratingHelper: {
+    fontSize: 12,
+    color: '#6b7280',
+    lineHeight: 17,
+  },
+  ratingSubmit: {
+    backgroundColor: '#6A1B9A',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  ratingSubmitText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '800',
   },
 })

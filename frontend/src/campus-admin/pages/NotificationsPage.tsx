@@ -5,7 +5,7 @@ import {
   Bell, CheckCheck, Megaphone, X, Send,
   Car, CreditCard, ShieldCheck, AlertTriangle,
   Radio, Info, Users, Truck, ChevronDown,
-  CheckCircle2, Clock
+  CheckCircle2, Clock, MessageSquare
 } from 'lucide-react'
 import api from '../../core/api'
 import { T } from '../theme'
@@ -21,7 +21,7 @@ interface Notification {
   data: Record<string, unknown>
 }
 
-type CategoryFilter = 'all' | 'rides' | 'payments' | 'verifications' | 'system' | 'broadcasts'
+type CategoryFilter = 'all' | 'rides' | 'payments' | 'verifications' | 'support' | 'system' | 'broadcasts'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const TYPE_CATEGORY: Record<string, CategoryFilter> = {
@@ -34,6 +34,7 @@ const TYPE_CATEGORY: Record<string, CategoryFilter> = {
   payment_received: 'payments',
   account_approved: 'verifications',
   verification_submitted: 'verifications',
+  support_ticket: 'support',
   broadcast: 'broadcasts',
   system_alert: 'system',
   general: 'system',
@@ -49,6 +50,7 @@ const TYPE_ICON: Record<string, { icon: typeof Bell; color: string; bg: string }
   payment_received:      { icon: CreditCard,   color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
   account_approved:      { icon: ShieldCheck,  color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
   verification_submitted:{ icon: ShieldCheck,  color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
+  support_ticket:        { icon: MessageSquare,color: '#06b6d4', bg: 'rgba(6,182,212,0.12)' },
   broadcast:             { icon: Megaphone,    color: '#a855f7', bg: 'rgba(168,85,247,0.12)' },
   system_alert:          { icon: AlertTriangle,color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
   general:               { icon: Info,         color: '#64748b', bg: 'rgba(100,116,139,0.12)' },
@@ -67,6 +69,7 @@ const CATEGORIES: { key: CategoryFilter; label: string; icon: typeof Bell }[] = 
   { key: 'rides',         label: 'Rides',          icon: Car },
   { key: 'payments',      label: 'Payments',        icon: CreditCard },
   { key: 'verifications', label: 'Verifications',  icon: ShieldCheck },
+  { key: 'support',       label: 'Support',         icon: MessageSquare },
   { key: 'broadcasts',    label: 'Broadcasts',     icon: Megaphone },
   { key: 'system',        label: 'System',          icon: AlertTriangle },
 ]

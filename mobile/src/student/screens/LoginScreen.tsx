@@ -14,6 +14,7 @@ import {
 } from 'react-native'
 import { useEffect, useState } from 'react'
 import { MaterialIcons } from '@expo/vector-icons'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { useAuthStore } from '../../core/authStore'
 import api, { API_BASE_URL } from '../../core/api'
 import LoadingOverlay from '../components/LoadingOverlay'
@@ -319,18 +320,17 @@ export default function StudentLoginScreen() {
   }
 
   return (
-    <View style={{flex: 1}}>
+    <SafeAreaView style={{flex: 1, backgroundColor: '#f9f9f9'}}>
     <KeyboardAvoidingView
       style={styles.page}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior="padding"
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
     >
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        scrollEnabled={isKeyboardOpen}
-        bounces={isKeyboardOpen}
+        bounces={false}
       >
         <View style={styles.header}>
           <View style={styles.heroCard}>
@@ -551,7 +551,7 @@ export default function StudentLoginScreen() {
       </Modal>
       </KeyboardAvoidingView>
       <LoadingOverlay visible={loading || signupLoading || verificationLoading || verificationResendLoading} />
-    </View>
+    </SafeAreaView>
   )
 }
 
@@ -563,7 +563,8 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 10,
     paddingVertical: 32,
-    paddingBottom: 64,
+    paddingBottom: 12,
+    flexGrow: 1,
   },
   header: {
     alignItems: 'center',

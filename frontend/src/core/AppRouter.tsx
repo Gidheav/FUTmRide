@@ -23,6 +23,7 @@ import CampusAdminAnalytics from "../campus-admin/pages/AnalyticsPage"
 import CampusAdminSettings from "../campus-admin/pages/SettingsPage"
 import CampusAdminNotifications from "../campus-admin/pages/NotificationsPage"
 import CampusAdminEngine from "../campus-admin/pages/EngineCalculationPage"
+import CampusAdminDocs from "../campus-admin/pages/DocsPage"
 import CampusAdminFinancialHub from "../campus-admin/FinancialManagement/hub/FinancialHub"
 import CampusAdminLayout from "../campus-admin/layout/CampusAdminLayout"
 import CampusAdminTestPage from "../campus-admin/pages/TestPage"
@@ -126,6 +127,7 @@ export default function AppRouter() {
         <Route path="/engine" element={<CampusAdminEngine />} />
         <Route path="/settings" element={<CampusAdminSettings />} />
         <Route path="/notifications" element={<CampusAdminNotifications />} />
+        <Route path="/docs" element={<CampusAdminDocs />} />
         <Route path="/test" element={<CampusAdminTestPage />} />
       </Route>
 

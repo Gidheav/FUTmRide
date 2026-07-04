@@ -5,7 +5,7 @@ import {
   Download, Megaphone, UserPlus,
   ArrowLeft, ChevronRight, History, ShieldAlert, UserX,
   Radio, Crosshair, Activity, Zap, Route, Monitor, Bell, Sliders, ShieldCheck,
-  Wrench, Ticket, Plug, Flag, LifeBuoy, Banknote, Calculator, FlaskConical, Map, FolderOpen
+  Wrench, Ticket, Plug, Flag, LifeBuoy, Banknote, Calculator, FlaskConical, Map, FolderOpen, Smartphone, Car
 } from 'lucide-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { CSSProperties } from 'react'
@@ -19,6 +19,7 @@ import { useAnalyticsStore } from '../analyticsStore'
 import { type FinancialTab, useFinancialStore } from '../financialStore'
 import { ENGINE_NAV_ITEMS, useEngineStore } from '../engineStore'
 import { type OperationsTab, useOperationsStore } from '../operationsStore'
+import { useDocsStore } from '../docsStore'
 
 const OPERATIONS_NAV_ITEMS: Array<{ label: string; tab: OperationsTab }> = [
   { label: 'DEPARTURES', tab: 'departures' },
@@ -54,6 +55,7 @@ export default function CampusAdminTopNav() {
   const { activeTab: financeTab, setActiveTab: setFinanceTab } = useFinancialStore()
   const { activeTab: engineTab, setActiveTab: setEngineTab } = useEngineStore()
   const { activeTab: operationsTab, setActiveTab: setOperationsTab } = useOperationsStore()
+  const { activeTab: docsTab, setActiveTab: setDocsTab } = useDocsStore()
 
   // Live unread notification count
   const { data: unreadData } = useQuery<{ unread_count: number }>({
@@ -246,6 +248,13 @@ export default function CampusAdminTopNav() {
             </div>
             <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
               Bulk account and ride data tools
+            </div>
+          </div>
+        ) : location.pathname === '/docs' ? (
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3 }}>Documentation</div>
+            <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
+              Technical architecture and workflows
             </div>
           </div>
         ) : location.pathname === '/notifications' ? (
@@ -533,6 +542,33 @@ export default function CampusAdminTopNav() {
           >
             <LayoutDashboard size={13} strokeWidth={1.8} />
             <span>Dashboard</span>
+          </button>
+        </nav>
+      ) : location.pathname === '/docs' ? (
+        <nav style={s.topNav}>
+          <button
+            type="button"
+            style={{ ...s.topNavBtn, color: docsTab === 'admin' ? T.accent : T.textSecondary, background: docsTab === 'admin' ? T.accentBg : 'transparent' }}
+            onClick={() => setDocsTab('admin')}
+          >
+            <ShieldCheck size={13} strokeWidth={1.8} />
+            <span>Admin System</span>
+          </button>
+          <button
+            type="button"
+            style={{ ...s.topNavBtn, color: docsTab === 'student' ? T.accent : T.textSecondary, background: docsTab === 'student' ? T.accentBg : 'transparent' }}
+            onClick={() => setDocsTab('student')}
+          >
+            <Smartphone size={13} strokeWidth={1.8} />
+            <span>Student App</span>
+          </button>
+          <button
+            type="button"
+            style={{ ...s.topNavBtn, color: docsTab === 'driver' ? T.accent : T.textSecondary, background: docsTab === 'driver' ? T.accentBg : 'transparent' }}
+            onClick={() => setDocsTab('driver')}
+          >
+            <Car size={13} strokeWidth={1.8} />
+            <span>Driver App</span>
           </button>
         </nav>
       ) : (
