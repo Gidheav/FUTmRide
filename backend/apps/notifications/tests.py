@@ -102,14 +102,14 @@ class ActiveInAppAnnouncementTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['announcement']['campaign_id'], 'higher_priority_v1')
 
-    def test_student_receives_own_campus_announcement_not_other_campus(self):
+    def test_student_receives_highest_priority_announcement_regardless_of_campus(self):
         campus = Campus.objects.create(name='Main Campus', code='MAIN')
         other_campus = Campus.objects.create(name='Other Campus', code='OTHER')
         StudentProfile.objects.create(user=self.student, campus=campus)
         InAppAnnouncement.objects.create(
             campaign_id='other_campus_v1',
             title='Other Campus',
-            body='Hidden from this student.',
+            body='Highest priority.',
             campus=other_campus,
             is_active=True,
             priority=20,
@@ -117,7 +117,7 @@ class ActiveInAppAnnouncementTests(APITestCase):
         InAppAnnouncement.objects.create(
             campaign_id='main_campus_v1',
             title='Main Campus',
-            body='Visible to this student.',
+            body='Lower priority.',
             campus=campus,
             is_active=True,
             priority=10,
@@ -127,23 +127,8 @@ class ActiveInAppAnnouncementTests(APITestCase):
         response = self.client.get(self.endpoint)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['announcement']['campaign_id'], 'main_campus_v1')
-
-    def test_campusless_student_can_receive_active_campus_announcement(self):
-        campus = Campus.objects.create(name='FUTMINNA', code='FUTMINNA')
-        InAppAnnouncement.objects.create(
-            campaign_id='campus_fallback_v1',
-            title='Campus Update',
-            body='Visible even before the student profile has a campus.',
-            campus=campus,
-            is_active=True,
-        )
-
-        self.client.force_authenticate(self.student)
-        response = self.client.get(self.endpoint)
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['announcement']['campaign_id'], 'campus_fallback_v1')
+        # Should get other_campus_v1 because campus is no longer a factor and priority is higher
+        self.assertEqual(response.data['announcement']['campaign_id'], 'other_campus_v1')
 
 
 class AdminInAppAnnouncementTests(APITestCase):

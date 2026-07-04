@@ -51,33 +51,12 @@ class ActiveInAppAnnouncementView(APIView):
 
     def get(self, request):
         now = timezone.now()
-        try:
-            campus_id = request.user.student_profile.campus_id
-        except Exception:
-            campus_id = None
-
-        campus_filter = Q(campus__isnull=True)
-        campus_match_when = When(campus__isnull=False, then=Value(1))
-        if campus_id:
-            campus_filter |= Q(campus_id=campus_id)
-            campus_match_when = When(campus_id=campus_id, then=Value(1))
-        else:
-            campus_filter |= Q(campus__isnull=False)
-
         announcement = (
             InAppAnnouncement.objects
             .filter(is_active=True)
-            .filter(campus_filter)
             .filter(Q(starts_at__isnull=True) | Q(starts_at__lte=now))
             .filter(Q(ends_at__isnull=True) | Q(ends_at__gte=now))
-            .annotate(
-                campus_match=Case(
-                    campus_match_when,
-                    default=Value(0),
-                    output_field=IntegerField(),
-                )
-            )
-            .order_by('-priority', '-campus_match', '-created_at')
+            .order_by('-priority', '-created_at')
             .first()
         )
         if not announcement:
