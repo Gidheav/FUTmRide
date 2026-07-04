@@ -133,7 +133,35 @@ class UserSettings(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='settings')
     language = models.CharField(max_length=10, default='en')
     theme_mode = models.CharField(max_length=10, choices=ThemeMode.choices, default=ThemeMode.SYSTEM)
-    push_enabled = models.BooleanField(default=True)
+    push_enabled = models.BooleanField(default=False)
+    
+    # Email notification toggles
+    email_announcements = models.BooleanField(
+        default=False,
+        help_text='Send email when an in-app announcement is broadcast.',
+    )
+    email_transactions = models.BooleanField(
+        default=False,
+        help_text='Send email for wallet top-ups, payments, and deductions.',
+    )
+    email_rides = models.BooleanField(
+        default=False,
+        help_text='Send email for ride status updates (assigned, started, completed).',
+    )
+    
+    # Detailed push notification toggles
+    notif_sound_enabled = models.BooleanField(default=False)
+    notif_ride_requested = models.BooleanField(default=False)
+    notif_driver_assigned = models.BooleanField(default=False)
+    notif_driver_en_route = models.BooleanField(default=False)
+    notif_driver_arrived = models.BooleanField(default=False)
+    notif_trip_started = models.BooleanField(default=False)
+    notif_trip_completed = models.BooleanField(default=False)
+    notif_ride_cancelled = models.BooleanField(default=False)
+    notif_wallet_credit = models.BooleanField(default=False)
+    notif_wallet_debit = models.BooleanField(default=False)
+    notif_promotions = models.BooleanField(default=False)
+
     navigation_app = models.CharField(
         max_length=30,
         choices=NavigationApp.choices,

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   FlatList,
+  Image,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -156,6 +157,81 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
     const isCredit = selectedNotification.notification_type === 'payment_received'
     const isDebit = selectedNotification.notification_type === 'payment_debited'
     const isTransaction = isCredit || isDebit
+    const isBroadcast =
+      selectedNotification.notification_type === 'broadcast' &&
+      selectedNotification.data?.in_app_announcement === true
+
+    // ── Rich announcement view ──────────────────────────────────────
+    if (isBroadcast) {
+      const announcementData = selectedNotification.data
+      return (
+        <View style={styles.page}>
+          <View style={[styles.header, { paddingTop: Math.max(14, insets.top + 10) }]}>
+            <TouchableOpacity style={styles.backButton} onPress={() => setSelectedNotification(null)}>
+              <MaterialIcons name="arrow-back" size={22} color="#1a1c1c" />
+            </TouchableOpacity>
+            <Text style={styles.title}>Announcement</Text>
+            <View style={styles.headerSpacer} />
+          </View>
+
+          <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+            {/* Hero image */}
+            {announcementData?.image_url ? (
+              <Image
+                source={{ uri: announcementData.image_url }}
+                style={styles.announcementHero}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={styles.announcementIconHero}>
+                <View style={[styles.announcementIconCircle, { backgroundColor: '#f3e5f5' }]}>
+                  <MaterialIcons
+                    name={(announcementData?.icon_name as any) || 'campaign'}
+                    size={48}
+                    color="#6A1B9A"
+                  />
+                </View>
+              </View>
+            )}
+
+            <View style={styles.announcementBody}>
+              {/* Badge */}
+              <View style={styles.announcementBadge}>
+                <MaterialIcons name="campaign" size={12} color="#6A1B9A" />
+                <Text style={styles.announcementBadgeText}>Announcement</Text>
+              </View>
+
+              {/* Title */}
+              <Text style={styles.announcementTitle}>{selectedNotification.title}</Text>
+
+              {/* Date */}
+              <Text style={styles.announcementDate}>
+                {new Date(selectedNotification.created_at).toLocaleString('en-NG', {
+                  day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
+                })}
+              </Text>
+
+              {/* Divider */}
+              <View style={styles.announcementDivider} />
+
+              {/* Body text */}
+              <Text style={styles.announcementMessage}>{selectedNotification.body}</Text>
+
+              {/* CTA button */}
+              <TouchableOpacity
+                style={styles.announcementCta}
+                onPress={() => setSelectedNotification(null)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.announcementCtaText}>
+                  {announcementData?.cta_label || 'Got it'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      )
+    }
 
     // Extract amount for prominent display on debit/credit
     const txAmount = selectedNotification.data?.amount
@@ -509,5 +585,84 @@ const styles = StyleSheet.create({
     color: '#6A1B9A',
     fontWeight: '700',
     fontSize: 15,
+  },
+  // Rich announcement view styles
+  announcementHero: {
+    width: '100%',
+    height: 220,
+    backgroundColor: '#f3e5f5',
+  },
+  announcementIconHero: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    backgroundColor: '#faf5ff',
+  },
+  announcementIconCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  announcementBody: {
+    padding: 24,
+    paddingBottom: 48,
+    backgroundColor: '#ffffff',
+    flex: 1,
+  },
+  announcementBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#f3e5f5',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    marginBottom: 14,
+  },
+  announcementBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6A1B9A',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  announcementTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#1a1c1c',
+    lineHeight: 30,
+    letterSpacing: -0.3,
+    marginBottom: 8,
+  },
+  announcementDate: {
+    fontSize: 12,
+    color: '#9ca3af',
+    marginBottom: 20,
+  },
+  announcementDivider: {
+    height: 1,
+    backgroundColor: '#f0f0f0',
+    marginBottom: 20,
+  },
+  announcementMessage: {
+    fontSize: 15,
+    color: '#374151',
+    lineHeight: 24,
+    marginBottom: 32,
+  },
+  announcementCta: {
+    backgroundColor: '#6A1B9A',
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  announcementCtaText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 16,
+    letterSpacing: 0.3,
   },
 })

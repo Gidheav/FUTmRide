@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import api from '../../core/api'
 
 const STORAGE_KEY = '@lr_notif_prefs'
 
@@ -20,6 +21,12 @@ type NotifPrefs = {
   promotions: boolean
 }
 
+type EmailPrefs = {
+  email_announcements: boolean
+  email_transactions: boolean
+  email_rides: boolean
+}
+
 const DEFAULT_PREFS: NotifPrefs = {
   soundEnabled: true,
   rideRequested: true,
@@ -34,6 +41,12 @@ const DEFAULT_PREFS: NotifPrefs = {
   promotions: false,
 }
 
+const DEFAULT_EMAIL_PREFS: EmailPrefs = {
+  email_announcements: true,
+  email_transactions: true,
+  email_rides: true,
+}
+
 type Props = {
   onClose: () => void
 }
@@ -46,9 +59,10 @@ type ToggleRowProps = {
   description?: string
   value: boolean
   onValueChange: (v: boolean) => void
+  disabled?: boolean
 }
 
-function ToggleRow({ icon, iconColor, iconBg, label, description, value, onValueChange }: ToggleRowProps) {
+function ToggleRow({ icon, iconColor, iconBg, label, description, value, onValueChange, disabled }: ToggleRowProps) {
   return (
     <View style={styles.toggleRow}>
       <View style={[styles.toggleIconWrap, { backgroundColor: iconBg }]}>
@@ -63,6 +77,7 @@ function ToggleRow({ icon, iconColor, iconBg, label, description, value, onValue
         onValueChange={onValueChange}
         trackColor={{ false: '#e0e0e0', true: '#ce93d8' }}
         thumbColor={value ? '#6A1B9A' : '#f4f4f4'}
+        disabled={disabled}
       />
     </View>
   )
@@ -70,8 +85,12 @@ function ToggleRow({ icon, iconColor, iconBg, label, description, value, onValue
 
 export default function StudentNotificationSettingsPage({ onClose }: Props) {
   const [prefs, setPrefs] = useState<NotifPrefs>(DEFAULT_PREFS)
+  const [emailPrefs, setEmailPrefs] = useState<EmailPrefs>(DEFAULT_EMAIL_PREFS)
+  const [emailLoading, setEmailLoading] = useState(true)
+  const [emailSaving, setEmailSaving] = useState(false)
   const insets = useSafeAreaInsets()
 
+  // Load local notification prefs
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY).then((raw) => {
       if (raw) {
@@ -82,10 +101,38 @@ export default function StudentNotificationSettingsPage({ onClose }: Props) {
     })
   }, [])
 
+  // Load server-side email prefs
+  useEffect(() => {
+    api.get('users/settings/')
+      .then((res) => {
+        setEmailPrefs({
+          email_announcements: res.data?.email_announcements ?? true,
+          email_transactions: res.data?.email_transactions ?? true,
+          email_rides: res.data?.email_rides ?? true,
+        })
+      })
+      .catch(() => { /* use defaults */ })
+      .finally(() => setEmailLoading(false))
+  }, [])
+
   const update = (key: keyof NotifPrefs, value: boolean) => {
     const next = { ...prefs, [key]: value }
     setPrefs(next)
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)).catch(() => {})
+  }
+
+  const updateEmail = async (key: keyof EmailPrefs, value: boolean) => {
+    const next = { ...emailPrefs, [key]: value }
+    setEmailPrefs(next)
+    setEmailSaving(true)
+    try {
+      await api.patch('users/settings/', { [key]: value })
+    } catch {
+      // Revert on failure
+      setEmailPrefs(emailPrefs)
+    } finally {
+      setEmailSaving(false)
+    }
   }
 
   return (
@@ -211,11 +258,60 @@ export default function StudentNotificationSettingsPage({ onClose }: Props) {
           />
         </View>
 
+        {/* ── Email Notifications ─────────────── */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionLabel}>Email Notifications</Text>
+          {emailSaving && <ActivityIndicator size="small" color="#6A1B9A" style={{ marginLeft: 8, marginBottom: 6 }} />}
+        </View>
+        <View style={styles.card}>
+          {emailLoading ? (
+            <View style={styles.emailLoadingRow}>
+              <ActivityIndicator size="small" color="#6A1B9A" />
+              <Text style={styles.emailLoadingText}>Loading preferences...</Text>
+            </View>
+          ) : (
+            <>
+              <ToggleRow
+                icon="campaign"
+                iconColor="#6A1B9A"
+                iconBg="#f3e5f5"
+                label="Announcements"
+                description="Receive emails for platform announcements"
+                value={emailPrefs.email_announcements}
+                onValueChange={(v) => void updateEmail('email_announcements', v)}
+                disabled={emailSaving}
+              />
+              <View style={styles.divider} />
+              <ToggleRow
+                icon="account-balance-wallet"
+                iconColor="#2e7d32"
+                iconBg="#e8f5e9"
+                label="Transactions"
+                description="Email receipts for wallet top-ups and payments"
+                value={emailPrefs.email_transactions}
+                onValueChange={(v) => void updateEmail('email_transactions', v)}
+                disabled={emailSaving}
+              />
+              <View style={styles.divider} />
+              <ToggleRow
+                icon="directions-car"
+                iconColor="#1565C0"
+                iconBg="#e3f2fd"
+                label="Ride Updates"
+                description="Email summaries for completed rides"
+                value={emailPrefs.email_rides}
+                onValueChange={(v) => void updateEmail('email_rides', v)}
+                disabled={emailSaving}
+              />
+            </>
+          )}
+        </View>
+
         {/* ── Other ───────────────────────────── */}
         <Text style={styles.sectionLabel}>Other</Text>
         <View style={styles.card}>
           <ToggleRow
-            icon="campaign"
+            icon="local-offer"
             iconColor="#6b7280"
             iconBg="#f3f4f6"
             label="Promotions & News"
@@ -226,7 +322,7 @@ export default function StudentNotificationSettingsPage({ onClose }: Props) {
         </View>
 
         <Text style={styles.footerNote}>
-          These settings control local notification preferences. Push notifications for critical
+          Email preferences are synced to your account. Push notifications for critical
           ride safety updates cannot be disabled.
         </Text>
       </ScrollView>
@@ -268,17 +364,21 @@ const styles = StyleSheet.create({
     width: 36,
   },
   body: {
-    padding: 16,
+    padding: 14,
     paddingBottom: 40,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
   sectionLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: '#6b7280',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
-    marginTop: 20,
-    marginBottom: 10,
+    marginTop: 14,
+    marginBottom: 8,
     marginLeft: 4,
   },
   card: {
@@ -292,7 +392,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingVertical: 12,
     gap: 12,
   },
   toggleIconWrap: {
@@ -313,18 +413,29 @@ const styles = StyleSheet.create({
   toggleDescription: {
     fontSize: 12,
     color: '#6b7280',
-    marginTop: 2,
+    marginTop: 1,
   },
   divider: {
     height: 1,
     backgroundColor: '#f5f5f5',
     marginLeft: 62,
   },
+  emailLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 18,
+  },
+  emailLoadingText: {
+    fontSize: 13,
+    color: '#6b7280',
+  },
   footerNote: {
     fontSize: 12,
     color: '#9ca3af',
     textAlign: 'center',
-    marginTop: 24,
+    marginTop: 20,
     lineHeight: 18,
     paddingHorizontal: 16,
   },

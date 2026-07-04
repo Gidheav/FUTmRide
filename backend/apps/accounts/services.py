@@ -2,7 +2,8 @@ import logging
 import secrets
 import string
 from django.conf import settings
-from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
 from django.utils import timezone
 from .models import OTPVerification, StudentSignupVerificationSession, User
 
@@ -140,15 +141,16 @@ class StudentSignupVerificationService:
             code_expires_at=expiry,
         )
 
-        subject, body = cls._compose_email(code)
+        subject, text_body, html_body = cls._compose_email(code)
         try:
-            send_mail(
-                subject,
-                body,
-                settings.DEFAULT_FROM_EMAIL,
-                [normalized_email],
-                fail_silently=False,
+            email_message = EmailMultiAlternatives(
+                subject=subject,
+                body=text_body,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[normalized_email],
             )
+            email_message.attach_alternative(html_body, 'text/html')
+            email_message.send(fail_silently=False)
             logger.info('student_signup_code_sent email=%s session_id=%s', normalized_email, str(session.id))
         except Exception as exc:
             logger.error('student_signup_code_send_failed email=%s error=%s', normalized_email, str(exc))
@@ -158,14 +160,19 @@ class StudentSignupVerificationService:
         return session
 
     @staticmethod
-    def _compose_email(code: str) -> tuple[str, str]:
+    def _compose_email(code: str) -> tuple[str, str, str]:
         expiry = settings.OTP_EXPIRY_MINUTES
+        context = {
+            'app_name': 'LR-Ride',
+            'headline': 'Complete your student signup',
+            'code': code,
+            'expiry_minutes': expiry,
+            'support_message': 'If you did not request this code, you can safely ignore this email.',
+        }
         return (
             'LR-Ride: Complete Your Student Signup',
-            f'Your LR-Ride student signup verification code is: {code}\n\n'
-            f'This code is valid for {expiry} minutes.\n'
-            f'If you did not request this code, please ignore this email.\n\n'
-            f'- LR-Ride Team',
+            render_to_string('emails/otp_email.txt', context),
+            render_to_string('emails/otp_email.html', context),
         )
 
     @classmethod
@@ -263,16 +270,16 @@ class EmailOTPService:
         )
 
         # Send via Django email
-        subject, body = cls._compose_email(code, purpose)
+        subject, text_body, html_body = cls._compose_email(code, purpose, target_email)
         try:
-            from django.core.mail import send_mail
-            send_mail(
-                subject,
-                body,
-                settings.DEFAULT_FROM_EMAIL,
-                [target_email],
-                fail_silently=False,
+            email_message = EmailMultiAlternatives(
+                subject=subject,
+                body=text_body,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[target_email],
             )
+            email_message.attach_alternative(html_body, 'text/html')
+            email_message.send(fail_silently=False)
             logger.info('email_otp_sent user_id=%s email=%s purpose=%s', str(user.id), target_email, purpose)
         except Exception as exc:
             logger.error('email_otp_failed user_id=%s email=%s error=%s', str(user.id), target_email, str(exc))
@@ -280,39 +287,46 @@ class EmailOTPService:
         return otp
 
     @staticmethod
-    def _compose_email(code: str, purpose: str) -> tuple:
+    def _compose_email(code: str, purpose: str, recipient_email: str) -> tuple[str, str, str]:
         expiry = settings.OTP_EXPIRY_MINUTES
+        purpose_config = {
+            OTPVerification.Purpose.PASSWORD_RESET: {
+                'subject': 'Password reset verification',
+                'headline': 'Verify your password reset',
+                'support_message': 'If you did not request this reset, please secure your account immediately.',
+            },
+            OTPVerification.Purpose.PASSWORD_CHANGE: {
+                'subject': 'Password change verification',
+                'headline': 'Confirm your password change',
+                'support_message': 'If you did not request this change, please ignore this email and secure your account.',
+            },
+            OTPVerification.Purpose.TWO_FACTOR: {
+                'subject': 'Two-factor verification',
+                'headline': 'Confirm your sign-in',
+                'support_message': 'If you did not request this code, please secure your account immediately.',
+            },
+        }
+        selected = purpose_config.get(purpose, {
+            'subject': 'Email verification',
+            'headline': 'Verify your email change',
+            'support_message': 'If you did not request this change, please ignore this email.',
+        })
+        context = {
+            'app_name': 'LR-Ride',
+            'headline': selected['headline'],
+            'code': code,
+            'expiry_minutes': expiry,
+            'support_message': selected['support_message'],
+            'recipient_email': recipient_email,
+        }
         if purpose == OTPVerification.Purpose.PASSWORD_RESET:
-            return (
-                'LR-Ride: Password Reset Verification',
-                f'Your password reset verification code is: {code}\n\n'
-                f'This code is valid for {expiry} minutes.\n'
-                f'If you did not request this reset, secure your account immediately.\n\n'
-                f'- LR-Ride Team',
-            )
-        if purpose == OTPVerification.Purpose.PASSWORD_CHANGE:
-            return (
-                'LR-Ride: Password Change Verification',
-                f'Your password change verification code is: {code}\n\n'
-                f'This code is valid for {expiry} minutes.\n'
-                f'If you did not request this change, please ignore this email and secure your account.\n\n'
-                f'- LR-Ride Team',
-            )
-        if purpose == OTPVerification.Purpose.TWO_FACTOR:
-            return (
-                'LR-Ride: Two-Factor Verification',
-                f'Your two-factor verification code is: {code}\n\n'
-                f'This code is valid for {expiry} minutes.\n'
-                f'If you did not request this code, please secure your account.\n\n'
-                f'- LR-Ride Team',
-            )
-        # EMAIL_CHANGE or fallback
+            subject = f'LR-Ride: {selected["subject"]}'
+        else:
+            subject = f'LR-Ride: {selected["subject"]}'
         return (
-            'LR-Ride: Email Change Verification',
-            f'Your email change verification code is: {code}\n\n'
-            f'This code is valid for {expiry} minutes.\n'
-            f'If you did not request this change, please ignore this email.\n\n'
-            f'- LR-Ride Team',
+            subject,
+            render_to_string('emails/otp_email.txt', context),
+            render_to_string('emails/otp_email.html', context),
         )
 
 

@@ -1,0 +1,11 @@
+{{ app_name }}
+
+{{ headline }}
+
+Your verification code is: {{ code }}
+
+This code expires in {{ expiry_minutes }} minutes.
+
+{{ support_message }}
+
+If you did not request this code, please ignore this email.

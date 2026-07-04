@@ -2,13 +2,18 @@ from rest_framework import permissions, status
 from rest_framework import generics
 from rest_framework.response import Response
 from rest_framework.views import APIView
+import logging
 import time
+from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
 from apps.accounts.permissions import IsAdminOrCampusAdmin
 from .models import InAppAnnouncement, Notification
 from .serializers import AdminInAppAnnouncementSerializer
 from .services import PushNotificationService
 
+logger = logging.getLogger('apps.notifications')
 User = get_user_model()
 
 
@@ -23,32 +28,85 @@ def _campus_admin_campus_id(user):
 
 def _send_announcement_push(announcement, request_user):
     if announcement.send_push_notification and announcement.is_active and not announcement.push_sent:
-        qs = User.objects.filter(is_active=True)
+        qs = User.objects.filter(is_active=True).select_related('settings')
         if announcement.audience == 'student':
             qs = qs.filter(role='student')
         elif announcement.audience == 'driver':
             qs = qs.filter(role='driver')
         else:
             qs = qs.filter(role__in=['student', 'driver'])
-            
+
+        # Materialise once so we can iterate multiple times
+        users = list(qs)
+
         notifications = [
             Notification(
                 user=user,
                 notification_type=Notification.NotificationType.BROADCAST,
                 title=announcement.title,
                 body=announcement.body,
-                data={'campaign_id': announcement.campaign_id, 'in_app_announcement': True},
+                data={
+                    'campaign_id': announcement.campaign_id,
+                    'in_app_announcement': True,
+                    'image_url': announcement.image_url or '',
+                    'icon_name': announcement.icon_name or 'campaign',
+                    'cta_label': announcement.cta_label or 'Got it',
+                },
             )
-            for user in qs
+            for user in users
         ]
         Notification.objects.bulk_create(notifications, ignore_conflicts=True)
-        
+
+        # Push notifications (deduplicated by FCM token)
         sent_tokens = set()
-        for user in qs:
+        for user in users:
             if user.fcm_token and user.fcm_token not in sent_tokens:
-                PushNotificationService.send(user.fcm_token, announcement.title, announcement.body, {'campaign_id': announcement.campaign_id})
+                PushNotificationService.send(
+                    user.fcm_token,
+                    announcement.title,
+                    announcement.body,
+                    {'campaign_id': announcement.campaign_id},
+                )
                 sent_tokens.add(user.fcm_token)
-        
+
+        # Email notifications
+        email_context = {
+            'title': announcement.title,
+            'body': announcement.body,
+            'image_url': announcement.image_url or '',
+            'cta_label': announcement.cta_label or 'Open App',
+        }
+        try:
+            html_body = render_to_string('emails/announcement_email.html', email_context)
+            text_body = render_to_string('emails/announcement_email.txt', email_context)
+        except Exception as exc:
+            logger.error('announcement_email_template_failed error=%s', str(exc))
+            html_body = None
+            text_body = None
+
+        if html_body:
+            for user in users:
+                if not user.email:
+                    continue
+                # Respect user email_announcements preference
+                try:
+                    user_settings = getattr(user, 'settings', None)
+                    if user_settings is not None and not user_settings.email_announcements:
+                        continue
+                except Exception:
+                    pass
+                try:
+                    msg = EmailMultiAlternatives(
+                        subject=f'LR-Ride: {announcement.title}',
+                        body=text_body,
+                        from_email=settings.DEFAULT_FROM_EMAIL,
+                        to=[user.email],
+                    )
+                    msg.attach_alternative(html_body, 'text/html')
+                    msg.send(fail_silently=True)
+                except Exception as exc:
+                    logger.warning('announcement_email_send_failed user_id=%s error=%s', str(user.id), str(exc))
+
         announcement.push_sent = True
         announcement.save(update_fields=['push_sent'])
 
