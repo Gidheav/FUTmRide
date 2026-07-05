@@ -230,8 +230,23 @@ export default function SupportPage() {
     setSelectedTicket(null)
   }
 
-  const handleTicketAction = () => {
+  const handleTicketAction = async (action: 'dismiss' | 'archive' | 'delete') => {
+    const ticket = selectedTicket
     closeTicketActions()
+    if (!ticket) return
+
+    if (action === 'delete') {
+      try {
+        await api.delete(`support/tickets/${ticket.id}/`)
+        setTickets((prev) => prev.filter((t) => t.id !== ticket.id))
+        Alert.alert('Ticket Deleted', 'The support request has been removed.')
+      } catch {
+        Alert.alert('Error', 'Unable to delete the ticket right now.')
+      }
+    } else {
+      // For dismiss/archive, just hide it locally
+      setTickets((prev) => prev.filter((t) => t.id !== ticket.id))
+    }
   }
 
   const renderTicket = ({ item }: { item: Ticket }) => {
@@ -459,17 +474,17 @@ export default function SupportPage() {
               {selectedTicket?.reference} · {selectedTicket ? categoryLabel(selectedTicket.category) : ''}
             </Text>
 
-            <TouchableOpacity style={styles.actionRow} activeOpacity={0.85} onPress={handleTicketAction}>
+            <TouchableOpacity style={styles.actionRow} activeOpacity={0.85} onPress={() => handleTicketAction('dismiss')}>
               <MaterialIcons name="visibility-off" size={20} color="#6b7280" />
               <Text style={styles.actionText}>Dismiss</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionRow} activeOpacity={0.85} onPress={handleTicketAction}>
+            <TouchableOpacity style={styles.actionRow} activeOpacity={0.85} onPress={() => handleTicketAction('archive')}>
               <MaterialIcons name="archive" size={20} color="#6b7280" />
               <Text style={styles.actionText}>Archive</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionRowDanger} activeOpacity={0.85} onPress={handleTicketAction}>
+            <TouchableOpacity style={styles.actionRowDanger} activeOpacity={0.85} onPress={() => handleTicketAction('delete')}>
               <MaterialIcons name="delete-outline" size={20} color="#dc2626" />
               <Text style={styles.actionTextDanger}>Delete</Text>
             </TouchableOpacity>

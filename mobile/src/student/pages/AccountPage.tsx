@@ -135,7 +135,6 @@ export default function StudentAccountPage({ onEditProfile, onOpenNotifications,
   ]
 
   const settings = [
-    { icon: 'manage-accounts', label: 'Edit Profile', danger: false, chevron: true },
     { icon: 'settings', label: 'Settings', danger: false, chevron: true },
     { icon: 'tune', label: 'Notification Settings', danger: false, chevron: true },
     { icon: 'security', label: 'Security', danger: false, chevron: true },
@@ -159,16 +158,21 @@ export default function StudentAccountPage({ onEditProfile, onOpenNotifications,
               <MaterialIcons name="edit" size={14} color="#ffffff" />
           </TouchableOpacity>
         </View>
-        <Text style={styles.profileName}>{user?.full_name || 'Adebayo Samuel'}</Text>
-        <Text style={styles.profileEmail}>{user?.email || 'samuel.adebayo@st.futminna.edu.ng'}</Text>
+        <Text style={styles.profileName}>{user?.full_name || '—'}</Text>
+        <Text style={styles.profileEmail}>{user?.email || '—'}</Text>
       </View>
 
       {photoError ? <Text style={styles.errorText}>{photoError}</Text> : null}
 
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <Text style={styles.cardTitle}>Academic Details</Text>
-        </View>
+            <View style={styles.cardHeaderRow}>
+              <Text style={styles.cardTitle}>Academic Details</Text>
+              <TouchableOpacity style={styles.headerEditIcon} onPress={onEditProfile} activeOpacity={0.8}>
+                <MaterialIcons name="edit" size={18} color="#6A1B9A" />
+              </TouchableOpacity>
+            </View>
+          </View>
         <View style={styles.cardList}>
           {details.map((item) => (
             <View style={styles.detailRow} key={item.label}>
@@ -191,17 +195,15 @@ export default function StudentAccountPage({ onEditProfile, onOpenNotifications,
             style={[styles.settingRow, index === settings.length - 1 && styles.settingRowLast]}
             activeOpacity={0.85}
             onPress={
-              item.label === 'Edit Profile'
-                ? onEditProfile
-                : item.label === 'Settings'
-                  ? onOpenSettings
+              item.label === 'Settings'
+                ? onOpenSettings
                 : item.label === 'Notification Settings'
                   ? onOpenNotifications
                 : item.label === 'Security'
                   ? onOpenSecurity
-                  : item.label === 'Log Out'
-                    ? onLogout
-                    : undefined
+                : item.label === 'Log Out'
+                  ? onLogout
+                  : undefined
             }
           >
             <View style={styles.settingLeft}>
@@ -314,6 +316,16 @@ const styles = StyleSheet.create({
     borderBottomColor: '#f3f3f3',
     paddingBottom: 10,
     marginBottom: 14,
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerEditIcon: {
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: '#f3e5f5',
   },
   cardTitle: {
     fontSize: 18,

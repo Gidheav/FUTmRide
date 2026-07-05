@@ -8,8 +8,15 @@ let cachedTokens = null
 let cacheReady = false
 let secureStoreModule = undefined
 
-/** Expo Go does not ship a matching ExpoSecureStore native build — use AsyncStorage there. */
-const useSecureStore = () => Constants.executionEnvironment !== 'storeClient'
+/**
+ * Returns true when we should use expo-secure-store:
+ * - Not running inside Expo Go (storeClient) on a dev build
+ * - Always true in production builds (__DEV__ is false)
+ */
+const useSecureStore = () => {
+  if (!__DEV__) return true // always use SecureStore in production
+  return Constants.executionEnvironment !== 'storeClient'
+}
 
 function getSecureStore() {
   if (!useSecureStore()) return null
@@ -27,10 +34,16 @@ async function getItem(key) {
   if (SecureStore) {
     try {
       return await SecureStore.getItemAsync(key)
-    } catch {
+    } catch (e) {
+      if (!__DEV__) {
+        console.error('[secureStorage] SecureStore.getItemAsync failed in production. Token read aborted.', e)
+        return null
+      }
+      // Dev-only graceful degradation
       return AsyncStorage.getItem(key)
     }
   }
+  // Expo Go / storeClient fallback — dev only
   return AsyncStorage.getItem(key)
 }
 
@@ -40,8 +53,12 @@ async function setItem(key, value) {
     try {
       await SecureStore.setItemAsync(key, value)
       return
-    } catch {
-      /* fall through */
+    } catch (e) {
+      if (!__DEV__) {
+        console.error('[secureStorage] SecureStore.setItemAsync failed in production. Token NOT stored.', e)
+        return // do NOT fall back to plain AsyncStorage in production
+      }
+      // Dev-only graceful degradation
     }
   }
   await AsyncStorage.setItem(key, value)
@@ -53,8 +70,11 @@ async function removeItem(key) {
     try {
       await SecureStore.deleteItemAsync(key)
       return
-    } catch {
-      /* fall through */
+    } catch (e) {
+      if (!__DEV__) {
+        console.error('[secureStorage] SecureStore.deleteItemAsync failed in production.', e)
+        return
+      }
     }
   }
   await AsyncStorage.removeItem(key)

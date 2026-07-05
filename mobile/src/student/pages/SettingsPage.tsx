@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Switch, Platform } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
+import Constants from 'expo-constants'
 import { useSettingsStore } from '../../core/settingsStore'
 import { QUICK_ITEMS } from '../screens/DashboardScreen'
 
@@ -16,20 +17,11 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
 
   return (
     <View style={styles.page}>
-      <View style={[styles.header, { paddingTop: Math.max(insets.top, 16) }]}>
-        <View style={styles.headerRow}>
-          <TouchableOpacity style={styles.backButton} onPress={onClose} activeOpacity={0.85}>
-            <MaterialIcons name="arrow-back-ios" size={20} color="#1a1c1c" style={{ marginLeft: 6 }} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Settings</Text>
-          <View style={styles.headerRightPlaceholder} />
-        </View>
-      </View>
+      {/* Removed header since StudentLayout handles it */}
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
         <View style={styles.section}>
-          <Text style={styles.sectionHeader}>MAP DISPLAY</Text>
           <View style={styles.card}>
             <TouchableOpacity 
               style={styles.cardHeader} 
@@ -70,7 +62,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
           </View>
         </View>
 
-        <Text style={styles.versionText}>LR-Ride v1.0.0 (Beta)</Text>
+        <Text style={styles.versionText}>TESSERA v{Constants.expoConfig?.version || '1.0.0'}</Text>
       </ScrollView>
     </View>
   )
@@ -81,18 +73,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f2f2f7',
   },
-  header: {
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e2e2',
-    paddingBottom: 12,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-  },
   backButton: {
     width: 40,
     height: 40,
@@ -100,21 +80,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#1a1c1c',
-  },
-  headerRightPlaceholder: {
-    width: 40,
-  },
   scrollContent: {
     paddingVertical: 24,
     paddingHorizontal: 16,
     gap: 24,
   },
   section: {
-    gap: 8,
+    gap: 2,
   },
   sectionHeader: {
     fontSize: 13,

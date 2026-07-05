@@ -1,56 +1,42 @@
-import AsyncStorage from '@react-native-async-storage/async-storage'
+/**
+ * @deprecated
+ * This module is deprecated and kept only for backward compatibility.
+ * All token storage now goes through `utils/secureStorage.js` which uses
+ * expo-secure-store on real devices (encrypts tokens at rest).
+ *
+ * DO NOT use this module for new code. Update any remaining imports to:
+ *   import { getAuthTokens, setAuthTokens, clearAuthTokens } from './secureStorage'
+ */
 
-const ACCESS_TOKEN_KEY = 'lr-ride:auth:access'
-const REFRESH_TOKEN_KEY = 'lr-ride:auth:refresh'
+import {
+  getAuthTokens as _getAuthTokens,
+  setAuthTokens as _setAuthTokens,
+  clearAuthTokens as _clearAuthTokens,
+} from './secureStorage'
 
-let cachedTokens = null
-let cacheReady = false
+function _warnDeprecated(fnName) {
+  if (__DEV__) {
+    console.warn(
+      `[storage.js] ${fnName}() called via deprecated utils/storage.js. ` +
+      `Please update this import to utils/secureStorage.js.`
+    )
+  }
+}
 
+/** @deprecated Use getAuthTokens from utils/secureStorage.js */
 export const getAuthTokens = async () => {
-  if (cacheReady) return cachedTokens
-  const entries = await AsyncStorage.multiGet([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY])
-  const accessEntry = entries.find(([key]) => key === ACCESS_TOKEN_KEY)
-  const refreshEntry = entries.find(([key]) => key === REFRESH_TOKEN_KEY)
-  cachedTokens = {
-    accessToken: accessEntry?.[1] || null,
-    refreshToken: refreshEntry?.[1] || null,
-  }
-  cacheReady = true
-  return cachedTokens
+  _warnDeprecated('getAuthTokens')
+  return _getAuthTokens()
 }
 
-export const setAuthTokens = async ({ accessToken, refreshToken }) => {
-  cachedTokens = {
-    accessToken: accessToken || null,
-    refreshToken: refreshToken || null,
-  }
-  cacheReady = true
-
-  const toSet = []
-  const toRemove = []
-
-  if (accessToken) {
-    toSet.push([ACCESS_TOKEN_KEY, String(accessToken)])
-  } else {
-    toRemove.push(ACCESS_TOKEN_KEY)
-  }
-
-  if (refreshToken) {
-    toSet.push([REFRESH_TOKEN_KEY, String(refreshToken)])
-  } else {
-    toRemove.push(REFRESH_TOKEN_KEY)
-  }
-
-  if (toSet.length) {
-    await AsyncStorage.multiSet(toSet)
-  }
-  if (toRemove.length) {
-    await AsyncStorage.multiRemove(toRemove)
-  }
+/** @deprecated Use setAuthTokens from utils/secureStorage.js */
+export const setAuthTokens = async (tokens) => {
+  _warnDeprecated('setAuthTokens')
+  return _setAuthTokens(tokens)
 }
 
+/** @deprecated Use clearAuthTokens from utils/secureStorage.js */
 export const clearAuthTokens = async () => {
-  cachedTokens = { accessToken: null, refreshToken: null }
-  cacheReady = true
-  await AsyncStorage.multiRemove([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY])
+  _warnDeprecated('clearAuthTokens')
+  return _clearAuthTokens()
 }

@@ -276,13 +276,7 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
 
   return (
     <View style={styles.page}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.iconButton} onPress={onClose} activeOpacity={0.85}>
-          <MaterialIcons name="chevron-left" size={22} color="#6A1B9A" />
-        </TouchableOpacity>
-        <Text style={styles.title}>Security</Text>
-        <View style={styles.iconButtonPlaceholder} />
-      </View>
+      {/* Removed header since StudentLayout handles it */}
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 

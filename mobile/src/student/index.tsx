@@ -27,6 +27,8 @@ import SupportPage from './pages/SupportPage'
 import StudentLayout from './layout/StudentLayout'
 import InAppAnnouncementModal from './components/InAppAnnouncementModal'
 import StudentSidebar from './components/StudentSidebar'
+import GenericWebPage from './components/GenericWebPage'
+import { WebPageProvider, useWebPage } from './context/WebPageContext'
 import type { StudentTab } from './types'
 import { clearStoredPinHash } from '../core/security'
 import api from '../core/api'
@@ -45,6 +47,14 @@ const MATCHING_STATUSES = ['requested', 'searching']
 type RideScreen = 'none' | 'booking' | 'matching' | 'active' | 'garage'
 
 export default function StudentApp() {
+  return (
+    <WebPageProvider>
+      <StudentAppInner />
+    </WebPageProvider>
+  )
+}
+
+function StudentAppInner() {
   const { isAuthenticated, user, setTokens, setUser, logout, hasHydrated, hydrateTokens } = useAuthStore()
   const {
     appLockEnabled,
@@ -72,6 +82,9 @@ export default function StudentApp() {
   const [pendingAnnouncement, setPendingAnnouncement] = useState<StudentInAppAnnouncement | null>(null)
   const [announcementGateVisible, setAnnouncementGateVisible] = useState(false)
   const [announcementRefreshKey, setAnnouncementRefreshKey] = useState(0)
+  const { openWebPage, closWebPage, webPage } = useWebPage()
+  // Generic in-app webview — used by notifications and other deep links
+  // (state managed by WebPageContext, accessible from any component via useWebPage())
   const syncInFlight = useRef(false)
   const lastBackPressAt = useRef(0)
   const lastWalletSyncAt = useRef(0)
@@ -325,11 +338,18 @@ export default function StudentApp() {
     void syncWalletBalance()
   }, [bumpWalletActivityRefresh, setWalletBalance, syncWalletBalance, triggerWalletFlash])
 
-  // ─── Notification tap → navigate to ride screen ────────────────────────────
+  // ─── Notification tap → navigate to ride screen or web page ───────────────
   useEffect(() => {
     if (!isAuthenticated || locked) return
     const cleanup = addNotificationResponseListener((data) => {
       handleWalletNotification(data)
+      // If notification carries a web_url, open it in the in-app browser
+      const webUrl = data?.web_url as string | undefined
+      const webTitle = data?.web_title as string | undefined
+      if (webUrl) {
+        openWebPage(webUrl, webTitle)
+        return
+      }
       const rideId = data?.ride_id as string | undefined
       const rideStatus = data?.ride_status as string | undefined
       if (rideId) {
@@ -343,6 +363,7 @@ export default function StudentApp() {
     })
     return cleanup
   }, [isAuthenticated, locked, handleWalletNotification])
+
 
   useEffect(() => {
     if (!isAuthenticated || locked) return
@@ -523,11 +544,11 @@ export default function StudentApp() {
       </View>
 
       <View style={{ display: activeTab === 'rides' ? 'flex' : 'none', flex: 1 }}>
-        <StudentRidesPage />
+        <StudentRidesPage isActive={activeTab === 'rides'} />
       </View>
 
       <View style={{ display: activeTab === 'wallet' ? 'flex' : 'none', flex: 1 }}>
-        <StudentWalletPage />
+        <StudentWalletPage onNavigateToMap={() => setActiveTab('home')} />
       </View>
 
       {activeTab === 'account' && accountMode === 'edit' && (
@@ -575,13 +596,40 @@ export default function StudentApp() {
     </View>
   )
 
+  // ─── Generic In-App Web Page (opened by notifications or deep links) ───────
+  const renderGenericWebPage = () => (
+    <Modal
+      visible={Boolean(webPage)}
+      animationType="slide"
+      onRequestClose={closWebPage}
+      statusBarTranslucent
+    >
+      {webPage && (
+        <GenericWebPage
+          url={webPage.url}
+          title={webPage.title}
+          onClose={closWebPage}
+        />
+      )}
+    </Modal>
+  )
+
   return (
     <View style={{ flex: 1 }}>
       <StudentLayout
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onMenuPress={() => setIsSidebarOpen(true)}
-        onBackPress={['about', 'activities', 'updates', 'events', 'news', 'safety', 'support'].includes(activeTab) ? () => setActiveTab('home') : undefined}
+        onBackPress={
+          activeTab === 'account' && accountMode !== 'view' ? () => setAccountMode('view') :
+          ['about', 'activities', 'updates', 'events', 'news', 'safety', 'support'].includes(activeTab) ? () => setActiveTab('home') : undefined
+        }
+        title={
+          activeTab === 'account' && accountMode === 'edit' ? 'Edit Profile' :
+          activeTab === 'account' && accountMode === 'settings' ? 'Settings' :
+          activeTab === 'account' && accountMode === 'notifications' ? 'Notification Settings' :
+          activeTab === 'account' && accountMode === 'security' ? 'Security' : undefined
+        }
         onNotificationPress={() => setNotifHistoryOpen(true)}
         unreadCount={unreadCount}
       >
@@ -661,6 +709,9 @@ export default function StudentApp() {
         announcement={pendingAnnouncement}
         onDismiss={handleDismissAnnouncement}
       />
+
+      {/* Generic in-app webview: opened from notifications or any link */}
+      {renderGenericWebPage()}
     </View>
   )
 }

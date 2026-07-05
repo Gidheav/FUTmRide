@@ -74,7 +74,7 @@ function ToggleRow({ icon, iconColor, iconBg, label, description, value, onValue
   )
 }
 
-export default function StudentNotificationSettingsPage({ onClose }: Props): JSX.Element {
+export default function StudentNotificationSettingsPage({ onClose }: Props) {
   const [prefs, setPrefs] = useState<NotifPrefs>(DEFAULT_PREFS)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -106,13 +106,7 @@ export default function StudentNotificationSettingsPage({ onClose }: Props): JSX
 
   return (
     <View style={styles.page}>
-      <View style={[styles.header, { paddingTop: Math.max(10, insets.top + 4) }]}>
-        <TouchableOpacity style={styles.backButton} onPress={onClose}>
-          <MaterialIcons name="arrow-back" size={22} color="#1a1c1c" />
-        </TouchableOpacity>
-        <Text style={styles.title}>Notification Settings</Text>
-        <View style={styles.headerSpacer} />
-      </View>
+      {/* Removed header since StudentLayout handles it */}
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         {loading ? (

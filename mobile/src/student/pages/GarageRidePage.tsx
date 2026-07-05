@@ -127,7 +127,6 @@ export default function GarageRidePage({ qrToken, onClose, onBoarded }: GarageRi
                 parts.push(`Debug: ${[exceptionType, exceptionDetail].filter(Boolean).join(' - ')}`)
               }
               Alert.alert('Boarding Failed', parts.join('\n\n'))
-              console.warn('garage_board_failed', { status, payload })
             } finally {
               setBoarding(false)
             }

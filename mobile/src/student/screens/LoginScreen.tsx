@@ -1,4 +1,5 @@
 import {
+  Alert,
   View,
   Text,
   TextInput,
@@ -444,7 +445,7 @@ export default function StudentLoginScreen() {
               <View style={styles.fieldGroup}>
                 <View style={styles.passwordRow}>
                   <Text style={styles.label}>Password</Text>
-                  <Pressable>
+                  <Pressable onPress={() => Alert.alert('Reset Password', 'Contact campus admin support to reset your password. Use the Help & Support section from the main menu after logging in.')}>
                     <Text style={styles.forgotText}>Forgot?</Text>
                   </Pressable>
                 </View>

@@ -3,7 +3,7 @@ import { StyleSheet, Text, TouchableOpacity, View, SafeAreaView } from 'react-na
 import ScheduledTab from '../components/rides/ScheduledTab'
 import FindNearbyTab from '../components/rides/FindNearbyTab'
 
-export default function StudentRidesPage() {
+export default function StudentRidesPage({ isActive }: { isActive?: boolean }) {
   const [activeTab, setActiveTab] = useState<'scheduled' | 'nearby'>('scheduled')
 
   return (
@@ -36,7 +36,12 @@ export default function StudentRidesPage() {
       </View>
 
       <View style={styles.content}>
-        {activeTab === 'scheduled' ? <ScheduledTab /> : <FindNearbyTab />}
+        <View style={{ display: activeTab === 'scheduled' ? 'flex' : 'none', flex: 1 }}>
+          <ScheduledTab isActive={isActive && activeTab === 'scheduled'} />
+        </View>
+        <View style={{ display: activeTab === 'nearby' ? 'flex' : 'none', flex: 1 }}>
+          <FindNearbyTab />
+        </View>
       </View>
     </SafeAreaView>
   )

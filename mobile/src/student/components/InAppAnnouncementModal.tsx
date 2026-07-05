@@ -9,6 +9,8 @@ import {
 } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import type { StudentInAppAnnouncement } from '../services/inAppAnnouncement'
+import { useWebPage } from '../context/WebPageContext'
+import LinkedText from './LinkedText'
 
 type Props = {
   announcement: StudentInAppAnnouncement | null
@@ -20,6 +22,14 @@ const FALLBACK_ICON = 'campaign' as keyof typeof MaterialIcons.glyphMap
 
 export default function InAppAnnouncementModal({ announcement, visible, onDismiss }: Props) {
   const [imageFailed, setImageFailed] = useState(false)
+  const { openWebPage } = useWebPage()
+
+  const handleCta = () => {
+    if (announcement?.ctaUrl) {
+      openWebPage(announcement.ctaUrl, announcement.title)
+    }
+    onDismiss()
+  }
 
   useEffect(() => {
     setImageFailed(false)
@@ -59,9 +69,9 @@ export default function InAppAnnouncementModal({ announcement, visible, onDismis
           )}
 
           <Text style={styles.title}>{announcement.title}</Text>
-          <Text style={styles.body}>{announcement.body}</Text>
+          <LinkedText text={announcement.body} style={styles.body} />
 
-          <TouchableOpacity style={styles.ctaButton} activeOpacity={0.88} onPress={onDismiss}>
+          <TouchableOpacity style={styles.ctaButton} activeOpacity={0.88} onPress={handleCta}>
             <Text style={styles.ctaText}>{announcement.ctaLabel}</Text>
           </TouchableOpacity>
         </View>

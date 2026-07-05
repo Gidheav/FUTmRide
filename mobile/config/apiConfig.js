@@ -47,7 +47,12 @@ const resolveWsBase = () => {
     const scheme = base.protocol === 'https:' ? 'wss:' : 'ws:'
     return `${scheme}//${base.host}`
   } catch {
-    return 'ws://localhost:8000'
+    if (__DEV__) {
+      console.warn('[apiConfig] Could not derive WS base from API_BASE_URL. WebSocket connections will be disabled until a valid URL is configured.')
+    } else {
+      console.error('[apiConfig] WS base URL could not be resolved in production. Check EXPO_PUBLIC_PROD_API_URL.')
+    }
+    return null
   }
 }
 

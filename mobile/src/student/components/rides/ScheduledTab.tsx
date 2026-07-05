@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import {
   FlatList,
   RefreshControl,
@@ -41,7 +41,7 @@ const formatTime = (timeStr: string) => {
   return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
 
-export default function ScheduledTab() {
+export default function ScheduledTab({ isActive }: { isActive?: boolean }) {
   const [rides, setRides] = useState<ScheduledRide[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -49,12 +49,13 @@ export default function ScheduledTab() {
   
   const [selectedRide, setSelectedRide] = useState<ScheduledRide | null>(null)
 
-  const fetchRides = async () => {
+  const fetchRides = async (silent = false) => {
     try {
-      setError(null)
+      if (!silent) setError(null)
       const res = await api.get('rides/scheduled/available/')
       setRides(Array.isArray(res.data?.results) ? res.data.results : (res.data || []))
     } catch (err: any) {
+      if (silent) return
       const kind = classifyApiError(err)
       if (kind === 'network') {
         setError('No internet connection. Check your network and pull down to retry.')
@@ -69,9 +70,31 @@ export default function ScheduledTab() {
     }
   }
 
+  const didMountRef = useRef(false)
+
   useEffect(() => {
-    fetchRides()
-  }, [])
+    if (!didMountRef.current) {
+      didMountRef.current = true
+      fetchRides()
+    } else if (isActive) {
+      fetchRides(true) // silent refresh
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive])
+
+  // Background polling to keep rides synchronized with the server automatically
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | null = null
+    if (isActive) {
+      interval = setInterval(() => {
+        fetchRides(true)
+      }, 10000) // Poll every 10 seconds
+    }
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive])
 
   const onRefresh = useCallback(() => {
     setRefreshing(true)

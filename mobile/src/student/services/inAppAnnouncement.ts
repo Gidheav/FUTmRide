@@ -8,6 +8,7 @@ export type StudentInAppAnnouncement = {
   imageUrl?: string
   iconName?: string
   ctaLabel: string
+  ctaUrl?: string       // If set, CTA button opens this URL in the in-app browser
 }
 
 type AnnouncementResponse = {
@@ -18,6 +19,7 @@ type AnnouncementResponse = {
     image_url?: string
     icon_name?: string
     cta_label?: string
+    cta_url?: string
   } | null
 }
 
@@ -38,6 +40,7 @@ const normalizeAnnouncement = (
     imageUrl: raw.image_url || undefined,
     iconName: raw.icon_name || undefined,
     ctaLabel: raw.cta_label || 'Got it',
+    ctaUrl: raw.cta_url || undefined,
   }
 }
 

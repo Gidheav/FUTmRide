@@ -1,10 +1,26 @@
-import { StyleSheet, Text, View } from 'react-native'
+import { useState } from 'react'
+import { StyleSheet, View, ActivityIndicator } from 'react-native'
+import { WebView } from 'react-native-webview'
+import { useExternalWebViewUrl } from '../services/externalConfig'
 
 export default function ActivitiesPage() {
+  const [loading, setLoading] = useState(true)
+  const targetUrl = useExternalWebViewUrl('activities_url')
+
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>My Activities</Text>
-      <Text style={styles.text}>Your recent activities will appear here.</Text>
+      <WebView
+        source={{ uri: targetUrl }}
+        style={styles.webview}
+        onLoadStart={() => setLoading(true)}
+        onLoadEnd={() => setLoading(false)}
+        showsVerticalScrollIndicator={false}
+      />
+      {loading && (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#6A1B9A" />
+        </View>
+      )}
     </View>
   )
 }
@@ -12,20 +28,16 @@ export default function ActivitiesPage() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 24,
+    backgroundColor: '#ffffff',
+  },
+  webview: {
+    flex: 1,
+  },
+  loadingContainer: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f9f9f9',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#6A1B9A',
-    marginBottom: 12,
-  },
-  text: {
-    fontSize: 15,
-    color: '#3d4a3e',
-    textAlign: 'center',
+    backgroundColor: '#ffffff',
+    zIndex: 1,
   },
 })

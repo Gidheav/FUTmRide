@@ -202,17 +202,18 @@ export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRi
   const handleSOS = () => {
     Alert.alert(
       'Emergency SOS',
-      'Are you sure you want to contact campus security?',
+      'Contact campus security or emergency services?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Call Security',
+          text: 'Campus Security',
+          onPress: () => Linking.openURL('tel:+2348030913448'),
+        },
+        {
+          text: 'Emergency (112)',
           style: 'destructive',
-          onPress: () => {
-            // Placeholder campus security number
-            Linking.openURL('tel:112') 
-          }
-        }
+          onPress: () => Linking.openURL('tel:112'),
+        },
       ]
     )
   }

@@ -12,6 +12,7 @@ type LayoutProps = {
   onBackPress?: () => void
   onNotificationPress?: () => void
   unreadCount?: number
+  title?: string
   children: ReactNode
 }
 
@@ -22,7 +23,7 @@ const NAV_ITEMS: Array<{ key: StudentTab; label: string; icon: keyof typeof Mate
   { key: 'account', label: 'Account', icon: 'person' },
 ]
 
-export default function StudentLayout({ activeTab, onTabChange, onMenuPress, onBackPress, onNotificationPress, unreadCount = 0, children }: LayoutProps) {
+export default function StudentLayout({ activeTab, onTabChange, onMenuPress, onBackPress, onNotificationPress, unreadCount = 0, title, children }: LayoutProps) {
   const { user } = useAuthStore()
   
   const getInitials = () => {
@@ -50,6 +51,11 @@ export default function StudentLayout({ activeTab, onTabChange, onMenuPress, onB
             <MaterialIcons name="menu" size={22} color="#6A1B9A" />
           </TouchableOpacity>
         )}
+
+        <View style={styles.titleContainer}>
+          {title ? <Text style={styles.titleText}>{title}</Text> : null}
+        </View>
+
         <View style={styles.topBarRight}>
           <TouchableOpacity
             style={styles.iconButton}
@@ -129,6 +135,21 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '800',
     color: '#6A1B9A',
+  },
+  titleContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: -1,
+    pointerEvents: 'none',
+  },
+  titleText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1c1c',
   },
   topBarRight: {
     flexDirection: 'row',

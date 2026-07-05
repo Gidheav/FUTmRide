@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Routes, Route, Navigate } from "react-router-dom"
+import { Routes, Route, Navigate, useLocation } from "react-router-dom"
 import { useAuthStore } from "./authStore"
 import api from "./api"
 import { getAccessToken, getRefreshToken, migrateLegacyTokens } from "./tokenStorage"
@@ -27,6 +27,13 @@ import CampusAdminDocs from "../campus-admin/pages/DocsPage"
 import CampusAdminFinancialHub from "../campus-admin/FinancialManagement/hub/FinancialHub"
 import CampusAdminLayout from "../campus-admin/layout/CampusAdminLayout"
 import CampusAdminTestPage from "../campus-admin/pages/TestPage"
+
+// WebView imports
+import WebViewGuard from "../webview/WebViewGuard"
+import NewsWebPage from "../webview/pages/NewsWebPage"
+import EventsWebPage from "../webview/pages/EventsWebPage"
+import ActivitiesWebPage from "../webview/pages/ActivitiesWebPage"
+import SafetyGuideWebPage from "../webview/pages/SafetyGuideWebPage"
 
 const MOBILE_UA_RE = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i
 const MIN_DESKTOP_WIDTH = 1024
@@ -67,6 +74,7 @@ export default function AppRouter() {
   const { setAuth, clearAuth } = useAuthStore()
   const [isHydrating, setIsHydrating] = useState(true)
   const [desktopAllowed, setDesktopAllowed] = useState(isDesktopAllowed())
+  const location = useLocation()
 
   useEffect(() => {
     const evaluate = () => setDesktopAllowed(isDesktopAllowed())
@@ -100,7 +108,9 @@ export default function AppRouter() {
     hydrate()
   }, [setAuth, clearAuth])
 
-  if (!desktopAllowed) return <DesktopOnlyScreen />
+  const isWebViewRoute = location.pathname.startsWith('/m-app-portal')
+
+  if (!desktopAllowed && !isWebViewRoute) return <DesktopOnlyScreen />
   if (isHydrating) return null
 
   return (
@@ -129,6 +139,14 @@ export default function AppRouter() {
         <Route path="/notifications" element={<CampusAdminNotifications />} />
         <Route path="/docs" element={<CampusAdminDocs />} />
         <Route path="/test" element={<CampusAdminTestPage />} />
+      </Route>
+
+      {/* Hidden Mobile WebView Routes */}
+      <Route path="/m-app-portal" element={<WebViewGuard />}>
+        <Route path="news" element={<NewsWebPage />} />
+        <Route path="events" element={<EventsWebPage />} />
+        <Route path="activities" element={<ActivitiesWebPage />} />
+        <Route path="safety" element={<SafetyGuideWebPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/login" replace />} />

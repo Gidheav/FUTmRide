@@ -1,3 +1,4 @@
+import os
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
@@ -9,9 +10,21 @@ from core.health import HealthCheckView
 def healthcheck(request):
     return JsonResponse({"status": "ok", "service": "lrride-api"})
 
+def app_config(request):
+    """
+    Returns global dynamic configurations for the mobile app clients.
+    Values can be changed via Environment Variables on Render without redeploying code.
+    """
+    return JsonResponse({
+        "news_url": os.environ.get("MOBILE_NEWS_URL", "https://futmapp.vercel.app/m-app-portal/news?token=LzR_Secure_App_2026"),
+        "events_url": os.environ.get("MOBILE_EVENTS_URL", "https://futmapp.vercel.app/m-app-portal/events?token=LzR_Secure_App_2026"),
+        "activities_url": os.environ.get("MOBILE_ACTIVITIES_URL", "https://futmapp.vercel.app/m-app-portal/activities?token=LzR_Secure_App_2026"),
+        "safety_guide_url": os.environ.get("MOBILE_SAFETY_GUIDE_URL", "https://futmapp.vercel.app/m-app-portal/safety?token=LzR_Secure_App_2026"),
+    })
 
 urlpatterns = [
     path("", healthcheck, name="root"),
+    path("api/v1/app-config/", app_config, name="app-config"),
     path("admin/", admin.site.urls),
     path("health/", HealthCheckView.as_view(), name="health-detail"),
     path("health-simple/", healthcheck, name="healthcheck"),

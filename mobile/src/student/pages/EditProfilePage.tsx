@@ -290,13 +290,7 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
   return (
     <View style={styles.page}>
     <ScrollView contentContainerStyle={styles.pageContent} keyboardShouldPersistTaps="handled">
-      <View style={styles.headerRow}>
-        <TouchableOpacity style={styles.iconButton} onPress={onClose} activeOpacity={0.85}>
-          <MaterialIcons name="chevron-left" size={22} color="#6A1B9A" />
-        </TouchableOpacity>
-        <Text style={styles.title}>Edit Profile</Text>
-        <View style={styles.iconButtonPlaceholder} />
-      </View>
+      {/* Removed headerRow since StudentLayout topnav now handles title and back action */}
 
       {loading ? (
         <View style={styles.loadingCard}>
@@ -411,20 +405,20 @@ export default function StudentEditProfilePage({ onClose, onSaved }: EditProfile
                 <Text style={styles.helperText}>Campus list is offline. Try again later.</Text>
               ) : null}
             </View>
-          </View>
 
-          <View style={styles.actionRow}>
-            <TouchableOpacity style={styles.secondaryButton} onPress={onClose} activeOpacity={0.85}>
-              <Text style={styles.secondaryButtonText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.primaryButton, saving && styles.primaryButtonDisabled]}
-              onPress={handleSave}
-              activeOpacity={0.9}
-              disabled={saving}
-            >
-              <Text style={styles.primaryButtonText}>Save</Text>
-            </TouchableOpacity>
+            <View style={styles.actionRow}>
+              <TouchableOpacity style={styles.secondaryButton} onPress={onClose} activeOpacity={0.85}>
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.primaryButton, saving && styles.primaryButtonDisabled]}
+                onPress={handleSave}
+                activeOpacity={0.9}
+                disabled={saving}
+              >
+                <Text style={styles.primaryButtonText}>Save</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </>
       )}
@@ -525,10 +519,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#f9f9f9',
   },
   pageContent: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingHorizontal: 2,
+    paddingTop: 2,
     paddingBottom: 32,
     gap: 20,
+    flexGrow: 1,
   },
   headerRow: {
     flexDirection: 'row',
@@ -570,10 +565,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   card: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 16,
+    flex: 1,
+    borderRadius: 0,
+    padding: 24,
     borderWidth: 1,
+    borderBottomWidth: 0,
     borderColor: '#eeeeee',
     gap: 16,
   },
@@ -586,8 +582,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   label: {
-    fontSize: 12,
-    letterSpacing: 0.6,
+    fontSize: 10,
+    letterSpacing: 0.2,
     textTransform: 'uppercase',
     color: '#6d7b6d',
     fontWeight: '600',
@@ -597,7 +593,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#e5e5e5',
@@ -635,10 +631,12 @@ const styles = StyleSheet.create({
   },
   actionRow: {
     flexDirection: 'row',
+    justifyContent: 'center',
     gap: 12,
+    marginTop: 'auto',
   },
   secondaryButton: {
-    flex: 1,
+    width: 140,
     borderWidth: 1,
     borderColor: '#e5e5e5',
     borderRadius: 12,
@@ -650,7 +648,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   primaryButton: {
-    flex: 1,
+    width: 140,
     backgroundColor: '#6A1B9A',
     borderRadius: 12,
     paddingVertical: 12,

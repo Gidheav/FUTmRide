@@ -8,6 +8,7 @@
     "ios": "expo start --go --ios --clear",
     "web": "expo start --web --clear",
     "test": "jest --watch --clear-cache",
+    "typecheck": "tsc --noEmit",
     "check:push-config": "node scripts/checkPushConfig.js",
     "eas-build-pre-install": "node scripts/checkPushConfig.js --ci"
   },
@@ -22,7 +23,6 @@
     "expo-constants": "~18.0.13",
     "expo-contacts": "~15.0.11",
     "expo-crypto": "~15.0.9",
-    "expo-dev-client": "~6.0.21",
     "expo-device": "~8.0.10",
     "expo-document-picker": "~14.0.8",
     "expo-file-system": "~19.0.22",
@@ -53,6 +53,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
+    "expo-dev-client": "~6.0.21",
     "expo-module-scripts": "^55.0.2",
     "jest": "^29.7.0"
   },

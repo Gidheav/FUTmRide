@@ -95,13 +95,15 @@ export default function StudentSidebar({
                   <MaterialIcons name="info-outline" size={20} color="#6A1B9A" />
                   <Text style={styles.menuText}>About</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.menuItem} onPress={() => onNavigate('activities')} activeOpacity={0.85}>
-                  <MaterialIcons name="history" size={20} color="#6A1B9A" />
-                  <Text style={styles.menuText}>My Activities</Text>
-                </TouchableOpacity>
                 <TouchableOpacity style={styles.menuItem} onPress={() => onNavigate('updates')} activeOpacity={0.85}>
                   <MaterialIcons name="system-update" size={20} color="#6A1B9A" />
                   <Text style={styles.menuText}>App Updates</Text>
+                </TouchableOpacity>
+
+                {/* Web Views */}
+                <TouchableOpacity style={styles.menuItem} onPress={() => onNavigate('activities')} activeOpacity={0.85}>
+                  <MaterialIcons name="history" size={20} color="#6A1B9A" />
+                  <Text style={styles.menuText}>My Activities</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.menuItem} onPress={() => onNavigate('events')} activeOpacity={0.85}>
                   <MaterialIcons name="event" size={20} color="#6A1B9A" />
@@ -115,6 +117,7 @@ export default function StudentSidebar({
                   <MaterialIcons name="security" size={20} color="#6A1B9A" />
                   <Text style={styles.menuText}>Safety Guide</Text>
                 </TouchableOpacity>
+
                 <TouchableOpacity style={styles.menuItem} onPress={() => onNavigate('support')} activeOpacity={0.85}>
                   <MaterialIcons name="help-outline" size={20} color="#6A1B9A" />
                   <Text style={styles.menuText}>Help & Support</Text>

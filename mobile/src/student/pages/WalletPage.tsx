@@ -28,7 +28,7 @@ type TransferRecipient = {
 const TRANSFER_QR_PREFIX = 'lrride://wallet/student/'
 const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
 
-export default function StudentWalletPage() {
+export default function StudentWalletPage({ onNavigateToMap }: { onNavigateToMap?: () => void }) {
   const [profile, setProfile] = useState<any>(null)
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -1009,12 +1009,16 @@ export default function StudentWalletPage() {
               <MaterialIcons name="redeem" size={18} color="#ffffff" />
             </View>
             <View>
-              <Text style={styles.bonusTitle}>Earn N500 Bonus</Text>
-              <Text style={styles.bonusSubtitle}>Refer a friend to LR Ride</Text>
+              <Text style={styles.bonusTitle}>Earn bonus</Text>
+              <Text style={styles.bonusSubtitle}>Confirm your route on the map before you ride</Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.bonusButton} activeOpacity={0.9}>
-            <Text style={styles.bonusButtonText}>Invite</Text>
+          <TouchableOpacity 
+            style={styles.bonusButton} 
+            activeOpacity={0.9}
+            onPress={onNavigateToMap}
+          >
+            <Text style={styles.bonusButtonText}>Open Map</Text>
           </TouchableOpacity>
         </View>
       </View>
