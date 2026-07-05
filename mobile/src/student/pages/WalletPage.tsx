@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Alert, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Animated } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { CameraView, useCameraPermissions } from 'expo-camera'
@@ -56,6 +56,11 @@ export default function StudentWalletPage() {
   const [transferConfirmVisible, setTransferConfirmVisible] = useState(false)
   const [transferPinInput, setTransferPinInput] = useState('')
   const [transferPinError, setTransferPinError] = useState('')
+  // Toast state for short-lived messages
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
+  const [toastVisible, setToastVisible] = useState(false)
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const toastOpacity = useRef(new Animated.Value(0)).current
   // Store reference during WebView session without triggering polls
   const [webviewReference, setWebviewReference] = useState<string | null>(null)
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null)
@@ -471,6 +476,46 @@ export default function StudentWalletPage() {
     })
   }, [sendTransferRequest])
 
+  // Show toast helper — fades in then auto-hides after 3s
+  const showToast = useCallback((message: string) => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current)
+      toastTimeoutRef.current = null
+    }
+    setToastMessage(message)
+    setToastVisible(true)
+    Animated.timing(toastOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start()
+    toastTimeoutRef.current = setTimeout(() => {
+      Animated.timing(toastOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+        setToastVisible(false)
+        setToastMessage(null)
+      })
+      toastTimeoutRef.current = null
+    }, 3000)
+  }, [toastOpacity])
+
+  // Auto show toasts for various error states and clear them
+  useEffect(() => {
+    if (topupError) {
+      showToast(topupError)
+      setTopupError(null)
+    }
+  }, [topupError, showToast])
+
+  useEffect(() => {
+    if (transferError) {
+      showToast(transferError)
+      setTransferError(null)
+    }
+  }, [transferError, showToast])
+
+  useEffect(() => {
+    if (transferPinError) {
+      showToast(transferPinError)
+      setTransferPinError('')
+    }
+  }, [transferPinError, showToast])
+
   const handleTransferConfirm = useCallback(async () => {
     if (transferLoading) return
     if (biometricEnabled) {
@@ -547,28 +592,36 @@ export default function StudentWalletPage() {
             <Text style={styles.modalSubtitle}>Enter the recipient student ID to continue.</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="Student ID / Matric"
+              placeholder="Student ID"
               value={transferStudentId}
               onChangeText={setTransferStudentId}
               autoCapitalize="characters"
+              editable={!recipientLookupLoading}
             />
-            <TouchableOpacity
-              style={[styles.primaryAction, recipientLookupLoading && styles.primaryActionDisabled]}
-              activeOpacity={0.9}
-              onPress={handleLookupFromStudentId}
-              disabled={recipientLookupLoading}
-            >
-              <MaterialIcons name="send" size={18} color="#ffffff" />
-              <Text style={styles.primaryActionText}>Continue</Text>
-            </TouchableOpacity>
+            {/* Errors are shown as toasts */}
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={[styles.primaryActionCompact, (!transferStudentId.trim() || recipientLookupLoading) && styles.primaryActionDisabled]}
+                activeOpacity={0.9}
+                onPress={handleLookupFromStudentId}
+                disabled={!transferStudentId.trim() || recipientLookupLoading}
+              >
+                <MaterialIcons name="send" size={18} color="#ffffff" />
+                <Text style={styles.primaryActionText}>Continue</Text>
+              </TouchableOpacity>
+            </View>
             <TouchableOpacity
               style={styles.modalCancel}
-              onPress={() => setTransferIdModalVisible(false)}
+              onPress={() => {
+                setTransferIdModalVisible(false)
+                setTransferError(null)
+              }}
             >
               <Text style={styles.modalCancelText}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
+        <LoadingOverlay visible={recipientLookupLoading} />
       </Modal>
       <Modal
         visible={scannerVisible}
@@ -614,7 +667,7 @@ export default function StudentWalletPage() {
                 />
               ))}
             </View>
-            {transferPinError ? <Text style={styles.errorText}>{transferPinError}</Text> : null}
+            {/* Errors are shown as toasts */}
             <View style={styles.pinPad}>
               {transferPinRows.map((row, rowIndex) => (
                 <View key={`pin-row-${rowIndex}`} style={styles.pinRow}>
@@ -648,6 +701,7 @@ export default function StudentWalletPage() {
             </TouchableOpacity>
           </View>
         </View>
+        <LoadingOverlay visible={transferLoading} />
       </Modal>
       <Modal
         visible={webviewVisible}
@@ -1012,6 +1066,13 @@ export default function StudentWalletPage() {
         )}
       </View>
     </ScrollView>
+    {toastVisible ? (
+      <Animated.View style={[styles.toastWrap, { opacity: toastOpacity }]} pointerEvents="box-none">
+        <View style={styles.toast}>
+          <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '600' }}>{toastMessage}</Text>
+        </View>
+      </Animated.View>
+    ) : null}
     <LoadingOverlay visible={topupLoading || transferLoading || recipientLookupLoading} />
     </View>
   )
@@ -1148,6 +1209,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 20,
     gap: 12,
+    zIndex: 1000,
+  },
+  modalButtonRow: {
+    alignItems: 'center',
+    paddingVertical: 8,
   },
   modalTitle: {
     fontSize: 16,
@@ -1425,11 +1491,40 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
+  toastWrap: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 36,
+    alignItems: 'center',
+    zIndex: 20000,
+  },
+  toast: {
+    backgroundColor: '#111827',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    maxWidth: '92%',
+  },
   primaryAction: {
     flex: 1,
     backgroundColor: '#6A1B9A',
     borderRadius: 12,
     paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#6A1B9A',
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  primaryActionCompact: {
+    backgroundColor: '#6A1B9A',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 32,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

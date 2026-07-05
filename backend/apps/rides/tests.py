@@ -366,6 +366,50 @@ class ScheduledRideTestCase(TestCase):
         self.assertTrue(ride.reference.startswith('SR-'))
         self.assertEqual(ride.stops.count(), 2)
 
+    def test_student_available_includes_parent_campus_ride(self):
+        parent = Campus.objects.create(name='Federal University of Technology, Minna', code='FUTMINNA')
+        child = Campus.objects.create(name='Gidan Kwano (FUTMINNA)', code='GK')
+        self.admin.campus_admin_profile.campus = parent
+        self.admin.campus_admin_profile.save(update_fields=['campus'])
+        self.student.student_profile.campus = child
+        self.student.student_profile.save(update_fields=['campus'])
+
+        create_res = self.create_scheduled_ride()
+        self.assertEqual(create_res.status_code, status.HTTP_201_CREATED)
+
+        self.student_auth()
+        list_res = self.client.get(reverse('scheduled-ride-available'))
+        self.assertEqual(list_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(list_res.data['pagination']['count'], 1)
+        self.assertEqual(list_res.data['results'][0]['id'], create_res.data['id'])
+
+        detail_res = self.client.get(
+            reverse('student-scheduled-ride-detail', kwargs={'ride_id': create_res.data['id']})
+        )
+        self.assertEqual(detail_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(detail_res.data['id'], create_res.data['id'])
+
+    def test_student_available_keeps_boarding_parent_ride_visible(self):
+        parent = Campus.objects.create(name='Federal University of Technology, Minna', code='FUTMINNA')
+        child = Campus.objects.create(name='Gidan Kwano (FUTMINNA)', code='GK')
+        self.admin.campus_admin_profile.campus = parent
+        self.admin.campus_admin_profile.save(update_fields=['campus'])
+        self.student.student_profile.campus = child
+        self.student.student_profile.save(update_fields=['campus'])
+
+        create_res = self.create_scheduled_ride()
+        self.assertEqual(create_res.status_code, status.HTTP_201_CREATED)
+        ride = ScheduledRide.objects.get(id=create_res.data['id'])
+        ride.status = ScheduledRideStatus.BOARDING
+        ride.join_deadline = timezone.now() - timedelta(minutes=1)
+        ride.save(update_fields=['status', 'join_deadline'])
+
+        self.student_auth()
+        list_res = self.client.get(reverse('scheduled-ride-available'))
+        self.assertEqual(list_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(list_res.data['pagination']['count'], 1)
+        self.assertFalse(list_res.data['results'][0]['is_joinable'])
+
     def test_departure_window_exceeds_30min_rejected(self):
         payload = {**self.base_payload, 'window_end': '08:35'}
         res = self.create_scheduled_ride(payload)

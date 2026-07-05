@@ -2,49 +2,40 @@ import { useEffect, useState } from 'react'
 import { ActivityIndicator, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import api from '../../core/api'
 
-const STORAGE_KEY = '@lr_notif_prefs'
-
 type NotifPrefs = {
-  soundEnabled: boolean
-  rideRequested: boolean
-  driverAssigned: boolean
-  driverEnRoute: boolean
-  driverArrived: boolean
-  tripStarted: boolean
-  tripCompleted: boolean
-  rideCancelled: boolean
-  walletCredit: boolean
-  walletDebit: boolean
-  promotions: boolean
-}
-
-type EmailPrefs = {
+  notif_sound_enabled: boolean
+  notif_ride_requested: boolean
+  notif_driver_assigned: boolean
+  notif_driver_en_route: boolean
+  notif_driver_arrived: boolean
+  notif_trip_started: boolean
+  notif_trip_completed: boolean
+  notif_ride_cancelled: boolean
+  notif_wallet_credit: boolean
+  notif_wallet_debit: boolean
+  notif_promotions: boolean
   email_announcements: boolean
   email_transactions: boolean
   email_rides: boolean
 }
 
 const DEFAULT_PREFS: NotifPrefs = {
-  soundEnabled: true,
-  rideRequested: true,
-  driverAssigned: true,
-  driverEnRoute: true,
-  driverArrived: true,
-  tripStarted: true,
-  tripCompleted: true,
-  rideCancelled: true,
-  walletCredit: true,
-  walletDebit: true,
-  promotions: false,
-}
-
-const DEFAULT_EMAIL_PREFS: EmailPrefs = {
-  email_announcements: true,
-  email_transactions: true,
-  email_rides: true,
+  notif_sound_enabled: false,
+  notif_ride_requested: false,
+  notif_driver_assigned: false,
+  notif_driver_en_route: false,
+  notif_driver_arrived: false,
+  notif_trip_started: false,
+  notif_trip_completed: false,
+  notif_ride_cancelled: false,
+  notif_wallet_credit: false,
+  notif_wallet_debit: false,
+  notif_promotions: false,
+  email_announcements: false,
+  email_transactions: false,
+  email_rides: false,
 }
 
 type Props = {
@@ -83,61 +74,39 @@ function ToggleRow({ icon, iconColor, iconBg, label, description, value, onValue
   )
 }
 
-export default function StudentNotificationSettingsPage({ onClose }: Props) {
+export default function StudentNotificationSettingsPage({ onClose }: Props): JSX.Element {
   const [prefs, setPrefs] = useState<NotifPrefs>(DEFAULT_PREFS)
-  const [emailPrefs, setEmailPrefs] = useState<EmailPrefs>(DEFAULT_EMAIL_PREFS)
-  const [emailLoading, setEmailLoading] = useState(true)
-  const [emailSaving, setEmailSaving] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const insets = useSafeAreaInsets()
 
-  // Load local notification prefs
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY).then((raw) => {
-      if (raw) {
-        try {
-          setPrefs({ ...DEFAULT_PREFS, ...JSON.parse(raw) })
-        } catch { /* use defaults */ }
-      }
-    })
-  }, [])
-
-  // Load server-side email prefs
-  useEffect(() => {
-    api.get('users/settings/')
+    api.get('auth/settings/preferences/')
       .then((res) => {
-        setEmailPrefs({
-          email_announcements: res.data?.email_announcements ?? true,
-          email_transactions: res.data?.email_transactions ?? true,
-          email_rides: res.data?.email_rides ?? true,
-        })
+        if (res.data) {
+          setPrefs((prev) => ({ ...prev, ...res.data }))
+        }
       })
       .catch(() => { /* use defaults */ })
-      .finally(() => setEmailLoading(false))
+      .finally(() => setLoading(false))
   }, [])
 
-  const update = (key: keyof NotifPrefs, value: boolean) => {
+  const update = async (key: keyof NotifPrefs, value: boolean) => {
     const next = { ...prefs, [key]: value }
     setPrefs(next)
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)).catch(() => {})
-  }
-
-  const updateEmail = async (key: keyof EmailPrefs, value: boolean) => {
-    const next = { ...emailPrefs, [key]: value }
-    setEmailPrefs(next)
-    setEmailSaving(true)
+    setSaving(true)
     try {
-      await api.patch('users/settings/', { [key]: value })
+      await api.patch('auth/settings/preferences/', { [key]: value })
     } catch {
-      // Revert on failure
-      setEmailPrefs(emailPrefs)
+      setPrefs(prefs)
     } finally {
-      setEmailSaving(false)
+      setSaving(false)
     }
   }
 
   return (
     <View style={styles.page}>
-      <View style={[styles.header, { paddingTop: Math.max(14, insets.top + 10) }]}>
+      <View style={[styles.header, { paddingTop: Math.max(10, insets.top + 4) }]}>
         <TouchableOpacity style={styles.backButton} onPress={onClose}>
           <MaterialIcons name="arrow-back" size={22} color="#1a1c1c" />
         </TouchableOpacity>
@@ -146,140 +115,150 @@ export default function StudentNotificationSettingsPage({ onClose }: Props) {
       </View>
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
-        {/* ── General ─────────────────────────── */}
-        <Text style={styles.sectionLabel}>General</Text>
-        <View style={styles.card}>
-          <ToggleRow
-            icon="volume-up"
-            iconColor="#1565C0"
-            iconBg="#e3f2fd"
-            label="Notification Sound"
-            description="Play sound for notifications"
-            value={prefs.soundEnabled}
-            onValueChange={(v) => update('soundEnabled', v)}
-          />
-        </View>
-
-        {/* ── Ride Notifications ──────────────── */}
-        <Text style={styles.sectionLabel}>Ride Updates</Text>
-        <View style={styles.card}>
-          <ToggleRow
-            icon="local-taxi"
-            iconColor="#6A1B9A"
-            iconBg="#f3e5f5"
-            label="Ride Requested"
-            description="When your ride request is submitted"
-            value={prefs.rideRequested}
-            onValueChange={(v) => update('rideRequested', v)}
-          />
-          <View style={styles.divider} />
-          <ToggleRow
-            icon="person"
-            iconColor="#1565C0"
-            iconBg="#e3f2fd"
-            label="Driver Assigned"
-            description="When a driver accepts your ride"
-            value={prefs.driverAssigned}
-            onValueChange={(v) => update('driverAssigned', v)}
-          />
-          <View style={styles.divider} />
-          <ToggleRow
-            icon="directions-car"
-            iconColor="#E65100"
-            iconBg="#fff3e0"
-            label="Driver En Route"
-            description="When your driver is heading to you"
-            value={prefs.driverEnRoute}
-            onValueChange={(v) => update('driverEnRoute', v)}
-          />
-          <View style={styles.divider} />
-          <ToggleRow
-            icon="place"
-            iconColor="#2e7d32"
-            iconBg="#e8f5e9"
-            label="Driver Arrived"
-            description="When driver arrives at pickup point"
-            value={prefs.driverArrived}
-            onValueChange={(v) => update('driverArrived', v)}
-          />
-          <View style={styles.divider} />
-          <ToggleRow
-            icon="navigation"
-            iconColor="#E65100"
-            iconBg="#fff3e0"
-            label="Trip Started"
-            description="When your trip begins"
-            value={prefs.tripStarted}
-            onValueChange={(v) => update('tripStarted', v)}
-          />
-          <View style={styles.divider} />
-          <ToggleRow
-            icon="check-circle"
-            iconColor="#2e7d32"
-            iconBg="#e8f5e9"
-            label="Trip Completed"
-            description="When your ride is finished"
-            value={prefs.tripCompleted}
-            onValueChange={(v) => update('tripCompleted', v)}
-          />
-          <View style={styles.divider} />
-          <ToggleRow
-            icon="cancel"
-            iconColor="#b91c1c"
-            iconBg="#fef2f2"
-            label="Ride Cancelled"
-            description="When a ride is cancelled"
-            value={prefs.rideCancelled}
-            onValueChange={(v) => update('rideCancelled', v)}
-          />
-        </View>
-
-        {/* ── Wallet Notifications ────────────── */}
-        <Text style={styles.sectionLabel}>Wallet & Payments</Text>
-        <View style={styles.card}>
-          <ToggleRow
-            icon="arrow-downward"
-            iconColor="#2e7d32"
-            iconBg="#e8f5e9"
-            label="Wallet Credit"
-            description="Top-up, refunds, and incoming transfers"
-            value={prefs.walletCredit}
-            onValueChange={(v) => update('walletCredit', v)}
-          />
-          <View style={styles.divider} />
-          <ToggleRow
-            icon="arrow-upward"
-            iconColor="#b91c1c"
-            iconBg="#fef2f2"
-            label="Wallet Debit"
-            description="Ride payments and deductions"
-            value={prefs.walletDebit}
-            onValueChange={(v) => update('walletDebit', v)}
-          />
-        </View>
-
-        {/* ── Email Notifications ─────────────── */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionLabel}>Email Notifications</Text>
-          {emailSaving && <ActivityIndicator size="small" color="#6A1B9A" style={{ marginLeft: 8, marginBottom: 6 }} />}
-        </View>
-        <View style={styles.card}>
-          {emailLoading ? (
-            <View style={styles.emailLoadingRow}>
-              <ActivityIndicator size="small" color="#6A1B9A" />
-              <Text style={styles.emailLoadingText}>Loading preferences...</Text>
+        {loading ? (
+          <View style={styles.centerLoading}>
+            <ActivityIndicator size="large" color="#6A1B9A" />
+            <Text style={styles.loadingText}>Loading preferences...</Text>
+          </View>
+        ) : (
+          <>
+            {/* ── General ─────────────────────────── */}
+            <Text style={styles.sectionLabel}>General</Text>
+            <View style={styles.card}>
+              <ToggleRow
+                icon="volume-up"
+                iconColor="#1565C0"
+                iconBg="#e3f2fd"
+                label="Notification Sound"
+                description="Play sound for notifications"
+                value={prefs.notif_sound_enabled}
+                onValueChange={(v) => void update('notif_sound_enabled', v)}
+                disabled={saving}
+              />
             </View>
-          ) : (
-            <>
+
+            {/* ── Ride Notifications ──────────────── */}
+            <Text style={styles.sectionLabel}>Ride Updates</Text>
+            <View style={styles.card}>
+              <ToggleRow
+                icon="local-taxi"
+                iconColor="#6A1B9A"
+                iconBg="#f3e5f5"
+                label="Ride Requested"
+                description="When your ride request is submitted"
+                value={prefs.notif_ride_requested}
+                onValueChange={(v) => void update('notif_ride_requested', v)}
+                disabled={saving}
+              />
+              <View style={styles.divider} />
+              <ToggleRow
+                icon="person"
+                iconColor="#1565C0"
+                iconBg="#e3f2fd"
+                label="Driver Assigned"
+                description="When a driver accepts your ride"
+                value={prefs.notif_driver_assigned}
+                onValueChange={(v) => void update('notif_driver_assigned', v)}
+                disabled={saving}
+              />
+              <View style={styles.divider} />
+              <ToggleRow
+                icon="directions-car"
+                iconColor="#E65100"
+                iconBg="#fff3e0"
+                label="Driver En Route"
+                description="When your driver is heading to you"
+                value={prefs.notif_driver_en_route}
+                onValueChange={(v) => void update('notif_driver_en_route', v)}
+                disabled={saving}
+              />
+              <View style={styles.divider} />
+              <ToggleRow
+                icon="place"
+                iconColor="#2e7d32"
+                iconBg="#e8f5e9"
+                label="Driver Arrived"
+                description="When driver arrives at pickup point"
+                value={prefs.notif_driver_arrived}
+                onValueChange={(v) => void update('notif_driver_arrived', v)}
+                disabled={saving}
+              />
+              <View style={styles.divider} />
+              <ToggleRow
+                icon="navigation"
+                iconColor="#E65100"
+                iconBg="#fff3e0"
+                label="Trip Started"
+                description="When your trip begins"
+                value={prefs.notif_trip_started}
+                onValueChange={(v) => void update('notif_trip_started', v)}
+                disabled={saving}
+              />
+              <View style={styles.divider} />
+              <ToggleRow
+                icon="check-circle"
+                iconColor="#2e7d32"
+                iconBg="#e8f5e9"
+                label="Trip Completed"
+                description="When your ride is finished"
+                value={prefs.notif_trip_completed}
+                onValueChange={(v) => void update('notif_trip_completed', v)}
+                disabled={saving}
+              />
+              <View style={styles.divider} />
+              <ToggleRow
+                icon="cancel"
+                iconColor="#b91c1c"
+                iconBg="#fef2f2"
+                label="Ride Cancelled"
+                description="When a ride is cancelled"
+                value={prefs.notif_ride_cancelled}
+                onValueChange={(v) => void update('notif_ride_cancelled', v)}
+                disabled={saving}
+              />
+            </View>
+
+            {/* ── Wallet Notifications ────────────── */}
+            <Text style={styles.sectionLabel}>Wallet & Payments</Text>
+            <View style={styles.card}>
+              <ToggleRow
+                icon="arrow-downward"
+                iconColor="#2e7d32"
+                iconBg="#e8f5e9"
+                label="Wallet Credit"
+                description="Top-up, refunds, and incoming transfers"
+                value={prefs.notif_wallet_credit}
+                onValueChange={(v) => void update('notif_wallet_credit', v)}
+                disabled={saving}
+              />
+              <View style={styles.divider} />
+              <ToggleRow
+                icon="arrow-upward"
+                iconColor="#b91c1c"
+                iconBg="#fef2f2"
+                label="Wallet Debit"
+                description="Ride payments and deductions"
+                value={prefs.notif_wallet_debit}
+                onValueChange={(v) => void update('notif_wallet_debit', v)}
+                disabled={saving}
+              />
+            </View>
+
+            {/* ── Email Notifications ─────────────── */}
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionLabel}>Email Notifications</Text>
+              {saving && <ActivityIndicator size="small" color="#6A1B9A" style={{ marginLeft: 8, marginBottom: 6 }} />}
+            </View>
+            <View style={styles.card}>
               <ToggleRow
                 icon="campaign"
                 iconColor="#6A1B9A"
                 iconBg="#f3e5f5"
                 label="Announcements"
                 description="Receive emails for platform announcements"
-                value={emailPrefs.email_announcements}
-                onValueChange={(v) => void updateEmail('email_announcements', v)}
-                disabled={emailSaving}
+                value={prefs.email_announcements}
+                onValueChange={(v) => void update('email_announcements', v)}
+                disabled={saving}
               />
               <View style={styles.divider} />
               <ToggleRow
@@ -288,9 +267,9 @@ export default function StudentNotificationSettingsPage({ onClose }: Props) {
                 iconBg="#e8f5e9"
                 label="Transactions"
                 description="Email receipts for wallet top-ups and payments"
-                value={emailPrefs.email_transactions}
-                onValueChange={(v) => void updateEmail('email_transactions', v)}
-                disabled={emailSaving}
+                value={prefs.email_transactions}
+                onValueChange={(v) => void update('email_transactions', v)}
+                disabled={saving}
               />
               <View style={styles.divider} />
               <ToggleRow
@@ -299,32 +278,33 @@ export default function StudentNotificationSettingsPage({ onClose }: Props) {
                 iconBg="#e3f2fd"
                 label="Ride Updates"
                 description="Email summaries for completed rides"
-                value={emailPrefs.email_rides}
-                onValueChange={(v) => void updateEmail('email_rides', v)}
-                disabled={emailSaving}
+                value={prefs.email_rides}
+                onValueChange={(v) => void update('email_rides', v)}
+                disabled={saving}
               />
-            </>
-          )}
-        </View>
+            </View>
 
-        {/* ── Other ───────────────────────────── */}
-        <Text style={styles.sectionLabel}>Other</Text>
-        <View style={styles.card}>
-          <ToggleRow
-            icon="local-offer"
-            iconColor="#6b7280"
-            iconBg="#f3f4f6"
-            label="Promotions & News"
-            description="Special offers and platform updates"
-            value={prefs.promotions}
-            onValueChange={(v) => update('promotions', v)}
-          />
-        </View>
+            {/* ── Other ───────────────────────────── */}
+            <Text style={styles.sectionLabel}>Other</Text>
+            <View style={styles.card}>
+              <ToggleRow
+                icon="local-offer"
+                iconColor="#6b7280"
+                iconBg="#f3f4f6"
+                label="Promotions & News"
+                description="Special offers and platform updates"
+                value={prefs.notif_promotions}
+                onValueChange={(v) => void update('notif_promotions', v)}
+                disabled={saving}
+              />
+            </View>
 
-        <Text style={styles.footerNote}>
-          Email preferences are synced to your account. Push notifications for critical
-          ride safety updates cannot be disabled.
-        </Text>
+            <Text style={styles.footerNote}>
+              Email preferences are synced to your account. Push notifications for critical
+              ride safety updates cannot be disabled.
+            </Text>
+          </>
+        )}
       </ScrollView>
     </View>
   )
@@ -340,7 +320,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingTop: 14,
-    paddingBottom: 12,
+    paddingBottom: 8,
     backgroundColor: '#ffffff',
     borderBottomWidth: 1,
     borderBottomColor: '#eeeeee',
@@ -420,16 +400,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
     marginLeft: 62,
   },
-  emailLoadingRow: {
-    flexDirection: 'row',
+  centerLoading: {
+    padding: 40,
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 18,
+    justifyContent: 'center',
+    gap: 12,
   },
-  emailLoadingText: {
-    fontSize: 13,
+  loadingText: {
+    fontSize: 14,
     color: '#6b7280',
+    fontWeight: '500',
   },
   footerNote: {
     fontSize: 12,

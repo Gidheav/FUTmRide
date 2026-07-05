@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.db.models import Q
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -44,6 +45,37 @@ def scope_admin_queryset(user, queryset):
     if not campus:
         return queryset.none()
     return queryset.filter(campus=campus)
+
+
+def student_campus_scope(campus):
+    if not campus:
+        return Q()
+
+    scope = Q(campus=campus)
+    marker = f'({campus.code})'
+    if marker in campus.name:
+        scope |= Q(campus__code=campus.name.split(marker, 1)[0].strip())
+
+    parent_codes = []
+    if '(' in campus.name and ')' in campus.name:
+        parent_codes.append(campus.name.rsplit('(', 1)[-1].split(')', 1)[0].strip())
+    if ' - ' in campus.name:
+        parent_codes.append(campus.name.rsplit(' - ', 1)[0].strip())
+
+    parent_codes = [code for code in parent_codes if code and code != campus.code]
+    if parent_codes:
+        scope |= Q(campus__code__in=parent_codes)
+    return scope
+
+
+def student_visible_scheduled_ride_scope():
+    now = timezone.localtime()
+    return Q(
+        status__in=[ScheduledRideStatus.SCHEDULED, ScheduledRideStatus.BOARDING],
+    ) & (
+        Q(departure_date__gt=now.date())
+        | Q(departure_date=now.date(), window_end__gte=now.time())
+    )
 
 
 def refund_passenger(passenger, reason):
@@ -319,15 +351,14 @@ class StudentAvailableScheduledRidesView(generics.ListAPIView):
 
     def get_queryset(self):
         qs = ScheduledRide.objects.select_related('assigned_driver', 'created_by').filter(
-            status=ScheduledRideStatus.SCHEDULED,
-            join_deadline__gt=timezone.now(),
+            student_visible_scheduled_ride_scope()
         )
         try:
             campus = self.request.user.student_profile.campus
         except Exception:
             campus = None
         if campus:
-            qs = qs.filter(campus=campus)
+            qs = qs.filter(student_campus_scope(campus))
         return qs.order_by('departure_date', 'window_start')
 
 
@@ -347,11 +378,13 @@ class StudentScheduledRideDetailView(generics.RetrieveAPIView):
         except Exception:
             campus = None
         if campus:
-            qs = qs.filter(campus=campus)
+            qs = qs.filter(student_campus_scope(campus))
         obj = qs.first()
         if not obj:
             raise NotFound('Ride not found.')
-        if obj.status != ScheduledRideStatus.SCHEDULED and not ScheduledRidePassenger.objects.filter(
+        if not ScheduledRide.objects.filter(id=obj.id).filter(
+            student_visible_scheduled_ride_scope()
+        ).exists() and not ScheduledRidePassenger.objects.filter(
             ride=obj, student=self.request.user,
         ).exists():
             raise PermissionDenied('You do not have access to this ride.')

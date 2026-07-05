@@ -67,6 +67,10 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined }: Prop
   }, [ride.id, onClose])
 
   const handleJoin = async () => {
+    if (detail && !detail.is_joinable) {
+      Alert.alert('Ride closed', 'This ride is no longer accepting passengers.')
+      return
+    }
     if (!boardingStopId || !alightingStopId) {
       Alert.alert('Error', 'Please select boarding and alighting stops.')
       return
@@ -146,10 +150,13 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined }: Prop
               </ScrollView>
 
               <View style={styles.footer}>
+                {!detail.is_joinable && (
+                  <Text style={styles.closedText}>This ride is no longer accepting passengers.</Text>
+                )}
                 <TouchableOpacity 
-                  style={[styles.joinBtn, joining && styles.joinBtnDisabled]} 
+                  style={[styles.joinBtn, (joining || !detail.is_joinable) && styles.joinBtnDisabled]}
                   onPress={handleJoin} 
-                  disabled={joining}
+                  disabled={joining || !detail.is_joinable}
                 >
                   {joining ? (
                     <LoadingOverlay visible={true} inline size={20} />
@@ -282,6 +289,13 @@ const styles = StyleSheet.create({
   },
   joinBtnDisabled: {
     opacity: 0.7,
+  },
+  closedText: {
+    color: '#6b7280',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 10,
   },
   joinBtnText: {
     color: '#ffffff',
