@@ -57,6 +57,11 @@
         }
 
         function evaluate() {
+          // Allow /m-app-portal routes on mobile (loaded by the student app WebView)
+          if (window.location.pathname.indexOf("/m-app-portal") === 0) {
+            applyState(false);
+            return;
+          }
           applyState(isMobileUa || isSmallScreen());
         }
 

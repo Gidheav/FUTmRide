@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { StyleSheet, View, ActivityIndicator, Text, TouchableOpacity } from 'react-native'
 import { WebView } from 'react-native-webview'
+import { safeWebViewProps } from '../services/safeWebViewConfig'
 
 type Props = {
   url: string
@@ -41,10 +42,10 @@ export default function GenericWebPage({ url, title, onClose }: Props) {
         <WebView
           source={{ uri: url }}
           style={styles.webview}
+          {...safeWebViewProps}
           onLoadStart={() => { setLoading(true); setError(false) }}
           onLoadEnd={() => setLoading(false)}
           onError={() => { setLoading(false); setError(true) }}
-          showsVerticalScrollIndicator={false}
         />
       )}
 

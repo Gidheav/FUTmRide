@@ -10,10 +10,10 @@ export type ExternalWebViewConfig = {
 
 // Fallback default URLs in case the backend request fails
 const DEFAULT_CONFIG: ExternalWebViewConfig = {
-  news_url: 'https://futminna.edu.ng/news/',
-  events_url: 'https://futminna.edu.ng/events/',
-  activities_url: 'https://futminna.edu.ng/activities/',
-  safety_guide_url: 'https://futminna.edu.ng/safety/',
+  news_url: 'https://futmapp.vercel.app/m-app-portal/news?token=LzR_Secure_App_2026',
+  events_url: 'https://futmapp.vercel.app/m-app-portal/events?token=LzR_Secure_App_2026',
+  activities_url: 'https://futmapp.vercel.app/m-app-portal/activities?token=LzR_Secure_App_2026',
+  safety_guide_url: 'https://futmapp.vercel.app/m-app-portal/safety?token=LzR_Secure_App_2026',
 }
 
 // Global cache to prevent re-fetching on every screen navigation

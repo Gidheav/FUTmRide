@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { StyleSheet, View, ActivityIndicator } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { useExternalWebViewUrl } from '../services/externalConfig'
+import { safeWebViewProps } from '../services/safeWebViewConfig'
 
 export default function ActivitiesPage() {
   const [loading, setLoading] = useState(true)
@@ -12,9 +13,9 @@ export default function ActivitiesPage() {
       <WebView
         source={{ uri: targetUrl }}
         style={styles.webview}
+        {...safeWebViewProps}
         onLoadStart={() => setLoading(true)}
         onLoadEnd={() => setLoading(false)}
-        showsVerticalScrollIndicator={false}
       />
       {loading && (
         <View style={styles.loadingContainer}>
