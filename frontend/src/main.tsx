@@ -41,6 +41,7 @@ if (rootElement && !desktopOnlyBlocked) {
                 },
               }}
             />
+            <SpeedInsights />
           </BrowserRouter>
         </QueryClientProvider>
       </ErrorBoundary>
