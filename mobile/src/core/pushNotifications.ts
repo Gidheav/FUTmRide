@@ -9,6 +9,7 @@ const RIDE_STATUS_CHANNEL_ID = 'ride-status-alerts'
 let notificationHandlerReady = false
 let pushConfigWarningShown = false
 let rideChannelReady = false
+let lastHandledNotificationResponseId: string | null = null
 
 const warnPushConfigOnce = (message: string) => {
   if (pushConfigWarningShown) return
@@ -143,11 +144,30 @@ export const addNotificationResponseListener = (
   callback: (data: Record<string, any>) => void,
 ) => {
   ensureNotificationHandler()
-  const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+  const handleResponse = (response: Notifications.NotificationResponse | null | undefined) => {
+    if (!response) return
+    const responseId = response.notification.request.identifier
+    if (responseId && responseId === lastHandledNotificationResponseId) return
+    lastHandledNotificationResponseId = responseId || null
     const payload = response.notification.request.content.data ?? {}
     callback(payload as Record<string, any>)
-  })
+  }
+
+  void Notifications.getLastNotificationResponseAsync()
+    .then(handleResponse)
+    .catch(() => undefined)
+
+  const sub = Notifications.addNotificationResponseReceivedListener(handleResponse)
   return () => sub.remove()
+}
+
+/**
+ * Read the notification response that launched/resumed the app, if one exists.
+ */
+export const getLastNotificationResponseData = async () => {
+  ensureNotificationHandler()
+  const response = await Notifications.getLastNotificationResponseAsync()
+  return (response?.notification.request.content.data ?? null) as Record<string, any> | null
 }
 
 /**

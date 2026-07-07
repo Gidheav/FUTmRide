@@ -2,7 +2,7 @@ LR-Ride Announcement: {{ title }}
 
 {{ body }}
 
-{% if cta_label %}{{ cta_label }}{% endif %}
+{% if cta_label %}{{ cta_label }}{% endif %}{% if cta_url %}: {{ cta_url }}{% endif %}
 
 ---
 You received this because announcement emails are enabled on your LR-Ride account.

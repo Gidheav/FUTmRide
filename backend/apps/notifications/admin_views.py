@@ -39,19 +39,24 @@ def _send_announcement_push(announcement, request_user):
         # Materialise once so we can iterate multiple times
         users = list(qs)
 
+        announcement_data = {
+            'campaign_id': announcement.campaign_id,
+            'in_app_announcement': True,
+            'image_url': announcement.image_url or '',
+            'icon_name': announcement.icon_name or 'campaign',
+            'cta_label': announcement.cta_label or 'Got it',
+            'cta_url': announcement.cta_url or '',
+            'web_url': announcement.cta_url or '',
+            'web_title': announcement.title,
+        }
+
         notifications = [
             Notification(
                 user=user,
                 notification_type=Notification.NotificationType.BROADCAST,
                 title=announcement.title,
                 body=announcement.body,
-                data={
-                    'campaign_id': announcement.campaign_id,
-                    'in_app_announcement': True,
-                    'image_url': announcement.image_url or '',
-                    'icon_name': announcement.icon_name or 'campaign',
-                    'cta_label': announcement.cta_label or 'Got it',
-                },
+                data=announcement_data,
             )
             for user in users
         ]
@@ -65,7 +70,7 @@ def _send_announcement_push(announcement, request_user):
                     user.fcm_token,
                     announcement.title,
                     announcement.body,
-                    {'campaign_id': announcement.campaign_id},
+                    announcement_data,
                 )
                 sent_tokens.add(user.fcm_token)
 
@@ -75,6 +80,7 @@ def _send_announcement_push(announcement, request_user):
             'body': announcement.body,
             'image_url': announcement.image_url or '',
             'cta_label': announcement.cta_label or 'Open App',
+            'cta_url': announcement.cta_url or '',
         }
         try:
             html_body = render_to_string('emails/announcement_email.html', email_context)

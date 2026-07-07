@@ -18,7 +18,7 @@ type Segment = { type: 'text' | 'url'; value: string }
 function parseSegments(text: string): Segment[] {
   const parts = text.split(URL_REGEX)
   return parts.map((part) => ({
-    type: URL_REGEX.test(part) ? 'url' : 'text',
+    type: /^https?:\/\/[^\s]+$/.test(part) ? 'url' : 'text',
     value: part,
   }))
 }

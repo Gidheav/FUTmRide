@@ -21,6 +21,7 @@ class InAppAnnouncementSerializer(serializers.ModelSerializer):
             'image_url',
             'icon_name',
             'cta_label',
+            'cta_url',
         ]
         read_only_fields = fields
 
@@ -52,6 +53,7 @@ class AdminInAppAnnouncementSerializer(serializers.ModelSerializer):
             'image_url',
             'icon_name',
             'cta_label',
+            'cta_url',
             'is_active',
             'audience',
             'send_push_notification',

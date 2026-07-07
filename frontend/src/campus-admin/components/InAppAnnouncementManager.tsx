@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Calendar,
   Edit2,
+  ExternalLink,
   Image,
   Megaphone,
   Plus,
@@ -28,6 +29,7 @@ type InAppAnnouncement = {
   image_url: string
   icon_name: string
   cta_label: string
+  cta_url: string
   audience: 'all' | 'student' | 'driver'
   is_active: boolean
   send_push_notification: boolean
@@ -46,6 +48,7 @@ type FormState = {
   image_url: string
   icon_name: string
   cta_label: string
+  cta_url: string
   audience: 'all' | 'student' | 'driver'
   is_active: boolean
   send_push_notification: boolean
@@ -61,6 +64,7 @@ const emptyForm: FormState = {
   image_url: '',
   icon_name: 'campaign',
   cta_label: 'Got it',
+  cta_url: '',
   audience: 'all',
   is_active: false,
   send_push_notification: false,
@@ -148,6 +152,7 @@ const formFromAnnouncement = (item: InAppAnnouncement): FormState => ({
   image_url: item.image_url || '',
   icon_name: item.icon_name || 'campaign',
   cta_label: item.cta_label || 'Got it',
+  cta_url: item.cta_url || '',
   audience: item.audience || 'all',
   is_active: item.is_active,
   send_push_notification: item.send_push_notification || false,
@@ -182,6 +187,7 @@ export default function InAppAnnouncementManager() {
         image_url: form.image_url.trim(),
         icon_name: form.icon_name.trim() || 'campaign',
         cta_label: form.cta_label.trim() || 'Got it',
+        cta_url: form.cta_url.trim(),
         audience: form.audience,
         is_active: form.is_active,
         send_push_notification: form.send_push_notification,
@@ -337,6 +343,17 @@ export default function InAppAnnouncementManager() {
               </label>
 
               <label style={s.fieldWide}>
+                <span style={s.label}>CTA URL</span>
+                <input
+                  value={form.cta_url}
+                  onChange={(event) => setForm((prev) => ({ ...prev, cta_url: event.target.value }))}
+                  placeholder="https://example.com/page"
+                  type="url"
+                  style={s.input}
+                />
+              </label>
+
+              <label style={s.fieldWide}>
                 <span style={s.label}>Image URL</span>
                 <input
                   value={form.image_url}
@@ -425,7 +442,10 @@ export default function InAppAnnouncementManager() {
               )}
               <div style={s.previewTitle}>{form.title || 'Announcement title'}</div>
               <div style={s.previewBody}>{form.body || 'Message body appears here.'}</div>
-              <div style={s.previewButton}>{form.cta_label || 'Got it'}</div>
+              <div style={s.previewButton}>
+                {form.cta_url ? <ExternalLink size={13} /> : null}
+                {form.cta_label || 'Got it'}
+              </div>
             </div>
 
             <div style={s.modalActions}>
@@ -481,6 +501,7 @@ export default function InAppAnnouncementManager() {
                 <span style={s.metaItem}>Audience: {item.audience === 'all' ? 'All' : item.audience === 'student' ? 'Students' : 'Drivers'}</span>
                 <span style={s.metaItem}>Priority {item.priority}</span>
                 <span style={s.metaItem}>{item.campus?.code || 'Global'}</span>
+                {item.cta_url ? <span style={s.metaItem}><ExternalLink size={12} /> CTA link</span> : null}
               </div>
 
               <div style={s.actions}>
@@ -791,6 +812,7 @@ const s: Record<string, CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
     fontWeight: 800,
     fontSize: 12,
   },

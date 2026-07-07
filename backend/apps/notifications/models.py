@@ -76,6 +76,10 @@ class InAppAnnouncement(models.Model):
         help_text='Optional MaterialIcons name used when no image URL is supplied.',
     )
     cta_label = models.CharField(max_length=30, default='Got it')
+    cta_url = models.URLField(
+        blank=True,
+        help_text='Optional URL opened by the announcement action button.',
+    )
     is_active = models.BooleanField(default=False, db_index=True)
     send_push_notification = models.BooleanField(
         default=False,

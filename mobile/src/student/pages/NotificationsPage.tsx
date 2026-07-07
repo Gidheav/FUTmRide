@@ -13,6 +13,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import api from '../../core/api'
 import LoadingOverlay from '../components/LoadingOverlay'
+import LinkedText from '../components/LinkedText'
+import { useWebPage } from '../context/WebPageContext'
 
 type NotificationsPageProps = {
   onClose: () => void
@@ -62,6 +64,7 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
   const [markingAll, setMarkingAll] = useState(false)
   const [selectedNotification, setSelectedNotification] = useState<NotificationItem | null>(null)
   const insets = useSafeAreaInsets()
+  const { openWebPage } = useWebPage()
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -164,6 +167,20 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
     // ── Rich announcement view ──────────────────────────────────────
     if (isBroadcast) {
       const announcementData = selectedNotification.data
+      const ctaUrl = typeof announcementData?.cta_url === 'string' && announcementData.cta_url.trim()
+        ? announcementData.cta_url
+        : typeof announcementData?.web_url === 'string' && announcementData.web_url.trim()
+          ? announcementData.web_url
+          : ''
+      const handleAnnouncementCta = () => {
+        if (ctaUrl) {
+          openWebPage(ctaUrl, announcementData?.web_title || selectedNotification.title)
+          onClose()
+          return
+        }
+        setSelectedNotification(null)
+      }
+
       return (
         <View style={styles.page}>
           <View style={[styles.header, { paddingTop: Math.max(14, insets.top + 10) }]}>
@@ -215,12 +232,12 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
               <View style={styles.announcementDivider} />
 
               {/* Body text */}
-              <Text style={styles.announcementMessage}>{selectedNotification.body}</Text>
+              <LinkedText text={selectedNotification.body} style={styles.announcementMessage} />
 
               {/* CTA button */}
               <TouchableOpacity
                 style={styles.announcementCta}
-                onPress={() => setSelectedNotification(null)}
+                onPress={handleAnnouncementCta}
                 activeOpacity={0.85}
               >
                 <Text style={styles.announcementCtaText}>

@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
-import api from '../../core/api'
-import { API_BASE_URL } from '../../core/api'
+import api, { API_BASE_URL } from '../../core/api'
 
 export type ExternalWebViewConfig = {
   news_url: string
@@ -49,7 +48,7 @@ export function useExternalWebViewUrl(key: keyof ExternalWebViewConfig) {
           }
         }
       })
-      .catch((err) => {
+      .catch(() => {
         // Silently fallback to default on error
       })
   }, [key])

@@ -19,7 +19,7 @@ class InAppAnnouncementAdmin(admin.ModelAdmin):
     readonly_fields = ['id', 'created_at', 'updated_at']
     fieldsets = (
         ('Campaign', {
-            'fields': ('campaign_id', 'campus', 'audience', 'title', 'body', 'cta_label'),
+            'fields': ('campaign_id', 'campus', 'audience', 'title', 'body', 'cta_label', 'cta_url'),
         }),
         ('Visual', {
             'fields': ('image_url', 'icon_name'),

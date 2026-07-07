@@ -32,7 +32,12 @@ import { WebPageProvider, useWebPage } from './context/WebPageContext'
 import type { StudentTab } from './types'
 import { clearStoredPinHash } from '../core/security'
 import api from '../core/api'
-import { registerStudentPushToken, addNotificationResponseListener, addNotificationReceivedListener } from '../core/pushNotifications'
+import {
+  registerStudentPushToken,
+  addNotificationResponseListener,
+  addNotificationReceivedListener,
+  getLastNotificationResponseData,
+} from '../core/pushNotifications'
 import useWalletStore from '../core/walletStore'
 import LocationDataService from '../../services/locationDataService'
 import {
@@ -45,6 +50,9 @@ import {
 const MATCHING_STATUSES = ['requested', 'searching']
 
 type RideScreen = 'none' | 'booking' | 'matching' | 'active' | 'garage'
+type PendingNotificationAction =
+  | { type: 'web'; url: string; title?: string }
+  | { type: 'ride'; rideId: string; rideStatus?: string }
 
 export default function StudentApp() {
   return (
@@ -90,6 +98,9 @@ function StudentAppInner() {
   const lastWalletSyncAt = useRef(0)
   const appStateRef = useRef(AppState.currentState)
   const announcementCheckRef = useRef<string | null>(null)
+  const lockedRef = useRef(locked)
+  const pendingNotificationActionRef = useRef<PendingNotificationAction | null>(null)
+  const lastInitialNotificationKeyRef = useRef<string | null>(null)
   // Track previous auth state so we can detect a fresh email/password login
   const prevIsAuthenticatedRef = useRef(isAuthenticated)
   const setWalletBalance = useWalletStore((state) => state.setWalletBalance)
@@ -338,31 +349,95 @@ function StudentAppInner() {
     void syncWalletBalance()
   }, [bumpWalletActivityRefresh, setWalletBalance, syncWalletBalance, triggerWalletFlash])
 
+  useEffect(() => {
+    lockedRef.current = locked
+  }, [locked])
+
+  const runNotificationAction = useCallback((action: PendingNotificationAction) => {
+    if (action.type === 'web') {
+      openWebPage(action.url, action.title)
+      return
+    }
+
+    setActiveRideId(action.rideId)
+    if (MATCHING_STATUSES.includes(action.rideStatus || '')) {
+      setRideScreen('matching')
+    } else {
+      setRideScreen('active')
+    }
+  }, [openWebPage])
+
+  const getNotificationAction = useCallback((data: Record<string, any>): PendingNotificationAction | null => {
+    const webUrl = data?.web_url || data?.cta_url
+    if (typeof webUrl === 'string' && webUrl.trim()) {
+      const webTitle = typeof data?.web_title === 'string'
+        ? data.web_title
+        : typeof data?.title === 'string'
+          ? data.title
+          : undefined
+      return { type: 'web', url: webUrl, title: webTitle }
+    }
+
+    const rideId = data?.ride_id
+    if (typeof rideId === 'string' && rideId.trim()) {
+      const rideStatus = typeof data?.ride_status === 'string' ? data.ride_status : undefined
+      return { type: 'ride', rideId, rideStatus }
+    }
+
+    return null
+  }, [])
+
+  const handleNotificationResponse = useCallback((data: Record<string, any>) => {
+    handleWalletNotification(data)
+    const action = getNotificationAction(data)
+    if (!action) return
+
+    if (lockedRef.current) {
+      pendingNotificationActionRef.current = action
+      return
+    }
+
+    runNotificationAction(action)
+  }, [getNotificationAction, handleWalletNotification, runNotificationAction])
+
+  const getInitialNotificationKey = (data: Record<string, any>) => JSON.stringify({
+    campaign_id: data?.campaign_id,
+    web_url: data?.web_url,
+    cta_url: data?.cta_url,
+    ride_id: data?.ride_id,
+    ride_status: data?.ride_status,
+  })
+
   // ─── Notification tap → navigate to ride screen or web page ───────────────
   useEffect(() => {
+    if (!isAuthenticated || !user || user.role !== 'student') return
+
+    let cancelled = false
+    const cleanup = addNotificationResponseListener(handleNotificationResponse)
+
+    getLastNotificationResponseData()
+      .then((data) => {
+        if (cancelled || !data) return
+        const key = getInitialNotificationKey(data)
+        if (lastInitialNotificationKeyRef.current === key) return
+        lastInitialNotificationKeyRef.current = key
+        handleNotificationResponse(data)
+      })
+      .catch(() => null)
+
+    return () => {
+      cancelled = true
+      cleanup()
+    }
+  }, [handleNotificationResponse, isAuthenticated, user?.id, user?.role])
+
+  useEffect(() => {
     if (!isAuthenticated || locked) return
-    const cleanup = addNotificationResponseListener((data) => {
-      handleWalletNotification(data)
-      // If notification carries a web_url, open it in the in-app browser
-      const webUrl = data?.web_url as string | undefined
-      const webTitle = data?.web_title as string | undefined
-      if (webUrl) {
-        openWebPage(webUrl, webTitle)
-        return
-      }
-      const rideId = data?.ride_id as string | undefined
-      const rideStatus = data?.ride_status as string | undefined
-      if (rideId) {
-        setActiveRideId(rideId)
-        if (MATCHING_STATUSES.includes(rideStatus || '')) {
-          setRideScreen('matching')
-        } else {
-          setRideScreen('active')
-        }
-      }
-    })
-    return cleanup
-  }, [isAuthenticated, locked, handleWalletNotification])
+    const action = pendingNotificationActionRef.current
+    if (!action) return
+    pendingNotificationActionRef.current = null
+    runNotificationAction(action)
+  }, [isAuthenticated, locked, runNotificationAction])
 
 
   useEffect(() => {

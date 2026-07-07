@@ -34,6 +34,7 @@ class ActiveInAppAnnouncementTests(APITestCase):
             title='New Semester Update',
             body='Welcome back to campus.',
             cta_label='Continue',
+            cta_url='https://example.com/semester',
             is_active=True,
         )
 
@@ -44,6 +45,7 @@ class ActiveInAppAnnouncementTests(APITestCase):
         self.assertEqual(response.data['announcement']['campaign_id'], 'semester_update_v1')
         self.assertEqual(response.data['announcement']['title'], 'New Semester Update')
         self.assertEqual(response.data['announcement']['cta_label'], 'Continue')
+        self.assertEqual(response.data['announcement']['cta_url'], 'https://example.com/semester')
 
     def test_driver_cannot_fetch_student_in_app_announcement(self):
         InAppAnnouncement.objects.create(

@@ -14,6 +14,7 @@ type WebPageState = { url: string; title?: string } | null
 
 type WebPageContextType = {
   openWebPage: (url: string, title?: string) => void
+  closeWebPage: () => void
   closWebPage: () => void
   webPage: WebPageState
 }
@@ -24,14 +25,15 @@ export function WebPageProvider({ children }: { children: ReactNode }) {
   const [webPage, setWebPage] = useState<WebPageState>(null)
 
   const openWebPage = (url: string, title?: string) => {
-    if (!url) return
-    setWebPage({ url, title })
+    const normalizedUrl = normalizeWebUrl(url)
+    if (!normalizedUrl) return
+    setWebPage({ url: normalizedUrl, title })
   }
 
-  const closWebPage = () => setWebPage(null)
+  const closeWebPage = () => setWebPage(null)
 
   return (
-    <WebPageContext.Provider value={{ openWebPage, closWebPage, webPage }}>
+    <WebPageContext.Provider value={{ openWebPage, closeWebPage, closWebPage: closeWebPage, webPage }}>
       {children}
     </WebPageContext.Provider>
   )
@@ -41,4 +43,20 @@ export function useWebPage() {
   const ctx = useContext(WebPageContext)
   if (!ctx) throw new Error('useWebPage must be used inside <WebPageProvider>')
   return ctx
+}
+
+export function normalizeWebUrl(url?: string | null) {
+  const trimmed = String(url || '').trim()
+  if (!trimmed) return null
+
+  try {
+    const parsed = new URL(trimmed)
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return parsed.toString()
+    }
+  } catch {
+    return null
+  }
+
+  return null
 }

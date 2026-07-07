@@ -61,7 +61,7 @@
               <table width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td align="center">
-                    <a href="#" style="display:inline-block;background:linear-gradient(135deg,#6A1B9A,#9C27B0);color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 40px;border-radius:50px;letter-spacing:0.3px;">
+                    <a href="{% if cta_url %}{{ cta_url }}{% else %}#{% endif %}" style="display:inline-block;background:linear-gradient(135deg,#6A1B9A,#9C27B0);color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 40px;border-radius:50px;letter-spacing:0.3px;">
                       {{ cta_label }}
                     </a>
                   </td>
