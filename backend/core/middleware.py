@@ -29,7 +29,11 @@ AUTH_RATE_LIMIT_PREFIXES = (
 )
 
 MOBILE_UA_RE = re.compile(r"Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile", re.IGNORECASE)
-DESKTOP_ONLY_EXEMPT_PATH_PREFIXES = ("/health/",)
+DESKTOP_ONLY_EXEMPT_PATH_PREFIXES = (
+    "/health/",
+    "/health-simple/",
+    "/webview/",
+)
 
 
 class SecurityHeadersMiddleware:
@@ -41,6 +45,13 @@ class SecurityHeadersMiddleware:
     def __call__(self, request):
         response = self.get_response(request)
         if getattr(settings, 'DEBUG', False):
+            return response
+        if request.path.startswith("/webview/"):
+            response['Content-Security-Policy'] = (
+                "default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; "
+                "base-uri 'self'; form-action 'none'"
+            )
+            response['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
             return response
         csp = getattr(
             settings,

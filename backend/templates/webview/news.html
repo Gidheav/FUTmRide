@@ -1,0 +1,33 @@
+{% extends 'webview/base.html' %}
+
+{% block title %}Campus News{% endblock %}
+
+{% block content %}
+<header class="wv-header">
+    <div class="wv-header-row">
+        <span class="wv-icon">N</span>
+        <h1 class="wv-title">Campus News</h1>
+    </div>
+    <p class="wv-subtitle">Stay updated with the latest university announcements.</p>
+</header>
+
+<main class="wv-main wv-stack">
+    <article class="wv-card wv-card-pad">
+        <span class="wv-date">Oct 12, 2026</span>
+        <h2 class="wv-card-title">New Semester Registration Open</h2>
+        <p class="wv-body">Registration for the 2026/2027 academic session has officially begun for all returning students.</p>
+    </article>
+
+    <article class="wv-card wv-card-pad">
+        <span class="wv-date">Oct 10, 2026</span>
+        <h2 class="wv-card-title">Campus Wi-Fi Upgrade Completed</h2>
+        <p class="wv-body">The ICT center has completed the university-wide Wi-Fi infrastructure upgrade. Enjoy faster speeds.</p>
+    </article>
+
+    <article class="wv-card wv-card-pad">
+        <span class="wv-date">Oct 05, 2026</span>
+        <h2 class="wv-card-title">Library Extended Hours</h2>
+        <p class="wv-body">In preparation for mid-terms, the main campus library will now remain open until 11:00 PM daily.</p>
+    </article>
+</main>
+{% endblock %}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { StyleSheet, View, ActivityIndicator, Text, TouchableOpacity } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { safeWebViewProps } from '../services/safeWebViewConfig'
@@ -13,15 +13,19 @@ export default function GenericWebPage({ url, title, onClose }: Props) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
 
+  useEffect(() => {
+    setLoading(true)
+    setError(false)
+  }, [url])
+
   return (
     <View style={styles.container}>
-      {/* Header bar with optional close button */}
       {(title || onClose) && (
         <View style={styles.header}>
           <Text style={styles.headerTitle} numberOfLines={1}>{title || 'Loading...'}</Text>
           {onClose && (
             <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Text style={styles.closeBtnText}>✕</Text>
+              <Text style={styles.closeBtnText}>X</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -29,7 +33,7 @@ export default function GenericWebPage({ url, title, onClose }: Props) {
 
       {error ? (
         <View style={styles.errorContainer}>
-          <Text style={styles.errorIcon}>⚠️</Text>
+          <Text style={styles.errorIcon}>!</Text>
           <Text style={styles.errorTitle}>Could not load page</Text>
           <Text style={styles.errorSubtitle}>Check your internet connection and try again.</Text>
           {onClose && (
@@ -40,11 +44,12 @@ export default function GenericWebPage({ url, title, onClose }: Props) {
         </View>
       ) : (
         <WebView
-          source={{ uri: url }}
+          source={{ uri: url, headers: { Accept: 'text/html,application/xhtml+xml' } }}
           style={styles.webview}
           {...safeWebViewProps}
           onLoadStart={() => { setLoading(true); setError(false) }}
           onLoadEnd={() => setLoading(false)}
+          onHttpError={() => { setLoading(false); setError(true) }}
           onError={() => { setLoading(false); setError(true) }}
         />
       )}

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../../core/api'
+import { API_BASE_URL } from '../../core/api'
 
 export type ExternalWebViewConfig = {
   news_url: string
@@ -8,12 +9,23 @@ export type ExternalWebViewConfig = {
   safety_guide_url: string
 }
 
+const WEBVIEW_TOKEN = process.env.EXPO_PUBLIC_WEBVIEW_TOKEN || 'LzR_Secure_App_2026'
+
+function buildDefaultWebViewUrl(page: string) {
+  try {
+    const origin = new URL(API_BASE_URL).origin
+    return `${origin}/webview/${page}/?token=${WEBVIEW_TOKEN}`
+  } catch {
+    return `https://lrride-server.onrender.com/webview/${page}/?token=${WEBVIEW_TOKEN}`
+  }
+}
+
 // Fallback default URLs in case the backend request fails
 const DEFAULT_CONFIG: ExternalWebViewConfig = {
-  news_url: 'https://futmapp.vercel.app/m-app-portal/news?token=LzR_Secure_App_2026',
-  events_url: 'https://futmapp.vercel.app/m-app-portal/events?token=LzR_Secure_App_2026',
-  activities_url: 'https://futmapp.vercel.app/m-app-portal/activities?token=LzR_Secure_App_2026',
-  safety_guide_url: 'https://futmapp.vercel.app/m-app-portal/safety?token=LzR_Secure_App_2026',
+  news_url: buildDefaultWebViewUrl('news'),
+  events_url: buildDefaultWebViewUrl('events'),
+  activities_url: buildDefaultWebViewUrl('activities'),
+  safety_guide_url: buildDefaultWebViewUrl('safety'),
 }
 
 // Global cache to prevent re-fetching on every screen navigation

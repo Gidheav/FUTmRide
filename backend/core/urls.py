@@ -3,7 +3,8 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
-from django.http import JsonResponse
+from django.http import JsonResponse, Http404
+from django.shortcuts import render
 from core.health import HealthCheckView
 
 
@@ -15,12 +16,33 @@ def app_config(request):
     Returns global dynamic configurations for the mobile app clients.
     Values can be changed via Environment Variables on Render without redeploying code.
     """
+    token = os.environ.get("MOBILE_WEBVIEW_TOKEN", "LzR_Secure_App_2026")
+
+    def default_webview_url(page):
+        return request.build_absolute_uri(f"/webview/{page}/?token={token}")
+
     return JsonResponse({
-        "news_url": os.environ.get("MOBILE_NEWS_URL", "https://futmapp.vercel.app/m-app-portal/news?token=LzR_Secure_App_2026"),
-        "events_url": os.environ.get("MOBILE_EVENTS_URL", "https://futmapp.vercel.app/m-app-portal/events?token=LzR_Secure_App_2026"),
-        "activities_url": os.environ.get("MOBILE_ACTIVITIES_URL", "https://futmapp.vercel.app/m-app-portal/activities?token=LzR_Secure_App_2026"),
-        "safety_guide_url": os.environ.get("MOBILE_SAFETY_GUIDE_URL", "https://futmapp.vercel.app/m-app-portal/safety?token=LzR_Secure_App_2026"),
+        "news_url": os.environ.get("MOBILE_NEWS_URL", default_webview_url("news")),
+        "events_url": os.environ.get("MOBILE_EVENTS_URL", default_webview_url("events")),
+        "activities_url": os.environ.get("MOBILE_ACTIVITIES_URL", default_webview_url("activities")),
+        "safety_guide_url": os.environ.get("MOBILE_SAFETY_GUIDE_URL", default_webview_url("safety")),
     })
+
+def secure_webview(request, page):
+    """
+    Renders simple HTML templates for the mobile app webviews.
+    Requires a secret token to prevent direct public access.
+    """
+    token = request.GET.get('token')
+    expected_token = os.environ.get("MOBILE_WEBVIEW_TOKEN", "LzR_Secure_App_2026")
+    if token != expected_token:
+        raise Http404("Not Found")
+    
+    valid_pages = ['news', 'events', 'activities', 'safety']
+    if page not in valid_pages:
+        raise Http404("Not Found")
+        
+    return render(request, f"webview/{page}.html")
 
 urlpatterns = [
     path("", healthcheck, name="root"),
@@ -42,6 +64,9 @@ urlpatterns = [
     path("api/v1/support/", include("apps.support.urls")),
     path("api/v1/reports/", include("apps.reports.urls")),
     path("api/v1/locations/", include("apps.locations.urls")),
+    
+    # Secure Mobile WebViews
+    path("webview/<str:page>/", secure_webview, name="secure-webview"),
 ]
 
 if settings.DEBUG:

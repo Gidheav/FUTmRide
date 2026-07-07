@@ -1,0 +1,41 @@
+{% extends 'webview/base.html' %}
+
+{% block title %}Student Activities{% endblock %}
+
+{% block content %}
+<header class="wv-header">
+    <div class="wv-header-row">
+        <span class="wv-icon">A</span>
+        <h1 class="wv-title">Activities</h1>
+    </div>
+    <p class="wv-subtitle">Join clubs, groups, and extracurriculars.</p>
+</header>
+
+<main class="wv-main">
+    <section class="wv-grid">
+        <article class="wv-card wv-activity">
+            <span class="wv-activity-icon">D</span>
+            <h2 class="wv-card-title">Dev Club</h2>
+            <p class="wv-body">Coding and Tech</p>
+        </article>
+
+        <article class="wv-card wv-activity">
+            <span class="wv-activity-icon" style="background: #e8f1ff; color: var(--blue);">B</span>
+            <h2 class="wv-card-title">Debate Society</h2>
+            <p class="wv-body">Public Speaking</p>
+        </article>
+
+        <article class="wv-card wv-activity">
+            <span class="wv-activity-icon" style="background: #eaf8ef; color: var(--green);">P</span>
+            <h2 class="wv-card-title">Photography</h2>
+            <p class="wv-body">Arts and Media</p>
+        </article>
+
+        <article class="wv-card wv-activity">
+            <span class="wv-activity-icon" style="background: #fff3dd; color: var(--amber);">V</span>
+            <h2 class="wv-card-title">Volunteer Unit</h2>
+            <p class="wv-body">Community Service</p>
+        </article>
+    </section>
+</main>
+{% endblock %}

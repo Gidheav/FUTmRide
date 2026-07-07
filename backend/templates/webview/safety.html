@@ -1,0 +1,60 @@
+{% extends 'webview/base.html' %}
+
+{% block title %}Safety Guide{% endblock %}
+
+{% block content %}
+<header class="wv-header">
+    <div class="wv-header-row">
+        <span class="wv-icon">S</span>
+        <h1 class="wv-title">Safety Guide</h1>
+    </div>
+    <p class="wv-subtitle">Essential emergency contacts and guidelines.</p>
+</header>
+
+<main class="wv-main wv-stack">
+    <section class="wv-alert">
+        <h2 class="wv-alert-title">Emergency Contacts</h2>
+        <div class="wv-contact">
+            <div>
+                <p class="wv-contact-title">Campus Security</p>
+                <p class="wv-contact-subtitle">24/7 Available</p>
+            </div>
+            <a class="wv-call" href="tel:112">Call</a>
+        </div>
+        <div class="wv-contact">
+            <div>
+                <p class="wv-contact-title">Medical Clinic</p>
+                <p class="wv-contact-subtitle">Ambulance Services</p>
+            </div>
+            <a class="wv-call" href="tel:112">Call</a>
+        </div>
+    </section>
+
+    <section>
+        <h2 class="wv-section-title">General Guidelines</h2>
+        <ul class="wv-card wv-list">
+            <li class="wv-list-item">
+                <span class="wv-dot"></span>
+                <div>
+                    <h3 class="wv-card-title">Late Night Movement</h3>
+                    <p class="wv-body">Avoid walking alone in unlit areas after 10 PM. Always use the LR-Ride app for safe transit.</p>
+                </div>
+            </li>
+            <li class="wv-list-item">
+                <span class="wv-dot" style="background: var(--amber);"></span>
+                <div>
+                    <h3 class="wv-card-title">Personal Belongings</h3>
+                    <p class="wv-body">Do not leave laptops, phones, or bags unattended in the library or lecture halls.</p>
+                </div>
+            </li>
+            <li class="wv-list-item">
+                <span class="wv-dot" style="background: var(--red);"></span>
+                <div>
+                    <h3 class="wv-card-title">Report Suspicious Activity</h3>
+                    <p class="wv-body">If you see something unusual, report it immediately to the nearest security outpost.</p>
+                </div>
+            </li>
+        </ul>
+    </section>
+</main>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends 'webview/base.html' %}
+
+{% block title %}Campus Events{% endblock %}
+
+{% block content %}
+<header class="wv-header">
+    <div class="wv-header-row">
+        <span class="wv-icon">E</span>
+        <h1 class="wv-title">Events</h1>
+    </div>
+    <p class="wv-subtitle">Discover what is happening on campus.</p>
+</header>
+
+<main class="wv-main wv-stack">
+    <article class="wv-card">
+        <div class="wv-top-line" style="background: var(--green);"></div>
+        <div class="wv-card-pad">
+            <div class="wv-card-head">
+                <h2 class="wv-card-title">Tech Symposium 2026</h2>
+                <span class="wv-pill">Upcoming</span>
+            </div>
+            <div class="wv-meta">
+                <span>Oct 15, 10:00 AM</span>
+                <span>Main Auditorium</span>
+            </div>
+            <p class="wv-body">Join industry leaders for a day of talks on AI, mobility, and the future of tech.</p>
+        </div>
+    </article>
+
+    <article class="wv-card">
+        <div class="wv-top-line" style="background: var(--blue);"></div>
+        <div class="wv-card-pad">
+            <div class="wv-card-head">
+                <h2 class="wv-card-title">Inter-Faculty Sports Final</h2>
+                <span class="wv-pill" style="background: #eef5ff; color: var(--blue);">Upcoming</span>
+            </div>
+            <div class="wv-meta">
+                <span>Oct 18, 4:00 PM</span>
+                <span>Sports Complex</span>
+            </div>
+            <p class="wv-body">Come support your faculty as they battle it out for the ultimate championship cup.</p>
+        </div>
+    </article>
+</main>
+{% endblock %}
