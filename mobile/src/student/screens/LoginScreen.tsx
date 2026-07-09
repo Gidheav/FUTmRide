@@ -12,12 +12,13 @@ import {
   Platform,
   Modal,
   Keyboard,
+  ActivityIndicator,
 } from 'react-native'
 import { useEffect, useState } from 'react'
 import { MaterialIcons } from '@expo/vector-icons'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useAuthStore } from '../../core/authStore'
-import api, { API_BASE_URL } from '../../core/api'
+import api from '../../core/api'
 import LoadingOverlay from '../components/LoadingOverlay'
 
 const ILLUSTRATION_IMAGE = require('../../homeslide3-1-1024x499.png')
@@ -62,11 +63,10 @@ const getApiErrorMessage = (err: any, fallback: string) => {
     const timeoutLike = code === 'ECONNABORTED' || rawMessage.toLowerCase().includes('timeout')
 
     if (timeoutLike) {
-      return 'Request timed out while waiting for the server response. This can happen when sending verification email; please try again.'
+      return 'The connection is taking too long. Please check your internet connection and try again.'
     }
 
-    const msg = rawMessage ? ` (${rawMessage})` : ''
-    return `Cannot reach server${msg}. Ensure backend is reachable at ${API_BASE_URL}.`
+    return 'You appear to be offline or the service cannot be reached right now. Please check your internet connection and try again.'
   }
 
   return fallback
@@ -119,6 +119,17 @@ export default function StudentLoginScreen() {
   const [pendingSignupData, setPendingSignupData] = useState<{ email: string; password: string } | null>(null)
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false)
   const setAuth = useAuthStore((state) => state.setAuth)
+
+  // Forgot Password States
+  const [forgotPasswordModalVisible, setForgotPasswordModalVisible] = useState(false)
+  const [forgotPasswordStep, setForgotPasswordStep] = useState<1 | 2>(1)
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState('')
+  const [forgotPasswordCode, setForgotPasswordCode] = useState('')
+  const [forgotPasswordNewPassword, setForgotPasswordNewPassword] = useState('')
+  const [showForgotNewPassword, setShowForgotNewPassword] = useState(false)
+  const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false)
+  const [forgotPasswordError, setForgotPasswordError] = useState('')
+  const [forgotPasswordSuccessMessage, setForgotPasswordSuccessMessage] = useState('')
 
   useEffect(() => {
     const keyboardShowEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
@@ -320,6 +331,76 @@ export default function StudentLoginScreen() {
     }
   }
 
+  const handleForgotPasswordRequest = async () => {
+    const email = forgotPasswordEmail.trim().toLowerCase()
+    if (!email) {
+      setForgotPasswordError('Please enter your university email')
+      return
+    }
+    if (!studentEmailRegex.test(email)) {
+      setForgotPasswordError('Use format name.m1234567@st.futminna.edu.ng')
+      return
+    }
+
+    setForgotPasswordLoading(true)
+    setForgotPasswordError('')
+    setForgotPasswordSuccessMessage('')
+
+    try {
+      const response = await api.post('auth/password-reset/request/', { email }, { timeout: 20000 })
+      setForgotPasswordSuccessMessage(response.data?.message || `A password reset code has been sent to ${email}.`)
+      setForgotPasswordStep(2)
+      setForgotPasswordCode('')
+      setForgotPasswordNewPassword('')
+    } catch (err: any) {
+      setForgotPasswordError(getApiErrorMessage(err, 'Failed to send reset code. Please try again.'))
+    } finally {
+      setForgotPasswordLoading(false)
+    }
+  }
+
+  const handleForgotPasswordConfirm = async () => {
+    const email = forgotPasswordEmail.trim().toLowerCase()
+    const code = forgotPasswordCode.trim()
+
+    if (!verificationCodeRegex.test(code)) {
+      setForgotPasswordError('Enter the 6-digit verification code.')
+      return
+    }
+    if (forgotPasswordNewPassword.length < 8) {
+      setForgotPasswordError('New password must be at least 8 characters.')
+      return
+    }
+
+    setForgotPasswordLoading(true)
+    setForgotPasswordError('')
+
+    try {
+      await api.post('auth/password-reset/confirm/', {
+        email,
+        code,
+        new_password: forgotPasswordNewPassword,
+        confirm_password: forgotPasswordNewPassword
+      }, { timeout: 20000 })
+
+      setForgotPasswordModalVisible(false)
+      setIdentifier(email)
+      setPassword('')
+      Alert.alert('Success', 'Your password has been reset successfully. You can now log in.')
+    } catch (err: any) {
+      setForgotPasswordError(getApiErrorMessage(err, 'Failed to reset password. Please verify the code and try again.'))
+    } finally {
+      setForgotPasswordLoading(false)
+    }
+  }
+
+  const handleCloseForgotPasswordModal = () => {
+    if (forgotPasswordLoading) return
+    setForgotPasswordModalVisible(false)
+    setForgotPasswordError('')
+    setForgotPasswordSuccessMessage('')
+  }
+
   return (
     <SafeAreaView style={{flex: 1, backgroundColor: '#f9f9f9'}}>
     <KeyboardAvoidingView
@@ -445,7 +526,13 @@ export default function StudentLoginScreen() {
               <View style={styles.fieldGroup}>
                 <View style={styles.passwordRow}>
                   <Text style={styles.label}>Password</Text>
-                  <Pressable onPress={() => Alert.alert('Reset Password', 'Contact campus admin support to reset your password. Use the Help & Support section from the main menu after logging in.')}>
+                  <Pressable onPress={() => {
+                    setForgotPasswordModalVisible(true)
+                    setForgotPasswordStep(1)
+                    setForgotPasswordEmail(identifier)
+                    setForgotPasswordError('')
+                    setForgotPasswordSuccessMessage('')
+                  }}>
                     <Text style={styles.forgotText}>Forgot?</Text>
                   </Pressable>
                 </View>
@@ -550,8 +637,140 @@ export default function StudentLoginScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Forgot Password Modal */}
+      <Modal
+        visible={forgotPasswordModalVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={handleCloseForgotPasswordModal}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.verificationModalCard}>
+            <Text style={styles.verificationModalTitle}>
+              {forgotPasswordStep === 1 ? 'Reset Password' : 'Create New Password'}
+            </Text>
+            <Text style={styles.verificationModalSubtitle}>
+              {forgotPasswordStep === 1
+                ? 'Enter your university email to receive a password reset code.'
+                : `Enter the 6-digit code sent to ${forgotPasswordEmail} and your new password.`}
+            </Text>
+
+            {forgotPasswordStep === 1 ? (
+              <View style={styles.fieldGroup}>
+                <View style={styles.inputWrap}>
+                  <MaterialIcons name="mail" size={20} color="#5e5e5e" style={styles.inputIcon} />
+                  <TextInput
+                    style={[styles.input, { height: 48, backgroundColor: '#f3f3f3', paddingLeft: 44, fontSize: 16, textAlign: 'left', letterSpacing: 0, borderWidth: 0 }]}
+                    placeholder="name.m1234567@st.futminna.edu.ng"
+                    placeholderTextColor="#b8b8b8"
+                    value={forgotPasswordEmail}
+                    onChangeText={setForgotPasswordEmail}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                    editable={!forgotPasswordLoading}
+                  />
+                </View>
+              </View>
+            ) : (
+              <View style={{ gap: 16 }}>
+                <TextInput
+                  style={styles.verificationInput}
+                  placeholder="Enter 6-digit code"
+                  placeholderTextColor="#b8b8b8"
+                  value={forgotPasswordCode}
+                  onChangeText={(value) => setForgotPasswordCode(value.replace(/\D/g, '').slice(0, 6))}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  editable={!forgotPasswordLoading}
+                />
+
+                <View style={styles.inputWrap}>
+                  <MaterialIcons name="lock" size={20} color="#5e5e5e" style={styles.inputIcon} />
+                  <TextInput
+                    style={[styles.input, { height: 48, backgroundColor: '#f3f3f3', paddingLeft: 44, paddingRight: 44, fontSize: 16, textAlign: 'left', letterSpacing: 0, borderWidth: 0 }]}
+                    placeholder="New Password"
+                    placeholderTextColor="#b8b8b8"
+                    value={forgotPasswordNewPassword}
+                    onChangeText={setForgotPasswordNewPassword}
+                    secureTextEntry={!showForgotNewPassword}
+                    editable={!forgotPasswordLoading}
+                  />
+                  <Pressable onPress={() => setShowForgotNewPassword((prev) => !prev)} style={styles.eyeButton}>
+                    <MaterialIcons name={showForgotNewPassword ? 'visibility-off' : 'visibility'} size={20} color="#5e5e5e" />
+                  </Pressable>
+                </View>
+              </View>
+            )}
+
+            {forgotPasswordError ? (
+              <Text style={[styles.errorText, styles.verificationInlineStatus]}>{forgotPasswordError}</Text>
+            ) : forgotPasswordSuccessMessage ? (
+              <Text style={styles.verificationStatusText}>{forgotPasswordSuccessMessage}</Text>
+            ) : null}
+
+            {forgotPasswordStep === 1 ? (
+              <TouchableOpacity
+                style={[styles.primaryButton, forgotPasswordLoading && styles.primaryButtonDisabled]}
+                onPress={handleForgotPasswordRequest}
+                disabled={forgotPasswordLoading}
+                activeOpacity={0.85}
+              >
+                {forgotPasswordLoading ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <>
+                    <Text style={styles.primaryButtonText}>Send Code</Text>
+                    <MaterialIcons name="send" size={18} color="#ffffff" />
+                  </>
+                )}
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.primaryButton, forgotPasswordLoading && styles.primaryButtonDisabled]}
+                onPress={handleForgotPasswordConfirm}
+                disabled={forgotPasswordLoading}
+                activeOpacity={0.85}
+              >
+                {forgotPasswordLoading ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <>
+                    <Text style={styles.primaryButtonText}>Reset Password</Text>
+                    <MaterialIcons name="lock-reset" size={18} color="#ffffff" />
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+
+            <View style={styles.verificationActionsRow}>
+              {forgotPasswordStep === 2 ? (
+                <TouchableOpacity
+                  style={styles.verificationSecondaryAction}
+                  onPress={handleForgotPasswordRequest}
+                  disabled={forgotPasswordLoading}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.resendText}>Resend Code</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={{ flex: 1 }} />
+              )}
+
+              <TouchableOpacity
+                style={styles.verificationSecondaryAction}
+                onPress={handleCloseForgotPasswordModal}
+                disabled={forgotPasswordLoading}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.verificationSecondaryActionText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       </KeyboardAvoidingView>
-      <LoadingOverlay visible={loading || signupLoading || verificationLoading || verificationResendLoading} />
+      <LoadingOverlay visible={loading || signupLoading || verificationLoading || verificationResendLoading || forgotPasswordLoading} />
     </SafeAreaView>
   )
 }
@@ -742,9 +961,13 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     marginTop: 16,
+    minWidth: 184,
+    maxWidth: 260,
+    alignSelf: 'center',
     backgroundColor: '#9937d6',
     borderRadius: 12,
     paddingVertical: 12,
+    paddingHorizontal: 22,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

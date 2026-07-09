@@ -46,7 +46,7 @@ export default function UpdatesPage() {
   const handleRun = async () => {
     setIsModalVisible(true)
     setModalState('running')
-    setModalMessage('Checking server for updates...')
+    setModalMessage('Checking for updates...')
 
     try {
       const check = await LocationDataService.checkForUpdate()
@@ -70,7 +70,7 @@ export default function UpdatesPage() {
         (stage, status, detail) => {
           if (status === 'running') {
             const label = {
-              fetch: 'Downloading from server...',
+              fetch: 'Downloading update...',
               validate: 'Validating data...',
               save: 'Saving to device...',
               apply: 'Applying updates...',
@@ -93,7 +93,7 @@ export default function UpdatesPage() {
         setModalMessage(result.error ?? 'Update failed. Please try again.')
       }
     } catch (err: any) {
-      const msg = err?.response?.data?.detail || err?.message || 'Could not reach server'
+      const msg = err?.response?.data?.detail || err?.message || 'Could not connect. Please check your internet connection and try again.'
       setModalState('error')
       setModalMessage(`Check failed: ${msg}`)
     }
@@ -144,9 +144,14 @@ export default function UpdatesPage() {
 
         <View style={{ flex: 1 }} />
 
-        <TouchableOpacity style={styles.actionButton} onPress={handleRun} activeOpacity={0.85}>
-          <MaterialIcons name="system-update-alt" size={20} color="#ffffff" />
-          <Text style={styles.actionButtonText}>Check for Updates</Text>
+        <TouchableOpacity 
+          style={[styles.actionButton, isModalVisible && { backgroundColor: '#e2e2e2' }]} 
+          onPress={handleRun} 
+          activeOpacity={0.85}
+          disabled={isModalVisible}
+        >
+          <MaterialIcons name="system-update-alt" size={20} color={isModalVisible ? '#9ca3af' : '#ffffff'} />
+          <Text style={[styles.actionButtonText, isModalVisible && { color: '#9ca3af' }]}>Check for Updates</Text>
         </TouchableOpacity>
       </View>
 
@@ -167,7 +172,7 @@ export default function UpdatesPage() {
                 <MaterialIcons name="check-circle" size={56} color="#1a7340" />
                 <Text style={styles.modalStateTitle}>Up to Date</Text>
                 <Text style={styles.modalStateText}>{modalMessage}</Text>
-                <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#6A1B9A' }]} onPress={closeModal}>
+                <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#6A1B9A', width: '100%' }]} onPress={closeModal}>
                   <Text style={styles.modalButtonText}>Done</Text>
                 </TouchableOpacity>
               </View>
@@ -179,10 +184,10 @@ export default function UpdatesPage() {
                 <Text style={styles.modalStateTitle}>Update Failed</Text>
                 <Text style={styles.modalStateTextError}>{modalMessage}</Text>
                 <View style={styles.modalButtonRow}>
-                  <TouchableOpacity style={[styles.modalButton, styles.modalButtonOutline]} onPress={closeModal}>
+                  <TouchableOpacity style={[styles.modalButton, styles.modalButtonOutline, { flex: 1 }]} onPress={closeModal}>
                     <Text style={[styles.modalButtonText, { color: '#6A1B9A' }]}>Cancel</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#6A1B9A' }]} onPress={handleRun}>
+                  <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#6A1B9A', flex: 1 }]} onPress={handleRun}>
                     <Text style={styles.modalButtonText}>Retry</Text>
                   </TouchableOpacity>
                 </View>
@@ -334,7 +339,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    width: '100%',
   },
   modalButtonOutline: {
     backgroundColor: 'transparent',
@@ -348,7 +352,7 @@ const styles = StyleSheet.create({
   },
   modalButtonText: {
     color: '#ffffff',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
   },
 })

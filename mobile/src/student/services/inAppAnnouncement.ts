@@ -25,6 +25,25 @@ type AnnouncementResponse = {
 
 const SEEN_CAMPAIGN_KEY_PREFIX = '@lr_ride/student/seen_in_app_announcement'
 const ANNOUNCEMENT_FETCH_TIMEOUT_MS = 3000
+const ANNOUNCEMENT_TOTAL_TIMEOUT_MS = 4500
+
+const withTimeout = async <T,>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  fallback: T,
+): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null
+
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timeoutId = setTimeout(() => resolve(fallback), timeoutMs)
+  })
+
+  try {
+    return await Promise.race([promise, timeoutPromise])
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId)
+  }
+}
 
 const seenCampaignKey = (userId: string) => `${SEEN_CAMPAIGN_KEY_PREFIX}:${userId}`
 
@@ -47,21 +66,27 @@ const normalizeAnnouncement = (
 export const getPendingInAppAnnouncement = async (
   userId: string,
 ): Promise<StudentInAppAnnouncement | null> => {
-  try {
-    const response = await api.get<AnnouncementResponse>(
-      'notifications/announcements/active/',
-      { timeout: ANNOUNCEMENT_FETCH_TIMEOUT_MS },
-    )
-    const announcement = normalizeAnnouncement(response.data?.announcement)
-    if (!announcement) return null
+  return withTimeout(
+    (async () => {
+      try {
+        const response = await api.get<AnnouncementResponse>(
+          'notifications/announcements/active/',
+          { timeout: ANNOUNCEMENT_FETCH_TIMEOUT_MS },
+        )
+        const announcement = normalizeAnnouncement(response.data?.announcement)
+        if (!announcement) return null
 
-    const seenCampaignId = await AsyncStorage.getItem(seenCampaignKey(userId))
-    if (seenCampaignId === announcement.campaignId) return null
+        const seenCampaignId = await AsyncStorage.getItem(seenCampaignKey(userId))
+        if (seenCampaignId === announcement.campaignId) return null
 
-    return announcement
-  } catch {
-    return null
-  }
+        return announcement
+      } catch {
+        return null
+      }
+    })(),
+    ANNOUNCEMENT_TOTAL_TIMEOUT_MS,
+    null,
+  )
 }
 
 export const markInAppAnnouncementSeen = async (

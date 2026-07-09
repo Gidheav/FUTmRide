@@ -48,9 +48,9 @@ const resolveWsBase = () => {
     return `${scheme}//${base.host}`
   } catch {
     if (__DEV__) {
-      console.warn('[apiConfig] Could not derive WS base from API_BASE_URL. WebSocket connections will be disabled until a valid URL is configured.')
+      console.warn('[apiConfig] WebSocket connection is unavailable because the app URL is invalid.')
     } else {
-      console.error('[apiConfig] WS base URL could not be resolved in production. Check EXPO_PUBLIC_PROD_API_URL.')
+      console.error('[apiConfig] WebSocket connection is unavailable.')
     }
     return null
   }

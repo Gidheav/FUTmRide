@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import LoadingOverlay from '../../components/LoadingOverlay'
 import {
   FlatList,
   ScrollView,
@@ -9,6 +8,7 @@ import {
   TouchableOpacity,
   View,
   BackHandler,
+  ActivityIndicator,
 } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import * as LocationService from 'expo-location'
@@ -377,7 +377,7 @@ export default function FindNearbyTab() {
           disabled={scanLoading}
         >
           {scanLoading ? (
-            <LoadingOverlay visible={true} inline size={20} />
+            <ActivityIndicator size="small" color="#ffffff" style={{ marginRight: 8 }} />
           ) : (
             <MaterialIcons name="radar" size={18} color="#ffffff" />
           )}

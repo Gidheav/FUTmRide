@@ -48,6 +48,7 @@ import {
 
 // Statuses where we show the matching (searching) screen
 const MATCHING_STATUSES = ['requested', 'searching']
+const ANNOUNCEMENT_GATE_TIMEOUT_MS = 5000
 
 type RideScreen = 'none' | 'booking' | 'matching' | 'active' | 'garage'
 type PendingNotificationAction =
@@ -275,17 +276,37 @@ function StudentAppInner() {
     announcementCheckRef.current = checkKey
 
     let cancelled = false
-    if (firstCheckForUser) setAnnouncementGateVisible(true)
+    let gateTimeout: ReturnType<typeof setTimeout> | null = null
+
+    if (firstCheckForUser) {
+      setAnnouncementGateVisible(true)
+      gateTimeout = setTimeout(() => {
+        if (!cancelled) setAnnouncementGateVisible(false)
+      }, ANNOUNCEMENT_GATE_TIMEOUT_MS)
+    }
+
+    const hideAnnouncementGate = () => {
+      if (gateTimeout) {
+        clearTimeout(gateTimeout)
+        gateTimeout = null
+      }
+      if (firstCheckForUser) setAnnouncementGateVisible(false)
+    }
+
     const loadAnnouncement = async () => {
       const announcement = await getPendingInAppAnnouncement(user.id)
       if (cancelled) return
-      setPendingAnnouncement(announcement)
-      if (firstCheckForUser) setAnnouncementGateVisible(false)
+      try {
+        setPendingAnnouncement(announcement)
+      } finally {
+        hideAnnouncementGate()
+      }
     }
 
     void loadAnnouncement()
     return () => {
       cancelled = true
+      hideAnnouncementGate()
     }
   }, [announcementRefreshKey, isAuthenticated, locked, pinRecoveryRequired, user?.id, user?.role])
 

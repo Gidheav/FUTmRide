@@ -4,9 +4,9 @@ import { getAuthTokens } from './secureStorage'
 export async function createAuthenticatedWebSocket(path) {
   if (!WS_BASE_URL) {
     if (__DEV__) {
-      console.warn('[ws] WS_BASE_URL is not configured. Set EXPO_PUBLIC_WS_URL or EXPO_PUBLIC_API_URL in your environment.')
+      console.warn('[ws] WebSocket connection is unavailable.')
     } else {
-      console.error('[ws] WS_BASE_URL is not configured. WebSocket connection aborted.')
+      console.error('[ws] WebSocket connection is unavailable.')
     }
     return null
   }

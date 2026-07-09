@@ -214,7 +214,7 @@ function HealthProviderCard({
           </div>
           <div style={{ minWidth: 0 }}>
             <h4 style={{ fontSize: 13, fontWeight: 800, color: T.textPrimary, margin: 0 }}>{title}</h4>
-            <p style={{ fontSize: 11, color: T.textMuted, margin: '3px 0 0' }}>{provider?.configured ? 'Live provider report' : 'Waiting for .env key'}</p>
+            <p style={{ fontSize: 11, color: T.textMuted, margin: '3px 0 0' }}>{provider?.configured ? 'Live provider report' : 'Awaiting provider setup'}</p>
           </div>
         </div>
         <HealthStatusPill status={provider?.status} />
@@ -248,7 +248,7 @@ function HealthProviderCard({
           </div>
         )) : (
           <p style={{ fontSize: 11, color: T.textMuted, margin: 0 }}>
-            {provider?.configured ? 'No individual monitors or jobs returned.' : 'Add the provider API key to backend/.env.'}
+            {provider?.configured ? 'No individual monitors or jobs returned.' : 'Provider monitoring is not configured yet.'}
           </p>
         )}
       </div>
@@ -1533,10 +1533,10 @@ function IntegrationsReplica() {
                         <label style={{ fontSize: 11, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>Secret Key</label>
                         <div style={{ background: T.bgCard, padding: '10px 12px', border: `1px solid ${T.borderLight}`, marginTop: 5 }}>
                           <span style={{ fontSize: 12, color: T.textSecondary, fontFamily: 'monospace' }}>
-                            {secretKey && secretKey !== '—' ? secretKey : 'Not configured — set in server environment'}
+                            {secretKey && secretKey !== '—' ? secretKey : 'Not configured'}
                           </span>
                           <p style={{ fontSize: 11, color: T.textMuted, margin: '8px 0 0' }}>
-                            Full secrets are managed in Render/env only, not in the admin panel.
+                            Full secrets are managed outside the admin panel.
                           </p>
                         </div>
                       </div>
@@ -1630,7 +1630,7 @@ function IntegrationsReplica() {
                       )}
                       {selectedGateway === 'stripe' && (
                         <div style={{ padding: 14, background: T.bgCard, border: `1px solid ${T.borderLight}`, fontSize: 12, color: T.textMuted, textAlign: 'center' }}>
-                          Stripe configuration requires server-side environment variables. Contact your DevOps team.
+                          Stripe configuration is not available in this panel. Contact your operations team.
                         </div>
                       )}
                     </div>
@@ -2109,7 +2109,7 @@ function NotificationsReplica() {
       provider: notificationStatus.sms?.provider || 'termii',
       configured: Boolean(notificationStatus.sms?.configured),
       value: notificationStatus.sms?.configured ? 'Ready' : 'No key',
-      desc: 'TERMII_API_KEY from backend .env',
+      desc: 'SMS delivery provider',
     },
     {
       icon: MailIcon,

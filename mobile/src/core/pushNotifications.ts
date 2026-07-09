@@ -5,11 +5,48 @@ import * as Notifications from 'expo-notifications'
 import api from './api'
 
 const RIDE_STATUS_CHANNEL_ID = 'ride-status-alerts'
+const COMPACT_PREVIEW_FLAG = '__compact_preview'
+const NOTIFICATION_TITLE_PREVIEW_LENGTH = 48
+const NOTIFICATION_BODY_PREVIEW_LENGTH = 96
 
 let notificationHandlerReady = false
 let pushConfigWarningShown = false
 let rideChannelReady = false
 let lastHandledNotificationResponseId: string | null = null
+
+const truncatePreviewText = (value: unknown, maxLength: number) => {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  if (text.length <= maxLength) return text
+  return `${text.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`
+}
+
+const needsCompactPreview = (title: unknown, body: unknown) => {
+  const cleanTitle = String(title || '').replace(/\s+/g, ' ').trim()
+  const cleanBody = String(body || '').replace(/\s+/g, ' ').trim()
+  return (
+    cleanTitle.length > NOTIFICATION_TITLE_PREVIEW_LENGTH ||
+    cleanBody.length > NOTIFICATION_BODY_PREVIEW_LENGTH
+  )
+}
+
+const scheduleCompactForegroundPreview = async (notification: Notifications.Notification) => {
+  const content = notification.request.content
+  const data = (content.data ?? {}) as Record<string, any>
+  if (data?.[COMPACT_PREVIEW_FLAG]) return
+
+  await ensureRideChannel()
+  await Notifications.scheduleNotificationAsync({
+    identifier: `compact-${notification.request.identifier}`,
+    content: {
+      title: truncatePreviewText(content.title, NOTIFICATION_TITLE_PREVIEW_LENGTH),
+      body: truncatePreviewText(content.body, NOTIFICATION_BODY_PREVIEW_LENGTH),
+      data: { ...data, [COMPACT_PREVIEW_FLAG]: true },
+      sound: 'default',
+      priority: Notifications.AndroidNotificationPriority.HIGH,
+    },
+    trigger: { channelId: RIDE_STATUS_CHANNEL_ID },
+  })
+}
 
 const warnPushConfigOnce = (message: string) => {
   if (pushConfigWarningShown) return
@@ -20,14 +57,26 @@ const warnPushConfigOnce = (message: string) => {
 const ensureNotificationHandler = () => {
   if (notificationHandlerReady) return
   Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldSetBadge: false,
-      shouldPlaySound: true,
-      priority: Notifications.AndroidNotificationPriority.HIGH,
-    }),
+    handleNotification: async (notification) => {
+      const content = notification.request.content
+      const data = (content.data ?? {}) as Record<string, any>
+      const compactOriginal = !data?.[COMPACT_PREVIEW_FLAG] && needsCompactPreview(content.title, content.body)
+
+      if (compactOriginal) {
+        void scheduleCompactForegroundPreview(notification).catch((error) => {
+          console.warn('compact notification preview failed', error)
+        })
+      }
+
+      return {
+        shouldShowAlert: !compactOriginal,
+        shouldShowBanner: !compactOriginal,
+        shouldShowList: true,
+        shouldSetBadge: false,
+        shouldPlaySound: true,
+        priority: Notifications.AndroidNotificationPriority.HIGH,
+      }
+    },
   })
   notificationHandlerReady = true
 }
@@ -120,8 +169,8 @@ export const showRideStatusNotification = async (
     await Notifications.scheduleNotificationAsync({
       identifier, // When provided, this updates the existing notification instead of creating a new one
       content: {
-        title,
-        body,
+        title: truncatePreviewText(title, NOTIFICATION_TITLE_PREVIEW_LENGTH),
+        body: truncatePreviewText(body, NOTIFICATION_BODY_PREVIEW_LENGTH),
         data,
         sound: options?.silent ? false : 'default',
         vibrate: options?.silent ? [] : undefined,

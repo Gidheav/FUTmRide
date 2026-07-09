@@ -178,7 +178,7 @@ const LocationDataService = {
       const { version } = metaRes.data
 
       if (version === 0) {
-        return { success: false, error: 'No location data published on server yet.' }
+        return { success: false, error: 'Map updates are not available yet.' }
       }
       onProgress?.(0.1)
 

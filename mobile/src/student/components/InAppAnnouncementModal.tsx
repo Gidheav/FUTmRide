@@ -72,7 +72,9 @@ export default function InAppAnnouncementModal({ announcement, visible, onDismis
           <LinkedText text={announcement.body} style={styles.body} />
 
           <TouchableOpacity style={styles.ctaButton} activeOpacity={0.88} onPress={handleCta}>
-            <Text style={styles.ctaText}>{announcement.ctaLabel}</Text>
+            <Text style={styles.ctaText} numberOfLines={1} ellipsizeMode="tail">
+              {announcement.ctaLabel}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -132,8 +134,10 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   ctaButton: {
-    width: '100%',
+    minWidth: 150,
+    maxWidth: 240,
     minHeight: 46,
+    alignSelf: 'center',
     borderRadius: 8,
     backgroundColor: '#6A1B9A',
     alignItems: 'center',
@@ -144,5 +148,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#ffffff',
+    textAlign: 'center',
   },
 })

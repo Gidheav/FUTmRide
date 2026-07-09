@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { StyleSheet, View, ActivityIndicator, Text, TouchableOpacity } from 'react-native'
+import { useEffect, useRef, useState } from 'react'
+import { StyleSheet, View, ActivityIndicator, Text, TouchableOpacity, ScrollView, RefreshControl, Platform } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { safeWebViewProps } from '../services/safeWebViewConfig'
 
@@ -7,11 +7,14 @@ type Props = {
   url: string
   title?: string
   onClose?: () => void
+  enablePullToRefresh?: boolean
 }
 
-export default function GenericWebPage({ url, title, onClose }: Props) {
+export default function GenericWebPage({ url, title, onClose, enablePullToRefresh }: Props) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const webviewRef = useRef<any | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -43,15 +46,49 @@ export default function GenericWebPage({ url, title, onClose }: Props) {
           )}
         </View>
       ) : (
-        <WebView
-          source={{ uri: url, headers: { Accept: 'text/html,application/xhtml+xml' } }}
-          style={styles.webview}
-          {...safeWebViewProps}
-          onLoadStart={() => { setLoading(true); setError(false) }}
-          onLoadEnd={() => setLoading(false)}
-          onHttpError={() => { setLoading(false); setError(true) }}
-          onError={() => { setLoading(false); setError(true) }}
-        />
+        // Enable pull-to-refresh when requested. On Android, react-native-webview
+        // supports `pullToRefreshEnabled`. For iOS we wrap in a ScrollView with
+        // RefreshControl; this will trigger a `reload()` on the webview.
+        (enablePullToRefresh && Platform.OS === 'ios') ? (
+          <ScrollView
+            contentContainerStyle={{ flex: 1 }}
+            refreshControl={(
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={() => {
+                  setRefreshing(true)
+                  webviewRef.current?.reload()
+                  // onLoadEnd will clear loading and we clear refreshing there
+                }}
+                tintColor="#6A1B9A"
+              />
+            )}
+          >
+            <WebView
+              ref={webviewRef}
+              source={{ uri: url, headers: { Accept: 'text/html,application/xhtml+xml' } }}
+              style={styles.webview}
+              {...safeWebViewProps}
+              onLoadStart={() => { setLoading(true); setError(false) }}
+              onLoadEnd={() => { setLoading(false); setRefreshing(false) }}
+              onHttpError={() => { setLoading(false); setError(true); setRefreshing(false) }}
+              onError={() => { setLoading(false); setError(true); setRefreshing(false) }}
+            />
+          </ScrollView>
+        ) : (
+          <WebView
+            ref={webviewRef}
+            source={{ uri: url, headers: { Accept: 'text/html,application/xhtml+xml' } }}
+            style={styles.webview}
+            {...safeWebViewProps}
+            // Android-only native pull-to-refresh prop
+            pullToRefreshEnabled={enablePullToRefresh}
+            onLoadStart={() => { setLoading(true); setError(false) }}
+            onLoadEnd={() => setLoading(false)}
+            onHttpError={() => { setLoading(false); setError(true) }}
+            onError={() => { setLoading(false); setError(true) }}
+          />
+        )
       )}
 
       {loading && !error && (

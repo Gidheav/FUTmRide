@@ -18,7 +18,6 @@ import { COLORS, FONTS } from '../../core/theme'
 import LoadingOverlay from '../components/LoadingOverlay'
 import { useAuthStore } from '../../core/authStore'
 import api, { settingsApi } from '../../core/api'
-import { API_BASE_URL } from '../../../config/apiConfig'
 
 const HERO_IMAGE =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuAA82KcXqZA4aHsjymqPMgdvEZRGk709r3ShwzbAzJ8J02R4R9yYQBuSRB6CipocQbryqJU-vvfYEul4xdS4YCAM8FXGE4GyIBFMZwr62VcRKfKHrr4UW3lmGmpM5LoX5kAryoXAqHZNXu9sHQbSZFX6V740qIlrjIKL-OgE_3WngEHD6H2X2e3HmRdeYb7PmCuwu78N8Yad9Yv79YyclATBuXvhZXk2TywTHX2VYzFseo0xADkxCP9y1vThe2hUuhW1Kv2UR176W0'
@@ -88,8 +87,15 @@ export default function DriverLoginScreen() {
     }
 
     if (!err?.response) {
-      const msg = err?.message ? ` (${err.message})` : ''
-      return `h server${msg}. Ensure backend is reachable at ${API_BASE_URL}`
+      const code = String(err?.code || '').toUpperCase()
+      const rawMessage = String(err?.message || '')
+      const timeoutLike = code === 'ECONNABORTED' || rawMessage.toLowerCase().includes('timeout')
+
+      if (timeoutLike) {
+        return 'The connection is taking too long. Please check your internet connection and try again.'
+      }
+
+      return 'You appear to be offline or the service cannot be reached right now. Please check your internet connection and try again.'
     }
 
     return fallback

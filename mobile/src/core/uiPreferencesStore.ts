@@ -7,7 +7,7 @@ export interface UIPreferencesStore {
 }
 
 export const useUIPreferencesStore = create<UIPreferencesStore>((set) => ({
-  hideBalance: false,
+  hideBalance: true,
   setHideBalance: (value) => set({ hideBalance: value }),
   toggleHideBalance: () => set((state) => ({ hideBalance: !state.hideBalance })),
 }))

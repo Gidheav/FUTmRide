@@ -84,19 +84,17 @@ export default function LoginPage() {
       if (message) {
         toast.error(message)
       } else if (!error?.response) {
-        // This handles cases where the request never reached the server (or was blocked by CORS)
-        const targetUrl = error?.config?.url 
-          ? (error.config.baseURL || '') + error.config.url 
-          : 'Unknown URL'
+        const code = String(error?.code || '').toUpperCase()
+        const rawMessage = String(error?.message || '')
+        const timeoutLike = code === 'ECONNABORTED' || rawMessage.toLowerCase().includes('timeout')
         toast.error(
-          `Connection Failed!\n` +
-          `Tried to reach: ${targetUrl}\n` +
-          `Error: ${error?.message}\n` +
-          `Check if your backend is running and the URL in your .env file is correct. Did you restart "npm run dev"?`,
-          { duration: 8000 }
+          timeoutLike
+            ? 'The connection is taking too long. Please check your internet connection and try again.'
+            : 'Unable to connect right now. Please check your internet connection and try again.',
+          { duration: 8000 },
         )
       } else {
-        toast.error(`Server error (${error.response.status}): ${JSON.stringify(body) || 'Unknown error'}`)
+        toast.error('We could not sign you in right now. Please try again shortly.')
       }
     },
   })

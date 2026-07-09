@@ -3,11 +3,8 @@ import { StatusBar } from 'react-native'
 import { useEffect } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import DriverApp from './src/driver'
-import { API_BASE_URL, APP_ENV } from './config/apiConfig'
 import { applyThemeMode } from './src/core/theme'
 import { useSettingsStore } from './src/core/settingsStore'
-
-console.log(`[LR-Ride Driver] env: ${APP_ENV}, api: ${API_BASE_URL}`)
 
 const queryClient = new QueryClient()
 
