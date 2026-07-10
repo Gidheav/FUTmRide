@@ -1,13 +1,18 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  Animated,
+  Dimensions,
   FlatList,
   Image,
+  Modal,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
+  Platform,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
@@ -63,6 +68,8 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
   const [refreshing, setRefreshing] = useState(false)
   const [markingAll, setMarkingAll] = useState(false)
   const [selectedNotification, setSelectedNotification] = useState<NotificationItem | null>(null)
+  const [announcementVisible, setAnnouncementVisible] = useState(false)
+  const slideAnim = useRef(new Animated.Value(0)).current
   const insets = useSafeAreaInsets()
   const { openWebPage } = useWebPage()
 
@@ -111,15 +118,44 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
 
   const unreadCount = notifications.filter((n) => !n.is_read).length
 
+  const openAnnouncement = (item: NotificationItem) => {
+    setSelectedNotification(item)
+    setAnnouncementVisible(true)
+    Animated.spring(slideAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 65,
+      friction: 11,
+    }).start()
+  }
+
+  const closeAnnouncement = () => {
+    Animated.timing(slideAnim, {
+      toValue: 0,
+      duration: 220,
+      useNativeDriver: true,
+    }).start(() => {
+      setAnnouncementVisible(false)
+      setSelectedNotification(null)
+    })
+  }
+
   const renderItem = ({ item }: { item: NotificationItem }) => {
     const cfg = TYPE_ICONS[item.notification_type] || TYPE_ICONS.general
+    const isBroadcast =
+      item.notification_type === 'broadcast' &&
+      item.data?.in_app_announcement === true
     return (
       <TouchableOpacity
         style={[styles.notifCard, !item.is_read && styles.notifCardUnread]}
         activeOpacity={0.85}
         onPress={() => {
           if (!item.is_read) void handleMarkRead(item.id)
-          setSelectedNotification(item)
+          if (isBroadcast) {
+            openAnnouncement(item)
+          } else {
+            setSelectedNotification(item)
+          }
         }}
       >
         <View style={[styles.notifIconWrap, { backgroundColor: cfg.bg }]}>
@@ -155,7 +191,7 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
   // Keys to never show in the raw data rows for wallet transactions
   const HIDDEN_WALLET_KEYS = new Set(['wallet_balance', 'source', 'message'])
 
-  if (selectedNotification) {
+  if (selectedNotification && !announcementVisible) {
     const cfg = TYPE_ICONS[selectedNotification.notification_type] || TYPE_ICONS.general
     const isCredit = selectedNotification.notification_type === 'payment_received'
     const isDebit = selectedNotification.notification_type === 'payment_debited'
@@ -164,92 +200,6 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
       selectedNotification.notification_type === 'broadcast' &&
       selectedNotification.data?.in_app_announcement === true
 
-    // ── Rich announcement view ──────────────────────────────────────
-    if (isBroadcast) {
-      const announcementData = selectedNotification.data
-      const ctaUrl = typeof announcementData?.cta_url === 'string' && announcementData.cta_url.trim()
-        ? announcementData.cta_url
-        : typeof announcementData?.web_url === 'string' && announcementData.web_url.trim()
-          ? announcementData.web_url
-          : ''
-      const handleAnnouncementCta = () => {
-        if (ctaUrl) {
-          openWebPage(ctaUrl, announcementData?.web_title || selectedNotification.title)
-          onClose()
-          return
-        }
-        setSelectedNotification(null)
-      }
-
-      return (
-        <View style={styles.page}>
-          <View style={[styles.header, { paddingTop: Math.max(14, insets.top + 10) }]}>
-            <TouchableOpacity style={styles.backButton} onPress={() => setSelectedNotification(null)}>
-              <MaterialIcons name="arrow-back" size={22} color="#1a1c1c" />
-            </TouchableOpacity>
-            <Text style={styles.title}>Announcement</Text>
-            <View style={styles.headerSpacer} />
-          </View>
-
-          <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-            {/* Hero image */}
-            {announcementData?.image_url ? (
-              <Image
-                source={{ uri: announcementData.image_url }}
-                style={styles.announcementHero}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={styles.announcementIconHero}>
-                <View style={[styles.announcementIconCircle, { backgroundColor: '#f3e5f5' }]}>
-                  <MaterialIcons
-                    name={(announcementData?.icon_name as any) || 'campaign'}
-                    size={48}
-                    color="#6A1B9A"
-                  />
-                </View>
-              </View>
-            )}
-
-            <View style={styles.announcementBody}>
-              {/* Badge */}
-              <View style={styles.announcementBadge}>
-                <MaterialIcons name="campaign" size={12} color="#6A1B9A" />
-                <Text style={styles.announcementBadgeText}>Announcement</Text>
-              </View>
-
-              {/* Title */}
-              <Text style={styles.announcementTitle}>{selectedNotification.title}</Text>
-
-              {/* Date */}
-              <Text style={styles.announcementDate}>
-                {new Date(selectedNotification.created_at).toLocaleString('en-NG', {
-                  day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
-                })}
-              </Text>
-
-              {/* Divider */}
-              <View style={styles.announcementDivider} />
-
-              {/* Body text */}
-              <LinkedText text={selectedNotification.body} style={styles.announcementMessage} />
-
-              {/* CTA button */}
-              <TouchableOpacity
-                style={styles.announcementCta}
-                onPress={handleAnnouncementCta}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.announcementCtaText}>
-                  {announcementData?.cta_label || 'Got it'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
-        </View>
-      )
-    }
-
     // Extract amount for prominent display on debit/credit
     const txAmount = selectedNotification.data?.amount
       ? `₦${Number(selectedNotification.data.amount).toLocaleString('en-NG', { minimumFractionDigits: 2 })}`
@@ -257,7 +207,7 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
 
     return (
       <View style={styles.page}>
-        <View style={[styles.header, { paddingTop: Math.max(14, insets.top + 10) }]}>
+        <View style={[styles.header, { paddingTop: Platform.OS === 'ios' ? insets.top : 12 }]}>
           <TouchableOpacity style={styles.backButton} onPress={() => setSelectedNotification(null)}>
             <MaterialIcons name="arrow-back" size={22} color="#1a1c1c" />
           </TouchableOpacity>
@@ -268,10 +218,10 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.detailsContent} showsVerticalScrollIndicator={false}>
           <View style={styles.receiptCard}>
             <View style={styles.receiptHeader}>
-              <MaterialIcons 
-                name={isTransaction ? (isCredit ? 'check-circle' : 'receipt') : cfg.icon} 
-                size={48} 
-                color={isTransaction ? (isCredit ? '#2e7d32' : '#b91c1c') : cfg.color} 
+              <MaterialIcons
+                name={isTransaction ? (isCredit ? 'check-circle' : 'receipt') : cfg.icon}
+                size={48}
+                color={isTransaction ? (isCredit ? '#2e7d32' : '#b91c1c') : cfg.color}
               />
               {isTransaction && txAmount ? (
                 <Text style={[styles.receiptAmount, { color: isCredit ? '#2e7d32' : '#b91c1c' }]}>
@@ -310,8 +260,8 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
             </View>
 
             <View style={styles.receiptDivider} />
-            
-            <TouchableOpacity 
+
+            <TouchableOpacity
               style={styles.receiptCloseButton}
               onPress={() => setSelectedNotification(null)}
               activeOpacity={0.8}
@@ -324,9 +274,92 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
     )
   }
 
+  // ── Announcement bottom sheet ──────────────────────────────────────────────
+  const renderAnnouncementSheet = () => {
+    if (!selectedNotification || !announcementVisible) return null
+    const item: NotificationItem = selectedNotification
+    const data = item.data
+    const sheetHeight = Dimensions.get('window').height * 0.72
+    const translateY = slideAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [sheetHeight, 0],
+    })
+    const ctaUrl = typeof data?.cta_url === 'string' && data.cta_url.trim()
+      ? data.cta_url
+      : typeof data?.web_url === 'string' && data.web_url.trim()
+        ? data.web_url
+        : ''
+    const handleCta = () => {
+      closeAnnouncement()
+      if (ctaUrl) {
+        setTimeout(() => {
+          openWebPage(ctaUrl, data?.web_title || item.title)
+        }, 250)
+      }
+    }
+    return (
+      <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={closeAnnouncement}>
+        <TouchableWithoutFeedback onPress={closeAnnouncement}>
+          <View style={styles.sheetScrim} />
+        </TouchableWithoutFeedback>
+        <Animated.View style={[styles.sheetContainer, { transform: [{ translateY }] }]}>
+          {/* Pull handle */}
+          <View style={styles.sheetHandle} />
+
+          {/* Hero */}
+          {data?.image_url ? (
+            <Image source={{ uri: data.image_url }} style={styles.sheetHero} resizeMode="cover" />
+          ) : (
+            <View style={styles.sheetIconWrap}>
+              <View style={styles.sheetIconCircle}>
+                <MaterialIcons
+                  name={(data?.icon_name as any) || 'campaign'}
+                  size={36}
+                  color="#6A1B9A"
+                />
+              </View>
+              <View style={styles.sheetBadge}>
+                <MaterialIcons name="campaign" size={11} color="#6A1B9A" />
+                <Text style={styles.sheetBadgeText}>ANNOUNCEMENT</Text>
+              </View>
+            </View>
+          )}
+
+          {/* Content */}
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={styles.sheetContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={styles.sheetTitle}>{item.title}</Text>
+            <Text style={styles.sheetDate}>
+              {new Date(item.created_at).toLocaleString('en-NG', {
+                day: 'numeric', month: 'long', year: 'numeric',
+              })}
+            </Text>
+            <View style={styles.sheetDivider} />
+            <LinkedText text={item.body} style={styles.sheetBody} />
+          </ScrollView>
+
+          {/* CTA */}
+          <View style={[styles.sheetFooter, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+            <TouchableOpacity style={styles.sheetCta} onPress={handleCta} activeOpacity={0.88}>
+              <Text style={styles.sheetCtaText}>{data?.cta_label || 'Got it'}</Text>
+            </TouchableOpacity>
+            {ctaUrl ? (
+              <TouchableOpacity style={styles.sheetDismiss} onPress={closeAnnouncement} activeOpacity={0.7}>
+                <Text style={styles.sheetDismissText}>Dismiss</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </Animated.View>
+      </Modal>
+    )
+  }
+
   return (
     <View style={styles.page}>
-      <View style={[styles.header, { paddingTop: Math.max(14, insets.top + 10) }]}>
+      <View style={[styles.header, { paddingTop: Platform.OS === 'ios' ? insets.top : 12 }]}>
         <TouchableOpacity style={styles.backButton} onPress={onClose}>
           <MaterialIcons name="arrow-back" size={22} color="#1a1c1c" />
         </TouchableOpacity>
@@ -376,6 +409,8 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      {renderAnnouncementSheet()}
     </View>
   )
 }
@@ -389,7 +424,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: 14,
+    paddingTop: 0,
     paddingBottom: 12,
     backgroundColor: '#ffffff',
     borderBottomWidth: 1,
@@ -603,83 +638,135 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 15,
   },
-  // Rich announcement view styles
-  announcementHero: {
+  // ── Announcement bottom-sheet styles ──────────────────────────────────────
+  sheetScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  sheetContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '72%',
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: 'hidden',
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: '#e5e7eb',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  sheetHero: {
     width: '100%',
-    height: 220,
+    height: 160,
     backgroundColor: '#f3e5f5',
   },
-  announcementIconHero: {
+  sheetIconWrap: {
+    alignItems: 'center',
+    paddingTop: 16,
+    paddingBottom: 8,
+    gap: 10,
+  },
+  sheetIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#f3e5f5',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 48,
-    backgroundColor: '#faf5ff',
   },
-  announcementIconCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  announcementBody: {
-    padding: 24,
-    paddingBottom: 48,
-    backgroundColor: '#ffffff',
-    flex: 1,
-  },
-  announcementBadge: {
+  sheetBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    backgroundColor: '#f3e5f5',
-    alignSelf: 'flex-start',
+    gap: 4,
+    backgroundColor: '#faf5ff',
+    borderRadius: 20,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 20,
-    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#ede5f5',
   },
-  announcementBadgeText: {
-    fontSize: 11,
+  sheetBadgeText: {
+    fontSize: 10,
     fontWeight: '700',
     color: '#6A1B9A',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+    letterSpacing: 0.8,
   },
-  announcementTitle: {
-    fontSize: 22,
+  sheetContent: {
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  sheetTitle: {
+    fontSize: 20,
     fontWeight: '800',
-    color: '#1a1c1c',
-    lineHeight: 30,
+    color: '#111827',
     letterSpacing: -0.3,
-    marginBottom: 8,
+    lineHeight: 28,
+    marginBottom: 4,
   },
-  announcementDate: {
+  sheetDate: {
     fontSize: 12,
     color: '#9ca3af',
-    marginBottom: 20,
+    marginBottom: 16,
+    fontWeight: '500',
   },
-  announcementDivider: {
+  sheetDivider: {
     height: 1,
-    backgroundColor: '#f0f0f0',
-    marginBottom: 20,
+    backgroundColor: '#f3f4f6',
+    marginBottom: 16,
   },
-  announcementMessage: {
+  sheetBody: {
     fontSize: 15,
     color: '#374151',
     lineHeight: 24,
-    marginBottom: 32,
   },
-  announcementCta: {
+  sheetFooter: {
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+    gap: 8,
+  },
+  sheetCta: {
     backgroundColor: '#6A1B9A',
     borderRadius: 14,
-    paddingVertical: 16,
+    paddingVertical: 15,
     alignItems: 'center',
   },
-  announcementCtaText: {
+  sheetCtaText: {
     color: '#ffffff',
     fontWeight: '700',
     fontSize: 16,
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
+  sheetDismiss: {
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  sheetDismissText: {
+    color: '#9ca3af',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  // Legacy announcement full-page styles (kept for safety, unused)
+  announcementHero: { width: '100%', height: 220, backgroundColor: '#f3e5f5' },
+  announcementIconHero: { alignItems: 'center', justifyContent: 'center', paddingVertical: 48, backgroundColor: '#faf5ff' },
+  announcementIconCircle: { width: 96, height: 96, borderRadius: 48, alignItems: 'center', justifyContent: 'center' },
+  announcementBody: { padding: 24, paddingBottom: 48, backgroundColor: '#ffffff', flex: 1 },
+  announcementBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#f3e5f5', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, marginBottom: 14 },
+  announcementBadgeText: { fontSize: 11, fontWeight: '700', color: '#6A1B9A', letterSpacing: 0.5, textTransform: 'uppercase' },
+  announcementTitle: { fontSize: 22, fontWeight: '800', color: '#1a1c1c', lineHeight: 30, letterSpacing: -0.3, marginBottom: 8 },
+  announcementDate: { fontSize: 12, color: '#9ca3af', marginBottom: 20 },
+  announcementDivider: { height: 1, backgroundColor: '#f0f0f0', marginBottom: 20 },
+  announcementMessage: { fontSize: 15, color: '#374151', lineHeight: 24, marginBottom: 32 },
+  announcementCta: { backgroundColor: '#6A1B9A', borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
+  announcementCtaText: { color: '#ffffff', fontWeight: '700', fontSize: 16, letterSpacing: 0.3 },
 })

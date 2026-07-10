@@ -102,6 +102,8 @@ function StudentAppInner() {
   const lockedRef = useRef(locked)
   const pendingNotificationActionRef = useRef<PendingNotificationAction | null>(null)
   const lastInitialNotificationKeyRef = useRef<string | null>(null)
+  // True only on the very first mount (cold start). Cleared after the first lock check.
+  const isColdStartRef = useRef(true)
   // Track previous auth state so we can detect a fresh email/password login
   const prevIsAuthenticatedRef = useRef(isAuthenticated)
   const setWalletBalance = useWalletStore((state) => state.setWalletBalance)
@@ -209,9 +211,23 @@ function StudentAppInner() {
   }, [isAuthenticated, setLastUnlockAt, setLocked])
 
   // ─── App lock / timeout ───────────────────────────────────────────────────
+  // This effect runs once the security store has rehydrated from AsyncStorage.
+  // On cold start (isColdStartRef = true), we ALWAYS lock if appLock is enabled —
+  // regardless of the timeout setting — because the user fully closed the app.
+  // On subsequent background → foreground transitions, only lock if the timeout
+  // has elapsed (handled by the AppState listener below).
   useEffect(() => {
-    if (!appLockEnabled) return
+    if (!appLockEnabled) { setLocked(false); return }
     if (!hasPin && !biometricEnabled) { setAppLockEnabled(false); setLocked(false); return }
+
+    if (isColdStartRef.current) {
+      // Cold start: always show AppLock when it is enabled
+      isColdStartRef.current = false
+      setLocked(true)
+      return
+    }
+
+    // Non-cold-start (store value changed mid-session): use timeout logic
     if (!lastUnlockAt) { setLocked(true); return }
     if (lockTimeoutMinutes === 0) return
     if ((Date.now() - lastUnlockAt) / 60000 >= lockTimeoutMinutes) setLocked(true)

@@ -218,13 +218,13 @@ class DriverRideRequestSerializer(serializers.ModelSerializer):
 class AvailableRidesQuerySerializer(serializers.Serializer):
     latitude = serializers.FloatField()
     longitude = serializers.FloatField()
-    radius_km = serializers.FloatField(default=5)
+    radius_km = serializers.FloatField(default=1)
     vehicle_type = serializers.ChoiceField(choices=VehicleType.choices, required=False)
     max_age_seconds = serializers.IntegerField(default=300, required=False)
 
     def validate_radius_km(self, value):
-        if value <= 0 or value > 50:
-            raise serializers.ValidationError('radius_km must be between 0 and 50.')
+        if value <= 0 or value > 5:
+            raise serializers.ValidationError('radius_km must be between 0 and 5.')
         return value
 
     def validate_max_age_seconds(self, value):

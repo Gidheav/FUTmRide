@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View, ActivityIndicator, Text, TouchableOpacity, ScrollView, RefreshControl, Platform } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
+import { MaterialIcons } from '@expo/vector-icons'
 import { safeWebViewProps } from '../services/safeWebViewConfig'
 
 type Props = {
@@ -11,44 +13,52 @@ type Props = {
 }
 
 export default function GenericWebPage({ url, title, onClose, enablePullToRefresh }: Props) {
-  const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const webviewRef = useRef<any | null>(null)
 
   useEffect(() => {
-    setLoading(true)
     setError(false)
   }, [url])
 
+  const renderLoader = () => (
+    <View style={styles.loadingContainer}>
+      <ActivityIndicator size="large" color="#6A1B9A" />
+    </View>
+  )
+
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       {(title || onClose) && (
         <View style={styles.header}>
-          <Text style={styles.headerTitle} numberOfLines={1}>{title || 'Loading...'}</Text>
-          {onClose && (
+          {onClose ? (
             <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Text style={styles.closeBtnText}>X</Text>
+              <MaterialIcons name="arrow-back" size={22} color="#1a1c1c" />
             </TouchableOpacity>
-          )}
+          ) : <View style={styles.headerSpacer} />}
+          
+          <Text style={styles.headerTitle} numberOfLines={1}>{title || ''}</Text>
+          
+          {/* Invisible spacer to perfectly centre the title */}
+          {onClose ? <View style={styles.headerSpacer} /> : <View style={styles.headerSpacer} />}
         </View>
       )}
 
       {error ? (
         <View style={styles.errorContainer}>
-          <Text style={styles.errorIcon}>!</Text>
+          <MaterialIcons name="wifi-off" size={48} color="#d1d5db" />
           <Text style={styles.errorTitle}>Could not load page</Text>
           <Text style={styles.errorSubtitle}>Check your internet connection and try again.</Text>
+          <TouchableOpacity onPress={() => { setError(false); webviewRef.current?.reload() }} style={styles.errorBtn}>
+            <Text style={styles.errorBtnText}>Try Again</Text>
+          </TouchableOpacity>
           {onClose && (
-            <TouchableOpacity onPress={onClose} style={styles.errorBtn}>
-              <Text style={styles.errorBtnText}>Go Back</Text>
+            <TouchableOpacity onPress={onClose} style={styles.errorBackBtn}>
+              <Text style={styles.errorBackBtnText}>Go Back</Text>
             </TouchableOpacity>
           )}
         </View>
       ) : (
-        // Enable pull-to-refresh when requested. On Android, react-native-webview
-        // supports `pullToRefreshEnabled`. For iOS we wrap in a ScrollView with
-        // RefreshControl; this will trigger a `reload()` on the webview.
         (enablePullToRefresh && Platform.OS === 'ios') ? (
           <ScrollView
             contentContainerStyle={{ flex: 1 }}
@@ -58,7 +68,6 @@ export default function GenericWebPage({ url, title, onClose, enablePullToRefres
                 onRefresh={() => {
                   setRefreshing(true)
                   webviewRef.current?.reload()
-                  // onLoadEnd will clear loading and we clear refreshing there
                 }}
                 tintColor="#6A1B9A"
               />
@@ -69,10 +78,12 @@ export default function GenericWebPage({ url, title, onClose, enablePullToRefres
               source={{ uri: url, headers: { Accept: 'text/html,application/xhtml+xml' } }}
               style={styles.webview}
               {...safeWebViewProps}
-              onLoadStart={() => { setLoading(true); setError(false) }}
-              onLoadEnd={() => { setLoading(false); setRefreshing(false) }}
-              onHttpError={() => { setLoading(false); setError(true); setRefreshing(false) }}
-              onError={() => { setLoading(false); setError(true); setRefreshing(false) }}
+              startInLoadingState={true}
+              renderLoading={renderLoader}
+              onLoadStart={() => { setError(false) }}
+              onLoadEnd={() => { setRefreshing(false) }}
+              onHttpError={() => { setError(true); setRefreshing(false) }}
+              onError={() => { setError(true); setRefreshing(false) }}
             />
           </ScrollView>
         ) : (
@@ -81,62 +92,54 @@ export default function GenericWebPage({ url, title, onClose, enablePullToRefres
             source={{ uri: url, headers: { Accept: 'text/html,application/xhtml+xml' } }}
             style={styles.webview}
             {...safeWebViewProps}
-            // Android-only native pull-to-refresh prop
             pullToRefreshEnabled={enablePullToRefresh}
-            onLoadStart={() => { setLoading(true); setError(false) }}
-            onLoadEnd={() => setLoading(false)}
-            onHttpError={() => { setLoading(false); setError(true) }}
-            onError={() => { setLoading(false); setError(true) }}
+            startInLoadingState={true}
+            renderLoading={renderLoader}
+            onLoadStart={() => { setError(false) }}
+            onHttpError={() => { setError(true) }}
+            onError={() => { setError(true) }}
           />
         )
       )}
-
-      {loading && !error && (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#6A1B9A" />
-        </View>
-      )}
-    </View>
+    </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
     backgroundColor: '#ffffff',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#121212',
+    paddingVertical: 14,
+    backgroundColor: '#ffffff',
     borderBottomWidth: 1,
-    borderBottomColor: '#1e1e1e',
+    borderBottomColor: '#eeeeee',
   },
   headerTitle: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '600',
     flex: 1,
-    marginRight: 12,
+    color: '#1a1c1c',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   closeBtn: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 16,
-    width: 32,
-    height: 32,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#f1f1f1',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  closeBtnText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
+  headerSpacer: {
+    width: 36,
   },
   webview: {
     flex: 1,
+    backgroundColor: '#ffffff',
   },
   loadingContainer: {
     ...StyleSheet.absoluteFillObject,
@@ -150,17 +153,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 32,
-    gap: 8,
-  },
-  errorIcon: {
-    fontSize: 40,
-    marginBottom: 8,
+    gap: 10,
+    backgroundColor: '#ffffff',
   },
   errorTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: '#1a1c1c',
     textAlign: 'center',
+    marginTop: 8,
   },
   errorSubtitle: {
     fontSize: 14,
@@ -169,7 +170,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   errorBtn: {
-    marginTop: 16,
+    marginTop: 12,
     backgroundColor: '#6A1B9A',
     paddingHorizontal: 28,
     paddingVertical: 12,
@@ -179,5 +180,14 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '700',
     fontSize: 15,
+  },
+  errorBackBtn: {
+    paddingHorizontal: 28,
+    paddingVertical: 10,
+  },
+  errorBackBtnText: {
+    color: '#6b7280',
+    fontWeight: '600',
+    fontSize: 14,
   },
 })

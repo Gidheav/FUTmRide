@@ -9,6 +9,7 @@ import {
   View,
   BackHandler,
   ActivityIndicator,
+  Alert,
 } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import * as LocationService from 'expo-location'
@@ -18,11 +19,11 @@ import ActiveRidePage from '../../pages/ActiveRidePage'
 import RideMatchingPage from '../../pages/RideMatchingPage'
 import BookRidePage from '../../pages/BookRidePage'
 
-const DEFAULT_RADIUS_KM = 5
+const DEFAULT_RADIUS_KM = 1
 const SCAN_INTERVAL_MS = 5000
 const SCAN_DURATION_MS = 5 * 60 * 1000
 
-const RADIUS_OPTIONS = [2, 5, 8, 10]
+const RADIUS_OPTIONS = [0.1, 0.5, 1, 2, 5]
 
 const roundCoord = (value: number) => Number(value.toFixed(6))
 
@@ -265,12 +266,20 @@ export default function FindNearbyTab() {
     setLocationPickerOpen(false)
   }
 
-  const locationLabel = useMemo(() => {
-    if (locationSource === 'manual') {
-      return manualLocation?.label || 'Select a location'
-    }
-    return 'Current location'
-  }, [locationSource, manualLocation])
+  const handleLocationPress = () => {
+    Alert.alert(
+      'Location Source',
+      'Where should we search for rides?',
+      [
+        { text: 'Current GPS Location', onPress: () => setLocationSource('gps') },
+        { text: 'Search Manually', onPress: () => {
+            setLocationSource('manual')
+            setLocationPickerOpen(true)
+        }},
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    )
+  }
 
   const timeLeftLabel = scanActive ? formatRemaining(scanRemainingMs) : null
 
@@ -324,74 +333,52 @@ export default function FindNearbyTab() {
   return (
     <View style={{ flex: 1 }}>
     <ScrollView style={styles.page} contentContainerStyle={styles.pageContent} showsVerticalScrollIndicator={false}>
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Scan for available rides</Text>
-        <Text style={styles.cardSubtitle}>Fetch nearby drivers within your radius.</Text>
-
-        <View style={styles.segmentedRow}>
-          <TouchableOpacity
-            style={[styles.segment, locationSource === 'gps' && styles.segmentActive]}
-            onPress={() => setLocationSource('gps')}
-          >
-            <Text style={locationSource === 'gps' ? styles.segmentTextActive : styles.segmentText}>GPS</Text>
+      <View style={styles.filterContainer}>
+        <View style={styles.filterTopRow}>
+          <TouchableOpacity style={styles.filterLocationBtn} onPress={handleLocationPress} activeOpacity={0.7}>
+            <MaterialIcons name={locationSource === 'gps' ? 'my-location' : 'map'} size={18} color="#6A1B9A" />
+            <Text style={styles.filterLocationText} numberOfLines={1}>
+              {locationSource === 'gps' ? 'Current location' : (manualLocation?.label || 'Select location')}
+            </Text>
+            <MaterialIcons name="arrow-drop-down" size={20} color="#8b8b8b" />
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.segment, locationSource === 'manual' && styles.segmentActive]}
-            onPress={() => setLocationSource('manual')}
-          >
-            <Text style={locationSource === 'manual' ? styles.segmentTextActive : styles.segmentText}>Manual</Text>
+
+          <TouchableOpacity style={styles.filterScanBtn} onPress={handleRescan} disabled={scanLoading} activeOpacity={0.85}>
+            {scanLoading ? <ActivityIndicator size="small" color="#ffffff" /> : <MaterialIcons name="radar" size={18} color="#ffffff" />}
+            <Text style={styles.filterScanBtnText}>Scan</Text>
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          style={styles.locationButton}
-          onPress={() => locationSource === 'manual' && setLocationPickerOpen(true)}
-          activeOpacity={locationSource === 'manual' ? 0.85 : 1}
-        >
-          <MaterialIcons name="place" size={18} color="#6A1B9A" />
-          <Text style={styles.locationButtonText}>{locationLabel}</Text>
-          {locationSource === 'manual' ? (
-            <MaterialIcons name="keyboard-arrow-down" size={20} color="#8b8b8b" />
-          ) : null}
-        </TouchableOpacity>
-
-        <View style={styles.radiusRow}>
-          <Text style={styles.radiusLabel}>Radius</Text>
-          <View style={styles.radiusOptions}>
+        <View style={styles.filterBottomRow}>
+          <Text style={styles.filterRadiusLabel}>Within:</Text>
+          <View style={styles.filterRadiusOptions}>
             {RADIUS_OPTIONS.map((value) => (
               <TouchableOpacity
                 key={value}
-                style={[styles.radiusChip, radiusKm === value && styles.radiusChipActive]}
+                style={[styles.filterRadiusChip, radiusKm === value && styles.filterRadiusChipActive]}
                 onPress={() => setRadiusKm(value)}
               >
-                <Text style={radiusKm === value ? styles.radiusChipTextActive : styles.radiusChipText}>{value}km</Text>
+                <Text style={radiusKm === value ? styles.filterRadiusChipTextActive : styles.filterRadiusChipText}>
+                  {value < 1 ? `${value * 1000}m` : `${value}km`}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
-        <TouchableOpacity
-          style={styles.scanButton}
-          onPress={handleRescan}
-          activeOpacity={0.85}
-          disabled={scanLoading}
-        >
-          {scanLoading ? (
-            <ActivityIndicator size="small" color="#ffffff" style={{ marginRight: 8 }} />
-          ) : (
-            <MaterialIcons name="radar" size={18} color="#ffffff" />
-          )}
-          <Text style={styles.scanButtonText}>{scanActive ? 'Scanning…' : 'Scan'}</Text>
-        </TouchableOpacity>
-
-        {scanActive && timeLeftLabel ? (
-          <Text style={styles.scanMeta}>Active for {timeLeftLabel}</Text>
-        ) : null}
-        {scanExpired ? <Text style={styles.scanMetaMuted}>Scan expired. Tap scan to refresh.</Text> : null}
-        {lastUpdatedAt ? (
-          <Text style={styles.scanMetaMuted}>Last update: {lastUpdatedAt.toLocaleTimeString()}</Text>
-        ) : null}
-
+        {(scanActive || scanExpired || lastUpdatedAt) && (
+          <View style={styles.filterMetaRow}>
+            {scanActive && timeLeftLabel ? (
+              <Text style={styles.filterMetaText}>Active for {timeLeftLabel}</Text>
+            ) : scanExpired ? (
+              <Text style={styles.filterMetaText}>Scan expired</Text>
+            ) : <Text style={styles.filterMetaText} />}
+            
+            {lastUpdatedAt && (
+              <Text style={styles.filterMetaText}>Updated {lastUpdatedAt.toLocaleTimeString()}</Text>
+            )}
+          </View>
+        )}
         {scanError ? <Text style={styles.errorText}>{scanError}</Text> : null}
       </View>
 
@@ -522,126 +509,104 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'center',
   },
-  card: {
+  filterContainer: {
     backgroundColor: '#ffffff',
     borderRadius: 16,
-    padding: 16,
     borderWidth: 1,
     borderColor: '#f0f0f0',
+    padding: 16,
     marginBottom: 20,
   },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1a1c1c',
-  },
-  cardSubtitle: {
-    marginTop: 4,
-    color: '#6b7280',
-  },
-  segmentedRow: {
+  filterTopRow: {
     flexDirection: 'row',
-    backgroundColor: '#f3f4f6',
-    borderRadius: 12,
-    padding: 4,
-    marginTop: 16,
+    alignItems: 'center',
+    gap: 12,
   },
-  segment: {
+  filterLocationBtn: {
     flex: 1,
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  segmentActive: {
-    backgroundColor: '#6A1B9A',
-  },
-  segmentText: {
-    color: '#6b7280',
-    fontWeight: '600',
-  },
-  segmentTextActive: {
-    color: '#ffffff',
-    fontWeight: '600',
-  },
-  locationButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#f9f9f9',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
     gap: 8,
-    marginTop: 14,
     borderWidth: 1,
     borderColor: '#e5e7eb',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: '#ffffff',
   },
-  locationButtonText: {
+  filterLocationText: {
     flex: 1,
     fontSize: 14,
+    fontWeight: '600',
     color: '#1a1c1c',
-    fontWeight: '600',
   },
-  radiusRow: {
-    marginTop: 14,
-  },
-  radiusLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#6b7280',
-    marginBottom: 8,
-  },
-  radiusOptions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  radiusChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: '#f3f4f6',
-  },
-  radiusChipActive: {
-    backgroundColor: 'rgba(106,27,154,0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(106,27,154,0.3)',
-  },
-  radiusChipText: {
-    color: '#6b7280',
-    fontWeight: '600',
-  },
-  radiusChipTextActive: {
-    color: '#6A1B9A',
-    fontWeight: '700',
-  },
-  scanButton: {
-    marginTop: 16,
+  filterScanBtn: {
     backgroundColor: '#6A1B9A',
-    borderRadius: 12,
+    borderRadius: 10,
+    paddingHorizontal: 20,
     paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
+    gap: 6,
   },
-  scanButtonText: {
+  filterScanBtnText: {
     color: '#ffffff',
     fontWeight: '700',
+    fontSize: 14,
   },
-  scanMeta: {
-    marginTop: 8,
-    color: '#1a1c1c',
+  filterBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 16,
+    gap: 12,
+  },
+  filterRadiusLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  filterRadiusOptions: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  filterRadiusChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'transparent',
+  },
+  filterRadiusChipActive: {
+    backgroundColor: 'rgba(106,27,154,0.08)',
+  },
+  filterRadiusChipText: {
+    fontSize: 13,
+    color: '#6b7280',
     fontWeight: '600',
   },
-  scanMetaMuted: {
-    marginTop: 4,
-    color: '#6b7280',
+  filterRadiusChipTextActive: {
+    fontSize: 13,
+    color: '#6A1B9A',
+    fontWeight: '700',
+  },
+  filterMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  filterMetaText: {
     fontSize: 12,
+    color: '#8b8b8b',
+    fontWeight: '500',
   },
   errorText: {
-    marginTop: 10,
+    marginTop: 12,
     color: '#b91c1c',
-    fontWeight: '600',
+    fontWeight: '500',
+    fontSize: 13,
   },
   sectionHeader: {
     flexDirection: 'row',
