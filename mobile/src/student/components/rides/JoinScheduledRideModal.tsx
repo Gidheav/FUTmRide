@@ -121,11 +121,25 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
       Alert.alert('Booked!', 'You have successfully joined the ride.')
       onJoined()
     } catch (err: any) {
+      const respData = err.response?.data
+      let debugStr = ''
+      if (typeof respData === 'string') {
+        debugStr = respData.substring(0, 150)
+      } else if (respData) {
+        debugStr = JSON.stringify(respData)
+      } else {
+        debugStr = err.message
+      }
+
       const msg =
+        err.response?.data?.wallet?.[0] ||
         err.response?.data?.wallet ||
+        err.response?.data?.boarding_stop_id?.[0] ||
+        err.response?.data?.alighting_stop_id?.[0] ||
         err.response?.data?.detail ||
         err.response?.data?.non_field_errors?.[0] ||
-        'Unable to join ride. Please check your wallet balance.'
+        `Unknown error: ${debugStr}`
+      
       Alert.alert('Failed to join', String(msg))
     } finally {
       setWorking(false)
@@ -240,13 +254,24 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
                     </View>
                     
                     <View style={styles.optionsList}>
-                      {detail.stops.filter((s) => s.is_pickup).map((stop) => {
+                      {detail.stops.filter((s) => {
+                        if (!s.is_pickup) return false
+                        const maxOrder = Math.max(...detail.stops.map(x => x.order))
+                        return s.order < maxOrder
+                      }).map((stop) => {
                         const isActive = boardingStopId === stop.id
                         return (
                           <TouchableOpacity
                             key={`board-${stop.id}`}
                             style={[styles.stopChip, isActive && styles.stopChipActive]}
-                            onPress={() => setBoardingStopId(stop.id)}
+                            onPress={() => {
+                              setBoardingStopId(stop.id)
+                              // If current alighting stop is before or equal to this new boarding stop, reset it
+                              const alightingStop = detail.stops.find(x => x.id === alightingStopId)
+                              if (alightingStop && alightingStop.order <= stop.order) {
+                                setAlightingStopId(null)
+                              }
+                            }}
                             activeOpacity={0.7}
                           >
                             <MaterialIcons name="hail" size={16} color={isActive ? '#6A1B9A' : '#6b7280'} />
@@ -264,17 +289,26 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
                     </View>
 
                     <View style={styles.optionsList}>
-                      {detail.stops.filter((s) => s.is_dropoff).map((stop) => {
+                      {detail.stops.filter((s) => {
+                        if (!s.is_dropoff) return false
+                        const minOrder = Math.min(...detail.stops.map(x => x.order))
+                        return s.order > minOrder
+                      }).map((stop) => {
                         const isActive = alightingStopId === stop.id
+                        // Disable this alighting option if it comes before the selected boarding stop
+                        const boardingStop = detail.stops.find(x => x.id === boardingStopId)
+                        const isDisabled = boardingStop ? stop.order <= boardingStop.order : false
+
                         return (
                           <TouchableOpacity
                             key={`alight-${stop.id}`}
-                            style={[styles.stopChip, isActive && styles.stopChipActive]}
-                            onPress={() => setAlightingStopId(stop.id)}
+                            style={[styles.stopChip, isActive && styles.stopChipActive, isDisabled && styles.btnDisabled]}
+                            onPress={() => !isDisabled && setAlightingStopId(stop.id)}
                             activeOpacity={0.7}
+                            disabled={isDisabled}
                           >
-                            <MaterialIcons name="directions-walk" size={16} color={isActive ? '#6A1B9A' : '#6b7280'} />
-                            <Text style={[styles.stopChipText, isActive && styles.stopChipTextActive]}>
+                            <MaterialIcons name="directions-walk" size={16} color={isActive ? '#6A1B9A' : (isDisabled ? '#d1d5db' : '#6b7280')} />
+                            <Text style={[styles.stopChipText, isActive && styles.stopChipTextActive, isDisabled && { color: '#d1d5db' }]}>
                               {stop.name || stop.address}
                             </Text>
                           </TouchableOpacity>

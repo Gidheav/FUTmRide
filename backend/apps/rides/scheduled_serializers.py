@@ -700,7 +700,7 @@ class ScheduledRideJoinSerializer(serializers.Serializer):
             raise serializers.ValidationError('Only students can join scheduled rides.')
         if not ride.is_joinable:
             raise serializers.ValidationError('This ride is no longer accepting passengers.')
-        if ScheduledRidePassenger.objects.filter(ride=ride, student=student).exists():
+        if ScheduledRidePassenger.objects.filter(ride=ride, student=student).exclude(status=PassengerStatus.CANCELLED).exists():
             raise serializers.ValidationError('You already have a ticket for this ride.')
 
         # One-active-ride constraint: student cannot hold more than one active ticket
