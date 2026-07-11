@@ -30,7 +30,9 @@ export type ScheduledRide = {
   departure_date: string
   window_start: string
   window_end: string
+  origin_name: string
   origin_address: string
+  destination_name: string
   destination_address: string
   status: string
   standard_enabled: boolean
@@ -154,11 +156,11 @@ export default function ScheduledTab({ isActive }: { isActive?: boolean }) {
           <View style={[styles.routeLine, isJoined && styles.routeLineJoined]} />
           <View style={styles.routePoint}>
             <View style={[styles.dotOrigin, isJoined && styles.dotOriginJoined]} />
-            <Text style={[styles.routeText, isJoined && styles.routeTextJoined]} numberOfLines={1}>{item.origin_address}</Text>
+            <Text style={[styles.routeText, isJoined && styles.routeTextJoined]} numberOfLines={1}>{item.origin_name || item.origin_address}</Text>
           </View>
           <View style={[styles.routePoint, { marginTop: 12 }]}>
             <MaterialIcons name="location-pin" size={16} color={isJoined ? '#fbbf24' : '#b91c1c'} style={styles.pinDest} />
-            <Text style={[styles.routeText, isJoined && styles.routeTextJoined]} numberOfLines={1}>{item.destination_address}</Text>
+            <Text style={[styles.routeText, isJoined && styles.routeTextJoined]} numberOfLines={1}>{item.destination_name || item.destination_address}</Text>
           </View>
         </View>
 

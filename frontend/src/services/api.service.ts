@@ -501,6 +501,11 @@ class ApiService {
     return this.post('rides/test-tools/rides/delete/', { count }, TEST_TOOL_REQUEST_CONFIG)
   }
 
+  async flushAllScheduledRides(): Promise<any> {
+    return this.post('rides/test-tools/rides/flush/', {}, TEST_TOOL_REQUEST_CONFIG)
+  }
+
+
   async joinTestScheduledRide(rideId: string, count: number): Promise<any> {
     return this.post('rides/test-tools/rides/join/', { ride_id: rideId, count }, TEST_TOOL_REQUEST_CONFIG)
   }

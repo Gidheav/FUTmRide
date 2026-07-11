@@ -207,6 +207,7 @@ export default function TestPage() {
         deleteAdmins: () => apiService.deleteTestAdmins(clampCount(counts.admin)),
         createRides: () => apiService.createTestScheduledRides(clampCount(counts.rides)),
         deleteRides: () => apiService.deleteTestScheduledRides(clampCount(counts.deleteRides)),
+        flushRides: () => apiService.flushAllScheduledRides(),
         joinRide: () => apiService.joinTestScheduledRide(selectedRide?.id || '', clampCount(counts.join)),
         createOnDemand: () => apiService.createTestOnDemandRides(clampCount(counts.ondemandRides)),
         deleteOnDemand: () => apiService.deleteTestOnDemandRides(clampCount(counts.deleteOnDemand)),
@@ -889,6 +890,14 @@ export default function TestPage() {
                         <button style={s.dangerButton} onClick={() => runAction.mutate('deleteRides')} disabled={busy}>
                           <Trash2 size={13} />
                           Delete random schedules
+                        </button>
+                        <button style={{ ...s.dangerButton, backgroundColor: '#7f1d1d' }} onClick={() => {
+                          if (window.confirm("Are you sure you want to FLUSH ALL scheduled rides? This deletes everything!")) {
+                            runAction.mutate('flushRides')
+                          }
+                        }} disabled={busy}>
+                          <AlertTriangle size={13} />
+                          Flush All
                         </button>
                       </div>
                     </div>

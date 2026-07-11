@@ -784,6 +784,29 @@ class TestToolDeleteRidesView(TestToolBase):
         return Response({'deleted': deleted, 'errors': errors})
 
 
+class TestToolFlushRidesView(TestToolBase):
+    def post(self, request):
+        campus = self.guard(request)
+        if isinstance(campus, Response):
+            return campus
+        
+        # Flush all scheduled rides and related records for the campus
+        rides = ScheduledRide.objects.filter(campus=campus)
+        deleted = 0
+        errors = []
+        for ride in rides:
+            try:
+                with transaction.atomic():
+                    # Also clean up related passengers and their transactions if they were tests
+                    ScheduledRidePassenger.objects.filter(ride=ride).delete()
+                    ride.delete()
+                    deleted += 1
+            except Exception as exc:
+                errors.append({'id': str(ride.id), 'reference': ride.reference, 'message': str(exc)})
+                
+        return Response({'deleted': deleted, 'errors': errors})
+
+
 class TestToolCreateOnDemandRidesView(TestToolBase):
     def post(self, request):
         campus = self.guard(request)

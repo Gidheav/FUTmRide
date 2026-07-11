@@ -84,10 +84,7 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
         setDetail(data)
         
         if (!isLeaveMode && data.stops && data.stops.length >= 2) {
-          const pickups = data.stops.filter((s: Stop) => s.is_pickup)
-          const dropoffs = data.stops.filter((s: Stop) => s.is_dropoff)
-          if (pickups.length > 0) setBoardingStopId(pickups[0].id)
-          if (dropoffs.length > 0) setAlightingStopId(dropoffs[dropoffs.length - 1].id)
+          // Intentionally do not auto-select so the user must pick a boarding stop first
         }
       } catch (err) {
         Alert.alert('Error', 'Unable to load ride details.')
@@ -122,24 +119,37 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
       onJoined()
     } catch (err: any) {
       const respData = err.response?.data
-      let debugStr = ''
-      if (typeof respData === 'string') {
-        debugStr = respData.substring(0, 150)
-      } else if (respData) {
-        debugStr = JSON.stringify(respData)
-      } else {
-        debugStr = err.message
+
+      // Helper: extract a human-readable message from any backend error shape
+      const extractMsg = (data: any): string | null => {
+        if (!data) return null
+        // Envelope: { error: { message, details: { non_field_errors, wallet, ... } } }
+        if (data?.error) {
+          const inner = data.error
+          const details = inner?.details
+          return (
+            details?.non_field_errors?.[0] ||
+            details?.wallet?.[0] ||
+            details?.wallet ||
+            details?.boarding_stop_id?.[0] ||
+            details?.alighting_stop_id?.[0] ||
+            inner?.message ||
+            null
+          )
+        }
+        // Flat DRF errors
+        return (
+          data?.non_field_errors?.[0] ||
+          data?.wallet?.[0] ||
+          data?.wallet ||
+          data?.boarding_stop_id?.[0] ||
+          data?.alighting_stop_id?.[0] ||
+          data?.detail ||
+          null
+        )
       }
 
-      const msg =
-        err.response?.data?.wallet?.[0] ||
-        err.response?.data?.wallet ||
-        err.response?.data?.boarding_stop_id?.[0] ||
-        err.response?.data?.alighting_stop_id?.[0] ||
-        err.response?.data?.detail ||
-        err.response?.data?.non_field_errors?.[0] ||
-        `Unknown error: ${debugStr}`
-      
+      const msg = extractMsg(respData) || 'Something went wrong. Please try again.'
       Alert.alert('Failed to join', String(msg))
     } finally {
       setWorking(false)
@@ -210,11 +220,11 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
                     <View style={[styles.routeLine, isLeaveMode && styles.routeLineLeave]} />
                     <View style={styles.routePoint}>
                       <View style={[styles.dotOrigin, isLeaveMode && styles.dotOriginLeave]} />
-                      <Text style={[styles.routeAddressText, isLeaveMode && styles.routeAddressTextLeave]} numberOfLines={1}>{detail.origin_address}</Text>
+                      <Text style={[styles.routeAddressText, isLeaveMode && styles.routeAddressTextLeave]} numberOfLines={1}>{detail.origin_name || detail.origin_address}</Text>
                     </View>
                     <View style={[styles.routePoint, { marginTop: 12 }]}>
                       <MaterialIcons name="location-pin" size={16} color={isLeaveMode ? '#fbbf24' : '#b91c1c'} style={styles.pinDest} />
-                      <Text style={[styles.routeAddressText, isLeaveMode && styles.routeAddressTextLeave]} numberOfLines={1}>{detail.destination_address}</Text>
+                      <Text style={[styles.routeAddressText, isLeaveMode && styles.routeAddressTextLeave]} numberOfLines={1}>{detail.destination_name || detail.destination_address}</Text>
                     </View>
                   </View>
                 </View>
@@ -265,11 +275,17 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
                             key={`board-${stop.id}`}
                             style={[styles.stopChip, isActive && styles.stopChipActive]}
                             onPress={() => {
-                              setBoardingStopId(stop.id)
-                              // If current alighting stop is before or equal to this new boarding stop, reset it
-                              const alightingStop = detail.stops.find(x => x.id === alightingStopId)
-                              if (alightingStop && alightingStop.order <= stop.order) {
+                              if (isActive) {
+                                // Deselect if tapped again
+                                setBoardingStopId(null)
                                 setAlightingStopId(null)
+                              } else {
+                                setBoardingStopId(stop.id)
+                                // If current alighting stop is before or equal to this new boarding stop, reset it
+                                const alightingStop = detail.stops.find(x => x.id === alightingStopId)
+                                if (alightingStop && alightingStop.order <= stop.order) {
+                                  setAlightingStopId(null)
+                                }
                               }
                             }}
                             activeOpacity={0.7}
@@ -295,9 +311,9 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
                         return s.order > minOrder
                       }).map((stop) => {
                         const isActive = alightingStopId === stop.id
-                        // Disable this alighting option if it comes before the selected boarding stop
+                        // Disable this alighting option if it comes before the selected boarding stop OR if no boarding stop is selected
                         const boardingStop = detail.stops.find(x => x.id === boardingStopId)
-                        const isDisabled = boardingStop ? stop.order <= boardingStop.order : false
+                        const isDisabled = !boardingStop || stop.order <= boardingStop.order
 
                         return (
                           <TouchableOpacity
