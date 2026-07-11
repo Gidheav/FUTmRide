@@ -514,6 +514,8 @@ class ScheduledRideListSerializer(serializers.ModelSerializer):
     created_by_name = serializers.SerializerMethodField()
     assigned_driver_name = serializers.SerializerMethodField()
     fare_summary = serializers.SerializerMethodField()
+    is_joined_by_me = serializers.SerializerMethodField()
+    my_ticket = serializers.SerializerMethodField()
 
     class Meta:
         model = ScheduledRide
@@ -526,8 +528,39 @@ class ScheduledRideListSerializer(serializers.ModelSerializer):
             'premium_enabled', 'premium_price', 'freight_enabled', 'freight_price',
             'passenger_count', 'is_joinable', 'enabled_tiers', 'stops_count',
             'created_by_name', 'admin_notes', 'fare_summary', 'created_at',
+            'is_joined_by_me', 'my_ticket',
         ]
         read_only_fields = fields
+
+    def _get_my_passenger(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user or not request.user.is_authenticated:
+            return None
+        return ScheduledRidePassenger.objects.filter(
+            ride=obj,
+            student=request.user,
+        ).exclude(status=PassengerStatus.CANCELLED).select_related(
+            'boarding_stop', 'alighting_stop'
+        ).first()
+
+    def get_is_joined_by_me(self, obj):
+        return self._get_my_passenger(obj) is not None
+
+    def get_my_ticket(self, obj):
+        passenger = self._get_my_passenger(obj)
+        if not passenger:
+            return None
+        return {
+            'id': str(passenger.id),
+            'ticket_ref': passenger.ticket_ref,
+            'status': passenger.status,
+            'boarding_stop_name': passenger.boarding_stop.name if passenger.boarding_stop else None,
+            'boarding_stop_address': passenger.boarding_stop.address if passenger.boarding_stop else None,
+            'alighting_stop_name': passenger.alighting_stop.name if passenger.alighting_stop else None,
+            'alighting_stop_address': passenger.alighting_stop.address if passenger.alighting_stop else None,
+            'amount_paid': str(passenger.amount_paid),
+            'joined_at': passenger.joined_at.isoformat() if passenger.joined_at else None,
+        }
 
     def get_stops_count(self, obj):
         return obj.stops.count()
@@ -669,6 +702,22 @@ class ScheduledRideJoinSerializer(serializers.Serializer):
             raise serializers.ValidationError('This ride is no longer accepting passengers.')
         if ScheduledRidePassenger.objects.filter(ride=ride, student=student).exists():
             raise serializers.ValidationError('You already have a ticket for this ride.')
+
+        # One-active-ride constraint: student cannot hold more than one active ticket
+        active_ticket = ScheduledRidePassenger.objects.filter(
+            student=student,
+        ).exclude(
+            status__in=[PassengerStatus.CANCELLED],
+        ).exclude(
+            ride__status__in=[ScheduledRideStatus.COMPLETED, ScheduledRideStatus.CANCELLED],
+        ).exclude(
+            ride=ride,
+        ).select_related('ride').first()
+        if active_ticket:
+            raise serializers.ValidationError(
+                f'You already have an active ticket for ride {active_ticket.ride.reference}. '
+                'Please leave that ride before joining a new one.'
+            )
 
         stops = list(ride.stops.order_by('order'))
         if len(stops) < 2:

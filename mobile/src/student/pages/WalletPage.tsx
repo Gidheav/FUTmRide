@@ -12,6 +12,7 @@ import useWalletStore from '../../core/walletStore'
 import { useAuthStore } from '../../core/authStore'
 import { getStoredPinHash, hashPin } from '../../core/security'
 import { useSecurityStore } from '../../core/securityStore'
+import { useUIPreferencesStore } from '../../core/uiPreferencesStore'
 
 type TransferRecipient = {
   user_id: string
@@ -40,7 +41,10 @@ export default function StudentWalletPage({ onNavigateToMap }: { onNavigateToMap
   const [webviewVisible, setWebviewVisible] = useState(false)
   const [webviewUrl, setWebviewUrl] = useState<string | null>(null)
   const [gatewayModalVisible, setGatewayModalVisible] = useState(false)
-  const [activeTab, setActiveTab] = useState<'fund' | 'transfer'>('fund')
+  const [fundModalVisible, setFundModalVisible] = useState(false)
+  const [transactionsModalVisible, setTransactionsModalVisible] = useState(false)
+  const [transactionFilter, setTransactionFilter] = useState<'all' | 'credit' | 'debit' | 'transfer'>('all')
+  const [transferScanModalVisible, setTransferScanModalVisible] = useState(false)
   const [receiveModalVisible, setReceiveModalVisible] = useState(false)
   const [transferIdModalVisible, setTransferIdModalVisible] = useState(false)
   const [transferStudentId, setTransferStudentId] = useState('')
@@ -71,12 +75,14 @@ export default function StudentWalletPage({ onNavigateToMap }: { onNavigateToMap
   const walletFlashAt = useWalletStore((state) => state.walletFlashAt)
   const biometricEnabled = useSecurityStore((state) => state.biometricEnabled)
   const hasPin = useSecurityStore((state) => state.hasPin)
+  const hideBalance = useUIPreferencesStore((state) => state.hideBalance)
+  const setUIHideBalance = useUIPreferencesStore((state) => state.setHideBalance)
 
   const callbackUrl = PAYMENT_CALLBACK_URL
 
   const formatAmount = useCallback((value: number | string) => {
     const numeric = Number(value || 0)
-    return `NGN ${numeric.toLocaleString('en-NG', { minimumFractionDigits: 2 })}`
+    return numeric.toLocaleString('en-NG', { minimumFractionDigits: 2 })
   }, [])
 
   const formatDate = useCallback((value: string) => {
@@ -267,9 +273,14 @@ export default function StudentWalletPage({ onNavigateToMap }: { onNavigateToMap
   }, [callbackUrl, parseReferenceFromUrl, webviewReference])
 
   const activityItems = useMemo(() => {
-    if (!Array.isArray(transactions)) return []
-    return transactions
+    return transactions.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
   }, [transactions])
+
+  const filteredTransactions = useMemo(() => {
+    if (transactionFilter === 'all') return activityItems
+    if (transactionFilter === 'transfer') return activityItems.filter(tx => String(tx?.source || '').startsWith('student_transfer'))
+    return activityItems.filter(tx => tx.transaction_type === transactionFilter)
+  }, [activityItems, transactionFilter])
 
   const formatNarration = useCallback((narration: string) => {
     if (!narration) return 'Wallet transaction'
@@ -581,6 +592,52 @@ export default function StudentWalletPage({ onNavigateToMap }: { onNavigateToMap
         </View>
       </Modal>
       <Modal
+        visible={fundModalVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setFundModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Fund Wallet</Text>
+            <Text style={styles.modalSubtitle}>Enter the amount you want to add to your wallet.</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Amount (NGN)"
+              keyboardType="numeric"
+              value={topupAmount}
+              onChangeText={setTopupAmount}
+            />
+            {/* Errors are shown as toasts */}
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={[styles.primaryActionCompact, (topupLoading || Number(topupAmount) < 100) && styles.primaryActionDisabled]}
+                activeOpacity={0.9}
+                onPress={() => {
+                  setFundModalVisible(false)
+                  handleTopUp()
+                }}
+                disabled={topupLoading || Number(topupAmount) < 100}
+              >
+                <MaterialIcons name="add-circle" size={18} color="#ffffff" />
+                <Text style={styles.primaryActionText}>Top Up</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity
+              style={styles.modalCancel}
+              onPress={() => {
+                setFundModalVisible(false)
+                setTopupError(null)
+                setTopupAmount('')
+              }}
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={transferIdModalVisible}
         animationType="fade"
         transparent
@@ -588,7 +645,7 @@ export default function StudentWalletPage({ onNavigateToMap }: { onNavigateToMap
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Transfer to student ID</Text>
+            <Text style={styles.modalTitle}>Send to Student</Text>
             <Text style={styles.modalSubtitle}>Enter the recipient student ID to continue.</Text>
             <TextInput
               style={styles.modalInput}
@@ -606,7 +663,7 @@ export default function StudentWalletPage({ onNavigateToMap }: { onNavigateToMap
                 onPress={handleLookupFromStudentId}
                 disabled={!transferStudentId.trim() || recipientLookupLoading}
               >
-                <MaterialIcons name="send" size={18} color="#ffffff" />
+                <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
                 <Text style={styles.primaryActionText}>Continue</Text>
               </TouchableOpacity>
             </View>
@@ -622,6 +679,49 @@ export default function StudentWalletPage({ onNavigateToMap }: { onNavigateToMap
           </View>
         </View>
         <LoadingOverlay visible={recipientLookupLoading} />
+      </Modal>
+
+      <Modal
+        visible={!!recipient}
+        animationType="fade"
+        transparent
+        onRequestClose={resetTransferState}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Complete Transfer</Text>
+            <Text style={styles.modalSubtitle}>Sending to:</Text>
+            {recipient && (
+              <View style={styles.recipientCardCompact}>
+                <Text style={styles.recipientName}>{recipient.full_name}</Text>
+                <Text style={styles.recipientMeta}>{recipient.matric_number || 'No matric'} {recipient.campus ? `• ${recipient.campus.name}` : ''}</Text>
+              </View>
+            )}
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Amount (NGN)"
+              keyboardType="numeric"
+              value={transferAmount}
+              onChangeText={setTransferAmount}
+            />
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={[
+                  styles.primaryActionCompact,
+                  (transferLoading || Number(transferAmount) < 50) && styles.primaryActionDisabled,
+                ]}
+                onPress={handleTransferConfirm}
+                disabled={transferLoading || Number(transferAmount) < 50}
+              >
+                <MaterialIcons name="send" size={18} color="#ffffff" />
+                <Text style={styles.primaryActionText}>Send</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity style={styles.modalCancel} onPress={resetTransferState}>
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
       <Modal
         visible={scannerVisible}
@@ -810,8 +910,8 @@ export default function StudentWalletPage({ onNavigateToMap }: { onNavigateToMap
         transparent
         onRequestClose={() => setSelectedTransaction(null)}
       >
-        <View style={styles.modalBackdropReceipt}>
-          <View style={styles.receiptCard}>
+        <TouchableOpacity style={styles.modalBackdropReceipt} activeOpacity={1} onPress={() => setSelectedTransaction(null)}>
+          <TouchableOpacity style={styles.receiptCard} activeOpacity={1}>
             <View style={styles.receiptHeader}>
               <MaterialIcons 
                 name={selectedTransaction?.transaction_type === 'credit' ? 'check-circle' : 'receipt'} 
@@ -828,7 +928,7 @@ export default function StudentWalletPage({ onNavigateToMap }: { onNavigateToMap
               <View style={styles.receiptRow}>
                 <Text style={styles.receiptLabel}>Amount</Text>
                 <Text style={[styles.receiptValue, selectedTransaction?.transaction_type === 'credit' ? styles.receiptAmountPositive : undefined]}>
-                  {selectedTransaction?.transaction_type === 'credit' ? '+' : '-'}
+                  {selectedTransaction?.transaction_type === 'credit' ? '+ NGN ' : '- NGN '}
                   {selectedTransaction ? formatAmount(selectedTransaction.amount) : ''}
                 </Text>
               </View>
@@ -862,8 +962,8 @@ export default function StudentWalletPage({ onNavigateToMap }: { onNavigateToMap
             >
               <Text style={styles.receiptCloseText}>Close Receipt</Text>
             </TouchableOpacity>
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       <View style={styles.walletCard}>
@@ -872,162 +972,65 @@ export default function StudentWalletPage({ onNavigateToMap }: { onNavigateToMap
           <View style={styles.walletHeader}>
             <View>
               <Text style={styles.balanceLabel}>Current Balance</Text>
-              <Text style={styles.balanceValue}>
-                {walletBalance !== null ? formatAmount(walletBalance) : '--'}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44 }}>
+                <Text style={styles.balanceCurrency}>NGN</Text>
+                <Text style={styles.balanceValue}>
+                  {hideBalance ? '●●●●●●' : (walletBalance !== null ? formatAmount(walletBalance) : '--')}
+                </Text>
+              </View>
             </View>
-            <View style={styles.walletIconWrap}>
-              <MaterialIcons name="account-balance-wallet" size={22} color="#6A1B9A" />
+            <TouchableOpacity 
+              style={styles.walletIconWrap}
+              onPress={() => setUIHideBalance(!hideBalance)}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons name="account-balance-wallet" size={22} color={hideBalance ? '#9ca3af' : '#ffffff'} />
               {walletFlashVisible ? <View style={styles.walletFlashBadge} /> : null}
-            </View>
-          </View>
-          <View style={styles.tabRow}>
-            <TouchableOpacity
-              style={[styles.tabButton, activeTab === 'fund' && styles.tabButtonActive]}
-              onPress={() => setActiveTab('fund')}
-            >
-              <Text style={[styles.tabLabel, activeTab === 'fund' && styles.tabLabelActive]}>Fund</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tabButton, activeTab === 'transfer' && styles.tabButtonActive]}
-              onPress={() => setActiveTab('transfer')}
-            >
-              <Text style={[styles.tabLabel, activeTab === 'transfer' && styles.tabLabelActive]}>Transfer</Text>
             </TouchableOpacity>
           </View>
-
-          {activeTab === 'fund' ? (
-            <View style={styles.tabContent}>
-              <View style={styles.topupRow}>
-                <TextInput
-                  style={styles.amountInput}
-                  placeholder="Amount (NGN)"
-                  keyboardType="numeric"
-                  value={topupAmount}
-                  onChangeText={setTopupAmount}
-                />
-                <View style={styles.fundActionsRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.primaryAction,
-                      (topupLoading || Number(topupAmount) < 100) && styles.primaryActionDisabled,
-                    ]}
-                    activeOpacity={0.9}
-                    onPress={handleTopUp}
-                    disabled={topupLoading || Number(topupAmount) < 100}
-                  >
-                    <MaterialIcons name="add-circle" size={18} color="#ffffff" />
-                    <Text style={styles.primaryActionText}>Top Up</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.secondaryAction}
-                    activeOpacity={0.9}
-                    onPress={() => setReceiveModalVisible(true)}
-                  >
-                    <MaterialIcons name="qr-code" size={18} color="#1a1c1c" />
-                    <Text style={styles.secondaryActionText}>Receive</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {topupError ? <Text style={styles.errorText}>{topupError}</Text> : null}
-
-            </View>
-          ) : (
-            <View style={styles.tabContent}>
-              <View style={styles.transferCard}>
-                <Text style={styles.transferTitle}>Send to another student</Text>
-                <Text style={styles.transferSubtitle}>Scan recipient barcode to fetch live details.</Text>
-                {recipient ? (
-                  <View style={styles.recipientCard}>
-                    <Text style={styles.recipientName}>{recipient.full_name}</Text>
-                    <Text style={styles.recipientMeta}>
-                      {recipient.matric_number || 'No matric'} {recipient.campus ? `• ${recipient.campus.name}` : ''}
-                    </Text>
-                    <TouchableOpacity onPress={resetTransferState} style={styles.recipientReset}>
-                      <Text style={styles.recipientResetText}>Change recipient</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : null}
-              </View>
-              <View style={styles.walletActions}>
-                <TouchableOpacity
-                  style={styles.secondaryAction}
-                  activeOpacity={0.9}
-                  onPress={() => setTransferIdModalVisible(true)}
-                >
-                  <MaterialIcons name="badge" size={18} color="#1a1c1c" />
-                  <Text style={styles.secondaryActionText}>Enter Student ID</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.secondaryAction, recipientLookupLoading && styles.primaryActionDisabled]}
-                  activeOpacity={0.9}
-                  onPress={openRecipientScanner}
-                  disabled={recipientLookupLoading}
-                >
-                  <MaterialIcons name="qr-code-scanner" size={18} color="#1a1c1c" />
-                  <Text style={styles.secondaryActionText}>Scan Recipient</Text>
-                </TouchableOpacity>
-              </View>
-
-              {recipient ? (
-                <View style={styles.transferForm}>
-                  <TextInput
-                    style={styles.amountInput}
-                    placeholder="Amount (NGN)"
-                    keyboardType="numeric"
-                    value={transferAmount}
-                    onChangeText={setTransferAmount}
-                  />
-                  <TouchableOpacity
-                    style={[
-                      styles.primaryAction,
-                      (transferLoading || Number(transferAmount) < 50) && styles.primaryActionDisabled,
-                    ]}
-                    onPress={handleTransferConfirm}
-                    disabled={transferLoading || Number(transferAmount) < 50}
-                  >
-                    <MaterialIcons name="send" size={18} color="#ffffff" />
-                    <Text style={styles.primaryActionText}>Send</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
-
-              {recipientLookupLoading ? <Text style={styles.pendingText}>Fetching recipient details...</Text> : null}
-              {transferError ? <Text style={styles.errorText}>{transferError}</Text> : null}
-              {transferSuccess ? <Text style={styles.successText}>{transferSuccess}</Text> : null}
-            </View>
-          )}
         </View>
       </View>
 
-      <View style={styles.bonusBanner}>
-        <View style={styles.bonusPattern} />
-        <View style={styles.bonusContent}>
-          <View style={styles.bonusLeft}>
-            <View style={styles.bonusIcon}>
-              <MaterialIcons name="redeem" size={18} color="#ffffff" />
-            </View>
-            <View>
-              <Text style={styles.bonusTitle}>Earn bonus</Text>
-              <Text style={styles.bonusSubtitle}>Confirm your route on the map before you ride</Text>
-            </View>
+      <View style={styles.quickActionRow}>
+        <TouchableOpacity style={styles.quickActionBtn} activeOpacity={0.8} onPress={() => setFundModalVisible(true)}>
+          <View style={styles.quickActionIcon}>
+            <MaterialIcons name="add" size={28} color="#6A1B9A" />
           </View>
-          <TouchableOpacity 
-            style={styles.bonusButton} 
-            activeOpacity={0.9}
-            onPress={onNavigateToMap}
-          >
-            <Text style={styles.bonusButtonText}>Open Map</Text>
-          </TouchableOpacity>
-        </View>
+          <Text style={styles.quickActionText}>Fund</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.quickActionBtn} activeOpacity={0.8} onPress={() => setTransferIdModalVisible(true)}>
+          <View style={styles.quickActionIcon}>
+            <MaterialIcons name="send" size={24} color="#6A1B9A" />
+          </View>
+          <Text style={styles.quickActionText}>Send</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.quickActionBtn} activeOpacity={0.8} onPress={() => setReceiveModalVisible(true)}>
+          <View style={styles.quickActionIcon}>
+            <MaterialIcons name="qr-code" size={24} color="#6A1B9A" />
+          </View>
+          <Text style={styles.quickActionText}>Receive</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.quickActionBtn} activeOpacity={0.8} onPress={openRecipientScanner}>
+          <View style={styles.quickActionIcon}>
+            <MaterialIcons name="qr-code-scanner" size={24} color="#6A1B9A" />
+          </View>
+          <Text style={styles.quickActionText}>Scan</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Recent Activity</Text>
-        <TouchableOpacity activeOpacity={0.8} onPress={loadWallet}>
-          <Text style={styles.sectionAction}>Refresh</Text>
-        </TouchableOpacity>
+        <Text style={styles.sectionTitle}>Recent Transactions</Text>
+        <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+          <TouchableOpacity activeOpacity={0.8} onPress={loadWallet} style={styles.iconButtonWrap}>
+            <MaterialIcons name="refresh" size={22} color="#6A1B9A" />
+          </TouchableOpacity>
+          <TouchableOpacity activeOpacity={0.8} onPress={() => setTransactionsModalVisible(true)} style={styles.iconButtonWrap}>
+            <MaterialIcons name="receipt-long" size={22} color="#6A1B9A" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.activityList}>
@@ -1040,7 +1043,7 @@ export default function StudentWalletPage({ onNavigateToMap }: { onNavigateToMap
             <Text style={styles.activityTime}>No transactions yet.</Text>
           </View>
         ) : (
-          activityItems.map((tx) => (
+          activityItems.slice(0, 10).map((tx) => (
             <TouchableOpacity 
               style={styles.activityItem} 
               key={tx.id}
@@ -1063,13 +1066,82 @@ export default function StudentWalletPage({ onNavigateToMap }: { onNavigateToMap
                 </View>
               </View>
               <Text style={tx.transaction_type === 'credit' ? styles.activityAmountPositive : styles.activityAmount}>
-                {tx.transaction_type === 'credit' ? '+' : '-'}{formatAmount(tx.amount)}
+                {tx.transaction_type === 'credit' ? '+ NGN ' : '- NGN '}{formatAmount(tx.amount)}
               </Text>
             </TouchableOpacity>
           ))
         )}
       </View>
     </ScrollView>
+    <Modal
+      visible={transactionsModalVisible}
+      animationType="slide"
+      onRequestClose={() => setTransactionsModalVisible(false)}
+    >
+      <SafeAreaView style={styles.page}>
+        <View style={styles.transactionsModalHeader}>
+          <Text style={styles.transactionsModalTitle}>All Transactions</Text>
+          <TouchableOpacity onPress={() => setTransactionsModalVisible(false)}>
+            <MaterialIcons name="close" size={24} color="#1a1c1c" />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.filterRow}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+            <TouchableOpacity style={[styles.filterChip, transactionFilter === 'all' && styles.filterChipActive]} onPress={() => setTransactionFilter('all')}>
+              <Text style={[styles.filterChipText, transactionFilter === 'all' && styles.filterChipTextActive]}>All</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.filterChip, transactionFilter === 'credit' && styles.filterChipActive]} onPress={() => setTransactionFilter('credit')}>
+              <Text style={[styles.filterChipText, transactionFilter === 'credit' && styles.filterChipTextActive]}>Credits</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.filterChip, transactionFilter === 'debit' && styles.filterChipActive]} onPress={() => setTransactionFilter('debit')}>
+              <Text style={[styles.filterChipText, transactionFilter === 'debit' && styles.filterChipTextActive]}>Debits</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.filterChip, transactionFilter === 'transfer' && styles.filterChipActive]} onPress={() => setTransactionFilter('transfer')}>
+              <Text style={[styles.filterChipText, transactionFilter === 'transfer' && styles.filterChipTextActive]}>Transfers</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+        <ScrollView contentContainerStyle={{ padding: 16 }}>
+          <View style={styles.activityList}>
+            {filteredTransactions.length === 0 ? (
+              <View style={styles.emptyFilterState}>
+                <MaterialIcons name="receipt-long" size={48} color="#e5e7eb" />
+                <Text style={styles.emptyFilterTitle}>No transactions found</Text>
+                <Text style={styles.emptyFilterSubtitle}>There are no {transactionFilter === 'all' ? '' : transactionFilter + ' '}transactions to display.</Text>
+              </View>
+            ) : (
+              filteredTransactions.map((tx) => (
+                <TouchableOpacity 
+                style={styles.activityItem} 
+                key={tx.id}
+                activeOpacity={0.7}
+                onPress={() => setSelectedTransaction(tx)}
+              >
+                <View style={[styles.activityLeft, { flex: 1 }]}>
+                  <View style={tx.transaction_type === 'credit' ? styles.activityIconAccent : styles.activityIconMuted}>
+                    <MaterialIcons
+                      name={getTransactionIcon(tx)}
+                      size={20}
+                      color={tx.transaction_type === 'credit' ? '#6A1B9A' : '#3d4a3e'}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.activityTitle} numberOfLines={1} ellipsizeMode="tail">
+                      {formatNarration(tx.narration)}
+                    </Text>
+                    <Text style={styles.activityTime}>{formatDate(tx.created_at)}</Text>
+                  </View>
+                </View>
+                <Text style={tx.transaction_type === 'credit' ? styles.activityAmountPositive : styles.activityAmount}>
+                  {tx.transaction_type === 'credit' ? '+ NGN ' : '- NGN '}{formatAmount(tx.amount)}
+                </Text>
+              </TouchableOpacity>
+              ))
+            )}
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
     {toastVisible ? (
       <Animated.View style={[styles.toastWrap, { opacity: toastOpacity }]} pointerEvents="box-none">
         <View style={styles.toast}>
@@ -1093,59 +1165,55 @@ const styles = StyleSheet.create({
     paddingBottom: 22,
     gap: 24,
   },
+
   walletCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 4,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#f3f3f3',
-    shadowColor: '#00000096',
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 2,
+    backgroundColor: '#6A1B9A',
+    borderRadius: 20,
+    padding: 24,
+    shadowColor: '#6A1B9A',
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
     overflow: 'hidden',
+    marginBottom: 20,
   },
   walletGlow: {
     position: 'absolute',
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: '#6A1B9A',
-    opacity: 0.08,
-    top: -48,
-    right: -48,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: '#ffffff',
+    opacity: 0.1,
+    top: -80,
+    right: -60,
   },
   walletBody: {
     gap: 16,
   },
-  tabRow: {
+  quickActionRow: {
     flexDirection: 'row',
-    backgroundColor: '#f3f3f3',
-    borderRadius: 999,
-    padding: 4,
+    justifyContent: 'center',
+    gap: 32,
+    paddingHorizontal: 8,
+    marginBottom: 24,
+  },
+  quickActionBtn: {
+    alignItems: 'center',
     gap: 8,
   },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 999,
+  quickActionIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#f3e5f5',
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  tabButtonActive: {
-    backgroundColor: '#6A1B9A',
-  },
-  tabLabel: {
-    fontSize: 12,
+  quickActionText: {
+    fontSize: 14,
     fontWeight: '600',
-    color: '#5e5e5e',
-  },
-  tabLabelActive: {
-    color: '#ffffff',
-  },
-  tabContent: {
-    gap: 12,
-    minHeight: 150,
+    color: '#1a1c1c',
   },
   requirementsCard: {
     backgroundColor: '#f7f2fb',
@@ -1394,20 +1462,27 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   balanceLabel: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#5e5e5e',
+    color: 'rgba(255,255,255,0.8)',
+  },
+  balanceCurrency: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.7)',
+    lineHeight: 44,
   },
   balanceValue: {
-    fontSize: 32,
+    fontSize: 36,
     fontWeight: '800',
-    color: '#1a1c1c',
-    marginTop: 4,
+    color: '#ffffff',
+    marginTop: 0,
+    lineHeight: 44,
   },
   walletIconWrap: {
-    backgroundColor: '#f3e5f5',
+    backgroundColor: 'rgba(255,255,255,0.2)',
     padding: 8,
-    borderRadius: 10,
+    borderRadius: 12,
     position: 'relative',
   },
   walletFlashBadge: {
@@ -1419,17 +1494,13 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: '#ef4444',
     borderWidth: 2,
-    borderColor: '#ffffff',
+    borderColor: '#6A1B9A',
   },
-  walletActions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  transferCard: {
-    backgroundColor: '#f7f2fb',
+  recipientCardCompact: {
+    backgroundColor: '#f3f3f3',
     borderRadius: 12,
     padding: 12,
-    gap: 4,
+    marginBottom: 8,
   },
   transferTitle: {
     fontSize: 14,
@@ -1558,6 +1629,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginLeft: 6,
+  },
+  transferPinError: {
+    color: '#b91c1c',
+    fontSize: 13,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  transactionsModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    backgroundColor: '#ffffff',
+  },
+  transactionsModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1c1c',
   },
   scannerFull: {
     flex: 1,
@@ -1824,5 +1916,57 @@ const styles = StyleSheet.create({
     color: '#6A1B9A',
     fontWeight: '700',
     fontSize: 15,
+  },
+  iconButtonWrap: {
+    padding: 4,
+    backgroundColor: 'rgba(106, 27, 154, 0.1)',
+    borderRadius: 8,
+  },
+  filterRow: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    backgroundColor: '#fafafa',
+  },
+  filterScroll: {
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  filterChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  filterChipActive: {
+    backgroundColor: '#6A1B9A',
+    borderColor: '#6A1B9A',
+  },
+  filterChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#4b5563',
+  },
+  filterChipTextActive: {
+    color: '#ffffff',
+  },
+  emptyFilterState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    gap: 8,
+  },
+  emptyFilterTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#4b5563',
+    marginTop: 8,
+  },
+  emptyFilterSubtitle: {
+    fontSize: 13,
+    color: '#9ca3af',
+    textAlign: 'center',
   },
 })

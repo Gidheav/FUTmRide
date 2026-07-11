@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
 import { MaterialIcons } from '@expo/vector-icons'
 import { safeWebViewProps } from '../services/safeWebViewConfig'
+import { getAuthTokens } from '../../../utils/secureStorage'
 
 type Props = {
   url: string
@@ -15,11 +16,35 @@ type Props = {
 export default function GenericWebPage({ url, title, onClose, enablePullToRefresh }: Props) {
   const [error, setError] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const [userToken, setUserToken] = useState<string | null>(null)
+  const [tokenLoaded, setTokenLoaded] = useState(false)
   const webviewRef = useRef<any | null>(null)
+
+  useEffect(() => {
+    getAuthTokens()
+      .then((tokens) => {
+        setUserToken(tokens?.accessToken || null)
+        setTokenLoaded(true)
+      })
+      .catch(() => setTokenLoaded(true))
+  }, [])
 
   useEffect(() => {
     setError(false)
   }, [url])
+
+  const webviewSource = {
+    uri: url,
+    headers: {
+      Accept: 'text/html,application/xhtml+xml',
+      ...(userToken ? { Authorization: `Bearer ${userToken}` } : {})
+    }
+  }
+
+  const combinedJS = `
+    ${userToken ? `window.localStorage.setItem('auth_token', '${userToken}'); window.userToken = '${userToken}';` : ''}
+    ${safeWebViewProps.injectedJavaScript || ''}
+  `
 
   const renderLoader = () => (
     <View style={styles.loadingContainer}>
@@ -44,7 +69,9 @@ export default function GenericWebPage({ url, title, onClose, enablePullToRefres
         </View>
       )}
 
-      {error ? (
+      {!tokenLoaded ? (
+        renderLoader()
+      ) : error ? (
         <View style={styles.errorContainer}>
           <MaterialIcons name="wifi-off" size={48} color="#d1d5db" />
           <Text style={styles.errorTitle}>Could not load page</Text>
@@ -75,9 +102,10 @@ export default function GenericWebPage({ url, title, onClose, enablePullToRefres
           >
             <WebView
               ref={webviewRef}
-              source={{ uri: url, headers: { Accept: 'text/html,application/xhtml+xml' } }}
+              source={webviewSource}
               style={styles.webview}
               {...safeWebViewProps}
+              injectedJavaScript={combinedJS}
               startInLoadingState={true}
               renderLoading={renderLoader}
               onLoadStart={() => { setError(false) }}
@@ -89,9 +117,10 @@ export default function GenericWebPage({ url, title, onClose, enablePullToRefres
         ) : (
           <WebView
             ref={webviewRef}
-            source={{ uri: url, headers: { Accept: 'text/html,application/xhtml+xml' } }}
+            source={webviewSource}
             style={styles.webview}
             {...safeWebViewProps}
+            injectedJavaScript={combinedJS}
             pullToRefreshEnabled={enablePullToRefresh}
             startInLoadingState={true}
             renderLoading={renderLoader}

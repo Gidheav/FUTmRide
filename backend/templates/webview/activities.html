@@ -8,7 +8,11 @@
         <span class="wv-icon">A</span>
         <h1 class="wv-title">Activities</h1>
     </div>
+    {% if is_authenticated %}
+    <p class="wv-subtitle">Welcome back, <strong>{{ user_first_name }}</strong>! Join clubs, groups, and extracurriculars.</p>
+    {% else %}
     <p class="wv-subtitle">Join clubs, groups, and extracurriculars.</p>
+    {% endif %}
 </header>
 
 <main class="wv-main">

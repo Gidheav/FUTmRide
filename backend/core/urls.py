@@ -28,21 +28,65 @@ def app_config(request):
         "safety_guide_url": os.environ.get("MOBILE_SAFETY_GUIDE_URL", default_webview_url("safety")),
     })
 
+
+def _resolve_webview_user(request):
+    """
+    Attempt to resolve the active user from the JWT Bearer token
+    sent in the Authorization header by the mobile app.
+    Returns the user object if authenticated, or None.
+    """
+    auth_header = request.META.get("HTTP_AUTHORIZATION", "")
+    if not auth_header.startswith("Bearer "):
+        return None
+
+    jwt_token = auth_header.split(" ", 1)[1].strip()
+    if not jwt_token:
+        return None
+
+    try:
+        from rest_framework_simplejwt.tokens import AccessToken
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        validated = AccessToken(jwt_token)
+        user_id = validated.get("user_id")
+        if user_id:
+            return User.objects.select_related().get(pk=user_id)
+    except Exception:
+        # Invalid / expired token — serve the page anonymously
+        pass
+
+    return None
+
+
 def secure_webview(request, page):
     """
-    Renders simple HTML templates for the mobile app webviews.
-    Requires a secret token to prevent direct public access.
+    Renders HTML templates for the mobile app webviews.
+    - Requires the shared MOBILE_WEBVIEW_TOKEN query param to prevent direct public access.
+    - Optionally resolves the active user from the JWT Bearer header so templates
+      can personalise content (e.g. {{ user.get_full_name }}).
     """
     token = request.GET.get('token')
     expected_token = os.environ.get("MOBILE_WEBVIEW_TOKEN", "LzR_Secure_App_2026")
     if token != expected_token:
         raise Http404("Not Found")
-    
+
     valid_pages = ['news', 'events', 'activities', 'safety']
     if page not in valid_pages:
         raise Http404("Not Found")
-        
-    return render(request, f"webview/{page}.html")
+
+    # Resolve the mobile user from the JWT header (if present)
+    webview_user = _resolve_webview_user(request)
+
+    context = {
+        "webview_user": webview_user,
+        # Convenience aliases for templates
+        "user_full_name": webview_user.get_full_name() if webview_user else None,
+        "user_first_name": webview_user.first_name if webview_user else None,
+        "user_email": webview_user.email if webview_user else None,
+        "is_authenticated": webview_user is not None,
+    }
+
+    return render(request, f"webview/{page}.html", context)
 
 urlpatterns = [
     path("", healthcheck, name="root"),

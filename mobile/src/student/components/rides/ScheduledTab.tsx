@@ -12,6 +12,18 @@ import api, { classifyApiError } from '../../../core/api'
 import JoinScheduledRideModal from './JoinScheduledRideModal'
 import LoadingOverlay from '../LoadingOverlay'
 
+export type MyTicket = {
+  id: string
+  ticket_ref: string
+  status: string
+  boarding_stop_name: string | null
+  boarding_stop_address: string | null
+  alighting_stop_name: string | null
+  alighting_stop_address: string | null
+  amount_paid: string
+  joined_at: string | null
+}
+
 export type ScheduledRide = {
   id: string
   reference: string
@@ -29,6 +41,8 @@ export type ScheduledRide = {
   is_joinable: boolean
   stops_count: number
   assigned_driver_name: string | null
+  is_joined_by_me: boolean
+  my_ticket: MyTicket | null
 }
 
 const formatTime = (timeStr: string) => {
@@ -53,7 +67,14 @@ export default function ScheduledTab({ isActive }: { isActive?: boolean }) {
     try {
       if (!silent) setError(null)
       const res = await api.get('rides/scheduled/available/')
-      setRides(Array.isArray(res.data?.results) ? res.data.results : (res.data || []))
+      const raw: ScheduledRide[] = Array.isArray(res.data?.results) ? res.data.results : (res.data || [])
+      // Pin joined ride to the top
+      const sorted = [...raw].sort((a, b) => {
+        if (a.is_joined_by_me && !b.is_joined_by_me) return -1
+        if (!a.is_joined_by_me && b.is_joined_by_me) return 1
+        return 0
+      })
+      setRides(sorted)
     } catch (err: any) {
       if (silent) return
       const kind = classifyApiError(err)
@@ -103,48 +124,73 @@ export default function ScheduledTab({ isActive }: { isActive?: boolean }) {
 
   const renderItem = useCallback(({ item }: { item: ScheduledRide }) => {
     const timeRange = `${formatTime(item.window_start)} - ${formatTime(item.window_end)}`
+    const isJoined = item.is_joined_by_me
+
     return (
       <TouchableOpacity 
-        style={styles.card} 
+        style={[styles.card, isJoined && styles.cardJoined]} 
         activeOpacity={0.85}
         onPress={() => setSelectedRide(item)}
       >
-        <View style={styles.cardTop}>
-          <View style={styles.timeWrap}>
-            <MaterialIcons name="schedule" size={16} color="#6A1B9A" />
-            <Text style={styles.timeText}>{timeRange}</Text>
+        {/* "Your Ride" badge at the top */}
+        {isJoined && (
+          <View style={styles.yourRideBanner}>
+            <MaterialIcons name="check-circle" size={14} color="#ffffff" />
+            <Text style={styles.yourRideText}>Your Ride</Text>
           </View>
-          <View style={styles.priceWrap}>
-            <Text style={styles.priceText}>₦{item.standard_price}</Text>
+        )}
+
+        <View style={styles.cardTop}>
+          <View style={[styles.timeWrap, isJoined && styles.timeWrapJoined]}>
+            <MaterialIcons name="schedule" size={16} color={isJoined ? '#ffffff' : '#6A1B9A'} />
+            <Text style={[styles.timeText, isJoined && styles.timeTextJoined]}>{timeRange}</Text>
+          </View>
+          <View style={[styles.priceWrap, isJoined && styles.priceWrapJoined]}>
+            <Text style={[styles.priceText, isJoined && styles.priceTextJoined]}>₦{item.standard_price}</Text>
           </View>
         </View>
 
         <View style={styles.routeWrap}>
-          <View style={styles.routeLine} />
+          <View style={[styles.routeLine, isJoined && styles.routeLineJoined]} />
           <View style={styles.routePoint}>
-            <View style={styles.dotOrigin} />
-            <Text style={styles.routeText} numberOfLines={1}>{item.origin_address}</Text>
+            <View style={[styles.dotOrigin, isJoined && styles.dotOriginJoined]} />
+            <Text style={[styles.routeText, isJoined && styles.routeTextJoined]} numberOfLines={1}>{item.origin_address}</Text>
           </View>
           <View style={[styles.routePoint, { marginTop: 12 }]}>
-            <MaterialIcons name="location-pin" size={16} color="#b91c1c" style={styles.pinDest} />
-            <Text style={styles.routeText} numberOfLines={1}>{item.destination_address}</Text>
+            <MaterialIcons name="location-pin" size={16} color={isJoined ? '#fbbf24' : '#b91c1c'} style={styles.pinDest} />
+            <Text style={[styles.routeText, isJoined && styles.routeTextJoined]} numberOfLines={1}>{item.destination_address}</Text>
           </View>
         </View>
 
-        <View style={styles.divider} />
+        {/* Joined ride: show booked stop details */}
+        {isJoined && item.my_ticket && (
+          <View style={styles.ticketRow}>
+            <View style={styles.ticketStop}>
+              <MaterialIcons name="hail" size={13} color="rgba(255,255,255,0.8)" />
+              <Text style={styles.ticketStopText} numberOfLines={1}>{item.my_ticket.boarding_stop_name || 'First stop'}</Text>
+            </View>
+            <MaterialIcons name="arrow-forward" size={13} color="rgba(255,255,255,0.6)" />
+            <View style={styles.ticketStop}>
+              <MaterialIcons name="directions-walk" size={13} color="rgba(255,255,255,0.8)" />
+              <Text style={styles.ticketStopText} numberOfLines={1}>{item.my_ticket.alighting_stop_name || 'Last stop'}</Text>
+            </View>
+          </View>
+        )}
+
+        <View style={[styles.divider, isJoined && styles.dividerJoined]} />
 
         <View style={styles.cardBottom}>
           <View style={styles.metaRow}>
-            <MaterialIcons name="person" size={14} color="#6b7280" />
-            <Text style={styles.metaText}>{item.assigned_driver_name || 'Driver pending'}</Text>
+            <MaterialIcons name="person" size={14} color={isJoined ? 'rgba(255,255,255,0.7)' : '#6b7280'} />
+            <Text style={[styles.metaText, isJoined && styles.metaTextJoined]}>{item.assigned_driver_name || 'Driver pending'}</Text>
           </View>
           <View style={styles.metaRow}>
-            <MaterialIcons name="people" size={14} color="#6b7280" />
-            <Text style={styles.metaText}>{item.passenger_count} joined</Text>
+            <MaterialIcons name="people" size={14} color={isJoined ? 'rgba(255,255,255,0.7)' : '#6b7280'} />
+            <Text style={[styles.metaText, isJoined && styles.metaTextJoined]}>{item.passenger_count} joined</Text>
           </View>
           <View style={styles.metaRow}>
-            <MaterialIcons name="map" size={14} color="#6b7280" />
-            <Text style={styles.metaText}>{item.stops_count} stops</Text>
+            <MaterialIcons name="map" size={14} color={isJoined ? 'rgba(255,255,255,0.7)' : '#6b7280'} />
+            <Text style={[styles.metaText, isJoined && styles.metaTextJoined]}>{item.stops_count} stops</Text>
           </View>
         </View>
       </TouchableOpacity>
@@ -191,6 +237,10 @@ export default function ScheduledTab({ isActive }: { isActive?: boolean }) {
             setSelectedRide(null)
             fetchRides()
           }}
+          onLeft={() => {
+            setSelectedRide(null)
+            fetchRides()
+          }}
         />
       )}
     </View>
@@ -221,9 +271,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   listContent: {
-    padding: 16,
+    padding: 2,
+    paddingHorizontal: 6,
     paddingBottom: 40,
-    gap: 16,
+    gap: 2,
   },
   emptyCard: {
     backgroundColor: '#ffffff',
@@ -246,9 +297,10 @@ const styles = StyleSheet.create({
     marginTop: 6,
     lineHeight: 20,
   },
+  // ── Normal card ──────────────────────────────────────────────────────────────
   card: {
     backgroundColor: '#ffffff',
-    borderRadius: 16,
+    borderRadius: 4,
     padding: 16,
     borderWidth: 1,
     borderColor: '#f0f0f0',
@@ -257,6 +309,27 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
+  },
+  // ── Joined (pinned) card ─────────────────────────────────────────────────────
+  cardJoined: {
+    backgroundColor: '#6A1B9A',
+    borderColor: '#5B1487',
+    elevation: 6,
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+  },
+  yourRideBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 12,
+  },
+  yourRideText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#ffffff',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
   cardTop: {
     flexDirection: 'row',
@@ -273,10 +346,16 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 999,
   },
+  timeWrapJoined: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
   timeText: {
     fontSize: 13,
     fontWeight: '700',
     color: '#6A1B9A',
+  },
+  timeTextJoined: {
+    color: '#ffffff',
   },
   priceWrap: {
     backgroundColor: '#f3f4f6',
@@ -284,10 +363,16 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 8,
   },
+  priceWrapJoined: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
   priceText: {
     fontSize: 14,
     fontWeight: '700',
     color: '#1a1c1c',
+  },
+  priceTextJoined: {
+    color: '#ffffff',
   },
   routeWrap: {
     paddingLeft: 4,
@@ -301,6 +386,9 @@ const styles = StyleSheet.create({
     width: 2,
     backgroundColor: '#e5e7eb',
     zIndex: 0,
+  },
+  routeLineJoined: {
+    backgroundColor: 'rgba(255,255,255,0.3)',
   },
   routePoint: {
     flexDirection: 'row',
@@ -317,6 +405,10 @@ const styles = StyleSheet.create({
     borderColor: '#ffffff',
     marginLeft: 2,
   },
+  dotOriginJoined: {
+    backgroundColor: '#ffffff',
+    borderColor: '#6A1B9A',
+  },
   pinDest: {
     marginLeft: 0,
   },
@@ -326,10 +418,39 @@ const styles = StyleSheet.create({
     flex: 1,
     fontWeight: '500',
   },
+  routeTextJoined: {
+    color: 'rgba(255,255,255,0.95)',
+  },
+  // Joined-only stop summary row
+  ticketRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+    backgroundColor: 'rgba(0,0,0,0.12)',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  ticketStop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flex: 1,
+  },
+  ticketStopText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.9)',
+    fontWeight: '600',
+    flex: 1,
+  },
   divider: {
     height: 1,
     backgroundColor: '#f0f0f0',
     marginVertical: 14,
+  },
+  dividerJoined: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
   },
   cardBottom: {
     flexDirection: 'row',
@@ -345,5 +466,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6b7280',
     fontWeight: '500',
+  },
+  metaTextJoined: {
+    color: 'rgba(255,255,255,0.75)',
   },
 })

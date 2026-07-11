@@ -4,25 +4,12 @@ import ScheduledTab from '../components/rides/ScheduledTab'
 import FindNearbyTab from '../components/rides/FindNearbyTab'
 
 export default function StudentRidesPage({ isActive }: { isActive?: boolean }) {
-  const [activeTab, setActiveTab] = useState<'scheduled' | 'nearby'>('scheduled')
+  const [activeTab, setActiveTab] = useState<'scheduled' | 'nearby'>('nearby')
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Rides</Text>
-      </View>
-
       <View style={styles.tabContainer}>
         <View style={styles.segmentedRow}>
-          <TouchableOpacity
-            style={[styles.segment, activeTab === 'scheduled' && styles.segmentActive]}
-            onPress={() => setActiveTab('scheduled')}
-            activeOpacity={0.8}
-          >
-            <Text style={activeTab === 'scheduled' ? styles.segmentTextActive : styles.segmentText}>
-              Scheduled Rides
-            </Text>
-          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.segment, activeTab === 'nearby' && styles.segmentActive]}
             onPress={() => setActiveTab('nearby')}
@@ -30,6 +17,15 @@ export default function StudentRidesPage({ isActive }: { isActive?: boolean }) {
           >
             <Text style={activeTab === 'nearby' ? styles.segmentTextActive : styles.segmentText}>
               Find nearby
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.segment, activeTab === 'scheduled' && styles.segmentActive]}
+            onPress={() => setActiveTab('scheduled')}
+            activeOpacity={0.8}
+          >
+            <Text style={activeTab === 'scheduled' ? styles.segmentTextActive : styles.segmentText}>
+              Scheduled Rides
             </Text>
           </TouchableOpacity>
         </View>
@@ -52,19 +48,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#ffffff',
   },
-  header: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 8,
-    backgroundColor: '#ffffff',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#1a1c1c',
-  },
   tabContainer: {
     paddingHorizontal: 20,
+    paddingTop: 16,
     paddingBottom: 16,
     backgroundColor: '#ffffff',
     borderBottomWidth: 1,

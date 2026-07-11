@@ -58,6 +58,13 @@
           "color": "#5B2D8E",
           "defaultChannel": "ride-status-alerts"
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "LR-Ride needs location in the background to show an active scanning notification.",
+          "isAndroidBackgroundLocationEnabled": true
+        }
       ]
     ],
     "owner": "heavpro"

@@ -13,6 +13,7 @@ import {
 } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import * as LocationService from 'expo-location'
+import * as TaskManager from 'expo-task-manager'
 import api, { classifyApiError } from '../../../core/api'
 import { useLocations } from '../../../../services/locationDataService'
 import ActiveRidePage from '../../pages/ActiveRidePage'
@@ -22,6 +23,16 @@ import BookRidePage from '../../pages/BookRidePage'
 const DEFAULT_RADIUS_KM = 1
 const SCAN_INTERVAL_MS = 5000
 const SCAN_DURATION_MS = 5 * 60 * 1000
+const FOREGROUND_LOCATION_TASK = 'FOREGROUND_LOCATION_TASK'
+
+try {
+  TaskManager.defineTask(FOREGROUND_LOCATION_TASK, async ({ data, error }) => {
+    if (error) return
+    // This empty task keeps the foreground notification alive
+  })
+} catch (err) {
+  // Task might already be defined during hot reload
+}
 
 const RADIUS_OPTIONS = [0.1, 0.5, 1, 2, 5]
 
@@ -133,7 +144,7 @@ export default function FindNearbyTab() {
     return () => sub.remove()
   }, [locationPickerOpen])
 
-  const stopScan = useCallback(() => {
+  const stopScan = useCallback(async () => {
     if (scanIntervalRef.current) clearInterval(scanIntervalRef.current)
     if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current)
     if (countdownRef.current) clearInterval(countdownRef.current)
@@ -143,6 +154,13 @@ export default function FindNearbyTab() {
     setScanActive(false)
     setScanRemainingMs(0)
     setScanExpired(true)
+    
+    try {
+      const hasTask = await TaskManager.isTaskRegisteredAsync(FOREGROUND_LOCATION_TASK)
+      if (hasTask) {
+        await LocationService.stopLocationUpdatesAsync(FOREGROUND_LOCATION_TASK)
+      }
+    } catch (err) {}
   }, [])
 
   const fetchAvailable = useCallback(async (params: ScanParams) => {
@@ -180,9 +198,18 @@ export default function FindNearbyTab() {
         throw new Error('Location permission denied.')
       }
     }
-    const current = await LocationService.getCurrentPositionAsync({
-      accuracy: LocationService.Accuracy.High,
-    })
+    const bgStatus = await LocationService.getBackgroundPermissionsAsync()
+    if (!bgStatus.granted) {
+      await LocationService.requestBackgroundPermissionsAsync()
+    }
+    
+    let current = await LocationService.getLastKnownPositionAsync()
+    if (!current) {
+      current = await LocationService.getCurrentPositionAsync({
+        accuracy: LocationService.Accuracy.Balanced,
+      })
+    }
+    
     return {
       latitude: roundCoord(current.coords.latitude),
       longitude: roundCoord(current.coords.longitude),
@@ -239,6 +266,20 @@ export default function FindNearbyTab() {
         const remaining = SCAN_DURATION_MS - elapsed
         setScanRemainingMs(Math.max(0, remaining))
       }, 1000)
+
+      try {
+        await LocationService.startLocationUpdatesAsync(FOREGROUND_LOCATION_TASK, {
+          accuracy: LocationService.Accuracy.Balanced,
+          showsBackgroundLocationIndicator: true,
+          foregroundService: {
+            notificationTitle: 'Scanning for Rides',
+            notificationBody: `Looking for available drivers within ${radiusKm}km...`,
+            notificationColor: '#6A1B9A',
+          },
+        })
+      } catch (e) {
+        // Fallback gracefully if background location is blocked by system OS
+      }
     } catch (err: any) {
       setScanError(String(err?.message || 'Unable to start scan.'))
       setScanActive(false)
@@ -333,7 +374,7 @@ export default function FindNearbyTab() {
   return (
     <View style={{ flex: 1 }}>
     <ScrollView style={styles.page} contentContainerStyle={styles.pageContent} showsVerticalScrollIndicator={false}>
-      <View style={styles.filterContainer}>
+      <View style={styles.mainCard}>
         <View style={styles.filterTopRow}>
           <TouchableOpacity style={styles.filterLocationBtn} onPress={handleLocationPress} activeOpacity={0.7}>
             <MaterialIcons name={locationSource === 'gps' ? 'my-location' : 'map'} size={18} color="#6A1B9A" />
@@ -343,9 +384,20 @@ export default function FindNearbyTab() {
             <MaterialIcons name="arrow-drop-down" size={20} color="#8b8b8b" />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.filterScanBtn} onPress={handleRescan} disabled={scanLoading} activeOpacity={0.85}>
-            {scanLoading ? <ActivityIndicator size="small" color="#ffffff" /> : <MaterialIcons name="radar" size={18} color="#ffffff" />}
-            <Text style={styles.filterScanBtnText}>Scan</Text>
+          <TouchableOpacity 
+            style={[styles.filterScanBtn, scanActive && { backgroundColor: '#b91c1c' }]} 
+            onPress={scanActive ? stopScan : handleRescan} 
+            disabled={scanLoading} 
+            activeOpacity={0.85}
+          >
+            {scanLoading ? (
+              <ActivityIndicator size="small" color="#ffffff" />
+            ) : scanActive ? (
+              <MaterialIcons name="stop" size={18} color="#ffffff" />
+            ) : (
+              <MaterialIcons name="radar" size={18} color="#ffffff" />
+            )}
+            <Text style={styles.filterScanBtnText}>{scanActive ? 'Stop' : 'Scan'}</Text>
           </TouchableOpacity>
         </View>
 
@@ -366,37 +418,46 @@ export default function FindNearbyTab() {
           </View>
         </View>
 
-        {(scanActive || scanExpired || lastUpdatedAt) && (
+        {(scanActive || scanExpired || lastUpdatedAt || drivers.length > 0) && (
           <View style={styles.filterMetaRow}>
-            {scanActive && timeLeftLabel ? (
-              <Text style={styles.filterMetaText}>Active for {timeLeftLabel}</Text>
-            ) : scanExpired ? (
-              <Text style={styles.filterMetaText}>Scan expired</Text>
-            ) : <Text style={styles.filterMetaText} />}
-            
-            {lastUpdatedAt && (
-              <Text style={styles.filterMetaText}>Updated {lastUpdatedAt.toLocaleTimeString()}</Text>
-            )}
+            <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+              {scanActive && timeLeftLabel ? (
+                <Text style={styles.filterMetaText}>Active for {timeLeftLabel}</Text>
+              ) : scanExpired ? (
+                <Text style={styles.filterMetaText}>Scan expired</Text>
+              ) : <Text style={styles.filterMetaText} />}
+              
+              {lastUpdatedAt && (
+                <Text style={styles.filterMetaText}>Updated {lastUpdatedAt.toLocaleTimeString()}</Text>
+              )}
+            </View>
+            <View style={styles.nearbyBadge}>
+              <Text style={styles.nearbyBadgeText}>{drivers.length} Nearby</Text>
+            </View>
           </View>
         )}
         {scanError ? <Text style={styles.errorText}>{scanError}</Text> : null}
-      </View>
 
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Available Rides</Text>
-        <View style={styles.nearbyBadge}>
-          <Text style={styles.nearbyBadgeText}>{drivers.length} Nearby</Text>
-        </View>
-      </View>
+        <View style={styles.sectionDivider} />
 
-      <View style={styles.list}>
-        {drivers.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <MaterialIcons name="directions-car" size={28} color="#6A1B9A" />
-            <Text style={styles.emptyTitle}>No drivers yet</Text>
-            <Text style={styles.emptyText}>Tap scan to find available rides near you.</Text>
-          </View>
-        ) : (
+        <View style={styles.list}>
+          {drivers.length === 0 ? (
+            <View style={styles.emptyCard}>
+              {scanLoading || scanActive ? (
+                <>
+                  <MaterialIcons name="radar" size={32} color="#6A1B9A" />
+                  <Text style={styles.emptyTitle}>Scanning nearby area...</Text>
+                  <Text style={styles.emptyText}>Looking for available rides within {radiusKm < 1 ? `${radiusKm * 1000}m` : `${radiusKm}km`}.</Text>
+                </>
+              ) : (
+                <>
+                  <MaterialIcons name="directions-car" size={28} color="#6A1B9A" />
+                  <Text style={styles.emptyTitle}>No drivers found</Text>
+                  <Text style={styles.emptyText}>Tap scan to find available rides near you.</Text>
+                </>
+              )}
+            </View>
+          ) : (
           drivers.map((driver) => {
             const carLabel = [driver.vehicle_color, driver.vehicle_make, driver.vehicle_model]
               .filter(Boolean)
@@ -426,7 +487,7 @@ export default function FindNearbyTab() {
                   </View>
                 </View>
 
-                <View style={styles.divider} />
+                  <View style={styles.dividerInner} />
 
                 <View style={styles.rideBottom}>
                   <View>
@@ -450,6 +511,7 @@ export default function FindNearbyTab() {
           })
         )}
       </View>
+    </View>
 
     </ScrollView>
 
@@ -503,14 +565,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#f9f9f9',
   },
   pageContent: {
-    padding: 20,
+    padding: 2,
     paddingBottom: 24,
     maxWidth: 700,
     width: '100%',
     alignSelf: 'center',
   },
-  filterContainer: {
-    backgroundColor: '#ffffff',
+  mainCard: {
+    backgroundColor: '#fffefeff',
     borderRadius: 16,
     borderWidth: 1,
     borderColor: '#f0f0f0',
@@ -608,16 +670,10 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     fontSize: 13,
   },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1a1c1c',
+  sectionDivider: {
+    height: 1,
+    backgroundColor: '#f0f0f0',
+    marginVertical: 16,
   },
   nearbyBadge: {
     backgroundColor: 'rgba(106,27,154,0.12)',
@@ -636,12 +692,8 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   emptyCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
     padding: 20,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#f0f0f0',
   },
   emptyTitle: {
     marginTop: 8,
@@ -654,11 +706,10 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   rideCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 12,
+    padding: 12,
     borderWidth: 1,
-    borderColor: '#f0f0f0',
+    borderColor: '#e5e7eb',
     gap: 12,
   },
   rideTop: {
@@ -717,7 +768,7 @@ const styles = StyleSheet.create({
     color: '#6A1B9A',
     fontWeight: '600',
   },
-  divider: {
+  dividerInner: {
     height: 1,
     backgroundColor: '#f0f0f0',
   },
