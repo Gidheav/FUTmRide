@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { clearAuthTokens, getAuthTokens, setAuthTokens } from '../../utils/secureStorage'
 import { createJSONStorage, persist } from 'zustand/middleware'
+import { clearStoredPinHash } from './security'
+import { useSecurityStore } from './securityStore'
 
 export type UserRole = 'student' | 'driver'
 
@@ -19,11 +21,16 @@ export interface AuthUser {
   campus?: { id?: string | number | null; name?: string | null } | null
 }
 
+/** Maximum number of days a session stays valid for PIN-only unlock. */
+const SESSION_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000 // 14 days
+
 interface AuthStore {
   user: AuthUser | null
   accessToken: string | null
   refreshToken: string | null
   isAuthenticated: boolean
+  /** Timestamp (ms) of the last successful email+password login. Used for 14-day session window. */
+  loginAt: number | null
   /** True once Zustand has rehydrated from AsyncStorage AND SecureStore tokens are loaded */
   hasHydrated: boolean
   setAuth: (user: AuthUser, accessToken: string, refreshToken: string) => void
@@ -36,6 +43,12 @@ interface AuthStore {
    */
   hydrateTokens: () => Promise<{ accessToken: string | null; refreshToken: string | null }>
   setHasHydrated: (value: boolean) => void
+  /** Check if the 14-day session window has expired. */
+  isSessionExpired: () => boolean
+  /**
+   * Full logout — clears auth tokens, PIN hash, security state, and wallet state.
+   * Safe to call from any context. Prevents cross-user contamination on shared devices.
+   */
   logout: () => void
 }
 
@@ -46,6 +59,7 @@ export const useAuthStore = create<AuthStore>()(
       accessToken: null,
       refreshToken: null,
       isAuthenticated: false,
+      loginAt: null,
       hasHydrated: false,
 
       setAuth: (user, accessToken, refreshToken) => {
@@ -55,6 +69,7 @@ export const useAuthStore = create<AuthStore>()(
           accessToken,
           refreshToken,
           isAuthenticated: true,
+          loginAt: Date.now(),
         })
       },
 
@@ -83,24 +98,55 @@ export const useAuthStore = create<AuthStore>()(
 
       setHasHydrated: (value) => set({ hasHydrated: value }),
 
+      isSessionExpired: () => {
+        const { loginAt } = get()
+        if (!loginAt) return true
+        return (Date.now() - loginAt) > SESSION_MAX_AGE_MS
+      },
+
       logout: () => {
+        // Clear auth tokens from SecureStore
         void clearAuthTokens()
+        // Clear PIN hash from SecureStore
+        void clearStoredPinHash()
+        // Reset security store (appLock, biometric, PIN flags, etc.)
+        try {
+          useSecurityStore.getState().resetForLogout()
+        } catch {
+          // Security store may not be available during early boot — best effort
+        }
+        // Reset wallet store (balance, activity key)
+        try {
+          const { useWalletStore } = require('./walletStore')
+          ;(useWalletStore as any).getState().resetForLogout()
+        } catch {
+          // Wallet store may not be available — best effort
+        }
+        // Reset student profile cache
+        try {
+          const { useStudentProfileStore } = require('./studentProfileStore')
+          ;(useStudentProfileStore as any).getState().clearAllProfiles?.()
+        } catch {
+          // Profile store may not be available — best effort
+        }
         return set({
           user: null,
           accessToken: null,
           refreshToken: null,
           isAuthenticated: false,
+          loginAt: null,
         })
       },
     }),
     {
       name: 'auth-store',
       storage: createJSONStorage(() => AsyncStorage),
-      // Only persist user identity to AsyncStorage — tokens live in SecureStore
+      // Only persist user identity + session metadata to AsyncStorage — tokens live in SecureStore
       // and are loaded via hydrateTokens() on boot.
       partialize: (state) => ({
         user: state.user,
         isAuthenticated: state.isAuthenticated,
+        loginAt: state.loginAt,
       }),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true)

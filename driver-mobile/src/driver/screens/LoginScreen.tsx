@@ -95,7 +95,7 @@ export default function DriverLoginScreen() {
         return 'The connection is taking too long. Please check your internet connection and try again.'
       }
 
-      return 'You appear to be offline or the service cannot be reached right now. Please check your internet connection and try again.'
+      return 'Please check your internet connection and try again.'
     }
 
     return fallback

@@ -207,7 +207,7 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
 
     return (
       <View style={styles.page}>
-        <View style={[styles.header, { paddingTop: Platform.OS === 'ios' ? insets.top : 12 }]}>
+        <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
           <TouchableOpacity style={styles.backButton} onPress={() => setSelectedNotification(null)}>
             <MaterialIcons name="arrow-back" size={22} color="#1a1c1c" />
           </TouchableOpacity>
@@ -359,7 +359,7 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
 
   return (
     <View style={styles.page}>
-      <View style={[styles.header, { paddingTop: Platform.OS === 'ios' ? insets.top : 12 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity style={styles.backButton} onPress={onClose}>
           <MaterialIcons name="arrow-back" size={22} color="#1a1c1c" />
         </TouchableOpacity>

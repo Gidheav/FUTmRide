@@ -133,8 +133,10 @@ export default function AppLockPage({ onUnlocked, onForgotPin }: AppLockProps) {
 
   const finishUnlock = () => {
     setFinishingUnlock(true)
-    void kickoffProactiveRefresh()
-    setTimeout(onUnlocked, 120)
+    // Fire token refresh in background — don't block unlock
+    kickoffProactiveRefresh()?.catch(() => {})
+    // Unlock immediately — the 401 interceptor handles stale tokens
+    onUnlocked()
   }
 
   const handleUnlock = async (value: string) => {

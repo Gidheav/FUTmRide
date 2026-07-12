@@ -19,6 +19,8 @@ interface SecurityStore {
   setLocked: (value: boolean) => void
   setHasPin: (value: boolean) => void
   setPinRecoveryRequired: (value: boolean) => void
+  /** Reset all security state to defaults on logout. Prevents cross-user contamination. */
+  resetForLogout: () => void
 }
 
 export const useSecurityStore = create<SecurityStore>()(
@@ -42,6 +44,15 @@ export const useSecurityStore = create<SecurityStore>()(
       setLocked: (value) => set({ locked: value }),
       setHasPin: (value) => set({ hasPin: value }),
       setPinRecoveryRequired: (value) => set({ pinRecoveryRequired: value }),
+      resetForLogout: () => set({
+        appLockEnabled: false,
+        biometricEnabled: false,
+        lockTimeoutMinutes: 1,
+        lastUnlockAt: null,
+        locked: false,
+        hasPin: false,
+        pinRecoveryRequired: false,
+      }),
     }),
     {
       name: 'security-store',

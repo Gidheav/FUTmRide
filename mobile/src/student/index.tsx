@@ -64,7 +64,8 @@ export default function StudentApp() {
 }
 
 function StudentAppInner() {
-  const { isAuthenticated, user, setTokens, setUser, logout, hasHydrated, hydrateTokens } = useAuthStore()
+  const { isAuthenticated, user, setTokens, setUser, logout, hasHydrated, hydrateTokens, isSessionExpired } = useAuthStore()
+  const [tokensLoaded, setTokensLoaded] = useState(false)
   const {
     appLockEnabled,
     biometricEnabled,
@@ -166,7 +167,9 @@ function StudentAppInner() {
   // On cold start, accessToken/refreshToken in Zustand are null until we load
   // them here. This must complete before any authenticated API calls fire.
   useEffect(() => {
-    void hydrateTokens()
+    hydrateTokens().finally(() => {
+      setTokensLoaded(true)
+    })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // run once on mount only
 
@@ -531,6 +534,26 @@ function StudentAppInner() {
   }, [])
 
   // ─── Guards ───────────────────────────────────────────────────────────────
+  // Wait for Zustand rehydration + SecureStore token load before rendering
+  if (!hasHydrated || !tokensLoaded) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#ffffff' }}>
+        <ActivityIndicator size="large" color="#6A1B9A" />
+      </View>
+    )
+  }
+
+  // Handle 14-day session expiry limit
+  if (isAuthenticated && isSessionExpired?.()) {
+    // We defer the state update slightly to avoid rendering issues
+    setTimeout(() => logout(), 0)
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#ffffff' }}>
+        <ActivityIndicator size="large" color="#6A1B9A" />
+      </View>
+    )
+  }
+
   if (!isAuthenticated || !user) return <StudentLoginScreen />
   if (user.role !== 'student') return <View style={{ flex: 1 }}><StudentLoginScreen /></View>
 
@@ -631,13 +654,33 @@ function StudentAppInner() {
     return null
   }
 
+  const handleRequireSecurity = (onSuccess: () => void) => {
+    if (hasPin || biometricEnabled) {
+      onSuccess()
+    } else {
+      import('react-native').then(({ Alert }) => {
+        Alert.alert(
+          'Security Setup Required',
+          'Please set up a PIN or biometric lock in Security settings before you can book rides or access your wallet.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Setup Security', onPress: () => {
+              setActiveTab('account')
+              setAccountMode('security')
+            }}
+          ]
+        )
+      })
+    }
+  }
+
   // ─── Main app shell (always accessible) ───────────────────────────────────
   const renderTabPage = () => (
     <View style={{ flex: 1, position: 'relative' }}>
       <View style={{ display: activeTab === 'home' ? 'flex' : 'none', flex: 1 }}>
         <StudentDashboardScreen
-          onNavigateToWallet={() => setActiveTab('wallet')}
-          onBookRide={() => setRideScreen('booking')}
+          onNavigateToWallet={() => handleRequireSecurity(() => setActiveTab('wallet'))}
+          onBookRide={() => handleRequireSecurity(() => setRideScreen('booking'))}
           onViewRideStatus={() => {
             if (!activeRideSummary) return
             setActiveRideId(activeRideSummary.id)
@@ -730,7 +773,13 @@ function StudentAppInner() {
     <View style={{ flex: 1 }}>
       <StudentLayout
         activeTab={activeTab}
-        onTabChange={setActiveTab}
+        onTabChange={(tab) => {
+          if (tab === 'wallet') {
+            handleRequireSecurity(() => setActiveTab(tab))
+          } else {
+            setActiveTab(tab)
+          }
+        }}
         onMenuPress={() => setIsSidebarOpen(true)}
         onBackPress={
           activeTab === 'account' && accountMode !== 'view' ? () => setAccountMode('view') :

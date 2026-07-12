@@ -66,7 +66,7 @@ const getApiErrorMessage = (err: any, fallback: string) => {
       return 'The connection is taking too long. Please check your internet connection and try again.'
     }
 
-    return 'You appear to be offline or the service cannot be reached right now. Please check your internet connection and try again.'
+    return 'Please check your internet connection and try again.'
   }
 
   return fallback
@@ -224,7 +224,7 @@ export default function StudentLoginScreen() {
       setVerificationCode('')
       setVerificationStatusMessage(
         verificationResponse?.data?.message ||
-          `Verification code sent to ${email}. Enter the code to finish creating your account.`,
+        `Verification code sent to ${email}. Enter the code to finish creating your account.`,
       )
       setVerificationModalVisible(true)
     } catch (err: any) {
@@ -268,7 +268,7 @@ export default function StudentLoginScreen() {
       )
       setVerificationStatusMessage(
         resendResponse?.data?.message ||
-          `A new verification code has been sent to ${pendingSignupData.email}.`,
+        `A new verification code has been sent to ${pendingSignupData.email}.`,
       )
     } catch (err: any) {
       setVerificationError(getApiErrorMessage(err, 'Failed to resend verification code.'))
@@ -402,373 +402,361 @@ export default function StudentLoginScreen() {
   }
 
   return (
-    <SafeAreaView style={{flex: 1, backgroundColor: '#f9f9f9'}}>
-    <KeyboardAvoidingView
-      style={styles.page}
-      behavior="padding"
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
-    >
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        bounces={false}
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#f9f9f9' }}>
+      <KeyboardAvoidingView
+        style={styles.page}
+        behavior="padding"
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
       >
-        <View style={styles.header}>
-          <View style={styles.heroCard}>
-            <Image source={ILLUSTRATION_IMAGE} style={styles.heroImage} />
-            <View style={styles.heroOverlay} />
-            <View style={styles.heroLabelWrap}>
-              <Text style={styles.heroLabel}>Campus Transit</Text>
-              <Text style={styles.welcomeSubtitle}>
-                Secure, fast, and reliable rides across FUTMINNA campus.
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.formCard}>
-          <View style={styles.tabs}>
-            <Pressable
-              style={[styles.tab, !isSignup && styles.tabActive]}
-              onPress={() => setIsSignup(false)}
-            >
-              <Text style={!isSignup ? styles.tabActiveText : styles.tabText}>Login</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.tab, isSignup && styles.tabActive]}
-              onPress={() => setIsSignup(true)}
-            >
-              <Text style={isSignup ? styles.tabActiveText : styles.tabText}>Create Account</Text>
-            </Pressable>
-          </View>
-
-          {isSignup ? (
-            <>
-              {signupError ? <Text style={styles.errorText}>{signupError}</Text> : null}
-
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>University Email</Text>
-                <View style={styles.inputWrap}>
-                  <MaterialIcons name="mail" size={20} color="#5e5e5e" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Your university student email"
-                    placeholderTextColor="#c6c6c6"
-                    value={signupEmail}
-                    onChangeText={setSignupEmail}
-                    editable={!signupLoading}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                  />
-                </View>
-              </View>
-
-              <View style={styles.fieldGroup}>
-                <View style={styles.passwordRow}>
-                  <Text style={styles.label}>Password</Text>
-                </View>
-                <View style={styles.inputWrap}>
-                  <MaterialIcons name="lock" size={20} color="#5e5e5e" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="••••••••"
-                    placeholderTextColor="#c6c6c6"
-                    value={signupPassword}
-                    onChangeText={setSignupPassword}
-                    secureTextEntry={!showPassword}
-                    editable={!signupLoading}
-                  />
-                  <Pressable onPress={() => setShowPassword((prev) => !prev)} style={styles.eyeButton}>
-                    <MaterialIcons name={showPassword ? 'visibility-off' : 'visibility'} size={20} color="#5e5e5e" />
-                  </Pressable>
-                </View>
-              </View>
-
-              <View style={styles.infoBox}>
-                <MaterialIcons name="badge" size={18} color="#5e5e5e" style={styles.infoIcon} />
-                <Text style={styles.infoText}>
-                  New accounts require FUTMINNA Student ID verification during onboarding.
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          bounces={false}
+        >
+          <View style={styles.header}>
+            <View style={styles.heroCard}>
+              <Image source={ILLUSTRATION_IMAGE} style={styles.heroImage} />
+              <View style={styles.heroOverlay} />
+              <View style={styles.heroLabelWrap}>
+                <Text style={styles.heroLabel}>Campus Transit</Text>
+                <Text style={styles.welcomeSubtitle}>
+                  Secure, fast, and reliable rides across Minna.
                 </Text>
               </View>
+            </View>
+          </View>
 
-              <TouchableOpacity
-                style={[styles.primaryButton, signupLoading && styles.primaryButtonDisabled]}
-                onPress={handleSignup}
-                disabled={signupLoading}
-                activeOpacity={0.85}
+          <View style={styles.formCard}>
+            <View style={styles.tabs}>
+              <Pressable
+                style={[styles.tab, !isSignup && styles.tabActive]}
+                onPress={() => setIsSignup(false)}
               >
+                <Text style={!isSignup ? styles.tabActiveText : styles.tabText}>Login</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.tab, isSignup && styles.tabActive]}
+                onPress={() => setIsSignup(true)}
+              >
+                <Text style={isSignup ? styles.tabActiveText : styles.tabText}>Create Account</Text>
+              </Pressable>
+            </View>
+
+            {isSignup ? (
+              <>
+                {signupError ? <Text style={styles.errorText}>{signupError}</Text> : null}
+
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>University Email</Text>
+                  <View style={styles.inputWrap}>
+                    <MaterialIcons name="mail" size={20} color="#5e5e5e" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Your university student email"
+                      placeholderTextColor="#c6c6c6"
+                      value={signupEmail}
+                      onChangeText={setSignupEmail}
+                      editable={!signupLoading}
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <View style={styles.passwordRow}>
+                    <Text style={styles.label}>Password</Text>
+                  </View>
+                  <View style={styles.inputWrap}>
+                    <MaterialIcons name="lock" size={20} color="#5e5e5e" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="••••••••"
+                      placeholderTextColor="#c6c6c6"
+                      value={signupPassword}
+                      onChangeText={setSignupPassword}
+                      secureTextEntry={!showPassword}
+                      editable={!signupLoading}
+                    />
+                    <Pressable onPress={() => setShowPassword((prev) => !prev)} style={styles.eyeButton}>
+                      <MaterialIcons name={showPassword ? 'visibility-off' : 'visibility'} size={20} color="#5e5e5e" />
+                    </Pressable>
+                  </View>
+                </View>
+
+
+
+                <TouchableOpacity
+                  style={[styles.primaryButton, signupLoading && styles.primaryButtonDisabled]}
+                  onPress={handleSignup}
+                  disabled={signupLoading}
+                  activeOpacity={0.85}
+                >
                   <Text style={styles.primaryButtonText}>Create Account</Text>
                   <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              {error ? <Text style={styles.errorText}>{error}</Text> : null}
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>University Email</Text>
-                <View style={styles.inputWrap}>
-                  <MaterialIcons name="mail" size={20} color="#5e5e5e" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Your university student email"
-                    placeholderTextColor="#c6c6c6"
-                    value={identifier}
-                    onChangeText={setIdentifier}
-                    editable={!loading}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                  />
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>University Email</Text>
+                  <View style={styles.inputWrap}>
+                    <MaterialIcons name="mail" size={20} color="#5e5e5e" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Your university student email"
+                      placeholderTextColor="#c6c6c6"
+                      value={identifier}
+                      onChangeText={setIdentifier}
+                      editable={!loading}
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                    />
+                  </View>
                 </View>
-              </View>
 
-              <View style={styles.fieldGroup}>
-                <View style={styles.passwordRow}>
-                  <Text style={styles.label}>Password</Text>
-                  <Pressable onPress={() => {
-                    setForgotPasswordModalVisible(true)
-                    setForgotPasswordStep(1)
-                    setForgotPasswordEmail(identifier)
-                    setForgotPasswordError('')
-                    setForgotPasswordSuccessMessage('')
-                  }}>
-                    <Text style={styles.forgotText}>Forgot?</Text>
-                  </Pressable>
+                <View style={styles.fieldGroup}>
+                  <View style={styles.passwordRow}>
+                    <Text style={styles.label}>Password</Text>
+                    <Pressable onPress={() => {
+                      setForgotPasswordModalVisible(true)
+                      setForgotPasswordStep(1)
+                      setForgotPasswordEmail(identifier)
+                      setForgotPasswordError('')
+                      setForgotPasswordSuccessMessage('')
+                    }}>
+                      <Text style={styles.forgotText}>Forgot?</Text>
+                    </Pressable>
+                  </View>
+                  <View style={styles.inputWrap}>
+                    <MaterialIcons name="lock" size={20} color="#5e5e5e" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="••••••••"
+                      placeholderTextColor="#c6c6c6"
+                      value={password}
+                      onChangeText={setPassword}
+                      secureTextEntry={!showPassword}
+                      editable={!loading}
+                    />
+                    <Pressable onPress={() => setShowPassword((prev) => !prev)} style={styles.eyeButton}>
+                      <MaterialIcons name={showPassword ? 'visibility-off' : 'visibility'} size={20} color="#5e5e5e" />
+                    </Pressable>
+                  </View>
                 </View>
-                <View style={styles.inputWrap}>
-                  <MaterialIcons name="lock" size={20} color="#5e5e5e" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="••••••••"
-                    placeholderTextColor="#c6c6c6"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry={!showPassword}
-                    editable={!loading}
-                  />
-                  <Pressable onPress={() => setShowPassword((prev) => !prev)} style={styles.eyeButton}>
-                    <MaterialIcons name={showPassword ? 'visibility-off' : 'visibility'} size={20} color="#5e5e5e" />
-                  </Pressable>
-                </View>
-              </View>
 
-              <View style={styles.infoBox}>
-                <MaterialIcons name="badge" size={18} color="#5e5e5e" style={styles.infoIcon} />
-                <Text style={styles.infoText}>
-                  New accounts require FUTMINNA Student ID verification during onboarding.
-                </Text>
-              </View>
-
-              <TouchableOpacity
-                style={[styles.primaryButton, loading && styles.primaryButtonDisabled]}
-                onPress={handleLogin}
-                disabled={loading}
-                activeOpacity={0.85}
-              >
+                <TouchableOpacity
+                  style={[styles.primaryButton, loading && styles.primaryButtonDisabled]}
+                  onPress={handleLogin}
+                  disabled={loading}
+                  activeOpacity={0.85}
+                >
                   <Text style={styles.primaryButtonText}>Secure Login</Text>
                   <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-
-      </ScrollView>
-
-      <Modal
-        visible={verificationModalVisible}
-        animationType="fade"
-        transparent
-        onRequestClose={handleCloseVerificationModal}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.verificationModalCard}>
-            <Text style={styles.verificationModalTitle}>Verify Email</Text>
-            <Text style={styles.verificationModalSubtitle}>
-              Enter the 6-digit code sent to {pendingSignupData?.email || signupEmail.trim().toLowerCase()}.
-            </Text>
-
-            <TextInput
-              style={styles.verificationInput}
-              placeholder="Enter 6-digit code"
-              placeholderTextColor="#b8b8b8"
-              value={verificationCode}
-              onChangeText={(value) => setVerificationCode(value.replace(/\D/g, '').slice(0, 6))}
-              keyboardType="number-pad"
-              maxLength={6}
-              editable={!verificationLoading && !verificationResendLoading}
-            />
-
-            {verificationError ? (
-              <Text style={[styles.errorText, styles.verificationInlineStatus]}>{verificationError}</Text>
-            ) : verificationStatusMessage ? (
-              <Text style={styles.verificationStatusText}>{verificationStatusMessage}</Text>
-            ) : null}
-
-            <TouchableOpacity
-              style={[styles.primaryButton, verificationLoading && styles.primaryButtonDisabled]}
-              onPress={handleVerifyCodeAndCreateAccount}
-              disabled={verificationLoading || verificationResendLoading}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.primaryButtonText}>Verify</Text>
-              <MaterialIcons name="check-circle" size={18} color="#ffffff" />
-            </TouchableOpacity>
-
-            <View style={styles.verificationActionsRow}>
-              <TouchableOpacity
-                style={styles.verificationSecondaryAction}
-                onPress={handleResendVerificationCode}
-                disabled={verificationLoading || verificationResendLoading}
-                activeOpacity={0.75}
-              >
-                <Text style={styles.resendText}>Resend Code</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.verificationSecondaryAction}
-                onPress={handleCloseVerificationModal}
-                disabled={verificationLoading || verificationResendLoading}
-                activeOpacity={0.75}
-              >
-                <Text style={styles.verificationSecondaryActionText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
-        </View>
-      </Modal>
 
-      {/* Forgot Password Modal */}
-      <Modal
-        visible={forgotPasswordModalVisible}
-        animationType="fade"
-        transparent
-        onRequestClose={handleCloseForgotPasswordModal}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.verificationModalCard}>
-            <Text style={styles.verificationModalTitle}>
-              {forgotPasswordStep === 1 ? 'Reset Password' : 'Create New Password'}
-            </Text>
-            <Text style={styles.verificationModalSubtitle}>
-              {forgotPasswordStep === 1
-                ? 'Enter your university email to receive a password reset code.'
-                : `Enter the 6-digit code sent to ${forgotPasswordEmail} and your new password.`}
-            </Text>
+        </ScrollView>
 
-            {forgotPasswordStep === 1 ? (
-              <View style={styles.fieldGroup}>
-                <View style={styles.inputWrap}>
-                  <MaterialIcons name="mail" size={20} color="#5e5e5e" style={styles.inputIcon} />
-                  <TextInput
-                    style={[styles.input, { height: 48, backgroundColor: '#f3f3f3', paddingLeft: 44, fontSize: 16, textAlign: 'left', letterSpacing: 0, borderWidth: 0 }]}
-                    placeholder="name.m1234567@st.futminna.edu.ng"
-                    placeholderTextColor="#b8b8b8"
-                    value={forgotPasswordEmail}
-                    onChangeText={setForgotPasswordEmail}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    editable={!forgotPasswordLoading}
-                  />
-                </View>
-              </View>
-            ) : (
-              <View style={{ gap: 16 }}>
-                <TextInput
-                  style={styles.verificationInput}
-                  placeholder="Enter 6-digit code"
-                  placeholderTextColor="#b8b8b8"
-                  value={forgotPasswordCode}
-                  onChangeText={(value) => setForgotPasswordCode(value.replace(/\D/g, '').slice(0, 6))}
-                  keyboardType="number-pad"
-                  maxLength={6}
-                  editable={!forgotPasswordLoading}
-                />
+        <Modal
+          visible={verificationModalVisible}
+          animationType="fade"
+          transparent
+          onRequestClose={handleCloseVerificationModal}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={styles.verificationModalCard}>
+              <Text style={styles.verificationModalTitle}>Verify Email</Text>
+              <Text style={styles.verificationModalSubtitle}>
+                Enter the 6-digit code sent to {pendingSignupData?.email || signupEmail.trim().toLowerCase()}.
+              </Text>
 
-                <View style={styles.inputWrap}>
-                  <MaterialIcons name="lock" size={20} color="#5e5e5e" style={styles.inputIcon} />
-                  <TextInput
-                    style={[styles.input, { height: 48, backgroundColor: '#f3f3f3', paddingLeft: 44, paddingRight: 44, fontSize: 16, textAlign: 'left', letterSpacing: 0, borderWidth: 0 }]}
-                    placeholder="New Password"
-                    placeholderTextColor="#b8b8b8"
-                    value={forgotPasswordNewPassword}
-                    onChangeText={setForgotPasswordNewPassword}
-                    secureTextEntry={!showForgotNewPassword}
-                    editable={!forgotPasswordLoading}
-                  />
-                  <Pressable onPress={() => setShowForgotNewPassword((prev) => !prev)} style={styles.eyeButton}>
-                    <MaterialIcons name={showForgotNewPassword ? 'visibility-off' : 'visibility'} size={20} color="#5e5e5e" />
-                  </Pressable>
-                </View>
-              </View>
-            )}
+              <TextInput
+                style={styles.verificationInput}
+                placeholder="Enter 6-digit code"
+                placeholderTextColor="#b8b8b8"
+                value={verificationCode}
+                onChangeText={(value) => setVerificationCode(value.replace(/\D/g, '').slice(0, 6))}
+                keyboardType="number-pad"
+                maxLength={6}
+                editable={!verificationLoading && !verificationResendLoading}
+              />
 
-            {forgotPasswordError ? (
-              <Text style={[styles.errorText, styles.verificationInlineStatus]}>{forgotPasswordError}</Text>
-            ) : forgotPasswordSuccessMessage ? (
-              <Text style={styles.verificationStatusText}>{forgotPasswordSuccessMessage}</Text>
-            ) : null}
+              {verificationError ? (
+                <Text style={[styles.errorText, styles.verificationInlineStatus]}>{verificationError}</Text>
+              ) : verificationStatusMessage ? (
+                <Text style={styles.verificationStatusText}>{verificationStatusMessage}</Text>
+              ) : null}
 
-            {forgotPasswordStep === 1 ? (
               <TouchableOpacity
-                style={[styles.primaryButton, forgotPasswordLoading && styles.primaryButtonDisabled]}
-                onPress={handleForgotPasswordRequest}
-                disabled={forgotPasswordLoading}
+                style={[styles.primaryButton, verificationLoading && styles.primaryButtonDisabled]}
+                onPress={handleVerifyCodeAndCreateAccount}
+                disabled={verificationLoading || verificationResendLoading}
                 activeOpacity={0.85}
               >
-                {forgotPasswordLoading ? (
-                  <ActivityIndicator color="#ffffff" size="small" />
-                ) : (
-                  <>
-                    <Text style={styles.primaryButtonText}>Send Code</Text>
-                    <MaterialIcons name="send" size={18} color="#ffffff" />
-                  </>
-                )}
+                <Text style={styles.primaryButtonText}>Verify</Text>
+                <MaterialIcons name="check-circle" size={18} color="#ffffff" />
               </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={[styles.primaryButton, forgotPasswordLoading && styles.primaryButtonDisabled]}
-                onPress={handleForgotPasswordConfirm}
-                disabled={forgotPasswordLoading}
-                activeOpacity={0.85}
-              >
-                {forgotPasswordLoading ? (
-                  <ActivityIndicator color="#ffffff" size="small" />
-                ) : (
-                  <>
-                    <Text style={styles.primaryButtonText}>Reset Password</Text>
-                    <MaterialIcons name="lock-reset" size={18} color="#ffffff" />
-                  </>
-                )}
-              </TouchableOpacity>
-            )}
 
-            <View style={styles.verificationActionsRow}>
-              {forgotPasswordStep === 2 ? (
+              <View style={styles.verificationActionsRow}>
                 <TouchableOpacity
                   style={styles.verificationSecondaryAction}
-                  onPress={handleForgotPasswordRequest}
-                  disabled={forgotPasswordLoading}
+                  onPress={handleResendVerificationCode}
+                  disabled={verificationLoading || verificationResendLoading}
                   activeOpacity={0.75}
                 >
                   <Text style={styles.resendText}>Resend Code</Text>
                 </TouchableOpacity>
-              ) : (
-                <View style={{ flex: 1 }} />
-              )}
 
-              <TouchableOpacity
-                style={styles.verificationSecondaryAction}
-                onPress={handleCloseForgotPasswordModal}
-                disabled={forgotPasswordLoading}
-                activeOpacity={0.75}
-              >
-                <Text style={styles.verificationSecondaryActionText}>Cancel</Text>
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.verificationSecondaryAction}
+                  onPress={handleCloseVerificationModal}
+                  disabled={verificationLoading || verificationResendLoading}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.verificationSecondaryActionText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+
+        {/* Forgot Password Modal */}
+        <Modal
+          visible={forgotPasswordModalVisible}
+          animationType="fade"
+          transparent
+          onRequestClose={handleCloseForgotPasswordModal}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={styles.verificationModalCard}>
+              <Text style={styles.verificationModalTitle}>
+                {forgotPasswordStep === 1 ? 'Reset Password' : 'Create New Password'}
+              </Text>
+              <Text style={styles.verificationModalSubtitle}>
+                {forgotPasswordStep === 1
+                  ? 'Enter your university email to receive a password reset code.'
+                  : `Enter the 6-digit code sent to ${forgotPasswordEmail} and your new password.`}
+              </Text>
+
+              {forgotPasswordStep === 1 ? (
+                <View style={styles.fieldGroup}>
+                  <View style={styles.inputWrap}>
+                    <MaterialIcons name="mail" size={20} color="#5e5e5e" style={styles.inputIcon} />
+                    <TextInput
+                      style={[styles.input, { height: 48, backgroundColor: '#f3f3f3', paddingLeft: 44, fontSize: 16, textAlign: 'left', letterSpacing: 0, borderWidth: 0 }]}
+                      placeholder="name.m1234567@st.futminna.edu.ng"
+                      placeholderTextColor="#b8b8b8"
+                      value={forgotPasswordEmail}
+                      onChangeText={setForgotPasswordEmail}
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                      editable={!forgotPasswordLoading}
+                    />
+                  </View>
+                </View>
+              ) : (
+                <View style={{ gap: 16 }}>
+                  <TextInput
+                    style={styles.verificationInput}
+                    placeholder="Enter 6-digit code"
+                    placeholderTextColor="#b8b8b8"
+                    value={forgotPasswordCode}
+                    onChangeText={(value) => setForgotPasswordCode(value.replace(/\D/g, '').slice(0, 6))}
+                    keyboardType="number-pad"
+                    maxLength={6}
+                    editable={!forgotPasswordLoading}
+                  />
+
+                  <View style={styles.inputWrap}>
+                    <MaterialIcons name="lock" size={20} color="#5e5e5e" style={styles.inputIcon} />
+                    <TextInput
+                      style={[styles.input, { height: 48, backgroundColor: '#f3f3f3', paddingLeft: 44, paddingRight: 44, fontSize: 16, textAlign: 'left', letterSpacing: 0, borderWidth: 0 }]}
+                      placeholder="New Password"
+                      placeholderTextColor="#b8b8b8"
+                      value={forgotPasswordNewPassword}
+                      onChangeText={setForgotPasswordNewPassword}
+                      secureTextEntry={!showForgotNewPassword}
+                      editable={!forgotPasswordLoading}
+                    />
+                    <Pressable onPress={() => setShowForgotNewPassword((prev) => !prev)} style={styles.eyeButton}>
+                      <MaterialIcons name={showForgotNewPassword ? 'visibility-off' : 'visibility'} size={20} color="#5e5e5e" />
+                    </Pressable>
+                  </View>
+                </View>
+              )}
+
+              {forgotPasswordError ? (
+                <Text style={[styles.errorText, styles.verificationInlineStatus]}>{forgotPasswordError}</Text>
+              ) : forgotPasswordSuccessMessage ? (
+                <Text style={styles.verificationStatusText}>{forgotPasswordSuccessMessage}</Text>
+              ) : null}
+
+              {forgotPasswordStep === 1 ? (
+                <TouchableOpacity
+                  style={[styles.primaryButton, forgotPasswordLoading && styles.primaryButtonDisabled]}
+                  onPress={handleForgotPasswordRequest}
+                  disabled={forgotPasswordLoading}
+                  activeOpacity={0.85}
+                >
+                  {forgotPasswordLoading ? (
+                    <ActivityIndicator color="#ffffff" size="small" />
+                  ) : (
+                    <>
+                      <Text style={styles.primaryButtonText}>Send Code</Text>
+                      <MaterialIcons name="send" size={18} color="#ffffff" />
+                    </>
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.primaryButton, forgotPasswordLoading && styles.primaryButtonDisabled]}
+                  onPress={handleForgotPasswordConfirm}
+                  disabled={forgotPasswordLoading}
+                  activeOpacity={0.85}
+                >
+                  {forgotPasswordLoading ? (
+                    <ActivityIndicator color="#ffffff" size="small" />
+                  ) : (
+                    <>
+                      <Text style={styles.primaryButtonText}>Reset Password</Text>
+                      <MaterialIcons name="lock-reset" size={18} color="#ffffff" />
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+
+              <View style={styles.verificationActionsRow}>
+                {forgotPasswordStep === 2 ? (
+                  <TouchableOpacity
+                    style={styles.verificationSecondaryAction}
+                    onPress={handleForgotPasswordRequest}
+                    disabled={forgotPasswordLoading}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={styles.resendText}>Resend Code</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={{ flex: 1 }} />
+                )}
+
+                <TouchableOpacity
+                  style={styles.verificationSecondaryAction}
+                  onPress={handleCloseForgotPasswordModal}
+                  disabled={forgotPasswordLoading}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.verificationSecondaryActionText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </KeyboardAvoidingView>
       <LoadingOverlay visible={loading || signupLoading || verificationLoading || verificationResendLoading || forgotPasswordLoading} />
     </SafeAreaView>
@@ -782,8 +770,8 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 10,
-    paddingVertical: 32,
-    paddingBottom: 12,
+    paddingVertical: 16,
+    paddingBottom: 4,
     flexGrow: 1,
   },
   header: {
@@ -803,7 +791,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 12 },
-    elevation: 6,
+    elevation: 2,
   },
   heroImage: {
     width: '100%',
@@ -853,8 +841,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
-    marginBottom: 32,
+    elevation: 1,
+    marginBottom: 2,
   },
   tabs: {
     flexDirection: 'row',
@@ -940,25 +928,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 12,
   },
-  infoBox: {
-    marginTop: 4,
-    padding: 10,
-    borderRadius: 8,
-    backgroundColor: '#eeeeee',
-    borderWidth: 1,
-    borderColor: '#e2e2e2',
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'flex-start',
-  },
-  infoIcon: {
-    marginTop: 2,
-  },
-  infoText: {
-    fontSize: 14,
-    color: '#5e5e5e',
-    flex: 1,
-  },
+
+
+
   primaryButton: {
     marginTop: 16,
     minWidth: 184,

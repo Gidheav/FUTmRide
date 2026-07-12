@@ -22,24 +22,39 @@ async function secureGet(key: string) {
   if (SecureStore) {
     try {
       return await SecureStore.getItemAsync(key)
-    } catch {
+    } catch (e) {
+      if (!__DEV__) {
+        // In production, never fall back to plain storage for security-sensitive data.
+        // If SecureStore fails, the PIN is simply unavailable — user must re-set it.
+        console.error('[security] SecureStore.getItemAsync failed in production. PIN read aborted.', e)
+        return null
+      }
       return AsyncStorage.getItem(key)
     }
   }
-  return AsyncStorage.getItem(key)
+  // Expo Go / dev fallback only
+  if (__DEV__) return AsyncStorage.getItem(key)
+  return null
 }
 
 async function secureSet(key: string, value: string) {
   const SecureStore = getSecureStore()
   if (SecureStore) {
     try {
-      await SecureStore.setItemAsync(key, value)
+      await SecureStore.setItemAsync(key, value, {
+        keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+      })
       return
-    } catch {
-      /* fall through */
+    } catch (e) {
+      if (!__DEV__) {
+        // In production, never fall back to plain storage for PIN hash.
+        console.error('[security] SecureStore.setItemAsync failed in production. PIN NOT stored.', e)
+        return
+      }
     }
   }
-  await AsyncStorage.setItem(key, value)
+  // Expo Go / dev fallback only
+  if (__DEV__) await AsyncStorage.setItem(key, value)
 }
 
 async function secureDelete(key: string) {
@@ -47,12 +62,18 @@ async function secureDelete(key: string) {
   if (SecureStore) {
     try {
       await SecureStore.deleteItemAsync(key)
-      return
-    } catch {
-      /* fall through */
+    } catch (e) {
+      if (!__DEV__) {
+        console.error('[security] SecureStore.deleteItemAsync failed in production.', e)
+      }
     }
   }
-  await AsyncStorage.removeItem(key)
+  // Also remove from AsyncStorage in case it was written there during dev
+  try {
+    await AsyncStorage.removeItem(key)
+  } catch {
+    // Best-effort
+  }
 }
 
 export const hashPin = async (pin: string) => {

@@ -21,7 +21,7 @@
       "supportsTabletMode": true,
       "bundleIdentifier": "com.lrride.mobile",
       "config": {
-        "googleMapsApiKey": "$GOOGLE_MAPS_API_KEY"
+        "googleMapsApiKey": "AIzaSyD5nLbEz_xY6UOHJ1mbjvipD1PY1A14erQ"
       },
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "LR-Ride needs your location to show nearby drivers and navigate your ride.",
@@ -40,7 +40,7 @@
       },
       "config": {
         "googleMaps": {
-          "apiKey": "$GOOGLE_MAPS_API_KEY"
+          "apiKey": "AIzaSyD5nLbEz_xY6UOHJ1mbjvipD1PY1A14erQ"
         }
       }
     },

@@ -10,6 +10,8 @@ export interface WalletStore {
   bumpWalletActivityRefresh: () => void
   walletFlashAt: number
   triggerWalletFlash: () => void
+  /** Reset all wallet state on logout. Prevents cross-user contamination. */
+  resetForLogout: () => void
 }
 
 const useWalletStore = create<WalletStore>((set) => ({
@@ -22,6 +24,11 @@ const useWalletStore = create<WalletStore>((set) => ({
   })),
   walletFlashAt: 0,
   triggerWalletFlash: () => set({ walletFlashAt: Date.now() }),
+  resetForLogout: () => set({
+    walletBalance: null,
+    walletActivityRefreshKey: 0,
+    walletFlashAt: 0,
+  }),
   syncBalance: async () => {
     try {
       const res = await api.get('users/me/')

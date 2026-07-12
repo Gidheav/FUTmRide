@@ -15,9 +15,11 @@ type Props = {
 
 export default function GenericWebPage({ url, title, onClose, enablePullToRefresh }: Props) {
   const [error, setError] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('Check your internet connection and try again.')
   const [refreshing, setRefreshing] = useState(false)
   const [userToken, setUserToken] = useState<string | null>(null)
   const [tokenLoaded, setTokenLoaded] = useState(false)
+  const [retryCount, setRetryCount] = useState(0)
   const webviewRef = useRef<any | null>(null)
 
   useEffect(() => {
@@ -31,7 +33,52 @@ export default function GenericWebPage({ url, title, onClose, enablePullToRefres
 
   useEffect(() => {
     setError(false)
+    setErrorMessage('Check your internet connection and try again.')
+    setRetryCount(0)
   }, [url])
+
+  const handleHttpError = async (syntheticEvent: any) => {
+    const { statusCode } = syntheticEvent.nativeEvent
+    if (statusCode === 401 || statusCode === 403) {
+      if (retryCount < 1) {
+        setRetryCount((c) => c + 1)
+        try {
+          const { refreshStudentSessionTokens } = require('../../../core/session')
+          const newTokens = await refreshStudentSessionTokens()
+          setUserToken(newTokens.accessToken)
+          setTimeout(() => {
+            webviewRef.current?.reload()
+          }, 100)
+        } catch {
+          setError(true)
+          setErrorMessage('Session expired. Please log in again.')
+          setRefreshing(false)
+        }
+      } else {
+        setError(true)
+        setErrorMessage('Session expired. Please log in again.')
+        setRefreshing(false)
+      }
+      return
+    }
+    
+    if (statusCode >= 500) {
+      setError(true)
+      setErrorMessage('Server error. Please try again later.')
+      setRefreshing(false)
+      return
+    }
+
+    setError(true)
+    setErrorMessage('Could not load page. Please try again.')
+    setRefreshing(false)
+  }
+
+  const handleNetworkError = () => {
+    setError(true)
+    setErrorMessage('Check your internet connection and try again.')
+    setRefreshing(false)
+  }
 
   const webviewSource = {
     uri: url,
@@ -75,8 +122,8 @@ export default function GenericWebPage({ url, title, onClose, enablePullToRefres
         <View style={styles.errorContainer}>
           <MaterialIcons name="wifi-off" size={48} color="#d1d5db" />
           <Text style={styles.errorTitle}>Could not load page</Text>
-          <Text style={styles.errorSubtitle}>Check your internet connection and try again.</Text>
-          <TouchableOpacity onPress={() => { setError(false); webviewRef.current?.reload() }} style={styles.errorBtn}>
+          <Text style={styles.errorSubtitle}>{errorMessage}</Text>
+          <TouchableOpacity onPress={() => { setError(false); setRetryCount(0); webviewRef.current?.reload() }} style={styles.errorBtn}>
             <Text style={styles.errorBtnText}>Try Again</Text>
           </TouchableOpacity>
           {onClose && (
@@ -110,8 +157,8 @@ export default function GenericWebPage({ url, title, onClose, enablePullToRefres
               renderLoading={renderLoader}
               onLoadStart={() => { setError(false) }}
               onLoadEnd={() => { setRefreshing(false) }}
-              onHttpError={() => { setError(true); setRefreshing(false) }}
-              onError={() => { setError(true); setRefreshing(false) }}
+              onHttpError={handleHttpError}
+              onError={handleNetworkError}
             />
           </ScrollView>
         ) : (
@@ -125,8 +172,8 @@ export default function GenericWebPage({ url, title, onClose, enablePullToRefres
             startInLoadingState={true}
             renderLoading={renderLoader}
             onLoadStart={() => { setError(false) }}
-            onHttpError={() => { setError(true) }}
-            onError={() => { setError(true) }}
+            onHttpError={handleHttpError}
+            onError={handleNetworkError}
           />
         )
       )}
