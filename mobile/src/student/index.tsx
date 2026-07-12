@@ -85,6 +85,7 @@ function StudentAppInner() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [accountMode, setAccountMode] = useState<'view' | 'edit' | 'notifications' | 'security' | 'settings'>('view')
   const [accountRefreshKey, setAccountRefreshKey] = useState(0)
+  const [disputeTx, setDisputeTx] = useState<any>(null)
   const [openPinOnLoad, setOpenPinOnLoad] = useState(false)
   const [skipPinVerify, setSkipPinVerify] = useState(false)
   const [notifHistoryOpen, setNotifHistoryOpen] = useState(false)
@@ -703,7 +704,13 @@ function StudentAppInner() {
       </View>
 
       <View style={{ display: activeTab === 'wallet' ? 'flex' : 'none', flex: 1 }}>
-        <StudentWalletPage onNavigateToMap={() => setActiveTab('home')} />
+        <StudentWalletPage 
+          onNavigateToMap={() => setActiveTab('home')} 
+          onDisputeTransaction={(tx) => {
+            setDisputeTx(tx)
+            setActiveTab('support')
+          }}
+        />
       </View>
 
       {activeTab === 'account' && accountMode === 'edit' && (
@@ -747,7 +754,12 @@ function StudentAppInner() {
       {activeTab === 'events' && <EventsPage />}
       {activeTab === 'news' && <NewsPage />}
       {activeTab === 'safety' && <SafetyGuidePage />}
-      {activeTab === 'support' && <SupportPage />}
+      {activeTab === 'support' && (
+        <SupportPage 
+          initialDisputeTx={disputeTx} 
+          onClearDispute={() => setDisputeTx(null)} 
+        />
+      )}
     </View>
   )
 

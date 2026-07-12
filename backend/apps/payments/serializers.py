@@ -11,6 +11,9 @@ class WalletTransactionSerializer(serializers.ModelSerializer):
 
     ride_passenger_name = serializers.SerializerMethodField()
 
+    has_dispute = serializers.SerializerMethodField()
+    dispute_status = serializers.SerializerMethodField()
+
     class Meta:
         model = WalletTransaction
         fields = [
@@ -19,7 +22,7 @@ class WalletTransactionSerializer(serializers.ModelSerializer):
             'narration', 'created_at', 'status', 'metadata',
             'ride_reference', 'ride_distance_km', 'ride_duration_minutes',
             'ride_pickup_address', 'ride_dropoff_address',
-            'ride_passenger_name',
+            'ride_passenger_name', 'has_dispute', 'dispute_status'
         ]
         read_only_fields = fields
 
@@ -46,6 +49,15 @@ class WalletTransactionSerializer(serializers.ModelSerializer):
         if not obj.ride or not obj.ride.student:
             return None
         return obj.ride.student.full_name
+
+    def get_has_dispute(self, obj):
+        from apps.support.models import SupportTicket
+        return SupportTicket.objects.filter(transaction_reference=obj.reference).exists()
+
+    def get_dispute_status(self, obj):
+        from apps.support.models import SupportTicket
+        ticket = SupportTicket.objects.filter(transaction_reference=obj.reference).first()
+        return ticket.status if ticket else None
 
 
 class GatewayTransactionSerializer(serializers.ModelSerializer):

@@ -157,6 +157,6 @@ export const safeWebViewProps: Partial<WebViewProps> = {
   // Allow back/forward navigation gestures within the same page
   allowsBackForwardNavigationGestures: true,
 
-  // Don't allow mixed HTTP content in an HTTPS page
-  mixedContentMode: 'never',
+  // Allow mixed HTTP content in compatibility mode (needed for some server assets)
+  mixedContentMode: 'compatibility',
 }

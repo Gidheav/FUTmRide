@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 from django.db import models
 from apps.accounts.models import User
 from apps.rides.models import Ride
@@ -41,6 +41,7 @@ class SupportTicket(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
+    transaction_reference = models.CharField(max_length=100, null=True, blank=True, db_index=True)
 
     class Meta:
         db_table = 'support_tickets'

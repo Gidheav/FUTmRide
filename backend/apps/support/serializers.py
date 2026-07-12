@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 from rest_framework import serializers
 from .models import SupportTicket
 
@@ -6,7 +6,7 @@ from .models import SupportTicket
 class SupportTicketCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = SupportTicket
-        fields = ['ride', 'category', 'subject', 'description', 'priority']
+        fields = ['ride', 'category', 'subject', 'description', 'priority', 'transaction_reference']
 
     def create(self, validated_data):
         validated_data['submitted_by'] = self.context['request'].user
@@ -22,7 +22,7 @@ class SupportTicketSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'reference', 'submitted_by_name', 'category',
             'subject', 'description', 'status', 'priority',
-            'resolution_notes', 'created_at', 'resolved_at',
+            'resolution_notes', 'created_at', 'resolved_at', 'transaction_reference'
         ]
         read_only_fields = ['id', 'reference', 'submitted_by_name', 'status', 'resolution_notes', 'created_at', 'resolved_at']
 

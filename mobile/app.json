@@ -24,19 +24,18 @@
         "googleMapsApiKey": "AIzaSyD5nLbEz_xY6UOHJ1mbjvipD1PY1A14erQ"
       },
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "LR-Ride needs your location to show nearby drivers and navigate your ride.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "LR-Ride uses your location in the background to track active rides.",
-        "NSCameraUsageDescription": "LR-Ride uses the camera to let you upload a profile photo or scan documents.",
-        "NSPhotoLibraryUsageDescription": "LR-Ride needs photo library access to let you choose a profile picture.",
-        "NSContactsUsageDescription": "LR-Ride optionally reads contacts to let you quickly add emergency contacts.",
-        "NSUserNotificationUsageDescription": "LR-Ride sends ride status alerts and driver arrival updates via notifications."
+        "NSLocationWhenInUseUsageDescription": "TSR needs your location to show nearby drivers and navigate your ride.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "TSR uses your location in the background to track active rides.",
+        "NSCameraUsageDescription": "TSR uses the camera to let you upload a profile photo or scan documents.",
+        "NSPhotoLibraryUsageDescription": "TSR needs photo library access to let you choose a profile picture.",
+        "NSContactsUsageDescription": "TSR optionally reads contacts to let you quickly add emergency contacts.",
+        "NSUserNotificationUsageDescription": "TSR sends ride status alerts and driver arrival updates via notifications."
       }
     },
     "android": {
       "package": "com.lrride.mobile",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/FUT-icon-removedbg.png",
-        "backgroundColor": "#5B2D8E"
+        "foregroundImage": "./assets/FUT-icon-removedbg.png"
       },
       "config": {
         "googleMaps": {
@@ -62,11 +61,11 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "LR-Ride needs location in the background to show an active scanning notification.",
+          "locationAlwaysAndWhenInUsePermission": "TSR needs location in the background to show an active scanning notification.",
           "isAndroidBackgroundLocationEnabled": true
         }
       ]
     ],
-    "owner": "heavpro"
+    "owner": "Heavlabs"
   }
 }

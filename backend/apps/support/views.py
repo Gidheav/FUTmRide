@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
@@ -55,6 +55,14 @@ class SupportTicketCreateView(generics.CreateAPIView):
         self._notify_admins(ticket)
         logger.info('support_ticket_created ref=%s user=%s', ticket.reference, str(request.user.id))
         return Response(SupportTicketSerializer(ticket).data, status=status.HTTP_201_CREATED)
+
+
+class SupportTicketDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = SupportTicketSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return SupportTicket.objects.filter(submitted_by=self.request.user)
 
 
 class MyTicketsView(generics.ListAPIView):

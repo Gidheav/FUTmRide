@@ -80,7 +80,7 @@ def secure_webview(request, page):
     context = {
         "webview_user": webview_user,
         # Convenience aliases for templates
-        "user_full_name": webview_user.get_full_name() if webview_user else None,
+        "user_full_name": webview_user.full_name if webview_user else None,
         "user_first_name": webview_user.first_name if webview_user else None,
         "user_email": webview_user.email if webview_user else None,
         "is_authenticated": webview_user is not None,

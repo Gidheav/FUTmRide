@@ -20,7 +20,9 @@ export default function GenericWebPage({ url, title, onClose, enablePullToRefres
   const [userToken, setUserToken] = useState<string | null>(null)
   const [tokenLoaded, setTokenLoaded] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
+  const [autoRetryCount, setAutoRetryCount] = useState(0)
   const webviewRef = useRef<any | null>(null)
+  const autoRetryTimer = useRef<any>(null)
 
   useEffect(() => {
     getAuthTokens()
@@ -35,7 +37,24 @@ export default function GenericWebPage({ url, title, onClose, enablePullToRefres
     setError(false)
     setErrorMessage('Check your internet connection and try again.')
     setRetryCount(0)
+    setAutoRetryCount(0)
+    if (autoRetryTimer.current) clearTimeout(autoRetryTimer.current)
   }, [url])
+
+  // Clean up timers on unmount
+  useEffect(() => {
+    return () => {
+      if (autoRetryTimer.current) clearTimeout(autoRetryTimer.current)
+    }
+  }, [])
+
+  const scheduleAutoRetry = () => {
+    if (autoRetryTimer.current) clearTimeout(autoRetryTimer.current)
+    autoRetryTimer.current = setTimeout(() => {
+      setError(false)
+      webviewRef.current?.reload()
+    }, 3000)
+  }
 
   const handleHttpError = async (syntheticEvent: any) => {
     const { statusCode } = syntheticEvent.nativeEvent
@@ -61,7 +80,7 @@ export default function GenericWebPage({ url, title, onClose, enablePullToRefres
       }
       return
     }
-    
+
     if (statusCode >= 500) {
       setError(true)
       setErrorMessage('Server error. Please try again later.')
@@ -75,6 +94,12 @@ export default function GenericWebPage({ url, title, onClose, enablePullToRefres
   }
 
   const handleNetworkError = () => {
+    // Auto-retry up to 3 times silently before showing error UI
+    if (autoRetryCount < 3) {
+      setAutoRetryCount((c) => c + 1)
+      scheduleAutoRetry()
+      return
+    }
     setError(true)
     setErrorMessage('Check your internet connection and try again.')
     setRefreshing(false)
@@ -108,9 +133,9 @@ export default function GenericWebPage({ url, title, onClose, enablePullToRefres
               <MaterialIcons name="arrow-back" size={22} color="#1a1c1c" />
             </TouchableOpacity>
           ) : <View style={styles.headerSpacer} />}
-          
+
           <Text style={styles.headerTitle} numberOfLines={1}>{title || ''}</Text>
-          
+
           {/* Invisible spacer to perfectly centre the title */}
           {onClose ? <View style={styles.headerSpacer} /> : <View style={styles.headerSpacer} />}
         </View>
@@ -123,7 +148,7 @@ export default function GenericWebPage({ url, title, onClose, enablePullToRefres
           <MaterialIcons name="wifi-off" size={48} color="#d1d5db" />
           <Text style={styles.errorTitle}>Could not load page</Text>
           <Text style={styles.errorSubtitle}>{errorMessage}</Text>
-          <TouchableOpacity onPress={() => { setError(false); setRetryCount(0); webviewRef.current?.reload() }} style={styles.errorBtn}>
+          <TouchableOpacity onPress={() => { setError(false); setRetryCount(0); setAutoRetryCount(0); webviewRef.current?.reload() }} style={styles.errorBtn}>
             <Text style={styles.errorBtnText}>Try Again</Text>
           </TouchableOpacity>
           {onClose && (

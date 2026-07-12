@@ -58,8 +58,8 @@ const SUPPORT_OPTIONS: SupportOption[] = [
     title: 'Report a Problem',
     subtitle: 'Ride, payment, wallet, or account issue that needs help.',
     icon: 'report-problem',
-    color: '#E65100',
-    bg: '#fff3e0',
+    color: '#1a1c1c',
+    bg: '#f3f4f6',
     category: 'ride_issue',
     priority: 'medium',
   },
@@ -68,8 +68,8 @@ const SUPPORT_OPTIONS: SupportOption[] = [
     title: 'Send Feedback',
     subtitle: 'Share ideas about the app experience or what we can improve.',
     icon: 'tips-and-updates',
-    color: '#1565C0',
-    bg: '#e3f2fd',
+    color: '#1a1c1c',
+    bg: '#f3f4f6',
     category: 'other',
     priority: 'low',
   },
@@ -78,8 +78,8 @@ const SUPPORT_OPTIONS: SupportOption[] = [
     title: 'Make a Complaint',
     subtitle: 'Formal complaint about a driver, ride, payment, or safety concern.',
     icon: 'gavel',
-    color: '#b91c1c',
-    bg: '#fef2f2',
+    color: '#1a1c1c',
+    bg: '#f3f4f6',
     category: 'driver_complaint',
     priority: 'high',
   },
@@ -131,7 +131,13 @@ const categoryLabel = (category: string) =>
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' })
 
-export default function SupportPage() {
+export default function SupportPage({ 
+  initialDisputeTx,
+  onClearDispute
+}: { 
+  initialDisputeTx?: any
+  onClearDispute?: () => void 
+} = {}) {
   const insets = useSafeAreaInsets()
   const [viewMode, setViewMode] = useState<ViewMode>('home')
   const [formVisible, setFormVisible] = useState(false)
@@ -145,6 +151,20 @@ export default function SupportPage() {
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [loadingTickets, setLoadingTickets] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  
+  // Track if we are currently disputing a specific transaction
+  const [transactionRef, setTransactionRef] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (initialDisputeTx) {
+      setTransactionRef(initialDisputeTx.reference)
+      setSelectedOption(SUPPORT_OPTIONS[0]) // Report a Problem
+      setCategory('payment_issue')
+      setSubject(`Dispute Transaction: ${initialDisputeTx.reference}`)
+      setDescription(`I would like to dispute the debit transaction of NGN ${initialDisputeTx.amount} on ${formatDate(initialDisputeTx.created_at)}.\n\nReason: `)
+      setFormVisible(true)
+    }
+  }, [initialDisputeTx])
 
   const priority = useMemo<TicketPriority>(() => {
     if (selectedOption.mode === 'feedback') return 'low'
@@ -158,6 +178,7 @@ export default function SupportPage() {
     setCategory(option.category)
     setSubject('')
     setDescription('')
+    setTransactionRef(null)
     setFormVisible(true)
   }
 
@@ -193,17 +214,24 @@ export default function SupportPage() {
 
     setSubmitting(true)
     try {
-      const res = await api.post('support/tickets/', {
+      const payload: any = {
         category,
         subject: cleanSubject,
         description: cleanDescription,
         priority,
-      })
-      const ticket = res.data as Ticket
-      setTickets((prev) => [ticket, ...prev.filter((item) => item.id !== ticket.id)])
+      }
+      if (transactionRef) {
+        payload.transaction_reference = transactionRef
+      }
+      const res = await api.post('support/tickets/', payload)
+      const newTicket = res.data
+
+      Alert.alert('Request Submitted', 'Support will review this shortly.')
+      setTickets((prev) => [newTicket, ...prev])
       setFormVisible(false)
       setViewMode('requests')
-      Alert.alert('Request submitted', `Your ticket reference is ${ticket.reference}.`)
+      onClearDispute?.()
+      setTransactionRef(null)
     } catch (err: any) {
       const message = err?.response?.data?.error?.message ||
         err?.response?.data?.subject?.[0] ||
@@ -230,7 +258,7 @@ export default function SupportPage() {
     setSelectedTicket(null)
   }
 
-  const handleTicketAction = async (action: 'dismiss' | 'archive' | 'delete') => {
+  const handleTicketAction = async (action: 'close' | 'archive' | 'delete') => {
     const ticket = selectedTicket
     closeTicketActions()
     if (!ticket) return
@@ -243,8 +271,15 @@ export default function SupportPage() {
       } catch {
         Alert.alert('Error', 'Unable to delete the ticket right now.')
       }
+    } else if (action === 'close') {
+      try {
+        await api.patch(`support/tickets/${ticket.id}/`, { status: 'closed' })
+        setTickets((prev) => prev.map((t) => t.id === ticket.id ? { ...t, status: 'closed' } : t))
+      } catch {
+        Alert.alert('Error', 'Unable to close the ticket right now.')
+      }
     } else {
-      // For dismiss/archive, just hide it locally
+      // For archive, just hide it locally
       setTickets((prev) => prev.filter((t) => t.id !== ticket.id))
     }
   }
@@ -380,8 +415,17 @@ export default function SupportPage() {
       <Modal visible={formVisible} animationType="slide" onRequestClose={() => setFormVisible(false)}>
         <View style={styles.modalPage}>
           <View style={[styles.modalHeader, { paddingTop: Math.max(insets.top, 18) }]}>
-            <TouchableOpacity style={styles.closeButton} onPress={() => setFormVisible(false)} activeOpacity={0.85}>
-              <MaterialIcons name="close" size={22} color="#1a1c1c" />
+            <TouchableOpacity
+              style={styles.closeButton}
+              activeOpacity={0.8}
+              onPress={() => {
+                setFormVisible(false)
+                onClearDispute?.()
+                setTransactionRef(null)
+              }}
+              disabled={submitting}
+            >
+              <MaterialIcons name="close" size={24} color="#6b7280" />
             </TouchableOpacity>
             <Text style={styles.modalTitle}>{selectedOption.title}</Text>
             <View style={styles.closePlaceholder} />
@@ -474,9 +518,9 @@ export default function SupportPage() {
               {selectedTicket?.reference} · {selectedTicket ? categoryLabel(selectedTicket.category) : ''}
             </Text>
 
-            <TouchableOpacity style={styles.actionRow} activeOpacity={0.85} onPress={() => handleTicketAction('dismiss')}>
-              <MaterialIcons name="visibility-off" size={20} color="#6b7280" />
-              <Text style={styles.actionText}>Dismiss</Text>
+            <TouchableOpacity style={styles.actionRow} activeOpacity={0.85} onPress={() => handleTicketAction('close')}>
+              <MaterialIcons name="close" size={20} color="#6b7280" />
+              <Text style={styles.actionText}>Close Ticket</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.actionRow} activeOpacity={0.85} onPress={() => handleTicketAction('archive')}>

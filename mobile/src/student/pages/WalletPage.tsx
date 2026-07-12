@@ -29,7 +29,13 @@ type TransferRecipient = {
 const TRANSFER_QR_PREFIX = 'lrride://wallet/student/'
 const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
 
-export default function StudentWalletPage({ onNavigateToMap }: { onNavigateToMap?: () => void }) {
+export default function StudentWalletPage({ 
+  onNavigateToMap,
+  onDisputeTransaction 
+}: { 
+  onNavigateToMap?: () => void
+  onDisputeTransaction?: (tx: any) => void
+}) {
   const [profile, setProfile] = useState<any>(null)
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -951,9 +957,41 @@ export default function StudentWalletPage({ onNavigateToMap }: { onNavigateToMap
                 <Text style={styles.receiptLabel}>Status</Text>
                 <Text style={[styles.receiptValue, { color: '#2e7d32' }]}>Successful</Text>
               </View>
+              
+              {selectedTransaction?.has_dispute && (
+                <View style={[styles.receiptRow, { marginTop: 8 }]}>
+                  <Text style={styles.receiptLabel}>Dispute Status</Text>
+                  <Text style={[styles.receiptValue, { color: '#b91c1c' }]}>
+                    {selectedTransaction.dispute_status ? selectedTransaction.dispute_status.replace('_', ' ').toUpperCase() : 'IN PROGRESS'}
+                  </Text>
+                </View>
+              )}
             </View>
 
             <View style={styles.receiptDivider} />
+            
+            {/* Dispute Button */}
+            {selectedTransaction?.transaction_type === 'debit' && !selectedTransaction?.has_dispute && (
+              (() => {
+                const txDate = new Date(selectedTransaction.created_at)
+                const hoursDiff = (Date.now() - txDate.getTime()) / (1000 * 60 * 60)
+                if (hoursDiff <= 72) {
+                  return (
+                    <TouchableOpacity 
+                      style={styles.receiptDisputeButton}
+                      onPress={() => {
+                        setSelectedTransaction(null)
+                        onDisputeTransaction?.(selectedTransaction)
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.receiptDisputeText}>Dispute Transaction</Text>
+                    </TouchableOpacity>
+                  )
+                }
+                return null
+              })()
+            )}
             
             <TouchableOpacity 
               style={styles.receiptCloseButton}
@@ -1635,6 +1673,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginBottom: 8,
     textAlign: 'center',
+  },
+  receiptDisputeButton: {
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginBottom: 10,
+    backgroundColor: '#fef2f2',
+    borderRadius: 12,
+  },
+  receiptDisputeText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 15,
+    color: '#b91c1c',
   },
   transactionsModalHeader: {
     flexDirection: 'row',
