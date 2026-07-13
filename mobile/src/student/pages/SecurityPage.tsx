@@ -14,6 +14,7 @@ import { MaterialIcons } from '@expo/vector-icons'
 import { clearStoredPinHash, getStoredPinHash, hashPin, setStoredPinHash } from '../../core/security'
 import { useSecurityStore } from '../../core/securityStore'
 import LoadingOverlay from '../components/LoadingOverlay'
+import api from '../../core/api'
 
 const TIMEOUT_OPTIONS: Array<{ label: string; value: 0 | 1 | 5 | 15 }> = [
   { label: 'Immediate', value: 0 },
@@ -38,6 +39,8 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
     setLockTimeoutMinutes,
     hasPin,
     setHasPin,
+    hasTransactionPin,
+    setHasTransactionPin,
   } = useSecurityStore()
 
   const [loading, setLoading] = useState(true)
@@ -51,9 +54,21 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
   const [pinInput, setPinInput] = useState('')
   const [pinConfirm, setPinConfirm] = useState('')
   const [currentPinInput, setCurrentPinInput] = useState('')
+
+  const [txPinModalVisible, setTxPinModalVisible] = useState(false)
+  const [txPinAction, setTxPinAction] = useState<'set' | 'update'>('set')
+  const [txPinStep, setTxPinStep] = useState<'current' | 'new' | 'confirm'>('new')
+  const [txPinInput, setTxPinInput] = useState('')
+  const [txPinConfirm, setTxPinConfirm] = useState('')
+  const [currentTxPinInput, setCurrentTxPinInput] = useState('')
+  const [txPinError, setTxPinError] = useState('')
+  const [txPinSuccess, setTxPinSuccess] = useState('')
+  const [txPinLoading, setTxPinLoading] = useState(false)
+
   const [timeoutModalVisible, setTimeoutModalVisible] = useState(false)
   const [didAutoOpenPin, setDidAutoOpenPin] = useState(false)
   const pinCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const txPinCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const keypadRows = useMemo(() => ([
     ['1', '2', '3'],
     ['4', '5', '6'],
@@ -65,14 +80,18 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
     let isMounted = true
     const load = async () => {
       try {
-        const [storedPin, hasHardware, enrolled] = await Promise.all([
+        const [storedPin, hasHardware, enrolled, prefRes] = await Promise.all([
           getStoredPinHash(),
           LocalAuthentication.hasHardwareAsync(),
           LocalAuthentication.isEnrolledAsync(),
+          api.get('auth/settings/preferences/').catch(() => null),
         ])
         if (isMounted) {
           setHasPin(Boolean(storedPin))
           setBiometricAvailable(hasHardware && enrolled)
+          if (prefRes?.data?.has_pin !== undefined) {
+            setHasTransactionPin(Boolean(prefRes.data.has_pin))
+          }
         }
       } catch (err) {
         if (isMounted) {
@@ -263,6 +282,101 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
     }
   }
 
+  const openTxPinModal = (action: 'set' | 'update') => {
+    setTxPinError('')
+    setTxPinSuccess('')
+    setTxPinAction(action)
+    setTxPinStep(action === 'update' ? 'current' : 'new')
+    setTxPinInput('')
+    setTxPinConfirm('')
+    setCurrentTxPinInput('')
+    setTxPinModalVisible(true)
+  }
+
+  const resolveTxPinComplete = async (value: string) => {
+    if (txPinStep === 'current') {
+      setTxPinLoading(true)
+      try {
+        await api.post('auth/settings/pin/verify/', { pin: value })
+        setTxPinError('')
+        setTxPinStep('new')
+        setTxPinInput('')
+      } catch (err: any) {
+        setTxPinError(err?.response?.data?.message || err?.response?.data?.error?.message || 'Incorrect PIN.')
+        setCurrentTxPinInput('')
+      } finally {
+        setTxPinLoading(false)
+      }
+      return
+    }
+
+    if (txPinStep === 'new') {
+      setTxPinError('')
+      setTxPinStep('confirm')
+      setTxPinConfirm('')
+      return
+    }
+
+    if (txPinInput !== value) {
+      setTxPinError('PINs do not match.')
+      setTxPinConfirm('')
+      return
+    }
+
+    setTxPinLoading(true)
+    try {
+      const payload: any = { new_pin: txPinInput }
+      if (txPinAction === 'update') {
+        payload.current_pin = currentTxPinInput
+      }
+      await api.post('auth/settings/pin/set/', payload)
+      setHasTransactionPin(true)
+      setTxPinError('')
+      setTxPinSuccess(txPinAction === 'update' ? 'Transaction PIN updated.' : 'Transaction PIN saved.')
+      if (txPinCloseTimer.current) {
+        clearTimeout(txPinCloseTimer.current)
+      }
+      txPinCloseTimer.current = setTimeout(() => {
+        setTxPinModalVisible(false)
+        setTxPinSuccess('')
+      }, 900)
+    } catch (err: any) {
+      setTxPinError(err?.response?.data?.message || err?.response?.data?.error?.message || 'Failed to save PIN.')
+      setTxPinConfirm('')
+    } finally {
+      setTxPinLoading(false)
+    }
+  }
+
+  const handleTxDigitPress = async (digit: string) => {
+    if (txPinLoading) return
+    if (!digit) return
+    if (digit === 'back') {
+      if (txPinStep === 'current') {
+        setCurrentTxPinInput((prev) => prev.slice(0, -1))
+      } else if (txPinStep === 'new') {
+        setTxPinInput((prev) => prev.slice(0, -1))
+      } else {
+        setTxPinConfirm((prev) => prev.slice(0, -1))
+      }
+      return
+    }
+    setTxPinError('')
+    const activeValue = txPinStep === 'current' ? currentTxPinInput : txPinStep === 'new' ? txPinInput : txPinConfirm
+    if (activeValue.length >= 4) return
+    const nextValue = `${activeValue}${digit}`
+    if (txPinStep === 'current') {
+      setCurrentTxPinInput(nextValue)
+    } else if (txPinStep === 'new') {
+      setTxPinInput(nextValue)
+    } else {
+      setTxPinConfirm(nextValue)
+    }
+    if (nextValue.length === 4) {
+      await resolveTxPinComplete(nextValue)
+    }
+  }
+
   if (loading) {
     return (
       <View style={styles.page}>
@@ -348,6 +462,28 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
         </TouchableOpacity>
       </View>
 
+      <View style={styles.card}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Transaction PIN</Text>
+          <Text style={styles.sectionSubtitle}>Protect your wallet and bookings.</Text>
+        </View>
+        <View style={styles.actionRow}>
+          <View>
+            <Text style={styles.rowTitle}>Wallet PIN</Text>
+            <Text style={styles.rowSubtitle}>4-digit PIN for transactions.</Text>
+          </View>
+          <View style={styles.actionButtons}>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => openTxPinModal(hasTransactionPin ? 'update' : 'set')}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.actionText}>{hasTransactionPin ? 'Change' : 'Set'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+
       <Modal visible={pinModalVisible} animationType="fade" transparent onRequestClose={() => setPinModalVisible(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
@@ -431,6 +567,95 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
                   pinCloseTimer.current = null
                 }
               }}
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={txPinModalVisible} animationType="fade" transparent onRequestClose={() => setTxPinModalVisible(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>
+              {txPinStep === 'current'
+                ? 'Verify Current PIN'
+                : txPinStep === 'new'
+                  ? 'Set Transaction PIN'
+                  : 'Confirm PIN'}
+            </Text>
+            <Text style={styles.modalSubtitle}>
+              {txPinStep === 'current'
+                ? 'Enter your existing 4-digit PIN.'
+                : txPinStep === 'new'
+                  ? 'Create a new 4-digit transaction PIN.'
+                  : 'Re-enter your new PIN to confirm.'}
+            </Text>
+
+            <View style={styles.modalStatus}>
+              {txPinError ? <Text style={styles.modalError}>{txPinError}</Text> : null}
+              {!txPinError && txPinSuccess ? <Text style={styles.modalSuccess}>{txPinSuccess}</Text> : null}
+            </View>
+
+            <View style={styles.dotRow}>
+              {[0, 1, 2, 3].map((index) => {
+                const activeValue =
+                  txPinStep === 'current' ? currentTxPinInput : txPinStep === 'new' ? txPinInput : txPinConfirm
+                return (
+                  <View
+                    key={`tx-pin-dot-${index}`}
+                    style={index < activeValue.length ? styles.dotFilled : styles.dotEmpty}
+                  />
+                )
+              })}
+            </View>
+
+            <View style={styles.keypad}>
+              {keypadRows.map((row, rowIndex) => (
+                <View key={`row-${rowIndex}`} style={styles.keypadRow}>
+                  {row.map((item, index) => {
+                    if (!item) {
+                      return <View key={`empty-${rowIndex}-${index}`} style={styles.keypadEmpty} />
+                    }
+                    if (item === 'back') {
+                      return (
+                        <Pressable
+                          key="back"
+                          style={({ pressed }) => [styles.keypadBack, pressed && styles.keypadPressed]}
+                          onPress={() => handleTxDigitPress('back')}
+                          disabled={txPinLoading}
+                        >
+                          <MaterialIcons name="backspace" size={26} color="#3d4a3e" />
+                        </Pressable>
+                      )
+                    }
+                    return (
+                      <Pressable
+                        key={`${item}-${rowIndex}`}
+                        style={({ pressed }) => [styles.keypadButton, pressed && styles.keypadPressed]}
+                        onPress={() => handleTxDigitPress(item)}
+                        disabled={txPinLoading}
+                      >
+                        <Text style={styles.keypadText}>{item}</Text>
+                      </Pressable>
+                    )
+                  })}
+                </View>
+              ))}
+            </View>
+
+            <TouchableOpacity
+              style={styles.modalCancel}
+              onPress={() => {
+                setTxPinModalVisible(false)
+                setTxPinError('')
+                setTxPinSuccess('')
+                if (txPinCloseTimer.current) {
+                  clearTimeout(txPinCloseTimer.current)
+                  txPinCloseTimer.current = null
+                }
+              }}
+              disabled={txPinLoading}
             >
               <Text style={styles.modalCancelText}>Cancel</Text>
             </TouchableOpacity>

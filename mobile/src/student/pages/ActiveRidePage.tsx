@@ -6,6 +6,7 @@ import {
   Linking,
   Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -62,6 +63,11 @@ export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRi
   const [submittingRating, setSubmittingRating] = useState(false)
   const [ratingSubmitted, setRatingSubmitted] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
+  const [pinModalVisible, setPinModalVisible] = useState(false)
+  const [pinInput, setPinInput] = useState('')
+  const [pinError, setPinError] = useState('')
+  const [pinLoading, setPinLoading] = useState(false)
+  const PIN_ROWS = [['1','2','3'],['4','5','6'],['7','8','9'],['','0','back']]
 
   useEffect(() => {
     let isMounted = true
@@ -160,7 +166,7 @@ export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRi
     }
   }, [rideId])
 
-  const handleCancel = async () => {
+  const handleCancel = () => {
     if (!rideId) return
     Alert.alert(
       'Cancel Ride',
@@ -170,24 +176,49 @@ export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRi
         {
           text: 'Yes, Cancel',
           style: 'destructive',
-          onPress: async () => {
-            setCancelling(true)
-            try {
-              await api.post(`rides/${rideId}/cancel/`, { reason: 'Student cancelled.' })
-              // Sync wallet balance to reflect any potential refund
-              useWalletStore.getState().syncBalance()
-              // Ride actually cancelled — tell parent to clear ride state
-              if (onRideEnded) onRideEnded()
-              else onBack()
-            } catch (err: any) {
-              const message = err?.response?.data?.error?.message || 'Unable to cancel ride.'
-              setError(String(message))
-              setCancelling(false)
-            }
+          onPress: () => {
+            setPinInput('')
+            setPinError('')
+            setPinModalVisible(true)
           },
         },
       ]
     )
+  }
+
+  const handlePinDigit = async (digit: string) => {
+    if (pinLoading) return
+    if (!digit) return
+    if (digit === 'back') { setPinInput((p) => p.slice(0, -1)); return }
+    setPinError('')
+    if (pinInput.length >= 4) return
+    const next = `${pinInput}${digit}`
+    setPinInput(next)
+    if (next.length === 4) {
+      setPinLoading(true)
+      try {
+        await api.post('auth/settings/pin/verify/', { pin: next })
+        setPinModalVisible(false)
+        setPinInput('')
+        // Proceed with actual cancel
+        setCancelling(true)
+        try {
+          await api.post(`rides/${rideId}/cancel/`, { reason: 'Student cancelled.' })
+          useWalletStore.getState().syncBalance()
+          if (onRideEnded) onRideEnded(); else onBack()
+        } catch (err: any) {
+          const message = err?.response?.data?.error?.message || 'Unable to cancel ride.'
+          setError(String(message))
+          setCancelling(false)
+        }
+      } catch (err: any) {
+        const msg = err?.response?.data?.message || err?.response?.data?.error?.message || 'Incorrect Transaction PIN.'
+        setPinError(String(msg))
+        setPinInput('')
+      } finally {
+        setPinLoading(false)
+      }
+    }
   }
 
   const handleCallDriver = () => {
@@ -547,6 +578,42 @@ export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRi
               activeOpacity={0.9}
             >
               <Text style={styles.ratingSubmitText}>{submittingRating ? 'Submitting...' : 'Submit Rating'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={pinModalVisible} animationType="fade" transparent onRequestClose={() => setPinModalVisible(false)}>
+        <View style={pinStyles.backdrop}>
+          <View style={pinStyles.card}>
+            <Text style={pinStyles.title}>Confirm Cancellation</Text>
+            <Text style={pinStyles.subtitle}>Enter your Transaction PIN to cancel this ride.</Text>
+            {pinError ? <Text style={pinStyles.error}>{pinError}</Text> : null}
+            <View style={pinStyles.dotsRow}>
+              {[0, 1, 2, 3].map((i) => (
+                <View key={i} style={[pinStyles.dot, pinInput.length > i && pinStyles.dotFilled]} />
+              ))}
+            </View>
+            <View style={pinStyles.pad}>
+              {PIN_ROWS.map((row, ri) => (
+                <View key={ri} style={pinStyles.row}>
+                  {row.map((digit, ci) => (
+                    <Pressable
+                      key={`${ri}-${ci}`}
+                      style={({ pressed }) => [pinStyles.key, (!digit || pinLoading) && pinStyles.keyHidden, pressed && pinStyles.keyPressed]}
+                      onPress={() => handlePinDigit(digit)}
+                      disabled={!digit || pinLoading}
+                    >
+                      {digit === 'back'
+                        ? <Text style={pinStyles.keyText}>⌫</Text>
+                        : <Text style={pinStyles.keyText}>{digit}</Text>}
+                    </Pressable>
+                  ))}
+                </View>
+              ))}
+            </View>
+            <TouchableOpacity style={pinStyles.cancelBtn} onPress={() => { setPinModalVisible(false); setPinInput(''); setPinError('') }} disabled={pinLoading}>
+              <Text style={pinStyles.cancelText}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -982,4 +1049,36 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
   },
+})
+
+const pinStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 360,
+    alignItems: 'center',
+  },
+  title: { fontSize: 17, fontWeight: '700', color: '#1a1c1c', marginBottom: 6 },
+  subtitle: { fontSize: 13, color: '#6b7280', marginBottom: 8, textAlign: 'center' },
+  error: { color: '#ba1a1a', fontSize: 12, fontWeight: '600', marginBottom: 6, textAlign: 'center' },
+  dotsRow: { flexDirection: 'row', gap: 14, marginVertical: 16 },
+  dot: { width: 14, height: 14, borderRadius: 7, borderWidth: 2, borderColor: '#6A1B9A', backgroundColor: 'transparent' },
+  dotFilled: { backgroundColor: '#6A1B9A' },
+  pad: { width: '100%', gap: 8 },
+  row: { flexDirection: 'row', justifyContent: 'center', gap: 12 },
+  key: { width: 72, height: 52, borderRadius: 12, backgroundColor: '#f5f5f5', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#e2e2e2' },
+  keyHidden: { opacity: 0 },
+  keyPressed: { backgroundColor: '#ede5f5' },
+  keyText: { fontSize: 20, fontWeight: '600', color: '#1a1c1c' },
+  cancelBtn: { marginTop: 16, paddingVertical: 10, paddingHorizontal: 24 },
+  cancelText: { color: '#6A1B9A', fontWeight: '600', fontSize: 14 },
 })

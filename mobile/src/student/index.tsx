@@ -78,6 +78,7 @@ function StudentAppInner() {
     setLocked,
     setLastUnlockAt,
     setHasPin,
+    setHasTransactionPin,
     setPinRecoveryRequired,
   } = useSecurityStore()
 
@@ -656,16 +657,16 @@ function StudentAppInner() {
   }
 
   const handleRequireSecurity = (onSuccess: () => void) => {
-    if (hasPin || biometricEnabled) {
+    if (hasTransactionPin) {
       onSuccess()
     } else {
       import('react-native').then(({ Alert }) => {
         Alert.alert(
-          'Security Setup Required',
-          'Please set up a PIN or biometric lock in Security settings before you can book rides or access your wallet.',
+          'Transaction PIN Required',
+          'Please set up a Transaction PIN in Security settings before you can book rides or access your wallet.',
           [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Setup Security', onPress: () => {
+            { text: 'Setup PIN', onPress: () => {
               setActiveTab('account')
               setAccountMode('security')
             }}

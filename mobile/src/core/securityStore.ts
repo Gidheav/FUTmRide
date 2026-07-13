@@ -18,6 +18,8 @@ interface SecurityStore {
   setLastUnlockAt: (value: number | null) => void
   setLocked: (value: boolean) => void
   setHasPin: (value: boolean) => void
+  hasTransactionPin: boolean
+  setHasTransactionPin: (value: boolean) => void
   setPinRecoveryRequired: (value: boolean) => void
   /** Reset all security state to defaults on logout. Prevents cross-user contamination. */
   resetForLogout: () => void
@@ -36,6 +38,7 @@ export const useSecurityStore = create<SecurityStore>()(
       // setLocked(true) when the app should be locked on cold start.
       locked: false,
       hasPin: false,
+      hasTransactionPin: false,
       pinRecoveryRequired: false,
       setAppLockEnabled: (value) => set({ appLockEnabled: value }),
       setBiometricEnabled: (value) => set({ biometricEnabled: value }),
@@ -43,6 +46,7 @@ export const useSecurityStore = create<SecurityStore>()(
       setLastUnlockAt: (value) => set({ lastUnlockAt: value }),
       setLocked: (value) => set({ locked: value }),
       setHasPin: (value) => set({ hasPin: value }),
+      setHasTransactionPin: (value) => set({ hasTransactionPin: value }),
       setPinRecoveryRequired: (value) => set({ pinRecoveryRequired: value }),
       resetForLogout: () => set({
         appLockEnabled: false,
@@ -51,6 +55,7 @@ export const useSecurityStore = create<SecurityStore>()(
         lastUnlockAt: null,
         locked: false,
         hasPin: false,
+        hasTransactionPin: false,
         pinRecoveryRequired: false,
       }),
     }),
@@ -67,6 +72,7 @@ export const useSecurityStore = create<SecurityStore>()(
         lockTimeoutMinutes: state.lockTimeoutMinutes,
         lastUnlockAt: state.lastUnlockAt,
         hasPin: state.hasPin,
+        hasTransactionPin: state.hasTransactionPin,
         pinRecoveryRequired: state.pinRecoveryRequired,
       }),
     }

@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Animated } from 'react-native'
+import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Animated } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import { WebView } from 'react-native-webview'
-import * as LocalAuthentication from 'expo-local-authentication'
 import LoadingOverlay from '../components/LoadingOverlay'
 import api from '../../core/api'
 import { PAYMENT_CALLBACK_URL } from '../../../config/apiConfig'
 import useWalletStore from '../../core/walletStore'
 import { useAuthStore } from '../../core/authStore'
-import { getStoredPinHash, hashPin } from '../../core/security'
 import { useSecurityStore } from '../../core/securityStore'
 import { useUIPreferencesStore } from '../../core/uiPreferencesStore'
 
@@ -79,8 +77,7 @@ export default function StudentWalletPage({
   const { walletBalance, setWalletBalance } = useWalletStore()
   const walletActivityRefreshKey = useWalletStore((state) => state.walletActivityRefreshKey)
   const walletFlashAt = useWalletStore((state) => state.walletFlashAt)
-  const biometricEnabled = useSecurityStore((state) => state.biometricEnabled)
-  const hasPin = useSecurityStore((state) => state.hasPin)
+  const hasTransactionPin = useSecurityStore((state) => state.hasTransactionPin)
   const hideBalance = useUIPreferencesStore((state) => state.hideBalance)
   const setUIHideBalance = useUIPreferencesStore((state) => state.setHideBalance)
 
@@ -455,43 +452,36 @@ export default function StudentWalletPage({
     }
   }, [formatAmount, recipient, refreshTransactions, transferAmount, walletBalance, setWalletBalance])
 
+  const [transferPinLoading, setTransferPinLoading] = useState(false)
+
   const handleTransferPinDigit = useCallback(async (digit: string) => {
+    if (transferPinLoading) return
     if (!digit) return
     if (digit === 'back') {
       setTransferPinInput((prev) => prev.slice(0, -1))
       return
     }
     setTransferPinError('')
-    setTransferPinInput((prev) => {
-      if (prev.length >= 4) return prev
-      const next = `${prev}${digit}`
-      if (next.length === 4) {
-        void (async () => {
-          try {
-            const storedHash = await getStoredPinHash()
-            if (!storedHash) {
-              setTransferPinError('No PIN is set. Enable PIN or biometrics in Security settings.')
-              setTransferPinInput('')
-              return
-            }
-            const currentHash = await hashPin(next)
-            if (currentHash !== storedHash) {
-              setTransferPinError('Incorrect PIN.')
-              setTransferPinInput('')
-              return
-            }
-            setTransferConfirmVisible(false)
-            setTransferPinInput('')
-            await sendTransferRequest()
-          } catch {
-            setTransferPinError('Unable to verify PIN.')
-            setTransferPinInput('')
-          }
-        })()
+    if (transferPinInput.length >= 4) return
+    const next = `${transferPinInput}${digit}`
+    setTransferPinInput(next)
+    if (next.length === 4) {
+      setTransferPinLoading(true)
+      try {
+        await api.post('auth/settings/pin/verify/', { pin: next })
+        setTransferConfirmVisible(false)
+        setTransferPinInput('')
+        setTransferPinError('')
+        await sendTransferRequest()
+      } catch (err: any) {
+        const msg = err?.response?.data?.message || err?.response?.data?.error?.message || 'Incorrect Transaction PIN.'
+        setTransferPinError(String(msg))
+        setTransferPinInput('')
+      } finally {
+        setTransferPinLoading(false)
       }
-      return next
-    })
-  }, [sendTransferRequest])
+    }
+  }, [sendTransferRequest, transferPinInput, transferPinLoading])
 
   // Show toast helper — fades in then auto-hides after 3s
   const showToast = useCallback((message: string) => {
@@ -533,37 +523,16 @@ export default function StudentWalletPage({
     }
   }, [transferPinError, showToast])
 
-  const handleTransferConfirm = useCallback(async () => {
+  const handleTransferConfirm = useCallback(() => {
     if (transferLoading) return
-    if (biometricEnabled) {
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Confirm transfer',
-        cancelLabel: 'Cancel',
-        fallbackLabel: hasPin ? 'Use PIN' : undefined,
-      })
-      if (result.success) {
-        await sendTransferRequest()
-        return
-      }
-      if (!hasPin) {
-        setTransferError('Biometric verification failed. Enable PIN in Security settings to continue.')
-        return
-      }
-      setTransferPinInput('')
-      setTransferPinError('')
-      setTransferConfirmVisible(true)
+    if (!hasTransactionPin) {
+      setTransferError('Set up a Transaction PIN in Security settings before making transfers.')
       return
     }
-
-    if (hasPin) {
-      setTransferPinInput('')
-      setTransferPinError('')
-      setTransferConfirmVisible(true)
-      return
-    }
-
-    setTransferError('Set up a PIN or biometrics in Security settings to confirm transfers.')
-  }, [biometricEnabled, hasPin, sendTransferRequest, transferLoading])
+    setTransferPinInput('')
+    setTransferPinError('')
+    setTransferConfirmVisible(true)
+  }, [hasTransactionPin, transferLoading])
 
   return (
     <View style={styles.page}>
@@ -764,7 +733,7 @@ export default function StudentWalletPage({
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Confirm transfer</Text>
-            <Text style={styles.modalSubtitle}>Enter your 4-digit PIN to continue.</Text>
+            <Text style={styles.modalSubtitle}>Enter your 4-digit Transaction PIN to continue.</Text>
             <View style={styles.pinDotsRow}>
               {[0, 1, 2, 3].map((idx) => (
                 <View
@@ -780,10 +749,10 @@ export default function StudentWalletPage({
                   {row.map((digit, colIndex) => (
                     <TouchableOpacity
                       key={`pin-${rowIndex}-${colIndex}`}
-                      style={[styles.pinKey, !digit && styles.pinKeyDisabled]}
+                      style={[styles.pinKey, (!digit || transferPinLoading) && styles.pinKeyDisabled]}
                       activeOpacity={0.85}
                       onPress={() => handleTransferPinDigit(digit)}
-                      disabled={!digit}
+                      disabled={!digit || transferPinLoading}
                     >
                       {digit === 'back' ? (
                         <MaterialIcons name="backspace" size={20} color="#1a1c1c" />
@@ -802,12 +771,13 @@ export default function StudentWalletPage({
                 setTransferPinInput('')
                 setTransferPinError('')
               }}
+              disabled={transferPinLoading}
             >
               <Text style={styles.modalCancelText}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
-        <LoadingOverlay visible={transferLoading} />
+        <LoadingOverlay visible={transferLoading || transferPinLoading} />
       </Modal>
       <Modal
         visible={webviewVisible}

@@ -1,7 +1,9 @@
 import { useMemo, useState, useCallback, useEffect, memo } from 'react'
 import {
   Alert,
+  Modal,
   Platform,
+  Pressable,
   ScrollView,
   FlatList,
   StyleSheet,
@@ -127,6 +129,15 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
   const [scheduledOffset, setScheduledOffset] = useState(0)
   const [mapDropoff, setMapDropoff] = useState<{ latitude: number; longitude: number } | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [pinModalVisible, setPinModalVisible] = useState(false)
+  const [pinInput, setPinInput] = useState('')
+  const [pinError, setPinError] = useState('')
+  const [pinLoading, setPinLoading] = useState(false)
+  const pinRows = useMemo(() => (['1','2','3','4','5','6','7','8','9','','0','back'].reduce<string[][]>((acc, item, i) => {
+    if (i % 3 === 0) acc.push([])
+    acc[acc.length - 1].push(item)
+    return acc
+  }, [])), [])
 
   const seatLimit = useMemo(() => getSeatLimit(vehicleType), [vehicleType])
   // Only compute filtered locations when a location picker is actually open
@@ -188,7 +199,7 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
     })
   }, [])
 
-  const handleSubmit = async () => {
+  const submitRide = async () => {
     if (!pickup) {
       Alert.alert('Missing pickup', 'Select a pickup location.')
       return
@@ -236,6 +247,54 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
       setIsSubmitting(false)
     }
   }
+
+  const handleSubmit = () => {
+    if (!pickup) {
+      Alert.alert('Missing pickup', 'Select a pickup location.')
+      return
+    }
+    if (!dropoff) {
+      Alert.alert('Missing dropoff', 'Select a dropoff location.')
+      return
+    }
+    // Open Transaction PIN modal
+    setPinInput('')
+    setPinError('')
+    setPinModalVisible(true)
+  }
+
+  const handlePinDigit = useCallback(async (digit: string) => {
+    if (pinLoading) return
+    if (!digit) return
+    if (digit === 'back') {
+      setPinInput((prev) => prev.slice(0, -1))
+      return
+    }
+    setPinError('')
+    setPinInput((prev) => {
+      if (prev.length >= 4) return prev
+      const next = `${prev}${digit}`
+      if (next.length === 4) {
+        void (async () => {
+          setPinLoading(true)
+          try {
+            await api.post('auth/settings/pin/verify/', { pin: next })
+            setPinModalVisible(false)
+            setPinInput('')
+            await submitRide()
+          } catch (err: any) {
+            const msg = err?.response?.data?.message || err?.response?.data?.error?.message || 'Incorrect Transaction PIN.'
+            setPinError(String(msg))
+            setPinInput('')
+          } finally {
+            setPinLoading(false)
+          }
+        })()
+      }
+      return next
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pinLoading])
 
   const renderLocationItem = useCallback(({ item }: { item: LocationOption }) => (
     <LocationItem item={item} onPress={() => handleSelectLocation(item)} />
@@ -496,6 +555,46 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
           />
         </View>
       )}
+
+      <Modal visible={pinModalVisible} animationType="fade" transparent onRequestClose={() => setPinModalVisible(false)}>
+        <View style={styles.pinModalBackdrop}>
+          <View style={styles.pinModalCard}>
+            <Text style={styles.pinModalTitle}>Confirm Booking</Text>
+            <Text style={styles.pinModalSubtitle}>Enter your 4-digit Transaction PIN to book this ride.</Text>
+            {pinError ? <Text style={styles.pinModalError}>{pinError}</Text> : null}
+            <View style={styles.pinDotsRow}>
+              {[0, 1, 2, 3].map((i) => (
+                <View key={i} style={[styles.pinDot, pinInput.length > i && styles.pinDotFilled]} />
+              ))}
+            </View>
+            <View style={styles.pinPad}>
+              {pinRows.map((row, ri) => (
+                <View key={ri} style={styles.pinRow}>
+                  {row.map((digit, ci) => (
+                    <Pressable
+                      key={`${ri}-${ci}`}
+                      style={({ pressed }) => [styles.pinKey, (!digit || pinLoading) && styles.pinKeyDisabled, pressed && styles.pinKeyPressed]}
+                      onPress={() => handlePinDigit(digit)}
+                      disabled={!digit || pinLoading}
+                    >
+                      {digit === 'back'
+                        ? <Text style={styles.pinKeyText}>⌫</Text>
+                        : <Text style={styles.pinKeyText}>{digit}</Text>}
+                    </Pressable>
+                  ))}
+                </View>
+              ))}
+            </View>
+            <TouchableOpacity
+              style={styles.pinCancelBtn}
+              onPress={() => { setPinModalVisible(false); setPinInput(''); setPinError('') }}
+              disabled={pinLoading}
+            >
+              <Text style={styles.pinCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   )
 }
@@ -802,5 +901,95 @@ const styles = StyleSheet.create({
   modalCloseText: {
     color: '#6A1B9A',
     fontWeight: '600',
+  },
+  pinModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  pinModalCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 360,
+    alignItems: 'center',
+  },
+  pinModalTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#1a1c1c',
+    marginBottom: 6,
+  },
+  pinModalSubtitle: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  pinModalError: {
+    color: '#ba1a1a',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  pinDotsRow: {
+    flexDirection: 'row',
+    gap: 14,
+    marginVertical: 16,
+  },
+  pinDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: '#6A1B9A',
+    backgroundColor: 'transparent',
+  },
+  pinDotFilled: {
+    backgroundColor: '#6A1B9A',
+  },
+  pinPad: {
+    width: '100%',
+    gap: 8,
+  },
+  pinRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  pinKey: {
+    width: 72,
+    height: 52,
+    borderRadius: 12,
+    backgroundColor: '#f5f5f5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e2e2',
+  },
+  pinKeyDisabled: {
+    opacity: 0,
+  },
+  pinKeyPressed: {
+    backgroundColor: '#ede5f5',
+  },
+  pinKeyText: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#1a1c1c',
+  },
+  pinCancelBtn: {
+    marginTop: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+  },
+  pinCancelText: {
+    color: '#6A1B9A',
+    fontWeight: '600',
+    fontSize: 14,
   },
 })
