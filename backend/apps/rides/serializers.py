@@ -21,6 +21,16 @@ class RideRequestSerializer(serializers.ModelSerializer):
             'payment_method',
         ]
 
+    def to_internal_value(self, data):
+        if 'requested_seats' not in data:
+            if 'passengerCount' in data:
+                data = data.copy()
+                data['requested_seats'] = data['passengerCount']
+            elif 'passenger_count' in data:
+                data = data.copy()
+                data['requested_seats'] = data['passenger_count']
+        return super().to_internal_value(data)
+
     def validate_vehicle_type_requested(self, value):
         if value not in VehicleType.values:
             raise serializers.ValidationError('Invalid vehicle type.')

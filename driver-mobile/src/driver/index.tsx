@@ -47,11 +47,12 @@ import AccountSettingsPage from './pages/AccountSettingsPage'
 import CreateGarageRideScreen from './screens/CreateGarageRideScreen'
 import AppLockScreen from './screens/AppLockScreen'
 import PinSetupScreen from './screens/PinSetupScreen'
+import WebViewScreen from './screens/WebViewScreen'
 import DriverLayout from './layout/DriverLayout'
 import LoadingOverlay from './components/LoadingOverlay'
 import type { DriverTab } from './types'
 
-type SubPage = null | 'settings' | 'edit-profile' | 'account-verification' | 'vehicle-verification' | 'verification-success' | 'garage-ride'
+type SubPage = null | 'settings' | 'edit-profile' | 'account-verification' | 'vehicle-verification' | 'verification-success' | 'garage-ride' | 'webview'
 
 const GARAGE_STATUS_LABELS: Record<string, string> = {
   open: 'Accepting passengers',
@@ -92,6 +93,8 @@ export default function DriverApp() {
   const [pendingAnnouncement, setPendingAnnouncement] = useState<DriverInAppAnnouncement | null>(null)
   const [announcementGateVisible, setAnnouncementGateVisible] = useState(false)
   const [announcementRefreshKey, setAnnouncementRefreshKey] = useState(0)
+  const [webviewUrl, setWebviewUrl] = useState('')
+  const [webviewTitle, setWebviewTitle] = useState('')
   const announcementCheckRef = useRef<string | null>(null)
   const lastBackPressRef = useRef(0)
   const lastRideNotificationKey = useRef<string | null>(null)
@@ -698,6 +701,22 @@ export default function DriverApp() {
     )
   }
 
+  if (subPage === 'webview') {
+    return (
+      <SafeAreaProvider>
+        <WebViewScreen 
+          url={webviewUrl} 
+          title={webviewTitle} 
+          onClose={() => {
+            setSubPage(null)
+            setWebviewUrl('')
+            setWebviewTitle('')
+          }} 
+        />
+      </SafeAreaProvider>
+    )
+  }
+
   // ── Compute verification state for banner ──────────────────────────────────
   const accountStatus = progressData?.account_verification?.status ?? null
   const vehicleDocs = progressData?.vehicle_documents ?? []
@@ -778,7 +797,15 @@ export default function DriverApp() {
 
   return (
     <SafeAreaProvider>
-      <DriverLayout activeTab={activeTab} onTabChange={setActiveTab}>
+      <DriverLayout 
+        activeTab={activeTab} 
+        onTabChange={setActiveTab}
+        onOpenWebLink={(url, title) => {
+          setWebviewUrl(url)
+          setWebviewTitle(title)
+          setSubPage('webview')
+        }}
+      >
         {sessionWarning ? (
           <View style={s.sessionWarning}>
             <MaterialIcons name="wifi-off" size={16} color="#B45309" />

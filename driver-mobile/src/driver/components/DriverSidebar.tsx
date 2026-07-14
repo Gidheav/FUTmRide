@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native'
-import { MaterialIcons } from '@expo/vector-icons'
+import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useEffect, useRef, useState } from 'react'
 import { COLORS, FONTS } from '../../core/theme'
@@ -17,12 +17,14 @@ type SidebarProps = {
   visible: boolean
   onClose: () => void
   onLogout: () => void
+  onOpenWebLink: (url: string, title: string) => void
 }
 
 export default function DriverSidebar({
   visible,
   onClose,
   onLogout,
+  onOpenWebLink,
 }: SidebarProps) {
   const [isVisible, setIsVisible] = useState(visible)
   const { width } = Dimensions.get('window')
@@ -62,6 +64,11 @@ export default function DriverSidebar({
     }
   }, [backdropOpacity, sidebarWidth, translateX, visible])
 
+  const handleMenuPress = (url: string, title: string) => {
+    onClose()
+    onOpenWebLink(url, title)
+  }
+
   return (
     <Modal visible={isVisible} animationType="none" transparent onRequestClose={onClose}>
       <View style={styles.modalRoot}>
@@ -91,10 +98,58 @@ export default function DriverSidebar({
               </View>
 
               <View style={styles.menuContent}>
-                {/* Menu items can be added here */}
+                <Text style={styles.sectionTitle}>Overview</Text>
+                
+                <TouchableOpacity 
+                  style={styles.menuItem} 
+                  onPress={() => handleMenuPress('https://lrride.com/driver/performance', 'Performance & Earnings')}
+                  activeOpacity={0.7}
+                >
+                  <MaterialIcons name="insights" size={22} color={COLORS.onSurfaceVariant} />
+                  <Text style={styles.menuText}>Performance & Earnings</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={styles.menuItem} 
+                  onPress={() => handleMenuPress('https://lrride.com/driver/insurance', 'Insurance & Safety')}
+                  activeOpacity={0.7}
+                >
+                  <MaterialIcons name="security" size={22} color={COLORS.onSurfaceVariant} />
+                  <Text style={styles.menuText}>Insurance & Safety</Text>
+                </TouchableOpacity>
+
+                <View style={styles.divider} />
+                <Text style={styles.sectionTitle}>Support & Legal</Text>
+
+                <TouchableOpacity 
+                  style={styles.menuItem} 
+                  onPress={() => handleMenuPress('https://lrride.com/support', 'Help & Support')}
+                  activeOpacity={0.7}
+                >
+                  <MaterialIcons name="help-outline" size={22} color={COLORS.onSurfaceVariant} />
+                  <Text style={styles.menuText}>Help & Support</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={styles.menuItem} 
+                  onPress={() => handleMenuPress('https://lrride.com/terms', 'Terms of Service')}
+                  activeOpacity={0.7}
+                >
+                  <MaterialIcons name="description" size={22} color={COLORS.onSurfaceVariant} />
+                  <Text style={styles.menuText}>Terms of Service</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={styles.menuItem} 
+                  onPress={() => handleMenuPress('https://lrride.com/privacy', 'Privacy Policy')}
+                  activeOpacity={0.7}
+                >
+                  <MaterialIcons name="privacy-tip" size={22} color={COLORS.onSurfaceVariant} />
+                  <Text style={styles.menuText}>Privacy Policy</Text>
+                </TouchableOpacity>
               </View>
 
-              <TouchableOpacity style={styles.menuItem} onPress={onLogout} activeOpacity={0.85}>
+              <TouchableOpacity style={styles.logoutItem} onPress={onLogout} activeOpacity={0.85}>
                 <MaterialIcons name="logout" size={20} color={COLORS.error} />
                 <Text style={[styles.logoutText, { color: COLORS.error }]}>Sign Out</Text>
               </TouchableOpacity>
@@ -144,22 +199,51 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f3f3f3',
+    backgroundColor: COLORS.surfaceContainerLow,
   },
   menuContent: {
     flex: 1,
   },
+  sectionTitle: {
+    ...FONTS.labelSm,
+    color: COLORS.outline,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+    marginTop: 16,
+    paddingHorizontal: 12,
+  },
   menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    gap: 16,
+  },
+  menuText: {
+    ...FONTS.bodyLg,
+    color: COLORS.onSurface,
+    fontWeight: '500',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: COLORS.surfaceContainer,
+    marginVertical: 8,
+    marginHorizontal: 12,
+  },
+  logoutItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 12,
     paddingHorizontal: 12,
     borderRadius: 12,
-    backgroundColor: '#fff5f5',
+    backgroundColor: COLORS.errorContainer,
     gap: 12,
+    marginTop: 16,
   },
   logoutText: {
-    fontSize: 16,
+    ...FONTS.labelLg,
     fontWeight: '700',
   },
 })

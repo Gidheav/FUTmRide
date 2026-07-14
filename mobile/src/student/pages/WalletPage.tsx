@@ -838,9 +838,9 @@ export default function StudentWalletPage({
           )}
         </SafeAreaView>
       </Modal>
-      <Modal visible={gatewayModalVisible} animationType="fade" transparent onRequestClose={() => setGatewayModalVisible(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
+      <Modal visible={gatewayModalVisible} animationType="slide" transparent onRequestClose={() => setGatewayModalVisible(false)}>
+        <View style={pinStyles.backdrop}>
+          <View style={pinStyles.card}>
             <Text style={styles.modalTitle}>Choose payment gateway</Text>
             <Text style={styles.modalSubtitle}>Select Paystack or Flutterwave to continue.</Text>
             <TouchableOpacity
@@ -1161,6 +1161,24 @@ export default function StudentWalletPage({
     </View>
   )
 }
+
+const pinStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+  },
+  card: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+    width: '100%',
+    alignItems: 'center',
+  },
+})
 
 const styles = StyleSheet.create({
   page: {

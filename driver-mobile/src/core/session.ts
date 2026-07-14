@@ -28,7 +28,7 @@ export const isLikelyNetworkError = (error: any) => {
 
 export const getSessionErrorMessage = (error: any, fallback = 'Unable to verify your session.') => {
   if (isLikelyNetworkError(error)) {
-    return 'Internet connection is required to unlock the driver app.'
+    return 'No internet connection, please try again..'
   }
 
   const message = error?.response?.data?.error?.message

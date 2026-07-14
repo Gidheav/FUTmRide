@@ -70,6 +70,7 @@ function StudentAppInner() {
     appLockEnabled,
     biometricEnabled,
     hasPin,
+    hasTransactionPin,
     locked,
     lockTimeoutMinutes,
     lastUnlockAt,

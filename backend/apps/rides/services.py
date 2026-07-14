@@ -34,6 +34,7 @@ class FareCalculator:
         vehicle_type: str,
         distance_km: float,
         surge_multiplier: float = 1.0,
+        passenger_count: int = 1,
         config_override: dict | None = None,
         settings_override: dict | None = None,
     ) -> dict:
@@ -79,6 +80,7 @@ class FareCalculator:
 
         clamped = min(distance_km, max_distance) if max_distance > 0 else distance_km
         distance_clamped = distance_km > max_distance if max_distance > 0 else False
+        passengers = max(int(passenger_count or 1), 1)
 
         effective_surge = surge_multiplier
         if surge_enabled:
@@ -89,7 +91,8 @@ class FareCalculator:
         distance_charge = per_km * clamped
         subtotal = base + distance_charge + booking_fee
         surged_fare = subtotal * effective_surge
-        final_fare = max(surged_fare, minimum)
+        single_passenger_fare = max(surged_fare, minimum)
+        final_fare = single_passenger_fare * passengers
         minimum_adjustment = round(max(0, minimum - surged_fare), 2)
 
         commission = final_fare * commission_rate
@@ -110,6 +113,8 @@ class FareCalculator:
             'surged_amount': round(surged_fare - subtotal, 2) if effective_surge > 1 else 0,
             'minimum_fare': round(minimum, 2),
             'minimum_adjustment': minimum_adjustment,
+            'passenger_count': passengers,
+            'single_passenger_fare': round(single_passenger_fare, 2),
             'total_fare': round(final_fare, 2),
             'commission_rate': round(commission_rate, 4),
             'platform_commission': round(commission, 2),

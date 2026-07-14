@@ -18,6 +18,7 @@ from apps.accounts.models import (
 from apps.payments.models import WalletTransaction
 from apps.verification.models import AccountVerification, DriverDocument
 from .models import Ride, RideStatus
+from .services import FareCalculator
 from .scheduled_models import (
     PassengerStatus,
     PricingTier,
@@ -132,6 +133,29 @@ class RideBookingTestCase(TestCase):
         self.assertEqual(res.data['status'], RideStatus.SEARCHING)
         self.assertTrue(res.data['is_paid'])
 
+    def test_multi_seat_wallet_ride_debits_multiplied_fare(self):
+        payload = {**RIDE_PAYLOAD, 'requested_seats': 3}
+        before = self.student.student_profile.wallet_balance
+
+        res = self.client.post(reverse('ride-request'), payload, format='json')
+
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.student.student_profile.refresh_from_db()
+        self.assertEqual(Decimal(str(res.data['total_fare'])), Decimal('2400.00'))
+        self.assertEqual(self.student.student_profile.wallet_balance, before - Decimal('2400.00'))
+        ride = Ride.objects.get(id=res.data['id'])
+        self.assertEqual(ride.requested_seats, 3)
+        self.assertEqual(ride.total_fare, Decimal('2400.00'))
+
+    def test_ride_request_accepts_passenger_count_alias(self):
+        payload = {**RIDE_PAYLOAD, 'passengerCount': 2}
+
+        res = self.client.post(reverse('ride-request'), payload, format='json')
+
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res.data['requested_seats'], 2)
+        self.assertEqual(Decimal(str(res.data['total_fare'])), Decimal('1600.00'))
+
     def test_driver_can_accept_searching_ride(self):
         ride_res = self.client.post(reverse('ride-request'), RIDE_PAYLOAD, format='json')
         driver_login = self.client.post(reverse('auth-login'), {
@@ -169,6 +193,19 @@ class RideBookingTestCase(TestCase):
         res = self.client.get(reverse('ride-student-list'))
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(res.data['pagination']['count'], 1)
+
+
+class FareCalculatorTestCase(TestCase):
+    def test_passenger_count_multiplies_total_commission_and_driver_earnings(self):
+        single = FareCalculator.calculate('sedan', 2.0)
+        multi = FareCalculator.calculate('sedan', 2.0, passenger_count=3)
+
+        self.assertEqual(single['total_fare'], 800)
+        self.assertEqual(multi['passenger_count'], 3)
+        self.assertEqual(multi['single_passenger_fare'], 800)
+        self.assertEqual(multi['total_fare'], 2400)
+        self.assertEqual(multi['platform_commission'], single['platform_commission'] * 3)
+        self.assertEqual(multi['driver_earnings'], single['driver_earnings'] * 3)
 
 
 class RideLifecycleTestCase(TestCase):

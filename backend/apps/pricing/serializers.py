@@ -81,8 +81,15 @@ class FareEstimateSerializer(serializers.Serializer):
     vehicle_type = serializers.ChoiceField(choices=FareConfiguration.VehicleType.choices)
     distance_km = serializers.FloatField(min_value=0.1)
     surge_multiplier = serializers.FloatField(min_value=1.0, max_value=5.0, default=1.0, required=False)
+    passenger_count = serializers.IntegerField(min_value=1, max_value=99, default=1, required=False)
     config_override = FareConfigOverrideSerializer(required=False)
     settings_override = serializers.DictField(required=False)
+
+    def to_internal_value(self, data):
+        if 'passenger_count' not in data and 'passengerCount' in data:
+            data = data.copy()
+            data['passenger_count'] = data['passengerCount']
+        return super().to_internal_value(data)
 
 
 class PlatformSettingsSerializer(serializers.ModelSerializer):

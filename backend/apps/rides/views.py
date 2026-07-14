@@ -67,6 +67,7 @@ class RideRequestView(generics.CreateAPIView):
             fare_data = FareCalculator.calculate(
                 vehicle_type=ride.vehicle_type_requested,
                 distance_km=float(ride.estimated_distance_km or 2.0),
+                passenger_count=ride.requested_seats,
             )
             ride.base_fare = fare_data['base_fare']
             ride.total_fare = fare_data['total_fare']

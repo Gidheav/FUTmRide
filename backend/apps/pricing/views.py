@@ -40,6 +40,7 @@ class FareEstimateView(APIView):
             vehicle_type=data['vehicle_type'],
             distance_km=data['distance_km'],
             surge_multiplier=data.get('surge_multiplier', 1.0),
+            passenger_count=data.get('passenger_count', 1),
             config_override=data.get('config_override'),
             settings_override=data.get('settings_override'),
         )

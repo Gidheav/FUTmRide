@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,7 +11,6 @@ import {
   View,
 } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
-import * as LocalAuthentication from 'expo-local-authentication'
 import api from '../../../core/api'
 import { ScheduledRide } from './ScheduledTab'
 import LoadingOverlay from '../LoadingOverlay'
@@ -37,35 +37,6 @@ type Props = {
   onLeft: () => void
 }
 
-async function requireBiometricAuth(promptMessage: string): Promise<boolean> {
-  try {
-    const hasHardware = await LocalAuthentication.hasHardwareAsync()
-    const isEnrolled = await LocalAuthentication.isEnrolledAsync()
-    if (!hasHardware || !isEnrolled) {
-      // No biometric — fallback to a simple confirm alert
-      return await new Promise<boolean>((resolve) => {
-        Alert.alert(
-          'Confirm Action',
-          promptMessage,
-          [
-            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-            { text: 'Confirm', onPress: () => resolve(true) },
-          ],
-          { cancelable: true }
-        )
-      })
-    }
-    const result = await LocalAuthentication.authenticateAsync({
-      promptMessage,
-      fallbackLabel: 'Use Passcode',
-      disableDeviceFallback: false,
-    })
-    return result.success
-  } catch {
-    return false
-  }
-}
-
 export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft }: Props) {
   const [detail, setDetail] = useState<RideDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -73,6 +44,13 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
   
   const [boardingStopId, setBoardingStopId] = useState<string | null>(null)
   const [alightingStopId, setAlightingStopId] = useState<string | null>(null)
+
+  const [pinModalVisible, setPinModalVisible] = useState(false)
+  const [pinInput, setPinInput] = useState('')
+  const [pinError, setPinError] = useState('')
+  const [pinLoading, setPinLoading] = useState(false)
+  const [pendingAction, setPendingAction] = useState<'join' | 'leave' | null>(null)
+  const PIN_ROWS = [['1','2','3'],['4','5','6'],['7','8','9'],['','0','back']]
 
   const isLeaveMode = ride.is_joined_by_me
 
@@ -96,7 +74,7 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
     fetchDetail()
   }, [ride.id, onClose, isLeaveMode])
 
-  const handleJoin = async () => {
+  const handleJoin = () => {
     if (detail && !detail.is_joinable) {
       Alert.alert('Ride closed', 'This ride is no longer accepting passengers.')
       return
@@ -106,9 +84,13 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
       return
     }
 
-    const authed = await requireBiometricAuth('Authenticate to confirm and pay for this ride.')
-    if (!authed) return
+    setPendingAction('join')
+    setPinInput('')
+    setPinError('')
+    setPinModalVisible(true)
+  }
 
+  const doJoin = async () => {
     setWorking(true)
     try {
       await api.post(`rides/scheduled/${ride.id}/join/`, {
@@ -156,10 +138,14 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
     }
   }
 
-  const handleLeave = async () => {
-    const authed = await requireBiometricAuth('Authenticate to confirm leaving this ride.')
-    if (!authed) return
+  const handleLeave = () => {
+    setPendingAction('leave')
+    setPinInput('')
+    setPinError('')
+    setPinModalVisible(true)
+  }
 
+  const doLeave = async () => {
     setWorking(true)
     try {
       await api.post(`rides/scheduled/${ride.id}/leave/`)
@@ -173,6 +159,35 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
       Alert.alert('Failed to leave', String(msg))
     } finally {
       setWorking(false)
+    }
+  }
+
+  const handlePinDigit = async (digit: string) => {
+    if (pinLoading) return
+    if (!digit) return
+    if (digit === 'back') { setPinInput((p) => p.slice(0, -1)); return }
+    setPinError('')
+    if (pinInput.length >= 4) return
+    const next = `${pinInput}${digit}`
+    setPinInput(next)
+    if (next.length === 4) {
+      setPinLoading(true)
+      try {
+        await api.post('auth/settings/pin/verify/', { pin: next })
+        setPinModalVisible(false)
+        setPinInput('')
+        if (pendingAction === 'join') {
+          void doJoin()
+        } else if (pendingAction === 'leave') {
+          void doLeave()
+        }
+      } catch (err: any) {
+        const msg = err?.response?.data?.message || err?.response?.data?.error?.message || 'Incorrect Transaction PIN.'
+        setPinError(String(msg))
+        setPinInput('')
+      } finally {
+        setPinLoading(false)
+      }
     }
   }
 
@@ -376,6 +391,42 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
           )}
         </View>
       </View>
+
+      <Modal visible={pinModalVisible} animationType="fade" transparent onRequestClose={() => setPinModalVisible(false)}>
+        <View style={pinStyles.backdrop}>
+          <View style={pinStyles.card}>
+            <Text style={pinStyles.title}>Confirm Action</Text>
+            <Text style={pinStyles.subtitle}>Enter your Transaction PIN to {pendingAction === 'join' ? 'join' : 'leave'} this ride.</Text>
+            {pinError ? <Text style={pinStyles.error}>{pinError}</Text> : null}
+            <View style={pinStyles.dotsRow}>
+              {[0, 1, 2, 3].map((i) => (
+                <View key={i} style={[pinStyles.dot, pinInput.length > i && pinStyles.dotFilled]} />
+              ))}
+            </View>
+            <View style={pinStyles.pad}>
+              {PIN_ROWS.map((row, ri) => (
+                <View key={ri} style={pinStyles.row}>
+                  {row.map((digit, ci) => (
+                    <Pressable
+                      key={`${ri}-${ci}`}
+                      style={({ pressed }) => [pinStyles.key, (!digit || pinLoading) && pinStyles.keyHidden, pressed && pinStyles.keyPressed]}
+                      onPress={() => handlePinDigit(digit)}
+                      disabled={!digit || pinLoading}
+                    >
+                      {digit === 'back'
+                        ? <Text style={pinStyles.keyText}>⌫</Text>
+                        : <Text style={pinStyles.keyText}>{digit}</Text>}
+                    </Pressable>
+                  ))}
+                </View>
+              ))}
+            </View>
+            <TouchableOpacity style={pinStyles.cancelBtn} onPress={() => { setPinModalVisible(false); setPinInput(''); setPinError('') }} disabled={pinLoading}>
+              <Text style={pinStyles.cancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </Modal>
   )
 }
@@ -692,4 +743,36 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
   },
+})
+
+const pinStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 360,
+    alignItems: 'center',
+  },
+  title: { fontSize: 17, fontWeight: '700', color: '#1a1c1c', marginBottom: 6 },
+  subtitle: { fontSize: 13, color: '#6b7280', marginBottom: 8, textAlign: 'center' },
+  error: { color: '#ba1a1a', fontSize: 12, fontWeight: '600', marginBottom: 6, textAlign: 'center' },
+  dotsRow: { flexDirection: 'row', gap: 14, marginVertical: 16 },
+  dot: { width: 14, height: 14, borderRadius: 7, borderWidth: 2, borderColor: '#6A1B9A', backgroundColor: 'transparent' },
+  dotFilled: { backgroundColor: '#6A1B9A' },
+  pad: { width: '100%', gap: 8 },
+  row: { flexDirection: 'row', justifyContent: 'center', gap: 12 },
+  key: { width: 72, height: 52, borderRadius: 12, backgroundColor: '#f5f5f5', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#e2e2e2' },
+  keyHidden: { opacity: 0 },
+  keyPressed: { backgroundColor: '#ede5f5' },
+  keyText: { fontSize: 20, fontWeight: '600', color: '#1a1c1c' },
+  cancelBtn: { marginTop: 16, paddingVertical: 10, paddingHorizontal: 24 },
+  cancelText: { color: '#6A1B9A', fontWeight: '600', fontSize: 14 },
 })

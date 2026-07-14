@@ -18,9 +18,10 @@ interface LayoutProps {
   activeTab: DriverTab;
   onTabChange: (tab: DriverTab) => void;
   children: ReactNode;
+  onOpenWebLink?: (url: string, title: string) => void;
 }
 
-export default function DriverLayout({ activeTab, onTabChange, children }: LayoutProps) {
+export default function DriverLayout({ activeTab, onTabChange, children, onOpenWebLink }: LayoutProps) {
   const insets = useSafeAreaInsets();
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const { user, logout } = useAuthStore();
@@ -43,6 +44,7 @@ export default function DriverLayout({ activeTab, onTabChange, children }: Layou
           setIsSidebarVisible(false);
           logout();
         }}
+        onOpenWebLink={onOpenWebLink || (() => {})}
       />
 
       {/* Top App Bar with safe area padding */}
