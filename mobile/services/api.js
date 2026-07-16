@@ -10,6 +10,18 @@ const api = axios.create({
   timeout: 20000,
 })
 
+export async function blacklistRefreshToken(refreshToken, accessToken) {
+  if (!refreshToken) return
+  await axios.post(
+    `${API_BASE_URL}auth/logout/`,
+    { refresh: refreshToken },
+    {
+      timeout: 10000,
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+    },
+  )
+}
+
 // ─── Refresh mutex ───────────────────────────────────────────────────────────
 // Only ONE token refresh request is ever in-flight at a time.
 // Any concurrent 401 responses queue on the same promise instead of spawning

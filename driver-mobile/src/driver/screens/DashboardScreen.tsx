@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   View,
   Text,
   StyleSheet,
@@ -13,6 +14,12 @@ import { COLORS, FONTS } from '../../core/theme';
 import { driverApi, driverWalletApi } from '../../core/api';
 import { useAuthStore } from '../../core/authStore';
 import { useGarageRideStore } from '../../core/garageRideStore';
+import { useDriverRidesStore } from '../../core/driverRidesStore';
+import {
+  getDriverActivityState,
+  getActivityDisplay,
+  canCreateGarageRide,
+} from '../../core/driverActivity';
 
 const ACTIVE_GARAGE_STATUSES = new Set(['open', 'full', 'departed']);
 
@@ -98,6 +105,7 @@ const getTxnSubtitle = (tx: any) => {
 const DashboardScreen = ({ onCreateGarageRide }: { onCreateGarageRide?: () => void }) => {
   const { status, setStatus } = useGarageRideStore();
   const { user } = useAuthStore();
+  const { isOnline, driverHasActiveRide, garageRide: storeGarageRide } = useDriverRidesStore();
   const [walletSummary, setWalletSummary] = useState<any>(null);
   const [activeRide, setActiveRide] = useState<any>(null);
 
@@ -188,6 +196,26 @@ const DashboardScreen = ({ onCreateGarageRide }: { onCreateGarageRide?: () => vo
   const actionLabel = status === 'active' ? 'Resume Current Session' : 'Start Garage Session';
   const revenueToday = getTodayRevenue(walletSummary);
 
+  // ── Activity state for mode indicator & guard ──────────────────────────────
+  const activityState = useMemo(
+    () => getDriverActivityState(isOnline, storeGarageRide, driverHasActiveRide),
+    [isOnline, storeGarageRide, driverHasActiveRide]
+  );
+  const activityDisplay = useMemo(() => getActivityDisplay(activityState), [activityState]);
+
+  const handleGaragePress = () => {
+    const guard = canCreateGarageRide(activityState);
+    if (!guard.allowed) {
+      Alert.alert(
+        'Mode Conflict',
+        `${guard.reason}\n\n${guard.suggestion}`,
+        [{ text: 'Got it', style: 'default' }],
+      );
+      return;
+    }
+    onCreateGarageRide?.();
+  };
+
   return (
     <View style={styles.container}>
       <ScrollView
@@ -203,10 +231,16 @@ const DashboardScreen = ({ onCreateGarageRide }: { onCreateGarageRide?: () => vo
               <Text style={styles.heroLabel}>Revenue Today</Text>
               <Text style={styles.heroAmount}>{formatCurrency(revenueToday)}</Text>
             </View>
-            <TouchableOpacity style={styles.onlineBadge}>
-              <View style={styles.onlineDot} />
-              <Text style={styles.onlineText}>LIVE</Text>
-            </TouchableOpacity>
+            <View style={{ alignItems: 'flex-end', gap: 6 }}>
+              <TouchableOpacity style={styles.onlineBadge}>
+                <View style={styles.onlineDot} />
+                <Text style={styles.onlineText}>LIVE</Text>
+              </TouchableOpacity>
+              <View style={[styles.modeBadge, { backgroundColor: activityDisplay.bgColor }]}>
+                <MaterialIcons name={activityDisplay.icon as any} size={12} color={activityDisplay.color} />
+                <Text style={[styles.modeBadgeText, { color: activityDisplay.color }]}>{activityDisplay.label}</Text>
+              </View>
+            </View>
           </View>
 
           <View style={styles.goalWrap}>
@@ -270,7 +304,7 @@ const DashboardScreen = ({ onCreateGarageRide }: { onCreateGarageRide?: () => vo
               </View>
             </View>
 
-            <TouchableOpacity style={styles.resumeSessionBtn} onPress={onCreateGarageRide} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.resumeSessionBtn} onPress={handleGaragePress} activeOpacity={0.85}>
               <MaterialIcons name="qr-code-scanner" size={18} color={COLORS.onPrimary} />
               <Text style={styles.resumeSessionBtnText}>Resume Session</Text>
             </TouchableOpacity>
@@ -278,7 +312,7 @@ const DashboardScreen = ({ onCreateGarageRide }: { onCreateGarageRide?: () => vo
         ) : (
           <TouchableOpacity
             style={styles.mainAction}
-            onPress={onCreateGarageRide}
+            onPress={handleGaragePress}
             activeOpacity={0.9}
           >
             <LinearGradient

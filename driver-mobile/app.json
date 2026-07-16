@@ -15,7 +15,7 @@
     },
     "updates": {
       "enabled": false,
-      "checkAutomatically": "OFF"
+      "checkAutomatically": "NEVER"
     },
     "android": {
       "package": "com.futm.drive",
@@ -41,7 +41,7 @@
       }
     },
     "ios": {
-      "supportsTabletMode": true,
+      "supportsTablet": true,
       "bundleIdentifier": "com.futm.drive",
       "config": {
         "googleMapsApiKey": "AIzaSyD5nLbEz_xY6UOHJ1mbjvipD1PY1A14erQ"

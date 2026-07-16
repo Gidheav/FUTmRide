@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { clearAuthTokens, getAuthTokens, setAuthTokens } from '../../utils/secureStorage'
+import { blacklistRefreshToken } from '../../services/api'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { clearStoredPinHash } from './security'
 import { useSecurityStore } from './securityStore'
@@ -105,6 +106,16 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       logout: () => {
+        const currentAccessToken = get().accessToken
+        const currentRefreshToken = get().refreshToken
+        void getAuthTokens()
+          .then((storedTokens) => blacklistRefreshToken(
+            currentRefreshToken || storedTokens.refreshToken,
+            currentAccessToken || storedTokens.accessToken,
+          ))
+          .catch(() => {
+            // Local logout must still complete if the server is unreachable.
+          })
         // Clear auth tokens from SecureStore
         void clearAuthTokens()
         // Clear PIN hash from SecureStore

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, AppState, BackHandler, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, Alert, AppState, BackHandler, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useAuthStore } from '../core/authStore'
 import { useSecurityStore } from '../core/securityStore'
 import { fetchCurrentUser, refreshStudentSessionTokens } from '../core/session'
@@ -31,6 +31,7 @@ import GenericWebPage from './components/GenericWebPage'
 import { WebPageProvider, useWebPage } from './context/WebPageContext'
 import type { StudentTab } from './types'
 import { clearStoredPinHash } from '../core/security'
+import { refreshTransactionPinStatus } from '../core/transactionPin'
 import api from '../core/api'
 import {
   registerStudentPushToken,
@@ -71,6 +72,7 @@ function StudentAppInner() {
     biometricEnabled,
     hasPin,
     hasTransactionPin,
+    transactionPinStatus,
     locked,
     lockTimeoutMinutes,
     lastUnlockAt,
@@ -95,6 +97,7 @@ function StudentAppInner() {
   const [pendingAnnouncement, setPendingAnnouncement] = useState<StudentInAppAnnouncement | null>(null)
   const [announcementGateVisible, setAnnouncementGateVisible] = useState(false)
   const [announcementRefreshKey, setAnnouncementRefreshKey] = useState(0)
+  const [transactionPinGateLoading, setTransactionPinGateLoading] = useState(false)
   const { openWebPage, closWebPage, webPage } = useWebPage()
   // Generic in-app webview — used by notifications and other deep links
   // (state managed by WebPageContext, accessible from any component via useWebPage())
@@ -106,6 +109,7 @@ function StudentAppInner() {
   const lockedRef = useRef(locked)
   const pendingNotificationActionRef = useRef<PendingNotificationAction | null>(null)
   const lastInitialNotificationKeyRef = useRef<string | null>(null)
+  const transactionPinStatusUserRef = useRef<string | null>(null)
   // True only on the very first mount (cold start). Cleared after the first lock check.
   const isColdStartRef = useRef(true)
   // Track previous auth state so we can detect a fresh email/password login
@@ -360,6 +364,20 @@ function StudentAppInner() {
       stillMounted = false
     }
   }, [isAuthenticated, user?.id, user?.role, user?.fcm_token, setUser])
+
+  useEffect(() => {
+    if (!isAuthenticated || locked || !user || user.role !== 'student') {
+      transactionPinStatusUserRef.current = null
+      return
+    }
+    if (transactionPinStatusUserRef.current === user.id) return
+    if (transactionPinStatus === 'loading' || transactionPinStatus === 'ready') return
+
+    transactionPinStatusUserRef.current = user.id
+    void refreshTransactionPinStatus().catch(() => {
+      // User-triggered wallet/booking flows show a retryable error if this fails.
+    })
+  }, [isAuthenticated, locked, transactionPinStatus, user?.id, user?.role])
 
   const handleWalletNotification = useCallback((data: Record<string, any>) => {
     if (!data) return
@@ -657,24 +675,48 @@ function StudentAppInner() {
     return null
   }
 
+  const showTransactionPinRequired = () => {
+    Alert.alert(
+      'Transaction PIN Required',
+      'Please set up a Transaction PIN in Security settings before you can book rides or access your wallet.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Setup PIN', onPress: () => {
+          setActiveTab('account')
+          setAccountMode('security')
+        }}
+      ]
+    )
+  }
+
   const handleRequireSecurity = (onSuccess: () => void) => {
-    if (hasTransactionPin) {
-      onSuccess()
-    } else {
-      import('react-native').then(({ Alert }) => {
+    if (transactionPinStatus === 'ready') {
+      if (hasTransactionPin) {
+        onSuccess()
+      } else {
+        showTransactionPinRequired()
+      }
+      return
+    }
+
+    setTransactionPinGateLoading(true)
+    refreshTransactionPinStatus()
+      .then((hasPin) => {
+        if (hasPin) {
+          onSuccess()
+        } else {
+          showTransactionPinRequired()
+        }
+      })
+      .catch(() => {
         Alert.alert(
-          'Transaction PIN Required',
-          'Please set up a Transaction PIN in Security settings before you can book rides or access your wallet.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Setup PIN', onPress: () => {
-              setActiveTab('account')
-              setAccountMode('security')
-            }}
-          ]
+          'Connection Required',
+          'Unable to confirm your Transaction PIN status. Please check your internet connection and try again.',
         )
       })
-    }
+      .finally(() => {
+        setTransactionPinGateLoading(false)
+      })
   }
 
   // ─── Main app shell (always accessible) ───────────────────────────────────
@@ -879,6 +921,19 @@ function StudentAppInner() {
         </View>
       </Modal>
 
+      <Modal
+        visible={transactionPinGateLoading}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => undefined}
+      >
+        <View style={styles.securityGate}>
+          <ActivityIndicator size="large" color="#6A1B9A" />
+          <Text style={styles.securityGateText}>Checking Transaction PIN...</Text>
+        </View>
+      </Modal>
+
       <InAppAnnouncementModal
         visible={Boolean(pendingAnnouncement)}
         announcement={pendingAnnouncement}
@@ -897,6 +952,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#ffffff',
+  },
+  securityGate: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+  },
+  securityGateText: {
+    color: '#3d4a3e',
+    fontSize: 13,
+    fontWeight: '600',
   },
   recoveryBackdrop: {
     flex: 1,

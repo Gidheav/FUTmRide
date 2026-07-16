@@ -3,6 +3,7 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
 type LockTimeout = 0 | 1 | 5 | 15
+export type TransactionPinStatus = 'unknown' | 'loading' | 'ready' | 'error'
 
 interface SecurityStore {
   appLockEnabled: boolean
@@ -19,7 +20,9 @@ interface SecurityStore {
   setLocked: (value: boolean) => void
   setHasPin: (value: boolean) => void
   hasTransactionPin: boolean
+  transactionPinStatus: TransactionPinStatus
   setHasTransactionPin: (value: boolean) => void
+  setTransactionPinStatus: (value: TransactionPinStatus) => void
   setPinRecoveryRequired: (value: boolean) => void
   /** Reset all security state to defaults on logout. Prevents cross-user contamination. */
   resetForLogout: () => void
@@ -39,6 +42,7 @@ export const useSecurityStore = create<SecurityStore>()(
       locked: false,
       hasPin: false,
       hasTransactionPin: false,
+      transactionPinStatus: 'unknown',
       pinRecoveryRequired: false,
       setAppLockEnabled: (value) => set({ appLockEnabled: value }),
       setBiometricEnabled: (value) => set({ biometricEnabled: value }),
@@ -47,6 +51,7 @@ export const useSecurityStore = create<SecurityStore>()(
       setLocked: (value) => set({ locked: value }),
       setHasPin: (value) => set({ hasPin: value }),
       setHasTransactionPin: (value) => set({ hasTransactionPin: value }),
+      setTransactionPinStatus: (value) => set({ transactionPinStatus: value }),
       setPinRecoveryRequired: (value) => set({ pinRecoveryRequired: value }),
       resetForLogout: () => set({
         appLockEnabled: false,
@@ -56,6 +61,7 @@ export const useSecurityStore = create<SecurityStore>()(
         locked: false,
         hasPin: false,
         hasTransactionPin: false,
+        transactionPinStatus: 'unknown',
         pinRecoveryRequired: false,
       }),
     }),
@@ -72,7 +78,6 @@ export const useSecurityStore = create<SecurityStore>()(
         lockTimeoutMinutes: state.lockTimeoutMinutes,
         lastUnlockAt: state.lastUnlockAt,
         hasPin: state.hasPin,
-        hasTransactionPin: state.hasTransactionPin,
         pinRecoveryRequired: state.pinRecoveryRequired,
       }),
     }

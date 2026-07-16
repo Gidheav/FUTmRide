@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  ActivityIndicator,
   Modal,
   Pressable,
   ScrollView,
@@ -15,6 +16,7 @@ import { clearStoredPinHash, getStoredPinHash, hashPin, setStoredPinHash } from 
 import { useSecurityStore } from '../../core/securityStore'
 import LoadingOverlay from '../components/LoadingOverlay'
 import api from '../../core/api'
+import { refreshTransactionPinStatus } from '../../core/transactionPin'
 
 const TIMEOUT_OPTIONS: Array<{ label: string; value: 0 | 1 | 5 | 15 }> = [
   { label: 'Immediate', value: 0 },
@@ -40,7 +42,9 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
     hasPin,
     setHasPin,
     hasTransactionPin,
+    transactionPinStatus,
     setHasTransactionPin,
+    setTransactionPinStatus,
   } = useSecurityStore()
 
   const [loading, setLoading] = useState(true)
@@ -80,18 +84,14 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
     let isMounted = true
     const load = async () => {
       try {
-        const [storedPin, hasHardware, enrolled, prefRes] = await Promise.all([
+        const [storedPin, hasHardware, enrolled] = await Promise.all([
           getStoredPinHash(),
           LocalAuthentication.hasHardwareAsync(),
           LocalAuthentication.isEnrolledAsync(),
-          api.get('auth/settings/preferences/').catch(() => null),
         ])
         if (isMounted) {
           setHasPin(Boolean(storedPin))
           setBiometricAvailable(hasHardware && enrolled)
-          if (prefRes?.data?.has_pin !== undefined) {
-            setHasTransactionPin(Boolean(prefRes.data.has_pin))
-          }
         }
       } catch (err) {
         if (isMounted) {
@@ -107,6 +107,12 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
       isMounted = false
     }
   }, [setHasPin])
+
+  useEffect(() => {
+    void refreshTransactionPinStatus().catch(() => {
+      // The transaction section renders an explicit retry state.
+    })
+  }, [])
 
   useEffect(() => {
     if (!openPinOnLoad || didAutoOpenPin) return
@@ -331,6 +337,7 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
       }
       await api.post('auth/settings/pin/set/', payload)
       setHasTransactionPin(true)
+      setTransactionPinStatus('ready')
       setTxPinError('')
       setTxPinSuccess(txPinAction === 'update' ? 'Transaction PIN updated.' : 'Transaction PIN saved.')
       if (txPinCloseTimer.current) {
@@ -387,6 +394,8 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
 
   const selectedTimeout = TIMEOUT_OPTIONS.find((item) => item.value === lockTimeoutMinutes)
   const lockControlsDisabled = !appLockEnabled
+  const transactionPinLoading = transactionPinStatus === 'unknown' || transactionPinStatus === 'loading'
+  const transactionPinUnavailable = transactionPinStatus === 'error'
 
   return (
     <View style={styles.page}>
@@ -467,21 +476,45 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
           <Text style={styles.sectionTitle}>Transaction PIN</Text>
           <Text style={styles.sectionSubtitle}>Protect your wallet and bookings.</Text>
         </View>
-        <View style={styles.actionRow}>
-          <View>
-            <Text style={styles.rowTitle}>Wallet PIN</Text>
-            <Text style={styles.rowSubtitle}>4-digit PIN for transactions.</Text>
+        {transactionPinLoading ? (
+          <View style={styles.statusRow}>
+            <ActivityIndicator size="small" color="#6A1B9A" />
+            <View style={styles.statusCopy}>
+              <Text style={styles.rowTitle}>Wallet PIN</Text>
+              <Text style={styles.rowSubtitle}>Checking transaction PIN status...</Text>
+            </View>
           </View>
-          <View style={styles.actionButtons}>
+        ) : transactionPinUnavailable ? (
+          <View style={styles.actionRow}>
+            <View style={styles.statusCopy}>
+              <Text style={styles.rowTitle}>Wallet PIN</Text>
+              <Text style={styles.rowSubtitle}>Unable to verify transaction PIN status.</Text>
+            </View>
             <TouchableOpacity
               style={styles.actionButton}
-              onPress={() => openTxPinModal(hasTransactionPin ? 'update' : 'set')}
+              onPress={() => refreshTransactionPinStatus().catch(() => undefined)}
               activeOpacity={0.85}
             >
-              <Text style={styles.actionText}>{hasTransactionPin ? 'Change' : 'Set'}</Text>
+              <Text style={styles.actionText}>Retry</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        ) : (
+          <View style={styles.actionRow}>
+            <View>
+              <Text style={styles.rowTitle}>Wallet PIN</Text>
+              <Text style={styles.rowSubtitle}>4-digit PIN for transactions.</Text>
+            </View>
+            <View style={styles.actionButtons}>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => openTxPinModal(hasTransactionPin ? 'update' : 'set')}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.actionText}>{hasTransactionPin ? 'Change' : 'Set'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
       </View>
 
       <Modal visible={pinModalVisible} animationType="fade" transparent onRequestClose={() => setPinModalVisible(false)}>
@@ -766,6 +799,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 12,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  statusCopy: {
+    flex: 1,
   },
   actionButtons: {
     flexDirection: 'row',

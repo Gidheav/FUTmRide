@@ -13,6 +13,7 @@ import {
   LayoutAnimation,
   Platform,
   UIManager,
+  Alert,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import LoadingOverlay from '../components/LoadingOverlay';
@@ -21,6 +22,14 @@ import { driverApi } from '../../core/api';
 import { startDriverLocationTracking, stopDriverLocationTracking } from '../../core/locationSocket';
 import { useGarageRideStore } from '../../core/garageRideStore';
 import { useDriverRidesStore } from '../../core/driverRidesStore';
+import { 
+  getDriverActivityState, 
+  canGoOnline, 
+  canCreateGarageRide,
+  getUpcomingScheduledRide,
+  formatTimeUntil,
+  isScheduledRideLocked
+} from '../../core/driverActivity';
 import * as Location from 'expo-location';
 import QRCode from 'react-native-qrcode-svg';
 import locationData from '../locations.json';
@@ -426,6 +435,11 @@ export default function DriverRidesPage() {
   const initialFetchDone = useRef(cachedRequests.length > 0);
   const isFetchingRequests = useRef(false);
 
+  // Compute upcoming scheduled ride for the awareness banner
+  const upcomingScheduledRide = useMemo(() => {
+    return getUpcomingScheduledRide(availableScheduledRides);
+  }, [availableScheduledRides]);
+
   // Active On-Demand Ride State
   const [activeOnDemandRide, setActiveOnDemandRide] = useState<any>(null);
   const [loadingActiveOnDemand, setLoadingActiveOnDemand] = useState(false);
@@ -781,6 +795,19 @@ export default function DriverRidesPage() {
 
   const handleToggleOnline = async () => {
     if (isUpdatingOnline || isOnline === null) return;
+    
+    const activityState = getDriverActivityState(isOnline, garageRide, driverHasActiveRide);
+    const hasLock = upcomingScheduledRide ? isScheduledRideLocked(upcomingScheduledRide) : false;
+    
+    // Only apply the guard if they are trying to GO online (not offline)
+    if (!isOnline) {
+      const guard = canGoOnline(activityState, hasLock);
+      if (!guard.allowed) {
+        Alert.alert('Action Blocked', `${guard.reason}\n\n${guard.suggestion}`);
+        return;
+      }
+    }
+
     if (isOnline && isOfflineBlocked) {
       setRequestsError('You cannot go offline while a ride is active.');
       errorHoldUntil.current = Date.now() + 8000;
@@ -888,10 +915,20 @@ export default function DriverRidesPage() {
   };
 
   const handleCreateGarageRide = async () => {
+    const activityState = getDriverActivityState(isOnline, garageRide, driverHasActiveRide);
+    const hasLock = upcomingScheduledRide ? isScheduledRideLocked(upcomingScheduledRide) : false;
+    const guard = canCreateGarageRide(activityState, hasLock);
+    
+    if (!guard.allowed) {
+      Alert.alert('Action Blocked', `${guard.reason}\n\n${guard.suggestion}`);
+      return;
+    }
+
     if (!origin || !destination) {
       setGarageError('Select both origin and destination.');
       return;
     }
+
 
     setIsCreatingRide(true);
     setGarageError(null);
@@ -1111,10 +1148,10 @@ export default function DriverRidesPage() {
         onCancelInterest={handleCancelInterest}
         isExpressing={expressingInterestId === item.id}
         isCancelling={cancellingInterestId === item.id}
-        disabled={!isOnline}
+        disabled={false}
       />
     </View>
-  ), [expressingInterestId, cancellingInterestId, handleExpressInterest, handleCancelInterest, isOnline]);
+  ), [expressingInterestId, cancellingInterestId, handleExpressInterest, handleCancelInterest]);
 
   const renderRequestItem = useCallback(({ item: ride }: { item: RideListItem }) => {
     const requestedSeats = ride.requested_seats || 0;
@@ -1141,6 +1178,16 @@ export default function DriverRidesPage() {
 
   return (
     <View style={styles.container}>
+      {/* Scheduled Ride Awareness Banner */}
+      {upcomingScheduledRide && (
+        <View style={styles.upcomingBanner}>
+          <MaterialIcons name="event" size={18} color="#004D40" />
+          <Text style={styles.upcomingBannerText}>
+            Upcoming scheduled ride to {upcomingScheduledRide.destination_address || 'destination'} {formatTimeUntil(upcomingScheduledRide.departure_date, upcomingScheduledRide.window_start)}.
+          </Text>
+        </View>
+      )}
+
       {/* Enterprise Status Board */}
       <View style={[styles.enterpriseHeader, AMBIENT_SHADOW]}>
         {/* Status Row */}
@@ -1208,7 +1255,7 @@ export default function DriverRidesPage() {
         {modeLocked && (
           <View style={styles.modeLockedAlert}>
             <MaterialIcons name="lock" size={14} color={COLORS.onSurfaceVariant} />
-            <Text style={styles.modeLockedText}>Complete active scheduled ride to switch modes.</Text>
+            <Text style={styles.modeLockedText}>Complete active garage session to switch modes.</Text>
           </View>
         )}
       </View>
@@ -1517,13 +1564,13 @@ const RequestCard = React.memo(function RequestCard({
       <View style={styles.premiumCardHeader}>
         <View style={[styles.requestUser, { flex: 1 }]}>
           <View style={[styles.avatar, { width: 28, height: 28, borderRadius: 14 }]}>
-            <Text style={[FONTS.labelSm, { color: COLORS.onSurfaceVariant }]}>{initials}</Text>
+            <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>{initials}</Text>
           </View>
           <View>
             <Text style={[FONTS.labelMd, { color: COLORS.onSurface }]}>{name}</Text>
             <View style={styles.ratingRow}>
               <MaterialIcons name="star" size={12} color={COLORS.onSurfaceVariant} />
-              <Text style={[FONTS.labelSm, { color: COLORS.onSurfaceVariant }]}>{rating}</Text>
+              <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>{rating}</Text>
             </View>
           </View>
         </View>
@@ -1655,6 +1702,24 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginTop: 12,
     gap: 6,
+  },
+  modalItemText: {
+    ...FONTS.labelMd,
+    color: COLORS.onSurface,
+  },
+  upcomingBanner: {
+    backgroundColor: '#E0F2F1',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  upcomingBannerText: {
+    ...FONTS.bodySm,
+    color: '#004D40',
+    flex: 1,
+    fontWeight: '600',
   },
   modeLockedText: {
     ...FONTS.labelMd,
