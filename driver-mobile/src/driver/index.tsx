@@ -448,6 +448,8 @@ export default function DriverApp() {
     try {
       await hydrateTokens()
       const snapshot = await refreshAndFetchDriverSession()
+      await prefetchDriverEssentials()
+      await saveDriverSessionSnapshotFromStores()
       const hasUnlockMethod = Boolean(snapshot.settings.has_pin || snapshot.settings.biometric_enabled)
       setPinSetupRequired(!hasUnlockMethod)
       setLocked(true)
@@ -615,6 +617,7 @@ export default function DriverApp() {
       <SafeAreaProvider>
         <AccountSettingsPage
           onBack={() => setSubPage(null)}
+          onLogout={endDriverSession}
           verificationProgress={progressData}
           onStartAccountVerification={() => setSubPage('account-verification')}
           onStartVehicleVerification={() => setSubPage('vehicle-verification')}
@@ -768,6 +771,7 @@ export default function DriverApp() {
       <DriverLayout 
         activeTab={activeTab} 
         onTabChange={setActiveTab}
+        onLogout={endDriverSession}
         onOpenWebLink={(url, title) => {
           setWebviewUrl(url)
           setWebviewTitle(title)
