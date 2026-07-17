@@ -1,4 +1,4 @@
-import {
+﻿import {
   Alert,
   ImageBackground,
   KeyboardAvoidingView,
@@ -16,8 +16,8 @@ import { useState, useEffect } from 'react'
 import { MaterialIcons } from '@expo/vector-icons'
 import { COLORS, FONTS } from '../../core/theme'
 import LoadingOverlay from '../components/LoadingOverlay'
-import { useAuthStore } from '../../core/authStore'
 import api, { settingsApi } from '../../core/api'
+import { completeDriverLogin } from '../../core/session'
 
 const HERO_IMAGE =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuAA82KcXqZA4aHsjymqPMgdvEZRGk709r3ShwzbAzJ8J02R4R9yYQBuSRB6CipocQbryqJU-vvfYEul4xdS4YCAM8FXGE4GyIBFMZwr62VcRKfKHrr4UW3lmGmpM5LoX5kAryoXAqHZNXu9sHQbSZFX6V740qIlrjIKL-OgE_3WngEHD6H2X2e3HmRdeYb7PmCuwu78N8Yad9Yv79YyclATBuXvhZXk2TywTHX2VYzFseo0xADkxCP9y1vThe2hUuhW1Kv2UR176W0'
@@ -43,7 +43,6 @@ export default function DriverLoginScreen() {
   const [twoFactorCode, setTwoFactorCode] = useState('')
   const [twoFactorChallenge, setTwoFactorChallenge] = useState('')
   const [twoFactorBusy, setTwoFactorBusy] = useState(false)
-  const setAuth = useAuthStore((state) => state.setAuth)
   const availableTwoFactorMethods = twoFactorMethods.length
     ? twoFactorMethods
     : ['totp', 'sms', 'email']
@@ -130,8 +129,8 @@ export default function DriverLoginScreen() {
             return
           }
 
-          // Login response includes enriched user payload — no need for a separate /users/me/ call
-          setAuth(loginRes.data.user, loginRes.data.access, loginRes.data.refresh)
+          // Login response includes enriched user payload â€” no need for a separate /users/me/ call
+          await completeDriverLogin(loginRes.data)
           return
         } catch (err: any) {
           const isNetworkError = !err?.response
@@ -181,7 +180,7 @@ export default function DriverLoginScreen() {
         method: twoFactorMethod,
         code: twoFactorCode,
       })
-      setAuth(res.data.user, res.data.access, res.data.refresh)
+      await completeDriverLogin(res.data)
       setTwoFactorRequired(false)
       setTwoFactorCode('')
       setTwoFactorChallenge('')

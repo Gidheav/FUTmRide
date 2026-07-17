@@ -18,13 +18,14 @@ interface LayoutProps {
   activeTab: DriverTab;
   onTabChange: (tab: DriverTab) => void;
   children: ReactNode;
+  onLogout: () => void;
   onOpenWebLink?: (url: string, title: string) => void;
 }
 
-export default function DriverLayout({ activeTab, onTabChange, children, onOpenWebLink }: LayoutProps) {
+export default function DriverLayout({ activeTab, onTabChange, children, onLogout, onOpenWebLink }: LayoutProps) {
   const insets = useSafeAreaInsets();
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
 
   const getInitials = () => {
     if (!user) return '?';
@@ -42,7 +43,7 @@ export default function DriverLayout({ activeTab, onTabChange, children, onOpenW
         onClose={() => setIsSidebarVisible(false)} 
         onLogout={() => {
           setIsSidebarVisible(false);
-          logout();
+          onLogout();
         }}
         onOpenWebLink={onOpenWebLink || (() => {})}
       />

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -14,20 +14,21 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
-import { useAuthStore } from '../../core/authStore';
 import { settingsApi } from '../../core/api';
 import { useSettingsStore } from '../../core/settingsStore';
 import { useAppLockStore, type DriverLockTimeoutMinutes } from '../../core/appLockStore';
+import { saveDriverSessionSnapshotFromStores, saveOfflinePinVerifier } from '../../core/driverSandbox';
 
 type Props = {
   onBack: () => void;
+  onLogout: () => void;
   verificationProgress?: any;
   onStartAccountVerification?: () => void;
   onStartVehicleVerification?: () => void;
 };
 
 
-// ─── Small sub-components ────────────────────────────────────────────────────
+// â”€â”€â”€ Small sub-components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function SettingsRow({
   icon,
@@ -98,7 +99,7 @@ function ValueChevron({ value }: { value: string }) {
   );
 }
 
-// ─── Modal screen definitions ─────────────────────────────────────────────────
+// â”€â”€â”€ Modal screen definitions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type ModalId =
   | 'language'
@@ -133,17 +134,16 @@ const LOCK_TIMEOUT_OPTIONS: Array<{ label: string; value: DriverLockTimeoutMinut
   { label: '30 minutes', value: 30 },
 ];
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Main Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-export default function AccountSettingsPage({ onBack, verificationProgress, onStartAccountVerification, onStartVehicleVerification }: Props) {
+export default function AccountSettingsPage({ onBack, onLogout, verificationProgress, onStartAccountVerification, onStartVehicleVerification }: Props) {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const { logout } = useAuthStore();
   const { settings, hydrateFromApi, updateLocal } = useSettingsStore();
   const { lockTimeoutMinutes, setLockTimeoutMinutes } = useAppLockStore();
   const [refreshing, setRefreshing] = useState(false);
 
-  // ── active sub-page
+  // â”€â”€ active sub-page
   const [activeModal, setActiveModal] = useState<ModalId | null>(null);
   const [pinCurrent, setPinCurrent] = useState('');
   const [pinNew, setPinNew] = useState('');
@@ -195,6 +195,7 @@ export default function AccountSettingsPage({ onBack, verificationProgress, onSt
     updateLocal(patch);
     try {
       await settingsApi.updatePreferences(apiPatch);
+      void saveDriverSessionSnapshotFromStores();
     } catch (error) {
       updateLocal(previous);
       Alert.alert('Update failed', 'Please try again.');
@@ -217,8 +218,10 @@ export default function AccountSettingsPage({ onBack, verificationProgress, onSt
       if (settings.hasPin) {
         payload.current_pin = pinCurrent;
       }
-      await settingsApi.setPin(payload);
+      const response = await settingsApi.setPin(payload);
+      await saveOfflinePinVerifier(response.data?.offline_pin_verifier);
       updateLocal({ hasPin: true });
+      void saveDriverSessionSnapshotFromStores();
       setPinCurrent('');
       setPinNew('');
       setPinConfirm('');
@@ -303,7 +306,7 @@ export default function AccountSettingsPage({ onBack, verificationProgress, onSt
     }
   };
 
-  // ─── Modal content ──────────────────────────────────────────────────────────
+  // â”€â”€â”€ Modal content â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const renderModalContent = () => {
     switch (activeModal) {
@@ -512,6 +515,7 @@ export default function AccountSettingsPage({ onBack, verificationProgress, onSt
                   style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed]}
                   onPress={() => {
                     setLockTimeoutMinutes(option.value);
+                    void saveDriverSessionSnapshotFromStores();
                     setActiveModal(null);
                   }}
                 >
@@ -582,7 +586,7 @@ export default function AccountSettingsPage({ onBack, verificationProgress, onSt
     }
   };
 
-  // ─── Sub-page screen (replaces list entirely) ───────────────────────────────
+  // â”€â”€â”€ Sub-page screen (replaces list entirely) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   if (activeModal) {
     return (
@@ -606,7 +610,7 @@ export default function AccountSettingsPage({ onBack, verificationProgress, onSt
     );
   }
 
-  // ─── Main settings list ─────────────────────────────────────────────────────
+  // â”€â”€â”€ Main settings list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   return (
     <View style={styles.root}>
@@ -632,7 +636,7 @@ export default function AccountSettingsPage({ onBack, verificationProgress, onSt
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
         }
       >
-        {/* Tasks – verification requirements */}
+        {/* Tasks â€“ verification requirements */}
         {(() => {
           const accountStatus = verificationProgress?.account_verification?.status ?? null;
           const vehicleDocs = verificationProgress?.vehicle_documents ?? [];
@@ -808,7 +812,7 @@ export default function AccountSettingsPage({ onBack, verificationProgress, onSt
           onPress={() => {
             Alert.alert('Logout', 'Are you sure you want to logout?', [
               { text: 'Cancel', style: 'cancel' },
-              { text: 'Logout', style: 'destructive', onPress: () => { logout(); onBack(); } },
+              { text: 'Logout', style: 'destructive', onPress: () => { onLogout(); onBack(); } },
             ]);
           }}
         >
@@ -822,7 +826,7 @@ export default function AccountSettingsPage({ onBack, verificationProgress, onSt
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Styles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const styles = StyleSheet.create({
   root: {
