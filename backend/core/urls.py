@@ -26,6 +26,11 @@ def app_config(request):
         "events_url": os.environ.get("MOBILE_EVENTS_URL", default_webview_url("events")),
         "activities_url": os.environ.get("MOBILE_ACTIVITIES_URL", default_webview_url("activities")),
         "safety_guide_url": os.environ.get("MOBILE_SAFETY_GUIDE_URL", default_webview_url("safety")),
+        # Driver app endpoints
+        "driver_news_url": os.environ.get("MOBILE_DRIVER_NEWS_URL", default_webview_url("driver-news")),
+        "driver_events_url": os.environ.get("MOBILE_DRIVER_EVENTS_URL", default_webview_url("campus-events")),
+        "community_url": os.environ.get("MOBILE_DRIVER_COMMUNITY_URL", default_webview_url("driver-community")),
+        "driver_guidelines_url": os.environ.get("MOBILE_DRIVER_GUIDELINES_URL", default_webview_url("driver-guidelines")),
     })
 
 
@@ -70,7 +75,10 @@ def secure_webview(request, page):
     if token != expected_token:
         raise Http404("Not Found")
 
-    valid_pages = ['news', 'events', 'activities', 'safety']
+    valid_pages = [
+        'news', 'events', 'activities', 'safety',
+        'driver-news', 'campus-events', 'driver-community', 'driver-guidelines'
+    ]
     if page not in valid_pages:
         raise Http404("Not Found")
 

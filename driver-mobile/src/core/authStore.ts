@@ -28,6 +28,7 @@ interface AuthStore {
   refreshToken: string | null
   isAuthenticated: boolean
   hasHydrated: boolean
+  loginCompletedAt: number | null
   setAuth: (user: AuthUser, accessToken: string, refreshToken: string) => void
   /** Replace whole user object (from API response) */
   setUser: (user: AuthUser) => void
@@ -47,10 +48,11 @@ export const useAuthStore = create<AuthStore>()(
       refreshToken: null,
       isAuthenticated: false,
       hasHydrated: false,
+      loginCompletedAt: null,
 
       setAuth: (user, accessToken, refreshToken) => {
         void setAuthTokens({ accessToken, refreshToken })
-        return set({ user, accessToken, refreshToken, isAuthenticated: true })
+        return set({ user, accessToken, refreshToken, isAuthenticated: true, loginCompletedAt: Date.now() })
       },
 
       setUser: (user) => set({ user }),
@@ -84,6 +86,7 @@ export const useAuthStore = create<AuthStore>()(
           accessToken: null,
           refreshToken: null,
           isAuthenticated: false,
+          loginCompletedAt: null,
         })
       },
     }),

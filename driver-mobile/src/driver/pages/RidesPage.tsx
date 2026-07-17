@@ -816,7 +816,7 @@ export default function DriverRidesPage() {
     const nextStatus = !isOnline;
     setIsUpdatingOnline(true);
     try {
-      await driverApi.updateProfile({ is_online: nextStatus });
+      await driverApi.updateAvailability({ is_online: nextStatus });
       setIsOnline(nextStatus);
       setCachedIsOnline(nextStatus);
       setRequestsError(null);
@@ -824,7 +824,7 @@ export default function DriverRidesPage() {
       if (error?.response?.status === 404) {
         try {
           await ensureDriverProfile();
-          await driverApi.updateProfile({ is_online: nextStatus });
+          await driverApi.updateAvailability({ is_online: nextStatus });
           setIsOnline(nextStatus);
           setCachedIsOnline(nextStatus);
           setRequestsError(null);

@@ -25,6 +25,7 @@ export type SettingsApiPayload = {
   biometric_enabled?: boolean
   two_factor_enabled?: boolean
   two_factor_methods?: string[]
+  offline_pin_verifier?: any
 }
 
 const DEFAULT_SETTINGS: SettingsState = {
@@ -64,6 +65,7 @@ interface SettingsStore {
   settings: SettingsState
   isHydrated: boolean
   hydrateFromApi: (payload: SettingsApiPayload) => void
+  hydrateFromCache: (settings: Partial<SettingsState>) => void
   updateLocal: (patch: Partial<SettingsState>) => void
   setHydrated: (value: boolean) => void
   reset: () => void
@@ -78,6 +80,9 @@ export const useSettingsStore = create<SettingsStore>()(
         const mapped = mapApiToSettings(payload)
         const merged = compactSettings({ ...get().settings, ...mapped })
         set({ settings: merged, isHydrated: true })
+      },
+      hydrateFromCache: (settings) => {
+        set({ settings: compactSettings({ ...DEFAULT_SETTINGS, ...settings }), isHydrated: true })
       },
       updateLocal: (patch) => {
         const merged = compactSettings({ ...get().settings, ...patch })

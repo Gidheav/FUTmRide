@@ -497,7 +497,54 @@ class DriverAvailabilityView(APIView):
                 {'error': {'code': 'NOT_APPROVED', 'message': 'Your account must be approved before going online.'}},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        profile.is_online = serializer.validated_data['is_online']
+
+        is_online_requested = serializer.validated_data['is_online']
+
+        if is_online_requested:
+            # Phase 3: Enforce mutual exclusivity
+            from apps.rides.garage_models import GarageRide, GarageRideStatus
+            active_garage = GarageRide.objects.filter(
+                driver=request.user,
+                status__in=[GarageRideStatus.OPEN, GarageRideStatus.FULL, GarageRideStatus.DEPARTED]
+            ).exists()
+            if active_garage:
+                return Response(
+                    {'error': {'code': 'ACTIVE_GARAGE_SESSION', 'message': 'Complete or cancel your garage session first.'}},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            from django.utils import timezone
+            import datetime
+            from apps.rides.scheduled_models import ScheduledRideDriverInterest
+            now = timezone.now()
+            
+            interests = ScheduledRideDriverInterest.objects.filter(
+                driver=request.user,
+                status='interested'
+            ).select_related('ride')
+
+            has_imminent_ride = False
+            for interest in interests:
+                ride = interest.ride
+                if ride.departure_date and ride.window_start:
+                    try:
+                        # Combine date and time
+                        dt_unaware = datetime.datetime.combine(ride.departure_date, ride.window_start)
+                        departure_dt = timezone.make_aware(dt_unaware)
+                        diff = departure_dt - now
+                        if datetime.timedelta(0) < diff <= datetime.timedelta(minutes=15):
+                            has_imminent_ride = True
+                            break
+                    except Exception:
+                        pass
+
+            if has_imminent_ride:
+                return Response(
+                    {'error': {'code': 'UPCOMING_SCHEDULED_RIDE', 'message': 'Your scheduled ride starts soon.'}},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+        profile.is_online = is_online_requested
         profile.save(update_fields=['is_online'])
         return Response({'is_online': profile.is_online, 'message': 'Availability updated.'})
 
@@ -835,8 +882,18 @@ class PinSetView(APIView):
 
         settings_obj.pin_hash = make_password(new_pin)
         settings_obj.pin_updated_at = timezone.now()
-        settings_obj.save(update_fields=['pin_hash', 'pin_updated_at'])
-        return Response({'message': 'PIN updated successfully.'})
+        settings_obj.set_offline_pin_verifier(new_pin)
+        settings_obj.save(update_fields=[
+            'pin_hash',
+            'pin_updated_at',
+            'offline_pin_salt',
+            'offline_pin_hash',
+            'offline_pin_iterations',
+        ])
+        return Response({
+            'message': 'PIN updated successfully.',
+            'offline_pin_verifier': settings_obj.get_offline_pin_verifier(),
+        })
 
 
 class PinVerifyView(APIView):
@@ -871,7 +928,17 @@ class PinVerifyView(APIView):
             )
         cache.delete(f'pin_fail:{request.user.id}')
         cache.delete(lock_key)
-        return Response({'verified': True})
+        if not settings_obj.get_offline_pin_verifier():
+            settings_obj.set_offline_pin_verifier(pin)
+            settings_obj.save(update_fields=[
+                'offline_pin_salt',
+                'offline_pin_hash',
+                'offline_pin_iterations',
+            ])
+        return Response({
+            'verified': True,
+            'offline_pin_verifier': settings_obj.get_offline_pin_verifier(),
+        })
 
 
 class TwoFactorStartView(APIView):
@@ -1104,6 +1171,7 @@ class TwoFactorChallengeVerifyView(APIView):
             'refresh': str(refresh),
             'access': str(refresh.access_token),
             'user': _build_user_payload(user),
+            'settings': UserSettingsSerializer(settings_obj).data,
         })
 
 

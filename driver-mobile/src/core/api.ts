@@ -1,9 +1,9 @@
 import axios from 'axios'
 import { useAuthStore } from './authStore'
-import { useAppLockStore } from './appLockStore'
 import { API_BASE_URL } from '../../config/apiConfig'
 import { clearAuthTokens, getAuthTokens, setAuthTokens } from '../../utils/secureStorage'
 import { isTokenNearExpiry } from '../../utils/jwt'
+import { clearDriverSandbox, resetDriverRuntimeStores } from './driverSandbox'
 
 const normalizeBaseUrl = (rawUrl: string) => {
   try {
@@ -168,10 +168,11 @@ export class SessionExpiredError extends Error {
 async function _handleSessionExpired() {
   try {
     await clearAuthTokens()
+    await clearDriverSandbox()
     useAuthStore.getState().logout()
     // Do NOT call useAppLockStore.setLocked(true) — that leaves the user
     // trapped on the lock screen with no way to recover.
-    useAppLockStore.getState().reset()
+    resetDriverRuntimeStores()
   } catch {
     // Best-effort cleanup
   }
@@ -232,7 +233,9 @@ export const driverApi = {
   getProfile: () => api.get('users/me/driver-profile/'),
   createProfile: (data: any) => api.post('users/me/driver-profile/create/', data),
   updateProfile: (data: any) => api.patch('users/me/driver-profile/', data),
+  updateAvailability: (data: any) => api.patch('users/me/driver-profile/availability/', data),
   getActiveRide: () => api.get('rides/driver/active/'),
+  getRideHistory: () => api.get('rides/driver/history/'),
   advanceRide: (rideId: string) => api.post(`rides/${rideId}/advance/`),
   getMarketplaceRequests: (url?: string) => api.get(url || 'rides/driver/requests/'),
   acceptRideRequest: (rideId: string) => api.post(`rides/driver/requests/${rideId}/accept/`),

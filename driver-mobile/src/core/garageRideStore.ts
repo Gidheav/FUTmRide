@@ -8,6 +8,7 @@ interface GarageRideStore {
   status: GarageRideStatus
   lastCheckedAt: number | null
   setStatus: (status: GarageRideStatus) => void
+  reset: () => void
 }
 
 export const useGarageRideStore = create<GarageRideStore>()(
@@ -16,6 +17,7 @@ export const useGarageRideStore = create<GarageRideStore>()(
       status: 'unknown',
       lastCheckedAt: null,
       setStatus: (status) => set({ status, lastCheckedAt: Date.now() }),
+      reset: () => set({ status: 'unknown', lastCheckedAt: null }),
     }),
     {
       name: 'driver-garage-ride-store',

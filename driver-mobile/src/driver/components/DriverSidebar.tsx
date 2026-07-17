@@ -13,6 +13,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useEffect, useRef, useState } from 'react'
 import { COLORS, FONTS } from '../../core/theme'
 
+import { useExternalWebViewUrl } from '../services/externalConfig'
+
 type SidebarProps = {
   visible: boolean
   onClose: () => void
@@ -32,6 +34,11 @@ export default function DriverSidebar({
   const translateX = useRef(new Animated.Value(-sidebarWidth)).current
   const backdropOpacity = useRef(new Animated.Value(0)).current
   const insets = useSafeAreaInsets()
+
+  const driverNewsUrl = useExternalWebViewUrl('driver_news_url')
+  const driverEventsUrl = useExternalWebViewUrl('driver_events_url')
+  const communityUrl = useExternalWebViewUrl('community_url')
+  const driverGuidelinesUrl = useExternalWebViewUrl('driver_guidelines_url')
 
   useEffect(() => {
     if (visible) {
@@ -98,28 +105,46 @@ export default function DriverSidebar({
               </View>
 
               <View style={styles.menuContent}>
-                <Text style={styles.sectionTitle}>Overview</Text>
+                <Text style={styles.sectionTitle}>Enterprise Updates</Text>
                 
                 <TouchableOpacity 
                   style={styles.menuItem} 
-                  onPress={() => handleMenuPress('https://lrride.com/driver/performance', 'Performance & Earnings')}
+                  onPress={() => handleMenuPress(driverNewsUrl, 'Driver News')}
                   activeOpacity={0.7}
                 >
-                  <MaterialIcons name="insights" size={22} color={COLORS.onSurfaceVariant} />
-                  <Text style={styles.menuText}>Performance & Earnings</Text>
+                  <MaterialIcons name="article" size={22} color={COLORS.onSurfaceVariant} />
+                  <Text style={styles.menuText}>Driver News</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity 
                   style={styles.menuItem} 
-                  onPress={() => handleMenuPress('https://lrride.com/driver/insurance', 'Insurance & Safety')}
+                  onPress={() => handleMenuPress(driverEventsUrl, 'Campus Events')}
                   activeOpacity={0.7}
                 >
-                  <MaterialIcons name="security" size={22} color={COLORS.onSurfaceVariant} />
-                  <Text style={styles.menuText}>Insurance & Safety</Text>
+                  <MaterialIcons name="event" size={22} color={COLORS.onSurfaceVariant} />
+                  <Text style={styles.menuText}>Campus Events</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={styles.menuItem} 
+                  onPress={() => handleMenuPress(communityUrl, 'Driver Community')}
+                  activeOpacity={0.7}
+                >
+                  <MaterialIcons name="people" size={22} color={COLORS.onSurfaceVariant} />
+                  <Text style={styles.menuText}>Driver Community</Text>
                 </TouchableOpacity>
 
                 <View style={styles.divider} />
                 <Text style={styles.sectionTitle}>Support & Legal</Text>
+
+                <TouchableOpacity 
+                  style={styles.menuItem} 
+                  onPress={() => handleMenuPress(driverGuidelinesUrl, 'Guidelines & Safety')}
+                  activeOpacity={0.7}
+                >
+                  <MaterialIcons name="security" size={22} color={COLORS.onSurfaceVariant} />
+                  <Text style={styles.menuText}>Guidelines & Safety</Text>
+                </TouchableOpacity>
 
                 <TouchableOpacity 
                   style={styles.menuItem} 
@@ -137,15 +162,6 @@ export default function DriverSidebar({
                 >
                   <MaterialIcons name="description" size={22} color={COLORS.onSurfaceVariant} />
                   <Text style={styles.menuText}>Terms of Service</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity 
-                  style={styles.menuItem} 
-                  onPress={() => handleMenuPress('https://lrride.com/privacy', 'Privacy Policy')}
-                  activeOpacity={0.7}
-                >
-                  <MaterialIcons name="privacy-tip" size={22} color={COLORS.onSurfaceVariant} />
-                  <Text style={styles.menuText}>Privacy Policy</Text>
                 </TouchableOpacity>
               </View>
 
@@ -205,7 +221,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sectionTitle: {
-    ...FONTS.labelSm,
+    ...FONTS.labelMd,
     color: COLORS.outline,
     textTransform: 'uppercase',
     letterSpacing: 0.5,

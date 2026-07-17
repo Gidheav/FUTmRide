@@ -82,6 +82,7 @@ interface DriverRidesStore {
   garagePassengers: GaragePassenger[]
   savedRoutes: SavedGarageRoute[]
   driverProfile: DriverProfileCache | null
+  rideHistory: RideListItem[]
   lastUpdatedAt: number | null
   setIsOnline: (value: boolean | null) => void
   setMarketplaceRequests: (value: RideListItem[]) => void
@@ -90,7 +91,9 @@ interface DriverRidesStore {
   setGaragePassengers: (value: GaragePassenger[]) => void
   setSavedRoutes: (value: SavedGarageRoute[]) => void
   setDriverProfile: (value: DriverProfileCache | null) => void
+  setRideHistory: (value: RideListItem[]) => void
   touchUpdatedAt: () => void
+  reset: () => void
 }
 
 export const useDriverRidesStore = create<DriverRidesStore>()(
@@ -103,6 +106,7 @@ export const useDriverRidesStore = create<DriverRidesStore>()(
       garagePassengers: [],
       savedRoutes: [],
       driverProfile: null,
+      rideHistory: [],
       lastUpdatedAt: null,
       setIsOnline: (value) => set({ isOnline: value, lastUpdatedAt: Date.now() }),
       setMarketplaceRequests: (value) => set({ marketplaceRequests: value, lastUpdatedAt: Date.now() }),
@@ -111,7 +115,19 @@ export const useDriverRidesStore = create<DriverRidesStore>()(
       setGaragePassengers: (value) => set({ garagePassengers: value, lastUpdatedAt: Date.now() }),
       setSavedRoutes: (value) => set({ savedRoutes: value, lastUpdatedAt: Date.now() }),
       setDriverProfile: (value) => set({ driverProfile: value, lastUpdatedAt: Date.now() }),
+      setRideHistory: (value) => set({ rideHistory: value.slice(0, 50), lastUpdatedAt: Date.now() }),
       touchUpdatedAt: () => set({ lastUpdatedAt: Date.now() }),
+      reset: () => set({
+        isOnline: null,
+        marketplaceRequests: [],
+        driverHasActiveRide: false,
+        garageRide: null,
+        garagePassengers: [],
+        savedRoutes: [],
+        driverProfile: null,
+        rideHistory: [],
+        lastUpdatedAt: null,
+      }),
     }),
     {
       name: 'driver-rides-store',
@@ -119,6 +135,7 @@ export const useDriverRidesStore = create<DriverRidesStore>()(
       partialize: (state) => ({
         savedRoutes: state.savedRoutes,
         driverProfile: state.driverProfile,
+        rideHistory: state.rideHistory,
       }),
     }
   )

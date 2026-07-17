@@ -748,6 +748,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#F1F3F5',
     marginHorizontal: 12,
   },
+  modeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  modeBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
 });
 
 export default DashboardScreen;

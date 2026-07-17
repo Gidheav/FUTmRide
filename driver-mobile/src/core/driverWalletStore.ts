@@ -72,6 +72,7 @@ interface DriverWalletStore {
   setPayoutMethod: (method: PayoutMethod | null) => void
   setDocuments: (docs: DriverDocument[]) => void
   touchUpdatedAt: () => void
+  reset: () => void
 }
 
 export const useDriverWalletStore = create<DriverWalletStore>()(
@@ -87,6 +88,13 @@ export const useDriverWalletStore = create<DriverWalletStore>()(
       setPayoutMethod: (method) => set({ payoutMethod: method, lastUpdatedAt: Date.now() }),
       setDocuments: (docs) => set({ documents: docs, lastUpdatedAt: Date.now() }),
       touchUpdatedAt: () => set({ lastUpdatedAt: Date.now() }),
+      reset: () => set({
+        summary: null,
+        transactions: [],
+        payoutMethod: null,
+        documents: [],
+        lastUpdatedAt: null,
+      }),
     }),
     {
       name: 'driver-wallet-store',

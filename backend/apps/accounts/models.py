@@ -1,3 +1,5 @@
+import hashlib
+import secrets
 import uuid
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
@@ -122,6 +124,9 @@ class User(AbstractBaseUser, PermissionsMixin):
 
 
 class UserSettings(models.Model):
+    OFFLINE_PIN_HASH_ALGORITHM = 'sha256-iterated-v1'
+    OFFLINE_PIN_HASH_ITERATIONS = 2500
+
     class ThemeMode(models.TextChoices):
         SYSTEM = 'system', 'System'
         LIGHT = 'light', 'Light'
@@ -177,6 +182,9 @@ class UserSettings(models.Model):
 
     pin_hash = models.CharField(max_length=128, blank=True)
     pin_updated_at = models.DateTimeField(null=True, blank=True)
+    offline_pin_salt = models.CharField(max_length=64, blank=True)
+    offline_pin_hash = models.CharField(max_length=64, blank=True)
+    offline_pin_iterations = models.PositiveIntegerField(default=OFFLINE_PIN_HASH_ITERATIONS)
 
     active_device_id = models.CharField(max_length=128, blank=True)
     active_device_platform = models.CharField(max_length=40, blank=True)
@@ -191,6 +199,37 @@ class UserSettings(models.Model):
 
     def __str__(self):
         return f'UserSettings({self.user_id})'
+
+    @classmethod
+    def build_offline_pin_hash(cls, pin: str, salt: str, user_id: str, iterations=None) -> str:
+        rounds = int(iterations or cls.OFFLINE_PIN_HASH_ITERATIONS)
+        digest = str(pin)
+        for index in range(rounds):
+            raw = f'{salt}:{user_id}:{index}:{digest}'.encode('utf-8')
+            digest = hashlib.sha256(raw).hexdigest()
+        return digest
+
+    def set_offline_pin_verifier(self, pin: str) -> None:
+        self.offline_pin_salt = secrets.token_hex(16)
+        self.offline_pin_iterations = self.OFFLINE_PIN_HASH_ITERATIONS
+        self.offline_pin_hash = self.build_offline_pin_hash(
+            pin,
+            self.offline_pin_salt,
+            str(self.user_id),
+            self.offline_pin_iterations,
+        )
+
+    def get_offline_pin_verifier(self):
+        if not (self.pin_hash and self.offline_pin_salt and self.offline_pin_hash):
+            return None
+        return {
+            'algorithm': self.OFFLINE_PIN_HASH_ALGORITHM,
+            'salt': self.offline_pin_salt,
+            'hash': self.offline_pin_hash,
+            'iterations': self.offline_pin_iterations,
+            'user_id': str(self.user_id),
+            'updated_at': self.pin_updated_at.isoformat() if self.pin_updated_at else None,
+        }
 
 
 class IntegrationSettings(models.Model):

@@ -254,6 +254,7 @@ class FutminnaTokenObtainPairSerializer(TokenObtainPairSerializer):
             "refresh": str(refresh),
             "access": str(refresh.access_token),
             "user": self._build_user_payload(user),
+            "settings": UserSettingsSerializer(settings_obj).data,
         }
 
         import logging
@@ -380,6 +381,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
 class UserSettingsSerializer(serializers.ModelSerializer):
     has_pin = serializers.SerializerMethodField()
+    offline_pin_verifier = serializers.SerializerMethodField()
 
     class Meta:
         model = UserSettings
@@ -395,11 +397,15 @@ class UserSettingsSerializer(serializers.ModelSerializer):
             'biometric_enabled',
             'two_factor_enabled',
             'two_factor_methods',
+            'offline_pin_verifier',
         ]
-        read_only_fields = ['has_pin']
+        read_only_fields = ['has_pin', 'offline_pin_verifier']
 
     def get_has_pin(self, obj):
         return bool(obj.pin_hash)
+
+    def get_offline_pin_verifier(self, obj):
+        return obj.get_offline_pin_verifier()
 
 
 class IntegrationSettingsSerializer(serializers.ModelSerializer):

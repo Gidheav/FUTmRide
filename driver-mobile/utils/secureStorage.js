@@ -39,6 +39,7 @@ async function setItem(key, value) {
   if (SecureStore) {
     try {
       await SecureStore.setItemAsync(key, value)
+      await AsyncStorage.removeItem(key).catch(() => null)
       return
     } catch {
       /* fall through */
@@ -52,13 +53,16 @@ async function removeItem(key) {
   if (SecureStore) {
     try {
       await SecureStore.deleteItemAsync(key)
-      return
     } catch {
       /* fall through */
     }
   }
   await AsyncStorage.removeItem(key)
 }
+
+export const getSecureItem = getItem
+export const setSecureItem = setItem
+export const removeSecureItem = removeItem
 
 export const getAuthTokens = async () => {
   if (cacheReady) return cachedTokens

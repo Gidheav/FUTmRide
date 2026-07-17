@@ -6,6 +6,7 @@ interface DriverProfileStore {
   profile: any | null
   lastUpdatedAt: number | null
   setProfile: (profile: any | null) => void
+  reset: () => void
 }
 
 export const useDriverProfileStore = create<DriverProfileStore>()(
@@ -14,6 +15,7 @@ export const useDriverProfileStore = create<DriverProfileStore>()(
       profile: null,
       lastUpdatedAt: null,
       setProfile: (profile) => set({ profile, lastUpdatedAt: Date.now() }),
+      reset: () => set({ profile: null, lastUpdatedAt: null }),
     }),
     {
       name: 'driver-profile-store',

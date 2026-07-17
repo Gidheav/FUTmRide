@@ -7,17 +7,23 @@ import { useAuthStore } from '../core/authStore'
 import { authApi, settingsApi, verificationApi } from '../core/api'
 import { COLORS, FONTS } from '../core/theme'
 import { useSettingsStore } from '../core/settingsStore'
-import { isDriverUnlockFresh, useAppLockStore } from '../core/appLockStore'
+import { useAppLockStore } from '../core/appLockStore'
 import {
   fetchDriverSessionSnapshot,
   getSessionErrorMessage,
-  isLikelyNetworkError,
+  hydrateDriverSessionFromSandbox,
   kickoffProactiveRefresh,
-  pingDriverSession,
+  logoutDriverSession,
   prefetchDriverEssentials,
   refreshAndFetchDriverSession,
   refreshDriverSessionTokens,
+  syncDriverSessionInBackground,
 } from '../core/session'
+import {
+  saveDriverSessionSnapshotFromStores,
+  saveOfflinePinVerifier,
+  verifyOfflinePin,
+} from '../core/driverSandbox'
 import {
   addNotificationReceivedListener,
   addNotificationResponseListener,
@@ -25,7 +31,7 @@ import {
   showRideStatusNotification,
   clearRideStatusNotification,
 } from '../core/pushNotifications'
-// Safe no-op – expo-task-manager isn't installed; prevents the old ReferenceError
+// Safe no-op Ã¢â‚¬â€œ expo-task-manager isn't installed; prevents the old ReferenceError
 const stopRideForegroundService = async () => { /* no-op */ }
 import { useDriverWalletStore } from '../core/driverWalletStore'
 import { useDriverRidesStore } from '../core/driverRidesStore'
@@ -66,17 +72,16 @@ export default function DriverApp() {
   const {
     isAuthenticated,
     user,
-    logout,
     patchUser,
     hydrateTokens,
     hasHydrated: authHasHydrated,
+    loginCompletedAt,
   } = useAuthStore()
   const { setSummary } = useDriverWalletStore()
   const { garageRide, garagePassengers } = useDriverRidesStore()
   const { settings } = useSettingsStore()
   const {
     isLocked,
-    lastUnlockedAt,
     lockTimeoutMinutes,
     setLocked,
     setUnlocked,
@@ -106,8 +111,7 @@ export default function DriverApp() {
   const sessionActive = isAuthenticated && user?.role === 'driver' && !isLocked && !pinSetupRequired
 
   const endDriverSession = () => {
-    logout()
-    resetLock()
+    void logoutDriverSession()
     setPinSetupRequired(false)
     setLockError('')
     setLockStatus('')
@@ -124,7 +128,8 @@ export default function DriverApp() {
     // after unlock queue on the in-flight promise via the 401 interceptor,
     // rather than hitting stale tokens and racing to refresh simultaneously.
     void kickoffProactiveRefresh()
-    void prefetchDriverEssentials()
+    void saveDriverSessionSnapshotFromStores()
+    void syncDriverSessionInBackground()
   }
 
   useEffect(() => {
@@ -157,7 +162,7 @@ export default function DriverApp() {
     return () => subscription.remove()
   }, [activeTab, subPage])
 
-  // ── Boot: always lock on app start and verify session ───────────────────────
+  // Boot: hydrate cached driver data first; network sync happens silently after.
   useEffect(() => {
     if (!authHasHydrated) {
       return
@@ -173,21 +178,47 @@ export default function DriverApp() {
     let isMounted = true
     const bootLockedSession = async () => {
       setSessionBooting(true)
-      setLockStatus('Checking secure driver session...')
+      setLockStatus('Preparing secure driver app...')
       setLockError('')
       setSessionWarning('')
-      setLocked(true)
 
       try {
         await hydrateTokens()
-        const snapshot = await refreshAndFetchDriverSession()
+        const localSnapshot = await hydrateDriverSessionFromSandbox(user.id)
         if (!isMounted) return
 
-        if (!snapshot.settings.has_pin && !snapshot.settings.biometric_enabled) {
-          setPinSetupRequired(true)
-        } else {
-          setPinSetupRequired(false)
+        const justLoggedIn = Boolean(loginCompletedAt && Date.now() - loginCompletedAt < 10000)
+        const localSettings = localSnapshot?.settings || settings
+        const hasUnlockMethod = Boolean(localSettings.hasPin || localSettings.biometricEnabled)
+        setPinSetupRequired(!hasUnlockMethod)
+
+        if (justLoggedIn) {
+          setLocked(false)
+          void syncDriverSessionInBackground()
+          return
         }
+
+        setLocked(true)
+
+        if (localSnapshot) {
+          void syncDriverSessionInBackground().then((ok) => {
+            if (!ok && isMounted) {
+              setSessionWarning('You are offline. Cached driver data is available.')
+            }
+          })
+          return
+        }
+
+        // Empty cache: first install / legacy session. This is the one boot path
+        // allowed to block while we build the local sandbox.
+        setLockStatus('Building secure offline cache...')
+        const snapshot = await refreshAndFetchDriverSession()
+        await prefetchDriverEssentials()
+        await saveDriverSessionSnapshotFromStores()
+        if (!isMounted) return
+
+        const hasRemoteUnlockMethod = Boolean(snapshot.settings.has_pin || snapshot.settings.biometric_enabled)
+        setPinSetupRequired(!hasRemoteUnlockMethod)
       } catch (error) {
         if (!isMounted) return
         setPinSetupRequired(false)
@@ -204,54 +235,16 @@ export default function DriverApp() {
     return () => {
       isMounted = false
     }
-  }, [authHasHydrated, hydrateTokens, isAuthenticated, resetLock, setLocked, user?.id])
+  }, [authHasHydrated, hydrateTokens, isAuthenticated, loginCompletedAt, resetLock, setLocked, settings, user?.id])
 
-  // ── Foreground countdown: lock after the chosen timeout elapses ─────────────
-  // This ONLY runs while the session is active and unlocked.
-  // "Immediate" (0) has no foreground countdown — it only locks when
-  // the user actually leaves the app (handled by the AppState effect below).
-  useEffect(() => {
-    if (!sessionActive) {
-      return
-    }
-
-    // If the unlock window already expired (e.g. stale state), lock now
-    if (!isDriverUnlockFresh(lastUnlockedAt, lockTimeoutMinutes)) {
-      setLocked(true)
-      setLockStatus('Unlock window expired. Please unlock again.')
-      return
-    }
-
-    // "Immediate" = no foreground timer; only background-return triggers lock
-    if (lockTimeoutMinutes === 0) {
-      return
-    }
-
-    const elapsed = Date.now() - (lastUnlockedAt || 0)
-    const totalMs = Math.min(lockTimeoutMinutes, 30) * 60 * 1000
-    const remainingMs = Math.max(0, totalMs - elapsed)
-
-    const timer = setTimeout(() => {
-      setLocked(true)
-      setLockStatus('Unlock window expired. Please unlock again.')
-    }, remainingMs)
-
-    return () => clearTimeout(timer)
-  }, [lastUnlockedAt, lockTimeoutMinutes, sessionActive, setLocked])
-
-  // ── AppState: check elapsed background time on return ───────────────────────
-  // This effect does NOT lock the app when it goes to background.
-  // It only records the timestamp, then checks elapsed time when
-  // the app comes back. This means permission dialogs, notification
-  // shade, share sheets, etc. never trigger a lock.
+  // AppState: the lock timer only counts while the app is actually backgrounded.
   useEffect(() => {
     if (!isAuthenticated || user?.role !== 'driver') {
       return
     }
 
     const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'background' || nextState === 'inactive') {
-        // Just record when we left — do NOT lock here
+      if (nextState === 'background') {
         if (wentBackgroundAtRef.current === null) {
           wentBackgroundAtRef.current = Date.now()
         }
@@ -264,56 +257,38 @@ export default function DriverApp() {
 
       setAnnouncementRefreshKey((value) => value + 1)
 
-      // App returned to foreground
       const leftAt = wentBackgroundAtRef.current
       wentBackgroundAtRef.current = null
 
       if (!sessionActive || !leftAt) {
-        // Not unlocked or never left — nothing to check
         if (sessionActive) {
-          // Just ping session health on return
-          pingDriverSession()
-            .then(() => setSessionWarning(''))
-            .catch((error) => {
-              if (isLikelyNetworkError(error)) {
-                setSessionWarning('You are offline. Live driver actions may fail until internet returns.')
-              }
-            })
+          void syncDriverSessionInBackground().then((ok) => {
+            if (ok) setSessionWarning('')
+            else setSessionWarning('You are offline. Cached driver data is available.')
+          })
         }
         return
       }
 
       const awayMs = Date.now() - leftAt
+      const timeoutMs = Math.min(lockTimeoutMinutes, 30) * 60 * 1000
 
-      // For "Immediate" (0), only lock if the user was actually away
-      // for 30+ seconds. Brief system dialogs (~1-5s) are ignored.
-      if (lockTimeoutMinutes === 0) {
-        if (awayMs > 30_000) {
-          setLocked(true)
-          setLockStatus('Unlock the app to continue.')
-        }
-        return
-      }
-
-      // For timed locks, check if the unlock window expired while away
-      if (!isDriverUnlockFresh(lastUnlockedAt, lockTimeoutMinutes)) {
+      if (lockTimeoutMinutes === 0 || awayMs >= timeoutMs) {
         setLocked(true)
-        setLockStatus('Unlock window expired. Please unlock again.')
+        setLockStatus('Unlock the app to continue.')
         return
       }
 
-      // Still fresh — just ping session health
-      pingDriverSession()
-        .then(() => setSessionWarning(''))
-        .catch((error) => {
-          if (isLikelyNetworkError(error)) {
-            setSessionWarning('You are offline. Live driver actions may fail until internet returns.')
-          }
-        })
+      // Returned before timeout: reset the background clock and sync quietly.
+      setUnlocked()
+      void syncDriverSessionInBackground().then((ok) => {
+        if (ok) setSessionWarning('')
+        else setSessionWarning('You are offline. Cached driver data is available.')
+      })
     })
 
     return () => subscription.remove()
-  }, [isAuthenticated, lastUnlockedAt, lockTimeoutMinutes, sessionActive, setLocked, user?.role])
+  }, [isAuthenticated, lockTimeoutMinutes, sessionActive, setLocked, setUnlocked, user?.role])
 
   useEffect(() => {
     if (!sessionActive || !settings.pushEnabled) {
@@ -402,7 +377,7 @@ export default function DriverApp() {
     const booked = Number(garageRide.booked_seats || 0)
     const total = Number(garageRide.total_seats || 0)
     const statusLabel = GARAGE_STATUS_LABELS[status] || 'Ride update'
-    const message = `Garage ride: ${booked}/${total} seats booked • ${statusLabel}`
+    const message = `Garage ride: ${booked}/${total} seats booked Ã¢â‚¬Â¢ ${statusLabel}`
     const key = `${garageRide.id}:${status}:${booked}:${total}`
 
     if (key === lastRideNotificationKey.current) return
@@ -428,7 +403,7 @@ export default function DriverApp() {
     }
   }, [garageRide, garagePassengers.length, sessionActive])
 
-  // ── In-App Announcements ───────────────────────────────────────────────────
+  // Ã¢â€â‚¬Ã¢â€â‚¬ In-App Announcements Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
   useEffect(() => {
     if (!sessionActive || !user) return
 
@@ -495,16 +470,21 @@ export default function DriverApp() {
     setLockError('')
     setLockStatus('Verifying PIN...')
     try {
-      // Kick off a proactive token refresh in the background (non-blocking).
-      // This primes the refresh mutex BEFORE we call completeUnlock() and
-      // screens start mounting. All concurrent API calls from newly-mounted
-      // screens will queue on this promise via the 401 interceptor.
-      void kickoffProactiveRefresh()
+      const localResult = await verifyOfflinePin(pin, user?.id)
+      if (localResult === 'matched') {
+        await completeUnlock()
+        return
+      }
 
-      // Verify the PIN against the server. The PIN API call goes through the
-      // regular interceptor, so if the proactive refresh is still in-flight,
-      // this request will queue behind it automatically.
-      await settingsApi.verifyPin({ pin })
+      if (localResult === 'mismatch') {
+        setLockError('PIN is incorrect.')
+        return
+      }
+
+      setLockStatus('Verifying PIN online once...')
+      void kickoffProactiveRefresh()
+      const pinResponse = await settingsApi.verifyPin({ pin })
+      await saveOfflinePinVerifier(pinResponse.data?.offline_pin_verifier)
       const snapshot = await fetchDriverSessionSnapshot()
       const hasUnlockMethod = Boolean(snapshot.settings.has_pin || snapshot.settings.biometric_enabled)
 
@@ -541,21 +521,8 @@ export default function DriverApp() {
     }
 
     setLockBusy(true)
-    setLockStatus('Verifying session...')
+    setLockStatus('Unlocking...')
     try {
-      // Biometric driver unlock keeps the server-verification model to confirm
-      // the session is still valid. Kick off proactive refresh first so the
-      // server call queues on it if a token refresh is needed.
-      void kickoffProactiveRefresh()
-      const snapshot = await refreshAndFetchDriverSession()
-      const hasUnlockMethod = Boolean(snapshot.settings.has_pin || snapshot.settings.biometric_enabled)
-
-      if (!hasUnlockMethod) {
-        setPinSetupRequired(true)
-        setLocked(true)
-        return
-      }
-
       await completeUnlock()
     } catch (error) {
       setLockError(getSessionErrorMessage(error, 'Unable to unlock with biometrics.'))
@@ -570,7 +537,8 @@ export default function DriverApp() {
     setLockError('')
     try {
       await refreshDriverSessionTokens()
-      await settingsApi.setPin({ new_pin: pin })
+      const pinResponse = await settingsApi.setPin({ new_pin: pin })
+      await saveOfflinePinVerifier(pinResponse.data?.offline_pin_verifier)
       await fetchDriverSessionSnapshot()
       await completeUnlock()
     } catch (error) {
@@ -631,7 +599,7 @@ export default function DriverApp() {
           biometricEnabled={settings.biometricEnabled}
           busy={lockBusy}
           errorMessage={lockError}
-          statusMessage={lockStatus || 'Internet is required to unlock driver app.'}
+          statusMessage={lockStatus || 'Unlock to continue. Cached dashboard data is ready.'}
           onUnlockPin={handleUnlockPin}
           onUnlockBiometric={handleUnlockBiometric}
           onRetry={handleRetrySecureSession}
@@ -641,7 +609,7 @@ export default function DriverApp() {
     )
   }
 
-  // ── Sub-page rendering (full screen, no layout) ────────────────────────────
+  // Ã¢â€â‚¬Ã¢â€â‚¬ Sub-page rendering (full screen, no layout) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
   if (subPage === 'settings') {
     return (
       <SafeAreaProvider>
@@ -717,7 +685,7 @@ export default function DriverApp() {
     )
   }
 
-  // ── Compute verification state for banner ──────────────────────────────────
+  // Ã¢â€â‚¬Ã¢â€â‚¬ Compute verification state for banner Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
   const accountStatus = progressData?.account_verification?.status ?? null
   const vehicleDocs = progressData?.vehicle_documents ?? []
   const allVehicleApproved = vehicleDocs.length > 0 &&
@@ -764,7 +732,7 @@ export default function DriverApp() {
         icon: 'directions-car' as const,
       }
     }
-    return null // Fully verified — no banner
+    return null // Fully verified Ã¢â‚¬â€ no banner
   }
 
   const banner = getBannerConfig()
@@ -823,7 +791,7 @@ export default function DriverApp() {
   )
 }
 
-// ─── Verification Success Screen ──────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Verification Success Screen Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 function VerificationSuccessScreen({ onContinue }: { onContinue: () => void }) {
   return (
     <View style={s.successRoot}>
@@ -841,7 +809,7 @@ function VerificationSuccessScreen({ onContinue }: { onContinue: () => void }) {
   )
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Styles Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 const s = StyleSheet.create({
   loadingRoot: {
     flex: 1,

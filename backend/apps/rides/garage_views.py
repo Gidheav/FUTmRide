@@ -120,6 +120,48 @@ class GarageRideCreateView(generics.CreateAPIView):
                 status=status.HTTP_409_CONFLICT,
             )
 
+        if profile.is_online:
+            return Response(
+                {'error': {'code': 'ON_DEMAND_ONLINE', 'message': 'Go offline from on-demand first.'}},
+                status=status.HTTP_409_CONFLICT,
+            )
+            
+        if getattr(profile, 'is_on_trip', False):
+            return Response(
+                {'error': {'code': 'ON_DEMAND_ACTIVE', 'message': 'Complete your current ride first.'}},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        from django.utils import timezone
+        import datetime
+        from apps.rides.scheduled_models import ScheduledRideDriverInterest
+        now = timezone.now()
+        
+        interests = ScheduledRideDriverInterest.objects.filter(
+            driver=request.user,
+            status='interested'
+        ).select_related('ride')
+
+        has_imminent_ride = False
+        for interest in interests:
+            ride = interest.ride
+            if ride.departure_date and ride.window_start:
+                try:
+                    dt_unaware = datetime.datetime.combine(ride.departure_date, ride.window_start)
+                    departure_dt = timezone.make_aware(dt_unaware)
+                    diff = departure_dt - now
+                    if datetime.timedelta(0) < diff <= datetime.timedelta(minutes=15):
+                        has_imminent_ride = True
+                        break
+                except Exception:
+                    pass
+
+        if has_imminent_ride:
+            return Response(
+                {'error': {'code': 'UPCOMING_SCHEDULED_RIDE', 'message': 'Your scheduled ride starts soon.'}},
+                status=status.HTTP_409_CONFLICT,
+            )
+
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         garage_ride = serializer.save()

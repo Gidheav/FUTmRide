@@ -14,6 +14,19 @@ import { useDriverWalletStore } from './driverWalletStore'
 import { useDriverRidesStore } from './driverRidesStore'
 import { useDriverProfileStore } from './driverProfileStore'
 import { getAuthTokens, setAuthTokens } from '../../utils/secureStorage'
+import { useAppLockStore } from './appLockStore'
+import { useGarageRideStore } from './garageRideStore'
+import {
+  applyDriverSessionSnapshot,
+  clearDriverSandbox,
+  getPendingLogoutTokens,
+  queuePendingLogoutToken,
+  readDriverSessionSnapshot,
+  removePendingLogoutToken,
+  resetDriverRuntimeStores,
+  saveDriverSessionSnapshotFromStores,
+  saveOfflinePinVerifier,
+} from './driverSandbox'
 
 export { kickoffProactiveRefresh, classifyApiError }
 
@@ -84,6 +97,7 @@ export const fetchDriverSessionSnapshot = async (): Promise<DriverSessionSnapsho
   const settings = settingsResponse.data as SettingsApiPayload
   useAuthStore.getState().setUser(user)
   useSettingsStore.getState().hydrateFromApi(settings)
+  await saveOfflinePinVerifier(settings.offline_pin_verifier)
 
   return { user, settings }
 }
@@ -98,10 +112,12 @@ export const prefetchDriverEssentials = async () => {
   const ridesStore = useDriverRidesStore.getState()
   const profileStore = useDriverProfileStore.getState()
 
-  const [profileResult, walletResult, garageResult] = await Promise.allSettled([
+  const [profileResult, walletResult, transactionsResult, garageResult, rideHistoryResult] = await Promise.allSettled([
     driverApi.getProfile(),
     driverWalletApi.getSummary(),
+    driverWalletApi.getTransactions(),
     driverApi.getGarageRides(),
+    driverApi.getRideHistory(),
   ])
 
   if (profileResult.status === 'fulfilled') {
@@ -120,6 +136,13 @@ export const prefetchDriverEssentials = async () => {
     walletStore.setSummary(walletResult.value.data)
   }
 
+  if (transactionsResult.status === 'fulfilled') {
+    const transactions = Array.isArray(transactionsResult.value.data)
+      ? transactionsResult.value.data
+      : transactionsResult.value.data?.results || []
+    walletStore.setTransactions(transactions.slice(0, 50))
+  }
+
   if (garageResult.status === 'fulfilled') {
     const rides = Array.isArray(garageResult.value.data) ? garageResult.value.data : []
     const activeRide = rides.find((ride: any) => ['open', 'full', 'departed'].includes(String(ride.status)))
@@ -136,8 +159,117 @@ export const prefetchDriverEssentials = async () => {
       ridesStore.setGaragePassengers([])
     }
   }
+
+  if (rideHistoryResult.status === 'fulfilled') {
+    const rides = Array.isArray(rideHistoryResult.value.data)
+      ? rideHistoryResult.value.data
+      : rideHistoryResult.value.data?.results || []
+    ridesStore.setRideHistory(rides.slice(0, 50))
+  }
 }
 
 export const pingDriverSession = async () => {
   await api.get('users/me/')
+}
+
+export const hydrateDriverSessionFromSandbox = async (expectedUserId?: string | null) => {
+  const snapshot = await readDriverSessionSnapshot()
+  if (!snapshot) return null
+  if (expectedUserId && String(snapshot.userId) !== String(expectedUserId)) return null
+  applyDriverSessionSnapshot(snapshot)
+  return snapshot
+}
+
+export const syncDriverSessionInBackground = async () => {
+  try {
+    await fetchDriverSessionSnapshot()
+    await prefetchDriverEssentials()
+    await saveDriverSessionSnapshotFromStores()
+    return true
+  } catch (error) {
+    return false
+  }
+}
+
+export const completeDriverLogin = async (loginData: any) => {
+  const user = loginData?.user as AuthUser | undefined
+  const accessToken = loginData?.access
+  const refreshToken = loginData?.refresh
+
+  if (!user || user.role !== 'driver') {
+    throw new Error('NOT_DRIVER')
+  }
+  if (!accessToken || !refreshToken) {
+    throw new Error('MISSING_AUTH_TOKENS')
+  }
+
+  const loginClockStartedAt = Date.now()
+  await setAuthTokens({ accessToken, refreshToken })
+  useAuthStore.getState().setAuth(user, accessToken, refreshToken)
+
+  let settingsPayload = loginData?.settings as SettingsApiPayload | undefined
+  if (!settingsPayload) {
+    try {
+      const settingsResponse = await settingsApi.getPreferences()
+      settingsPayload = settingsResponse.data as SettingsApiPayload
+    } catch {
+      settingsPayload = undefined
+    }
+  }
+
+  if (settingsPayload) {
+    useSettingsStore.getState().hydrateFromApi(settingsPayload)
+    await saveOfflinePinVerifier(settingsPayload.offline_pin_verifier)
+  }
+
+  useAppLockStore.getState().setUnlocked()
+  await saveDriverSessionSnapshotFromStores({
+    user,
+    settings: useSettingsStore.getState().settings,
+    loginClockStartedAt,
+  })
+  void flushPendingDriverLogouts()
+  void syncDriverSessionInBackground()
+}
+
+export const flushPendingDriverLogouts = async () => {
+  const pending = await getPendingLogoutTokens()
+  await Promise.allSettled(
+    pending.map(async (item) => {
+      if (!item.refreshToken) return
+      try {
+        await axios.post(
+          `${API_ROOT_URL}auth/logout/`,
+          { refresh: item.refreshToken },
+          {
+            timeout: 15000,
+            headers: item.accessToken
+              ? { Authorization: `Bearer ${item.accessToken}` }
+              : undefined,
+          },
+        )
+        await removePendingLogoutToken(item.refreshToken)
+      } catch (error: any) {
+        if (error?.response?.status && error.response.status < 500) {
+          await removePendingLogoutToken(item.refreshToken)
+        }
+      }
+    }),
+  )
+}
+
+export const logoutDriverSession = async () => {
+  const tokens = await getAuthTokens()
+  if (tokens.refreshToken) {
+    await queuePendingLogoutToken({
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      queuedAt: Date.now(),
+    })
+    void flushPendingDriverLogouts()
+  }
+
+  await clearDriverSandbox()
+  useAuthStore.getState().logout()
+  resetDriverRuntimeStores()
 }
