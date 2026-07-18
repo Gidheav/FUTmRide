@@ -410,19 +410,7 @@ export default function DriverRidesPage() {
   const [garageError, setGarageError] = useState<string | null>(null);
   const { setStatus } = useGarageRideStore();
 
-  const [origin, setOrigin] = useState<LocationOption | null>(null);
-  const [destination, setDestination] = useState<LocationOption | null>(null);
-  const [estimatedDistanceKm, setEstimatedDistanceKm] = useState<number | null>(null);
-  const [estimatedFarePerSeat, setEstimatedFarePerSeat] = useState<number | null>(null);
-  const [estimatingFare, setEstimatingFare] = useState(false);
-  const [totalSeats, setTotalSeats] = useState(4);
-  const [driverNote, setDriverNote] = useState('');
-  const [driverVehicleType, setDriverVehicleType] = useState('sedan');
-  
-  const [lastCompletedAt, setLastCompletedAt] = useState<string | null>(null);
-  const [locationPickerOpen, setLocationPickerOpen] = useState<null | 'origin' | 'destination'>(null);
   const [locationQuery, setLocationQuery] = useState('');
-  const [isCreatingRide, setIsCreatingRide] = useState(false);
   
   // Scheduled Rides Bidding State
   const [availableScheduledRides, setAvailableScheduledRides] = useState<any[]>([]);
@@ -445,18 +433,8 @@ export default function DriverRidesPage() {
   const [loadingActiveOnDemand, setLoadingActiveOnDemand] = useState(false);
   const [advancingRideId, setAdvancingRideId] = useState<string | null>(null);
 
-  const filteredLocations = useMemo(() => filterLocations(locationQuery), [locationQuery]);
-  const seatOptions = useMemo(() => getSeatOptionsByVehicleType(driverVehicleType), [driverVehicleType]);
-
   const garageIsActive = garageRide && ['open', 'full', 'departed'].includes(garageRide.status);
   const isOfflineBlocked = Boolean(driverHasActiveRide || garageIsActive);
-
-  useEffect(() => {
-    if (!seatOptions.length) return;
-    if (!seatOptions.includes(totalSeats)) {
-      setTotalSeats(seatOptions[0]);
-    }
-  }, [seatOptions, totalSeats]);
 
   useEffect(() => {
     const shouldTrack = Boolean(isOnline) || Boolean(driverHasActiveRide) || Boolean(garageIsActive);
@@ -491,16 +469,13 @@ export default function DriverRidesPage() {
         const profile = await ensureDriverProfile();
         if (isMounted) {
           const nextStatus = Boolean(profile?.is_online);
-          const nextVehicleType = String(profile?.vehicle_type || '').trim().toLowerCase() || 'sedan';
           setIsOnline(nextStatus);
-          setDriverVehicleType(nextVehicleType);
           setCachedIsOnline(nextStatus);
         }
       } catch (error: any) {
         if (isMounted) {
           // Profile may not exist yet — default to offline so toggle works
           setIsOnline(false);
-          setDriverVehicleType('sedan');
           setCachedIsOnline(false);
         }
       }
@@ -528,21 +503,21 @@ export default function DriverRidesPage() {
         const res = await driverApi.getAvailableScheduledRides();
         if (isMounted) {
           const data = res?.data;
-          const newData = Array.isArray(data) ? data : (data?.results ?? []);
+          const rawData = Array.isArray(data) ? data : (data?.results ?? []);
           const nextUrl = data?.pagination?.next || data?.next || null;
-          const totalCount = data?.pagination?.count ?? newData.length;
+          const totalCount = data?.pagination?.count ?? rawData.length;
           setScheduledTotalCount(totalCount);
           // On first page poll, replace state (page 1 only). Preserve loaded pages by merging.
           setAvailableScheduledRides((prev) => {
-            if (prev.length <= newData.length || prev.length === 0) {
+            if (prev.length <= rawData.length || prev.length === 0) {
               setScheduledNextUrl(nextUrl);
               LayoutAnimation.configureNext(customZoomAnimation);
-              return newData;
+              return rawData;
             }
             // Merge new page-1 data into existing multi-page data
             const uniqueMap = new Map();
             prev.forEach((item: any) => uniqueMap.set(item.id, item));
-            newData.forEach((item: any) => uniqueMap.set(item.id, item));
+            rawData.forEach((item: any) => uniqueMap.set(item.id, item));
             return Array.from(uniqueMap.values());
           });
           setScheduledError(null);
@@ -859,41 +834,6 @@ export default function DriverRidesPage() {
     }
   };
 
-  const handleSelectLocation = (item: LocationOption) => {
-    if (locationPickerOpen === 'origin') {
-      setOrigin(item);
-    } else if (locationPickerOpen === 'destination') {
-      setDestination(item);
-    }
-    setLocationQuery('');
-    setLocationPickerOpen(null);
-  };
-
-  const handleUseCurrentLocation = async () => {
-    try {
-      const existing = await Location.getForegroundPermissionsAsync();
-      if (!existing.granted) {
-        const request = await Location.requestForegroundPermissionsAsync();
-        if (!request.granted) {
-          setGarageError('Location permission denied.');
-          return;
-        }
-      }
-      const current = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
-      setOrigin({
-        id: 'current',
-        label: 'Current location',
-        description: 'Using your current location',
-        latitude: Number(current.coords.latitude),
-        longitude: Number(current.coords.longitude),
-      });
-    } catch (error: any) {
-      setGarageError(error?.message || 'Unable to get current location.');
-    }
-  };
-
   const ensureDriverProfile = async () => {
     try {
       const response = await driverApi.getProfile();
@@ -914,121 +854,6 @@ export default function DriverRidesPage() {
     }
   };
 
-  const handleCreateGarageRide = async () => {
-    const activityState = getDriverActivityState(isOnline, garageRide, driverHasActiveRide);
-    const hasLock = upcomingScheduledRide ? isScheduledRideLocked(upcomingScheduledRide) : false;
-    const guard = canCreateGarageRide(activityState, hasLock);
-    
-    if (!guard.allowed) {
-      Alert.alert('Action Blocked', `${guard.reason}\n\n${guard.suggestion}`);
-      return;
-    }
-
-    if (!origin || !destination) {
-      setGarageError('Select both origin and destination.');
-      return;
-    }
-
-
-    setIsCreatingRide(true);
-    setGarageError(null);
-
-    try {
-      const profile = await ensureDriverProfile();
-      const resolvedVehicleType = String(profile?.vehicle_type || driverVehicleType || 'sedan').trim().toLowerCase();
-      setDriverVehicleType(resolvedVehicleType);
-
-      const payload: any = {
-        origin_address: origin.label,
-        origin_latitude: origin.latitude,
-        origin_longitude: origin.longitude,
-        destination_address: destination.label,
-        destination_latitude: destination.latitude,
-        destination_longitude: destination.longitude,
-        vehicle_type: resolvedVehicleType,
-        total_seats: seatOptions.includes(totalSeats) ? totalSeats : seatOptions[0],
-        fare_per_seat: Number(estimatedFarePerSeat || 0),
-        driver_note: driverNote || null,
-      };
-
-      if (!payload.fare_per_seat || Number.isNaN(payload.fare_per_seat)) {
-        const distance = Number(
-          haversineKm(
-            origin.latitude,
-            origin.longitude,
-            destination.latitude,
-            destination.longitude
-          ).toFixed(2)
-        );
-        const estimate = await driverApi.pricingEstimate({
-          vehicle_type: resolvedVehicleType,
-          distance_km: distance,
-          surge_multiplier: 1.0,
-        });
-        const computed = Number(estimate?.data?.total_fare || 0);
-        if (!computed || Number.isNaN(computed)) {
-          throw new Error('Pricing unavailable. Please try again.');
-        }
-        payload.fare_per_seat = computed;
-        setEstimatedFarePerSeat(computed);
-      }
-
-      const response = await driverApi.createGarageRide(payload);
-      setGarageRide(response?.data || null);
-      setGaragePassengers([]);
-      setDriverMode('garage');
-      setStatus('active');
-      setCachedGarageRide(response?.data || null);
-      setCachedGaragePassengers([]);
-    } catch (error: any) {
-      const data = error?.response?.data;
-      const message = data?.error?.message || data?.detail || 'Unable to create garage ride.';
-      setGarageError(message);
-    } finally {
-      setIsCreatingRide(false);
-    }
-  };
-
-  useEffect(() => {
-    let isMounted = true;
-    const estimateGarageFare = async () => {
-      if (!origin || !destination) {
-        if (isMounted) {
-          setEstimatedDistanceKm(null);
-          setEstimatedFarePerSeat(null);
-        }
-        return;
-      }
-
-      const distance = Number(
-        haversineKm(origin.latitude, origin.longitude, destination.latitude, destination.longitude).toFixed(2)
-      );
-      if (isMounted) setEstimatedDistanceKm(distance);
-
-      try {
-        if (isMounted) setEstimatingFare(true);
-        const estimate = await driverApi.pricingEstimate({
-          vehicle_type: driverVehicleType,
-          distance_km: distance,
-          surge_multiplier: 1.0,
-        });
-        if (isMounted) {
-          const fare = Number(estimate?.data?.total_fare || 0);
-          setEstimatedFarePerSeat(Number.isNaN(fare) ? null : fare);
-        }
-      } catch {
-        if (isMounted) setEstimatedFarePerSeat(null);
-      } finally {
-        if (isMounted) setEstimatingFare(false);
-      }
-    };
-
-    void estimateGarageFare();
-    return () => {
-      isMounted = false;
-    };
-  }, [origin, destination, driverVehicleType]);
-
   const handleDepartGarageRide = async () => {
     if (!garageRide) return;
     try {
@@ -1045,8 +870,6 @@ export default function DriverRidesPage() {
     if (!garageRide) return;
     try {
       const response = await driverApi.completeGarageRide(garageRide.id);
-      const completedAt = response?.data?.completed_at as string | undefined;
-      setLastCompletedAt(completedAt || new Date().toISOString());
       setGarageRide(null);
       setGaragePassengers([]);
       setStatus('inactive');
@@ -1490,40 +1313,6 @@ export default function DriverRidesPage() {
         onEndReachedThreshold={0.5}
         ListFooterComponent={loadingMoreMarketplace ? <LoadingOverlay visible={true} inline size={40} /> : null}
       />
-
-      <Modal visible={Boolean(locationPickerOpen)} animationType="slide" onRequestClose={() => setLocationPickerOpen(null)}>
-        <View style={styles.modalPage}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setLocationPickerOpen(null)} style={styles.modalBack}>
-              <MaterialIcons name="close" size={20} color={COLORS.onSurface} />
-            </TouchableOpacity>
-            <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}>Select location</Text>
-            <View style={styles.modalSpacer} />
-          </View>
-
-          <View style={styles.modalSearch}>
-            <MaterialIcons name="search" size={18} color={COLORS.onSurfaceVariant} />
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Search locations"
-              value={locationQuery}
-              onChangeText={setLocationQuery}
-            />
-          </View>
-
-          <ScrollView contentContainerStyle={styles.modalList}>
-            {filteredLocations.map((item) => (
-              <TouchableOpacity key={item.id} style={styles.modalItem} onPress={() => handleSelectLocation(item)}>
-                <MaterialIcons name="place" size={18} color={COLORS.primary} />
-                <View style={{ flex: 1 }}>
-                  <Text style={[FONTS.labelMd, { color: COLORS.onSurface }]}>{item.label}</Text>
-                  <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant }]}>{item.description}</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      </Modal>
     </View>
   );
 }

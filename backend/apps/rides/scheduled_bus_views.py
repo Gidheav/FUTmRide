@@ -522,8 +522,13 @@ class DriverAvailableScheduledRidesView(generics.ListAPIView):
         if self.request.user.role != UserRole.DRIVER:
             raise PermissionDenied('Only drivers can view available rides.')
         
+        profile = getattr(self.request.user, 'driver_profile', None)
+        if not profile:
+            return ScheduledRide.objects.none()
+
         return ScheduledRide.objects.filter(
-            status=ScheduledRideStatus.SCHEDULED
+            status=ScheduledRideStatus.SCHEDULED,
+            allowed_vehicle_types__contains=[profile.vehicle_type]
         ).exclude(
             bus_assignments__driver=self.request.user,
         ).order_by('departure_date', 'window_start')
@@ -571,6 +576,10 @@ class DriverExpressInterestView(APIView):
             
         if ride.status != ScheduledRideStatus.SCHEDULED:
             return Response({'error': 'This ride is no longer accepting drivers.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        profile = getattr(request.user, 'driver_profile', None)
+        if not profile or profile.vehicle_type not in ride.allowed_vehicle_types:
+            return Response({'error': 'This ride requires a different vehicle type.'}, status=status.HTTP_400_BAD_REQUEST)
             
         interest, created = ScheduledRideDriverInterest.objects.get_or_create(
             ride=ride,

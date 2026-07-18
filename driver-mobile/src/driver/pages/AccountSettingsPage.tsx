@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -125,6 +125,7 @@ const MODAL_TITLES: Record<ModalId, string> = {
 };
 
 const LOCK_TIMEOUT_OPTIONS: Array<{ label: string; value: DriverLockTimeoutMinutes }> = [
+  { label: 'None (Disabled)', value: -1 },
   { label: 'Immediate', value: 0 },
   { label: '15 seconds', value: 0.25 },
   { label: '30 seconds', value: 0.5 },
@@ -204,7 +205,8 @@ export default function AccountSettingsPage({ onBack, onLogout, verificationProg
 
   const languageLabel = settings.language === 'en' ? 'English' : settings.language;
   const navigationLabel = settings.navigationApp === 'google_maps' ? 'Google Maps' : 'Google Maps';
-  const lockTimeoutLabel = LOCK_TIMEOUT_OPTIONS.find((option) => option.value === lockTimeoutMinutes)?.label || '15 minutes';
+  const lockTimeoutLabel = LOCK_TIMEOUT_OPTIONS.find((option) => option.value === lockTimeoutMinutes)?.label || 'None (Disabled)';
+  const hasUnlockMethod = settings.hasPin || settings.biometricEnabled;
   const isDarkMode = settings.themeMode === 'dark';
 
   const handlePinSave = async () => {
@@ -507,13 +509,27 @@ export default function AccountSettingsPage({ onBack, onLogout, verificationProg
       case 'lockTimeout':
         return (
           <View style={styles.formContent}>
+            {!hasUnlockMethod ? (
+              <View style={{ marginBottom: 16, padding: 12, backgroundColor: COLORS.surfaceContainerHighest, borderRadius: 12 }}>
+                <Text style={[FONTS.bodySm, { color: COLORS.tertiary }]}>
+                  Auto-lock requires a PIN or biometric to be set up first.
+                </Text>
+              </View>
+            ) : null}
             {LOCK_TIMEOUT_OPTIONS.map((option) => {
               const selected = option.value === lockTimeoutMinutes;
+              // Disable all options except "None" when no unlock method is set
+              const isDisabled = !hasUnlockMethod && option.value !== -1;
               return (
                 <Pressable
                   key={option.value}
-                  style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed]}
+                  style={({ pressed }) => [
+                    styles.optionRow,
+                    pressed && !isDisabled && styles.optionRowPressed,
+                    isDisabled && { opacity: 0.35 },
+                  ]}
                   onPress={() => {
+                    if (isDisabled) return;
                     setLockTimeoutMinutes(option.value);
                     void saveDriverSessionSnapshotFromStores();
                     setActiveModal(null);
@@ -521,6 +537,12 @@ export default function AccountSettingsPage({ onBack, onLogout, verificationProg
                 >
                   <View style={styles.optionTextWrap}>
                     <Text style={[FONTS.bodyMd, { color: COLORS.onSurface }]}>{option.label}</Text>
+                    {option.value === -1 ? (
+                      <Text style={[FONTS.bodySm, { color: COLORS.tertiary }]}>App never locks automatically</Text>
+                    ) : null}
+                    {option.value === 0 ? (
+                      <Text style={[FONTS.bodySm, { color: COLORS.tertiary }]}>Lock as soon as app backgrounds</Text>
+                    ) : null}
                   </View>
                   {selected ? (
                     <MaterialIcons name="check" size={20} color={COLORS.primary} />
@@ -738,7 +760,7 @@ export default function AccountSettingsPage({ onBack, onLogout, verificationProg
           <SettingsRow
             icon="timer"
             title="Auto-lock"
-            subtitle="Maximum 30 minutes"
+            subtitle={hasUnlockMethod ? 'Lock when app is backgrounded' : 'Set a PIN to enable auto-lock'}
             trailing={<ValueChevron value={lockTimeoutLabel} />}
             onPress={() => setActiveModal('lockTimeout')}
           />

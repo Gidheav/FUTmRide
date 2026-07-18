@@ -183,20 +183,22 @@ export default function DriverApp() {
       setSessionWarning('')
 
       try {
-        await hydrateTokens()
-        const localSnapshot = await hydrateDriverSessionFromSandbox(user.id)
-        if (!isMounted) return
-
         const justLoggedIn = Boolean(loginCompletedAt && Date.now() - loginCompletedAt < 10000)
-        const localSettings = localSnapshot?.settings || settings
-        const hasUnlockMethod = Boolean(localSettings.hasPin || localSettings.biometricEnabled)
-        setPinSetupRequired(!hasUnlockMethod)
-
         if (justLoggedIn) {
+          const hasUnlockMethod = Boolean(settings.hasPin || settings.biometricEnabled)
+          setPinSetupRequired(!hasUnlockMethod)
           setLocked(false)
           void syncDriverSessionInBackground()
           return
         }
+
+        await hydrateTokens()
+        const localSnapshot = await hydrateDriverSessionFromSandbox(user.id)
+        if (!isMounted) return
+
+        const localSettings = localSnapshot?.settings || settings
+        const hasUnlockMethod = Boolean(localSettings.hasPin || localSettings.biometricEnabled)
+        setPinSetupRequired(!hasUnlockMethod)
 
         setLocked(true)
 
@@ -235,7 +237,17 @@ export default function DriverApp() {
     return () => {
       isMounted = false
     }
-  }, [authHasHydrated, hydrateTokens, isAuthenticated, loginCompletedAt, resetLock, setLocked, settings, user?.id])
+  }, [
+    authHasHydrated,
+    hydrateTokens,
+    isAuthenticated,
+    loginCompletedAt,
+    resetLock,
+    setLocked,
+    settings.biometricEnabled,
+    settings.hasPin,
+    user?.id,
+  ])
 
   // AppState: the lock timer only counts while the app is actually backgrounded.
   useEffect(() => {
@@ -270,10 +282,31 @@ export default function DriverApp() {
         return
       }
 
-      const awayMs = Date.now() - leftAt
-      const timeoutMs = Math.min(lockTimeoutMinutes, 30) * 60 * 1000
+      // Safety: never lock if the driver has no unlock method (PIN or biometric).
+      // This prevents a state where the user is stuck behind the lock screen with
+      // no way to get back in.
+      const hasUnlockMethod = settings.hasPin || settings.biometricEnabled
 
-      if (lockTimeoutMinutes === 0 || awayMs >= timeoutMs) {
+      // -1 means "None" (auto-lock disabled) – always return seamlessly.
+      if (lockTimeoutMinutes === -1 || !hasUnlockMethod) {
+        void syncDriverSessionInBackground().then((ok) => {
+          if (ok) setSessionWarning('')
+          else setSessionWarning('You are offline. Cached driver data is available.')
+        })
+        return
+      }
+
+      const awayMs = Date.now() - leftAt
+
+      // 0 = Immediate: lock as soon as the app comes back from background.
+      if (lockTimeoutMinutes === 0) {
+        setLocked(true)
+        setLockStatus('Unlock the app to continue.')
+        return
+      }
+
+      const timeoutMs = Math.min(lockTimeoutMinutes, 30) * 60 * 1000
+      if (awayMs >= timeoutMs) {
         setLocked(true)
         setLockStatus('Unlock the app to continue.')
         return
@@ -288,7 +321,7 @@ export default function DriverApp() {
     })
 
     return () => subscription.remove()
-  }, [isAuthenticated, lockTimeoutMinutes, sessionActive, setLocked, setUnlocked, user?.role])
+  }, [isAuthenticated, lockTimeoutMinutes, sessionActive, setLocked, setUnlocked, settings.biometricEnabled, settings.hasPin, user?.role])
 
   useEffect(() => {
     if (!sessionActive || !settings.pushEnabled) {

@@ -41,6 +41,7 @@ export type GaragePassenger = {
 export type RideListItem = {
   id: string
   status: string
+  vehicle_type_requested?: string | null
   requested_seats: number | null
   pickup_address: string | null
   dropoff_address: string | null
@@ -109,7 +110,14 @@ export const useDriverRidesStore = create<DriverRidesStore>()(
       rideHistory: [],
       lastUpdatedAt: null,
       setIsOnline: (value) => set({ isOnline: value, lastUpdatedAt: Date.now() }),
-      setMarketplaceRequests: (value) => set({ marketplaceRequests: value, lastUpdatedAt: Date.now() }),
+      setMarketplaceRequests: (value) => set((state) => {
+        const profileType = state.driverProfile?.vehicle_type || 'sedan'
+        const filtered = value.filter(ride => {
+          if (!ride.vehicle_type_requested) return true // Legacy rides without type
+          return ride.vehicle_type_requested === profileType
+        })
+        return { marketplaceRequests: filtered, lastUpdatedAt: Date.now() }
+      }),
       setDriverHasActiveRide: (value) => set({ driverHasActiveRide: value, lastUpdatedAt: Date.now() }),
       setGarageRide: (value) => set({ garageRide: value, lastUpdatedAt: Date.now() }),
       setGaragePassengers: (value) => set({ garagePassengers: value, lastUpdatedAt: Date.now() }),

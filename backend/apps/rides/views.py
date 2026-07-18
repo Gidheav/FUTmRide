@@ -342,8 +342,14 @@ class DriverMarketplaceListView(generics.ListAPIView):
     def get_queryset(self):
         if self.request.user.role != UserRole.DRIVER:
             raise PermissionDenied('Only drivers can access this endpoint.')
+        profile = getattr(self.request.user, 'driver_profile', None)
+        if not profile:
+            raise PermissionDenied('Driver profile not found.')
         return (
-            Ride.objects.filter(status=RideStatus.SEARCHING)
+            Ride.objects.filter(
+                status=RideStatus.SEARCHING,
+                vehicle_type_requested=profile.vehicle_type
+            )
             .select_related('student', 'driver', 'driver__driver_profile')
             .order_by('-requested_at')
         )
@@ -475,6 +481,11 @@ class DriverAcceptRideView(APIView):
             if ride.status != RideStatus.SEARCHING:
                 return Response(
                     {'error': {'code': 'INVALID_STATUS', 'message': 'Ride is not available.'}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if ride.vehicle_type_requested != profile.vehicle_type:
+                return Response(
+                    {'error': {'code': 'VEHICLE_MISMATCH', 'message': 'Ride does not match your vehicle type.'}},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             if ride.requested_seats and ride.requested_seats > profile.vehicle_seats:

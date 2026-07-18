@@ -205,7 +205,6 @@ export const completeDriverLogin = async (loginData: any) => {
 
   const loginClockStartedAt = Date.now()
   await setAuthTokens({ accessToken, refreshToken })
-  useAuthStore.getState().setAuth(user, accessToken, refreshToken)
 
   let settingsPayload = loginData?.settings as SettingsApiPayload | undefined
   if (!settingsPayload) {
@@ -228,6 +227,7 @@ export const completeDriverLogin = async (loginData: any) => {
     settings: useSettingsStore.getState().settings,
     loginClockStartedAt,
   })
+  useAuthStore.getState().setAuth(user, accessToken, refreshToken)
   void flushPendingDriverLogouts()
   void syncDriverSessionInBackground()
 }

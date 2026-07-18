@@ -41,6 +41,13 @@ class GarageRideCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         reference = 'GR' + uuid.uuid4().hex[:8].upper()
+        
+        # Enforce vehicle segregation
+        driver_profile = self.context['request'].user.driver_profile
+        validated_data['vehicle_type'] = driver_profile.vehicle_type
+        if validated_data.get('total_seats', 1) > driver_profile.vehicle_seats:
+            validated_data['total_seats'] = driver_profile.vehicle_seats
+
         return GarageRide.objects.create(
             reference=reference,
             driver=self.context['request'].user,
