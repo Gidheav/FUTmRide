@@ -300,11 +300,20 @@ class SessionTokenRefreshSerializer(TokenRefreshSerializer):
 
 class UserPublicSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(read_only=True)
+    profile_photo = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ["id", "full_name", "first_name", "last_name", "phone_number", "role"]
+        fields = ["id", "full_name", "first_name", "last_name", "phone_number", "role", "profile_photo"]
         read_only_fields = fields
+
+    def get_profile_photo(self, obj):
+        if not obj.profile_photo:
+            return None
+        request = self.context.get("request")
+        if request:
+            return request.build_absolute_uri(obj.profile_photo.url)
+        return obj.profile_photo.url
 
 
 class UserProfileSerializer(serializers.ModelSerializer):

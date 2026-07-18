@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Image,
   Modal,
   StyleSheet,
   Text,
@@ -13,10 +14,11 @@ import {
   Alert,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import LoadingOverlay from '../components/LoadingOverlay';
 import CustomRefreshFlatList from '../components/CustomRefreshFlatList';
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
-import { driverApi } from '../../core/api';
+import { API_ROOT_URL, driverApi } from '../../core/api';
 import { startDriverLocationTracking, stopDriverLocationTracking } from '../../core/locationSocket';
 import { useGarageRideStore } from '../../core/garageRideStore';
 import { useDriverRidesStore } from '../../core/driverRidesStore';
@@ -31,7 +33,7 @@ import {
 import * as Location from 'expo-location';
 import QRCode from 'react-native-qrcode-svg';
 import locationData from '../locations.json';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
 if (
   Platform.OS === 'android' &&
@@ -111,6 +113,7 @@ type RideStudent = {
   last_name?: string | null;
   phone_number?: string | null;
   role?: string | null;
+  profile_photo?: string | null;
 };
 
 type RideListItem = {
@@ -204,11 +207,92 @@ const getStudentName = (student?: RideStudent | null) => {
   );
 };
 
+const getInitials = (name: string) =>
+  name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('') || 'S';
+
+const resolveMediaUrl = (value?: string | null) => {
+  if (!value) return null;
+  if (/^https?:\/\//i.test(value)) return value;
+
+  try {
+    const apiUrl = new URL(API_ROOT_URL);
+    return `${apiUrl.origin}${value.startsWith('/') ? value : `/${value}`}`;
+  } catch {
+    return value;
+  }
+};
+
 const formatDistance = (value: string | number | null | undefined) => {
   if (value === null || value === undefined) return '—';
   const num = Number(value);
   if (Number.isNaN(num)) return '—';
   return `${num.toFixed(1)} km`;
+};
+
+type MapCoordinate = {
+  latitude: number;
+  longitude: number;
+};
+
+const parseMapCoordinate = (
+  latitude: string | number | null | undefined,
+  longitude: string | number | null | undefined,
+): MapCoordinate | null => {
+  const parsedLatitude = Number(latitude);
+  const parsedLongitude = Number(longitude);
+
+  if (
+    !Number.isFinite(parsedLatitude) ||
+    !Number.isFinite(parsedLongitude) ||
+    Math.abs(parsedLatitude) > 90 ||
+    Math.abs(parsedLongitude) > 180
+  ) {
+    return null;
+  }
+
+  return {
+    latitude: parsedLatitude,
+    longitude: parsedLongitude,
+  };
+};
+
+const getRideInitialRegion = (coordinates: MapCoordinate[]): Region => {
+  if (coordinates.length === 0) {
+    return {
+      latitude: 9.6171,
+      longitude: 6.5492,
+      latitudeDelta: 0.04,
+      longitudeDelta: 0.04,
+    };
+  }
+
+  if (coordinates.length === 1) {
+    return {
+      latitude: coordinates[0].latitude,
+      longitude: coordinates[0].longitude,
+      latitudeDelta: 0.025,
+      longitudeDelta: 0.025,
+    };
+  }
+
+  const latitudes = coordinates.map((coordinate) => coordinate.latitude);
+  const longitudes = coordinates.map((coordinate) => coordinate.longitude);
+  const minLatitude = Math.min(...latitudes);
+  const maxLatitude = Math.max(...latitudes);
+  const minLongitude = Math.min(...longitudes);
+  const maxLongitude = Math.max(...longitudes);
+
+  return {
+    latitude: (minLatitude + maxLatitude) / 2,
+    longitude: (minLongitude + maxLongitude) / 2,
+    latitudeDelta: Math.max(maxLatitude - minLatitude, 0.01) + 0.025,
+    longitudeDelta: Math.max(maxLongitude - minLongitude, 0.01) + 0.025,
+  };
 };
 
 const formatCompletedAt = (value: string | null | undefined) => {
@@ -377,6 +461,7 @@ const ScheduledRideCard = React.memo(function ScheduledRideCard({ ride, onExpres
 });
 
 export default function DriverRidesPage() {
+  const insets = useSafeAreaInsets();
   const [driverMode, setDriverMode] = useState<DriverMode>('garage');
   const {
     isOnline: cachedIsOnline,
@@ -398,27 +483,48 @@ export default function DriverRidesPage() {
   const [requestsError, setRequestsError] = useState<string | null>(null);
   const [acceptingRideId, setAcceptingRideId] = useState<string | null>(null);
   const [selectedRideForMap, setSelectedRideForMap] = useState<RideListItem | null>(null);
+  const [readyRideMapId, setReadyRideMapId] = useState<string | null>(null);
   const mapRef = useRef<MapView>(null);
+  const pickupCoordinate = useMemo(
+    () => parseMapCoordinate(selectedRideForMap?.pickup_latitude, selectedRideForMap?.pickup_longitude),
+    [selectedRideForMap],
+  );
+  const dropoffCoordinate = useMemo(
+    () => parseMapCoordinate(selectedRideForMap?.dropoff_latitude, selectedRideForMap?.dropoff_longitude),
+    [selectedRideForMap],
+  );
+  const selectedRideCoordinates = useMemo(
+    () => [pickupCoordinate, dropoffCoordinate].filter((coordinate): coordinate is MapCoordinate => Boolean(coordinate)),
+    [pickupCoordinate, dropoffCoordinate],
+  );
+  const selectedRideInitialRegion = useMemo(
+    () => getRideInitialRegion(selectedRideCoordinates),
+    [selectedRideCoordinates],
+  );
+  const hasRouteCoordinates = selectedRideCoordinates.length > 0;
+  const hasFullRouteCoordinates = Boolean(pickupCoordinate && dropoffCoordinate);
+  const isRideMapReady = Boolean(selectedRideForMap && readyRideMapId === selectedRideForMap.id);
+  const selectedStudentName = getStudentName(selectedRideForMap?.student);
+  const selectedStudentPhoto = resolveMediaUrl(selectedRideForMap?.student?.profile_photo);
 
   useEffect(() => {
-    if (selectedRideForMap && mapRef.current) {
-      const coords = [];
-      if (selectedRideForMap.pickup_latitude && selectedRideForMap.pickup_longitude) {
-        coords.push({ latitude: Number(selectedRideForMap.pickup_latitude), longitude: Number(selectedRideForMap.pickup_longitude) });
-      }
-      if (selectedRideForMap.dropoff_latitude && selectedRideForMap.dropoff_longitude) {
-        coords.push({ latitude: Number(selectedRideForMap.dropoff_latitude), longitude: Number(selectedRideForMap.dropoff_longitude) });
-      }
-      if (coords.length > 0) {
-        setTimeout(() => {
-          mapRef.current?.fitToCoordinates(coords, {
-            edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
-            animated: true,
-          });
-        }, 500);
-      }
+    setReadyRideMapId(null);
+  }, [selectedRideForMap?.id]);
+
+  useEffect(() => {
+    if (!isRideMapReady || !mapRef.current || selectedRideCoordinates.length === 0) {
+      return;
     }
-  }, [selectedRideForMap]);
+
+    const timer = setTimeout(() => {
+      mapRef.current?.fitToCoordinates(selectedRideCoordinates, {
+        edgePadding: { top: 80, right: 40, bottom: 260, left: 40 },
+        animated: true,
+      });
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [isRideMapReady, selectedRideCoordinates]);
 
   const [driverHasActiveRide, setDriverHasActiveRide] = useState(cachedHasActiveRide);
   const [activeFilter, setActiveFilter] = useState('High Fare');
@@ -1019,7 +1125,10 @@ export default function DriverRidesPage() {
           distance={formatDistance(ride.estimated_distance_km)}
           acceptLabel="Accept Request"
           onAccept={() => handleAcceptRide(ride.id)}
-          onCardPress={() => setSelectedRideForMap(ride)}
+          onCardPress={() => {
+            setReadyRideMapId(null);
+            setSelectedRideForMap(ride);
+          }}
           disabled={Boolean(acceptingRideId === ride.id || driverHasActiveRide || modeLocked || !isOnline)}
         />
       </View>
@@ -1343,54 +1452,71 @@ export default function DriverRidesPage() {
         ListFooterComponent={loadingMoreMarketplace ? <LoadingOverlay visible={true} inline size={40} /> : null}
       />
 
-      <Modal visible={!!selectedRideForMap} animationType="slide" transparent>
+      <Modal
+        visible={!!selectedRideForMap}
+        animationType="slide"
+        onRequestClose={() => setSelectedRideForMap(null)}
+      >
         <View style={styles.mapModalContainer}>
           {selectedRideForMap && (
             <>
-              <MapView
-                ref={mapRef}
-                provider={PROVIDER_GOOGLE}
-                style={StyleSheet.absoluteFillObject}
-                initialRegion={{
-                  latitude: Number(selectedRideForMap.pickup_latitude || 0),
-                  longitude: Number(selectedRideForMap.pickup_longitude || 0),
-                  latitudeDelta: 0.05,
-                  longitudeDelta: 0.05,
-                }}
-              >
-                {selectedRideForMap.pickup_latitude && selectedRideForMap.pickup_longitude && (
-                  <Marker
-                    coordinate={{
-                      latitude: Number(selectedRideForMap.pickup_latitude),
-                      longitude: Number(selectedRideForMap.pickup_longitude),
-                    }}
-                    title="Pickup"
-                    description={selectedRideForMap.pickup_address || ''}
-                    pinColor="blue"
-                  />
+              <View style={styles.mapModalMapWrap}>
+                {hasRouteCoordinates ? (
+                  <MapView
+                    key={selectedRideForMap.id}
+                    ref={mapRef}
+                    provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+                    style={styles.mapModalMap}
+                    initialRegion={selectedRideInitialRegion}
+                    onMapReady={() => setReadyRideMapId(selectedRideForMap.id)}
+                    onMapLoaded={() => setReadyRideMapId(selectedRideForMap.id)}
+                    mapType="standard"
+                    zoomEnabled
+                    scrollEnabled
+                    rotateEnabled={false}
+                    pitchEnabled
+                    showsCompass
+                    showsScale
+                    loadingEnabled
+                    loadingIndicatorColor={COLORS.primary}
+                    loadingBackgroundColor={COLORS.surfaceContainerLowest}
+                  >
+                    {pickupCoordinate && (
+                      <Marker
+                        coordinate={pickupCoordinate}
+                        title="Pickup"
+                        description={selectedRideForMap.pickup_address || ''}
+                        pinColor="blue"
+                      />
+                    )}
+                    {dropoffCoordinate && (
+                      <Marker
+                        coordinate={dropoffCoordinate}
+                        title="Dropoff"
+                        description={selectedRideForMap.dropoff_address || ''}
+                        pinColor="red"
+                      />
+                    )}
+                    {hasFullRouteCoordinates && (
+                      <Polyline
+                        coordinates={selectedRideCoordinates}
+                        strokeColor={COLORS.primary}
+                        strokeWidth={4}
+                      />
+                    )}
+                  </MapView>
+                ) : (
+                  <View style={styles.mapModalUnavailable}>
+                    <MaterialIcons name="wrong-location" size={42} color={COLORS.onSurfaceVariant} />
+                    <Text style={[FONTS.titleMd, { color: COLORS.onSurface, textAlign: 'center' }]}>
+                      Route map unavailable
+                    </Text>
+                    <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, textAlign: 'center' }]}>
+                      This request did not include valid pickup or dropoff coordinates.
+                    </Text>
+                  </View>
                 )}
-                {selectedRideForMap.dropoff_latitude && selectedRideForMap.dropoff_longitude && (
-                  <Marker
-                    coordinate={{
-                      latitude: Number(selectedRideForMap.dropoff_latitude),
-                      longitude: Number(selectedRideForMap.dropoff_longitude),
-                    }}
-                    title="Dropoff"
-                    description={selectedRideForMap.dropoff_address || ''}
-                    pinColor="red"
-                  />
-                )}
-                {selectedRideForMap.pickup_latitude && selectedRideForMap.dropoff_latitude && (
-                  <Polyline
-                    coordinates={[
-                      { latitude: Number(selectedRideForMap.pickup_latitude), longitude: Number(selectedRideForMap.pickup_longitude) },
-                      { latitude: Number(selectedRideForMap.dropoff_latitude), longitude: Number(selectedRideForMap.dropoff_longitude) },
-                    ]}
-                    strokeColor={COLORS.primary}
-                    strokeWidth={4}
-                  />
-                )}
-              </MapView>
+              </View>
               <TouchableOpacity
                 style={styles.mapModalCloseBtn}
                 onPress={() => setSelectedRideForMap(null)}
@@ -2198,6 +2324,22 @@ const styles = StyleSheet.create({
   mapModalContainer: {
     flex: 1,
     backgroundColor: COLORS.surface,
+  },
+  mapModalMapWrap: {
+    flex: 1,
+    backgroundColor: COLORS.surfaceContainerLowest,
+  },
+  mapModalMap: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
+  mapModalUnavailable: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    gap: 10,
   },
   mapModalCloseBtn: {
     position: 'absolute',
