@@ -12,6 +12,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import LoadingOverlay from '../components/LoadingOverlay';
+import CustomRefreshScrollView from '../components/CustomRefreshScrollView';
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
 import { driverApi, driverWalletApi, verificationApi } from '../../core/api';
 import { useAuthStore } from '../../core/authStore';
@@ -58,6 +59,7 @@ export default function DriverWalletPage() {
   const [savingGoal, setSavingGoal] = useState(false);
   const [goalInput, setGoalInput] = useState('');
   const [selectedTransaction, setSelectedTransaction] = useState<any | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const { user, patchUser } = useAuthStore();
   const {
@@ -74,44 +76,50 @@ export default function DriverWalletPage() {
   const effectivePayoutMethod = payoutMethod || summary?.payout_method || null;
   const availableBalance = Number(summary?.wallet_balance ?? user?.wallet_balance ?? 0);
 
+  const fetchWalletData = async () => {
+    try {
+      const [summaryRes, txRes, payoutRes, docsRes] = await Promise.all([
+        driverWalletApi.getSummary(),
+        driverWalletApi.getTransactions(),
+        driverWalletApi.getPayoutMethod(),
+        verificationApi.getMyDocuments(),
+      ]);
+
+      setSummary(summaryRes?.data ?? null);
+      if (summaryRes?.data?.wallet_balance !== undefined) {
+        patchUser({ wallet_balance: summaryRes.data.wallet_balance });
+      }
+
+      const txList = Array.isArray(txRes?.data) ? txRes.data : txRes?.data?.results || [];
+      setTransactions(txList);
+
+      setPayoutMethod(payoutRes?.data?.payout_method ?? null);
+
+      const docList = Array.isArray(docsRes?.data) ? docsRes.data : docsRes?.data?.results || [];
+      setDocuments(docList);
+    } catch (error) {
+      console.warn('[DriverWallet] load failed:', error);
+    }
+  };
+
   useEffect(() => {
     let isMounted = true;
-
     const loadWallet = async () => {
-      try {
-        setLoading(true);
-        const [summaryRes, txRes, payoutRes, docsRes] = await Promise.all([
-          driverWalletApi.getSummary(),
-          driverWalletApi.getTransactions(),
-          driverWalletApi.getPayoutMethod(),
-          verificationApi.getMyDocuments(),
-        ]);
-
-        if (!isMounted) return;
-        setSummary(summaryRes?.data ?? null);
-        if (summaryRes?.data?.wallet_balance !== undefined) {
-          patchUser({ wallet_balance: summaryRes.data.wallet_balance });
-        }
-
-        const txList = Array.isArray(txRes?.data) ? txRes.data : txRes?.data?.results || [];
-        setTransactions(txList);
-
-        setPayoutMethod(payoutRes?.data?.payout_method ?? null);
-
-        const docList = Array.isArray(docsRes?.data) ? docsRes.data : docsRes?.data?.results || [];
-        setDocuments(docList);
-      } catch (error) {
-        console.warn('[DriverWallet] load failed:', error);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
+      setLoading(true);
+      await fetchWalletData();
+      if (isMounted) setLoading(false);
     };
-
     loadWallet();
     return () => {
       isMounted = false;
     };
   }, [patchUser, setDocuments, setPayoutMethod, setSummary, setTransactions]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchWalletData();
+    setRefreshing(false);
+  };
 
   const openPayoutModal = () => {
     setBankName(effectivePayoutMethod?.bank_name ?? '');
@@ -257,7 +265,9 @@ export default function DriverWalletPage() {
 
   return (
     <>
-      <ScrollView
+      <CustomRefreshScrollView
+        refreshing={refreshing}
+        onRefresh={onRefresh}
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -637,7 +647,7 @@ export default function DriverWalletPage() {
           </Text>
         </TouchableOpacity>
       </View>
-      </ScrollView>
+      </CustomRefreshScrollView>
 
       <Modal
         visible={showPayoutModal}

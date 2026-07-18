@@ -839,6 +839,27 @@ class TestToolDeleteOnDemandRidesView(TestToolBase):
         return Response({'deleted': deleted, 'errors': errors})
 
 
+class TestToolFlushOnDemandRidesView(TestToolBase):
+    def post(self, request):
+        campus = self.guard(request)
+        if isinstance(campus, Response):
+            return campus
+        
+        # Flush all ondemand rides
+        rides = Ride.objects.all()
+        deleted = 0
+        errors = []
+        for ride in rides:
+            try:
+                ride.delete()
+                deleted += 1
+            except Exception as exc:
+                errors.append({'id': str(ride.id), 'reference': ride.reference, 'message': str(exc)})
+                
+        return Response({'deleted': deleted, 'errors': errors})
+
+
+
 class TestToolJoinRideView(TestToolBase):
     @transaction.atomic
     def post(self, request):

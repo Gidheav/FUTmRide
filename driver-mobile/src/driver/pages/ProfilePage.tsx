@@ -7,12 +7,15 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Alert,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { MaterialIcons } from '@expo/vector-icons';
 import LoadingOverlay from '../components/LoadingOverlay';
+import CustomRefreshScrollView from '../components/CustomRefreshScrollView';
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
 import { useAuthStore } from '../../core/authStore';
-import { driverApi } from '../../core/api';
+import { authApi, driverApi } from '../../core/api';
 import { useDriverProfileStore } from '../../core/driverProfileStore';
 
 type ProfileProps = {
@@ -46,47 +49,98 @@ const formatCurrency = (value?: string | number | null) => {
 export default function DriverProfilePage({ onNavigateToSettings, onEditProfile }: ProfileProps) {
   const { width } = useWindowDimensions();
   const isWide = width >= 600;
-  const { user } = useAuthStore();
+  const { user, patchUser } = useAuthStore();
   const { profile: cachedProfile, setProfile: setCachedProfile } = useDriverProfileStore();
   const [profile, setProfile] = useState<any>(cachedProfile);
   const [loading, setLoading] = useState(!cachedProfile);
+  const [refreshing, setRefreshing] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  const fetchProfile = async () => {
+    try {
+      const response = await driverApi.getProfile();
+      const data = response?.data ?? null;
+      setProfile(data);
+      setCachedProfile(data);
+    } catch (error: any) {
+      if (error?.response?.status === 404) {
+        try {
+          await driverApi.createProfile(DEFAULT_DRIVER_PROFILE);
+          const retry = await driverApi.getProfile();
+          const retryData = retry?.data ?? null;
+          setProfile(retryData);
+          setCachedProfile(retryData);
+        } catch (createErr: any) {
+          console.warn('[Profile] driver profile fetch failed:', createErr?.response?.data ?? createErr.message);
+        }
+      } else {
+        console.warn('[Profile] driver profile fetch failed:', error?.response?.data ?? error.message);
+      }
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
-
     const loadProfile = async () => {
       if (!cachedProfile) setLoading(true);
-      try {
-        const response = await driverApi.getProfile();
-        if (!isMounted) return;
-        const data = response?.data ?? null;
-        setProfile(data);
-        setCachedProfile(data);
-      } catch (error: any) {
-        if (error?.response?.status === 404) {
-          try {
-            await driverApi.createProfile(DEFAULT_DRIVER_PROFILE);
-            const retry = await driverApi.getProfile();
-            if (!isMounted) return;
-            const retryData = retry?.data ?? null;
-            setProfile(retryData);
-            setCachedProfile(retryData);
-          } catch (createErr: any) {
-            console.warn('[Profile] driver profile fetch failed:', createErr?.response?.data ?? createErr.message);
-          }
-        } else {
-          console.warn('[Profile] driver profile fetch failed:', error?.response?.data ?? error.message);
-        }
-      } finally {
-        if (isMounted) setLoading(false);
-      }
+      await fetchProfile();
+      if (isMounted) setLoading(false);
     };
-
     loadProfile();
     return () => {
       isMounted = false;
     };
   }, [setCachedProfile]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchProfile();
+    setRefreshing(false);
+  };
+
+  const handleUpdatePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Sorry, we need camera roll permissions to make this work!');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.5,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        setUploadingPhoto(true);
+
+        const formData = new FormData();
+        const filename = asset.uri.split('/').pop() || 'photo.jpg';
+        const match = /\.(\w+)$/.exec(filename);
+        const type = match ? `image/${match[1]}` : `image/jpeg`;
+
+        formData.append('profile_photo', {
+          uri: asset.uri,
+          name: filename,
+          type,
+        } as any);
+
+        const response = await authApi.updateProfilePhoto(formData);
+        if (response.data && response.data.profile_photo) {
+          patchUser({ profile_photo: response.data.profile_photo });
+          Alert.alert('Success', 'Profile photo updated successfully!');
+        }
+      }
+    } catch (error) {
+      console.warn('Photo upload failed:', error);
+      Alert.alert('Error', 'Failed to upload photo. Please try again.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
 
   const initials = useMemo(() => {
     const first = (user?.first_name ?? '').trim()[0] ?? '';
@@ -114,15 +168,31 @@ export default function DriverProfilePage({ onNavigateToSettings, onEditProfile 
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+    <CustomRefreshScrollView
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+      style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       <View style={[styles.profileHeader, isWide && styles.profileHeaderWide]}>
-        {user?.profile_photo ? (
-          <Image source={{ uri: user.profile_photo }} style={[styles.profileImage, isWide && styles.profileImageWide]} />
-        ) : (
-          <View style={[styles.initialsAvatar, isWide && styles.profileImageWide]}>
-            <Text style={styles.initialsText}>{initials}</Text>
+        <TouchableOpacity style={styles.avatarContainer} onPress={handleUpdatePhoto} disabled={uploadingPhoto}>
+          {user?.profile_photo ? (
+            <Image source={{ uri: user.profile_photo }} style={[styles.profileImage, isWide && styles.profileImageWide]} />
+          ) : (
+            <View style={[styles.initialsAvatar, isWide && styles.profileImageWide]}>
+              <Text style={styles.initialsText}>{initials}</Text>
+            </View>
+          )}
+          
+          <View style={styles.editPhotoBadge}>
+            <MaterialIcons name="camera-alt" size={16} color={COLORS.onPrimary} />
           </View>
-        )}
+
+          {uploadingPhoto && (
+            <View style={styles.uploadingOverlay}>
+              <LoadingOverlay visible={true} inline size={40} />
+            </View>
+          )}
+        </TouchableOpacity>
+
         <View style={[styles.nameContainer, isWide && styles.nameContainerWide]}>
           <Text style={[FONTS.headlineXl, styles.nameText]}>{user?.full_name || 'Driver'}</Text>
           <View style={styles.subRow}>
@@ -204,7 +274,7 @@ export default function DriverProfilePage({ onNavigateToSettings, onEditProfile 
           <Text style={[FONTS.labelLg, styles.secondaryButtonText]}>Settings</Text>
         </TouchableOpacity>
       </View>
-    </ScrollView>
+    </CustomRefreshScrollView>
   );
 }
 
@@ -350,6 +420,30 @@ const styles = StyleSheet.create({
   nameContainerWide: {
     alignItems: 'flex-start',
     marginLeft: 16,
+  },
+  avatarContainer: {
+    position: 'relative',
+    marginRight: 20,
+  },
+  editPhotoBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: COLORS.primary,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.surface,
+  },
+  uploadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    borderRadius: 100,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   profileImageWide: {
     width: 120,

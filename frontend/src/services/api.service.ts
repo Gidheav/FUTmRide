@@ -518,6 +518,10 @@ class ApiService {
     return this.post('rides/test-tools/ondemand-rides/delete/', { count }, TEST_TOOL_REQUEST_CONFIG)
   }
 
+  async flushAllOnDemandRides(): Promise<any> {
+    return this.post('rides/test-tools/ondemand-rides/flush/', {}, TEST_TOOL_REQUEST_CONFIG)
+  }
+
   async importLocations(locations: any[]): Promise<any> {
     return this.post('locations/admin/bulk-import/', locations)
   }

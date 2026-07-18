@@ -1,15 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  FlatList,
   Modal,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
   Switch,
-  RefreshControl,
   LayoutAnimation,
   Platform,
   UIManager,
@@ -17,6 +14,7 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import LoadingOverlay from '../components/LoadingOverlay';
+import CustomRefreshFlatList from '../components/CustomRefreshFlatList';
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
 import { driverApi } from '../../core/api';
 import { startDriverLocationTracking, stopDriverLocationTracking } from '../../core/locationSocket';
@@ -1084,7 +1082,7 @@ export default function DriverRidesPage() {
       </View>
 
       {/* ── Garage / Scheduled Tab ── */}
-      <FlatList
+      <CustomRefreshFlatList
         style={driverMode !== 'garage' ? { display: 'none', position: 'absolute' } : { flex: 1 }}
         data={garageRide || loadingGarage ? [] : availableScheduledRides}
         keyExtractor={scheduledKeyExtractor}
@@ -1095,7 +1093,8 @@ export default function DriverRidesPage() {
         maxToRenderPerBatch={8}
         windowSize={5}
         removeClippedSubviews={Platform.OS === 'android'}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
         ListHeaderComponent={
           (loadingGarage || garageRide || loadingScheduled || scheduledError || availableScheduledRides.length === 0) ? (
           <View style={styles.sectionWrap}>
@@ -1200,7 +1199,7 @@ export default function DriverRidesPage() {
       />
 
       {/* ── On-Demand Tab ── */}
-      <FlatList
+      <CustomRefreshFlatList
         style={driverMode !== 'ondemand' ? { display: 'none', position: 'absolute' } : { flex: 1 }}
         data={!loadingRequests && !requestsError ? marketplaceRequests : []}
         keyExtractor={requestKeyExtractor}
@@ -1211,7 +1210,8 @@ export default function DriverRidesPage() {
         maxToRenderPerBatch={8}
         windowSize={5}
         removeClippedSubviews={Platform.OS === 'android'}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
         ListHeaderComponent={
           <>
             {activeOnDemandRide && (

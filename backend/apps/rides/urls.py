@@ -77,6 +77,7 @@ from .test_tools import (
     TestToolSummaryView,
     TestToolCreateOnDemandRidesView,
     TestToolDeleteOnDemandRidesView,
+    TestToolFlushOnDemandRidesView,
 )
 
 urlpatterns = [
@@ -159,6 +160,7 @@ urlpatterns = [
     path('test-tools/rides/join/', TestToolJoinRideView.as_view(), name='test-tools-rides-join'),
     path('test-tools/ondemand-rides/create/', TestToolCreateOnDemandRidesView.as_view(), name='test-tools-ondemand-create'),
     path('test-tools/ondemand-rides/delete/', TestToolDeleteOnDemandRidesView.as_view(), name='test-tools-ondemand-delete'),
+    path('test-tools/ondemand-rides/flush/', TestToolFlushOnDemandRidesView.as_view(), name='test-tools-ondemand-flush'),
 
     # Admin
     path('', AdminRideListView.as_view(), name='admin-ride-list'),

@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import CustomRefreshScrollView from '../components/CustomRefreshScrollView';
 import { COLORS, FONTS } from '../../core/theme';
 import { driverApi, driverWalletApi } from '../../core/api';
 import { useAuthStore } from '../../core/authStore';
@@ -108,51 +109,44 @@ const DashboardScreen = ({ onCreateGarageRide }: { onCreateGarageRide?: () => vo
   const { isOnline, driverHasActiveRide, garageRide: storeGarageRide } = useDriverRidesStore();
   const [walletSummary, setWalletSummary] = useState<any>(null);
   const [activeRide, setActiveRide] = useState<any>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchDashboardData = async () => {
+    try {
+      const [garageRes, walletRes] = await Promise.all([
+        driverApi.getGarageRides(),
+        driverWalletApi.getSummary(),
+      ]);
+      const list = Array.isArray(garageRes?.data) ? garageRes.data : garageRes?.data?.results || [];
+      const active = list.find((ride: any) => ACTIVE_GARAGE_STATUSES.has(ride.status));
+      setStatus(active ? 'active' : 'inactive');
+      setActiveRide(active || null);
+      setWalletSummary(walletRes?.data || null);
+    } catch {
+      setStatus('inactive');
+      setActiveRide(null);
+      setWalletSummary(null);
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
-    const fetchGarageRide = async () => {
-      try {
-        const response = await driverApi.getGarageRides();
-        const list = Array.isArray(response?.data) ? response.data : response?.data?.results || [];
-        const active = list.find((ride: any) => ACTIVE_GARAGE_STATUSES.has(ride.status));
-        if (isMounted) {
-          setStatus(active ? 'active' : 'inactive');
-          setActiveRide(active || null);
-        }
-      } catch {
-        if (isMounted) {
-          setStatus('inactive');
-          setActiveRide(null);
-        }
-      }
+    const loadInitial = async () => {
+      await fetchDashboardData();
     };
-    fetchGarageRide();
-    const interval = setInterval(fetchGarageRide, 12000);
+    loadInitial();
+    const interval = setInterval(fetchDashboardData, 30000);
     return () => {
       isMounted = false;
       clearInterval(interval);
     };
   }, []);
 
-  useEffect(() => {
-    let isMounted = true;
-    const fetchWalletSummary = async () => {
-      try {
-        const response = await driverWalletApi.getSummary();
-        if (isMounted) setWalletSummary(response?.data || null);
-      } catch {
-        if (isMounted) setWalletSummary(null);
-      }
-    };
-
-    fetchWalletSummary();
-    const interval = setInterval(fetchWalletSummary, 30000);
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, []);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchDashboardData();
+    setRefreshing(false);
+  };
 
   const goalData = useMemo(() => getGoalData(walletSummary), [walletSummary]);
   const tripsToday = useMemo(
@@ -218,7 +212,9 @@ const DashboardScreen = ({ onCreateGarageRide }: { onCreateGarageRide?: () => vo
 
   return (
     <View style={styles.container}>
-      <ScrollView
+      <CustomRefreshScrollView
+        refreshing={refreshing}
+        onRefresh={onRefresh}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
@@ -407,7 +403,7 @@ const DashboardScreen = ({ onCreateGarageRide }: { onCreateGarageRide?: () => vo
             })
           )}
         </View>
-      </ScrollView>
+      </CustomRefreshScrollView>
     </View>
   );
 };

@@ -227,6 +227,10 @@ export function classifyApiError(error: any): 'network' | 'auth' | 'session_expi
 export const authApi = {
   getMe: () => api.get('users/me/'),
   updateMe: (data: any) => api.patch('users/me/', data),
+  updateProfilePhoto: (formData: FormData) =>
+    api.patch('users/me/', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
 }
 
 export const driverApi = {
@@ -298,6 +302,13 @@ export const driverWalletApi = {
   getPayoutMethod: () => api.get('wallet/driver/payout-method/'),
   updatePayoutMethod: (data: any) => api.put('wallet/driver/payout-method/', data),
   requestWithdrawal: (data: any) => api.post('wallet/driver/withdrawals/', data),
+}
+
+export const notificationsApi = {
+  getNotifications: () => api.get('notifications/'),
+  markAsRead: (id: string) => api.post(`notifications/${id}/read/`),
+  markAllAsRead: () => api.post('notifications/mark-all-read/'),
+  getUnreadCount: () => api.get('notifications/unread-count/'),
 }
 
 export default api

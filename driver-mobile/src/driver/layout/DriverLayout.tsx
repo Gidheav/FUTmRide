@@ -20,9 +20,11 @@ interface LayoutProps {
   children: ReactNode;
   onLogout: () => void;
   onOpenWebLink?: (url: string, title: string) => void;
+  onOpenNotifications?: () => void;
+  hasUnreadNotifications?: boolean;
 }
 
-export default function DriverLayout({ activeTab, onTabChange, children, onLogout, onOpenWebLink }: LayoutProps) {
+export default function DriverLayout({ activeTab, onTabChange, children, onLogout, onOpenWebLink, onOpenNotifications, hasUnreadNotifications }: LayoutProps) {
   const insets = useSafeAreaInsets();
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const { user } = useAuthStore();
@@ -60,10 +62,10 @@ export default function DriverLayout({ activeTab, onTabChange, children, onLogou
           </TouchableOpacity>
           
           <View style={styles.headerIcons}>
-            <View style={styles.notificationWrapper}>
+            <TouchableOpacity style={styles.notificationWrapper} onPress={onOpenNotifications}>
               <MaterialIcons name="notifications" size={24} color={COLORS.onSurfaceVariant} />
-              <View style={styles.notificationDot} />
-            </View>
+              {hasUnreadNotifications && <View style={styles.notificationDot} />}
+            </TouchableOpacity>
             {user?.profile_photo ? (
               <Image source={{ uri: user.profile_photo }} style={styles.avatar} />
             ) : (

@@ -54,11 +54,12 @@ import CreateGarageRideScreen from './screens/CreateGarageRideScreen'
 import AppLockScreen from './screens/AppLockScreen'
 import PinSetupScreen from './screens/PinSetupScreen'
 import WebViewScreen from './screens/WebViewScreen'
+import NotificationsPage from './pages/NotificationsPage'
 import DriverLayout from './layout/DriverLayout'
 import LoadingOverlay from './components/LoadingOverlay'
 import type { DriverTab } from './types'
 
-type SubPage = null | 'settings' | 'edit-profile' | 'account-verification' | 'vehicle-verification' | 'verification-success' | 'garage-ride' | 'webview'
+type SubPage = null | 'settings' | 'edit-profile' | 'account-verification' | 'vehicle-verification' | 'verification-success' | 'garage-ride' | 'webview' | 'notifications'
 
 const GARAGE_STATUS_LABELS: Record<string, string> = {
   open: 'Accepting passengers',
@@ -410,7 +411,7 @@ export default function DriverApp() {
     const booked = Number(garageRide.booked_seats || 0)
     const total = Number(garageRide.total_seats || 0)
     const statusLabel = GARAGE_STATUS_LABELS[status] || 'Ride update'
-    const message = `Garage ride: ${booked}/${total} seats booked Ã¢â‚¬Â¢ ${statusLabel}`
+    const message = `Garage ride: ${booked}/${total} seats booked • ${statusLabel}`
     const key = `${garageRide.id}:${status}:${booked}:${total}`
 
     if (key === lastRideNotificationKey.current) return
@@ -436,7 +437,7 @@ export default function DriverApp() {
     }
   }, [garageRide, garagePassengers.length, sessionActive])
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬ In-App Announcements Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  // ——— In-App Announcements —————————————————————————————————————————————————————
   useEffect(() => {
     if (!sessionActive || !user) return
 
@@ -473,6 +474,15 @@ export default function DriverApp() {
     enabled: sessionActive,
     staleTime: 30000,
   })
+
+  // Fetch unread notifications count
+  const { data: unreadCountData } = useQuery({
+    queryKey: ['notifications-unread-count'],
+    queryFn: () => notificationsApi.getUnreadCount().then(r => r.data),
+    enabled: sessionActive,
+    refetchInterval: 60000, // Poll every minute
+  })
+  const hasUnreadNotifications = (unreadCountData?.count || 0) > 0
 
   const handleRetrySecureSession = async () => {
     setLockBusy(true)
@@ -644,84 +654,61 @@ export default function DriverApp() {
     )
   }
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬ Sub-page rendering (full screen, no layout) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
-  if (subPage === 'settings') {
+  // ——— Sub-page rendering (full screen, no layout) —————————————————————————————————————————————————————
+  if (subPage) {
     return (
       <SafeAreaProvider>
-        <AccountSettingsPage
-          onBack={() => setSubPage(null)}
-          onLogout={endDriverSession}
-          verificationProgress={progressData}
-          onStartAccountVerification={() => setSubPage('account-verification')}
-          onStartVehicleVerification={() => setSubPage('vehicle-verification')}
-        />
+        {(() => {
+          switch (subPage) {
+            case 'settings':
+              return (
+                <AccountSettingsPage
+                  onBack={() => setSubPage(null)}
+                  onLogout={endDriverSession}
+                  verificationProgress={progressData}
+                  onStartAccountVerification={() => setSubPage('account-verification')}
+                  onStartVehicleVerification={() => setSubPage('vehicle-verification')}
+                />
+              )
+            case 'edit-profile': return <EditProfilePage onBack={() => setSubPage(null)} />
+            case 'account-verification':
+              return (
+                <AccountVerificationScreen
+                  onBack={() => setSubPage(null)}
+                  onSuccess={() => setSubPage('verification-success')}
+                />
+              )
+            case 'vehicle-verification':
+              return (
+                <VehicleVerificationScreen
+                  onBack={() => setSubPage(null)}
+                  onAllUploaded={() => setSubPage('verification-success')}
+                />
+              )
+            case 'verification-success':
+              return <VerificationSuccessScreen onContinue={() => setSubPage(null)} />
+            case 'garage-ride': return <CreateGarageRideScreen onBack={() => setSubPage(null)} />
+            case 'webview':
+              return (
+                <WebViewScreen 
+                  url={webviewUrl} 
+                  title={webviewTitle} 
+                  onClose={() => {
+                    setSubPage(null)
+                    setWebviewUrl('')
+                    setWebviewTitle('')
+                  }} 
+                />
+              )
+            case 'notifications': return <NotificationsPage onBack={() => setSubPage(null)} />
+            default: return null
+          }
+        })()}
       </SafeAreaProvider>
     )
   }
 
-  if (subPage === 'edit-profile') {
-    return (
-      <SafeAreaProvider>
-        <EditProfilePage onBack={() => setSubPage(null)} />
-      </SafeAreaProvider>
-    )
-  }
-
-  if (subPage === 'account-verification') {
-    return (
-      <SafeAreaProvider>
-        <AccountVerificationScreen
-          onBack={() => setSubPage(null)}
-          onSuccess={() => setSubPage('verification-success')}
-        />
-      </SafeAreaProvider>
-    )
-  }
-
-  if (subPage === 'vehicle-verification') {
-    return (
-      <SafeAreaProvider>
-        <VehicleVerificationScreen
-          onBack={() => setSubPage(null)}
-          onAllUploaded={() => setSubPage('verification-success')}
-        />
-      </SafeAreaProvider>
-    )
-  }
-
-  if (subPage === 'verification-success') {
-    return (
-      <SafeAreaProvider>
-        <VerificationSuccessScreen onContinue={() => setSubPage(null)} />
-      </SafeAreaProvider>
-    )
-  }
-
-  if (subPage === 'garage-ride') {
-    return (
-      <SafeAreaProvider>
-        <CreateGarageRideScreen onBack={() => setSubPage(null)} />
-      </SafeAreaProvider>
-    )
-  }
-
-  if (subPage === 'webview') {
-    return (
-      <SafeAreaProvider>
-        <WebViewScreen 
-          url={webviewUrl} 
-          title={webviewTitle} 
-          onClose={() => {
-            setSubPage(null)
-            setWebviewUrl('')
-            setWebviewTitle('')
-          }} 
-        />
-      </SafeAreaProvider>
-    )
-  }
-
-  // Ã¢â€â‚¬Ã¢â€â‚¬ Compute verification state for banner Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  // ——— Compute verification state for banner —————————————————————————————————————————————————————
   const accountStatus = progressData?.account_verification?.status ?? null
   const vehicleDocs = progressData?.vehicle_documents ?? []
   const allVehicleApproved = vehicleDocs.length > 0 &&
@@ -768,7 +755,7 @@ export default function DriverApp() {
         icon: 'directions-car' as const,
       }
     }
-    return null // Fully verified Ã¢â‚¬â€ no banner
+    return null // Fully verified — no banner
   }
 
   const banner = getBannerConfig()
@@ -810,6 +797,8 @@ export default function DriverApp() {
           setWebviewTitle(title)
           setSubPage('webview')
         }}
+        onOpenNotifications={() => setSubPage('notifications')}
+        hasUnreadNotifications={hasUnreadNotifications}
       >
         {sessionWarning ? (
           <View style={s.sessionWarning}>

@@ -211,6 +211,7 @@ export default function TestPage() {
         joinRide: () => apiService.joinTestScheduledRide(selectedRide?.id || '', clampCount(counts.join)),
         createOnDemand: () => apiService.createTestOnDemandRides(clampCount(counts.ondemandRides)),
         deleteOnDemand: () => apiService.deleteTestOnDemandRides(clampCount(counts.deleteOnDemand)),
+        flushOnDemand: () => apiService.flushAllOnDemandRides(),
         importLocations: () => {
           let data;
           try { data = JSON.parse(jsonInput) } catch (err) { throw new Error('Invalid JSON array') }
@@ -762,6 +763,10 @@ export default function TestPage() {
                           <Trash2 size={13} />
                           Delete random requests
                         </button>
+                        <button style={{ ...s.dangerButton, marginLeft: 'auto' }} onClick={() => runAction.mutate('flushOnDemand')} disabled={busy}>
+                          <RefreshCcw size={13} />
+                          Clear all on-demand
+                        </button>
                       </div>
                     </div>
                   ) : section === 'join' ? (
@@ -928,6 +933,7 @@ function actionLabel(action: string) {
     joinRide: 'Join scheduled ride',
     createOnDemand: 'Create on-demand rides',
     deleteOnDemand: 'Delete on-demand rides',
+    flushOnDemand: 'Clear all on-demand rides',
     importLocations: 'Bulk import locations',
     publishLocations: 'Publish location snapshot',
   } as Record<string, string>)[action] || 'Test action'
