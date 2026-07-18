@@ -737,6 +737,16 @@ class PinVerifySerializer(serializers.Serializer):
         return value
 
 
+class PinResetConfirmSerializer(serializers.Serializer):
+    otp_code = serializers.CharField(max_length=6)
+    new_pin = serializers.CharField(min_length=4, max_length=6)
+
+    def validate_new_pin(self, value):
+        if not value.isdigit():
+            raise serializers.ValidationError('PIN must be numeric.')
+        return value
+
+
 class TwoFactorStartSerializer(serializers.Serializer):
     method = serializers.ChoiceField(choices=['totp', 'sms', 'email'])
 

@@ -69,6 +69,16 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
   const [txPinSuccess, setTxPinSuccess] = useState('')
   const [txPinLoading, setTxPinLoading] = useState(false)
 
+  // Forgot TX PIN (OTP reset) state
+  const [pinResetModalVisible, setPinResetModalVisible] = useState(false)
+  const [pinResetStep, setPinResetStep] = useState<'request' | 'confirm'>('request')
+  const [pinResetOtp, setPinResetOtp] = useState('')
+  const [pinResetNewPin, setPinResetNewPin] = useState('')
+  const [pinResetConfirm, setPinResetConfirm] = useState('')
+  const [pinResetError, setPinResetError] = useState('')
+  const [pinResetSuccess, setPinResetSuccess] = useState('')
+  const [pinResetLoading, setPinResetLoading] = useState(false)
+
   const [timeoutModalVisible, setTimeoutModalVisible] = useState(false)
   const [didAutoOpenPin, setDidAutoOpenPin] = useState(false)
   const pinCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -299,6 +309,72 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
     setTxPinModalVisible(true)
   }
 
+  const openPinResetModal = () => {
+    setTxPinModalVisible(false)
+    setPinResetStep('request')
+    setPinResetOtp('')
+    setPinResetNewPin('')
+    setPinResetConfirm('')
+    setPinResetError('')
+    setPinResetSuccess('')
+    setPinResetModalVisible(true)
+  }
+
+  const handleRequestPinResetOtp = async () => {
+    setPinResetLoading(true)
+    setPinResetError('')
+    try {
+      await api.post('auth/settings/pin/reset/request/')
+      setPinResetStep('confirm')
+    } catch (err: any) {
+      setPinResetError(
+        err?.response?.data?.error?.message ||
+        err?.response?.data?.detail ||
+        'Failed to send OTP. Please try again.'
+      )
+    } finally {
+      setPinResetLoading(false)
+    }
+  }
+
+  const handleConfirmPinReset = async () => {
+    if (!pinResetOtp || pinResetOtp.length < 6) {
+      setPinResetError('Please enter the 6-digit OTP.')
+      return
+    }
+    if (!pinResetNewPin || pinResetNewPin.length < 4) {
+      setPinResetError('PIN must be at least 4 digits.')
+      return
+    }
+    if (pinResetNewPin !== pinResetConfirm) {
+      setPinResetError('PINs do not match.')
+      return
+    }
+    setPinResetLoading(true)
+    setPinResetError('')
+    try {
+      const res = await api.post('auth/settings/pin/reset/confirm/', {
+        otp_code: pinResetOtp,
+        new_pin: pinResetNewPin,
+      })
+      setHasTransactionPin(true)
+      setTransactionPinStatus('ready')
+      setPinResetSuccess('Transaction PIN reset successfully!')
+      setTimeout(() => {
+        setPinResetModalVisible(false)
+        setPinResetSuccess('')
+      }, 1200)
+    } catch (err: any) {
+      setPinResetError(
+        err?.response?.data?.error?.message ||
+        err?.response?.data?.detail ||
+        'Reset failed. Please check your OTP and try again.'
+      )
+    } finally {
+      setPinResetLoading(false)
+    }
+  }
+
   const resolveTxPinComplete = async (value: string) => {
     if (txPinStep === 'current') {
       setTxPinLoading(true)
@@ -517,70 +593,38 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
         )}
       </View>
 
+      {/* ── App Lock PIN Modal ──────────────────────────────────────────── */}
       <Modal visible={pinModalVisible} animationType="fade" transparent onRequestClose={() => setPinModalVisible(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>
-              {pinAction === 'remove'
-                ? 'Remove PIN'
-                : pinStep === 'current'
-                  ? 'Verify Current PIN'
-                  : pinStep === 'new'
-                    ? 'Set PIN'
-                    : 'Confirm PIN'}
+              {pinAction === 'remove' ? 'Remove PIN' : pinStep === 'current' ? 'Verify Current PIN' : pinStep === 'new' ? 'Set PIN' : 'Confirm PIN'}
             </Text>
             <Text style={styles.modalSubtitle}>
-              {pinAction === 'remove'
-                ? 'Enter your current PIN to remove it.'
-                : pinStep === 'current'
-                  ? 'Enter your existing 4-digit PIN.'
-                  : pinStep === 'new'
-                    ? 'Create a new 4-digit PIN.'
-                    : 'Re-enter your new PIN to confirm.'}
+              {pinAction === 'remove' ? 'Enter your current PIN to remove it.' : pinStep === 'current' ? 'Enter your existing 4-digit PIN.' : pinStep === 'new' ? 'Create a new 4-digit PIN.' : 'Re-enter your new PIN to confirm.'}
             </Text>
-
             <View style={styles.modalStatus}>
               {pinError ? <Text style={styles.modalError}>{pinError}</Text> : null}
               {!pinError && pinSuccess ? <Text style={styles.modalSuccess}>{pinSuccess}</Text> : null}
             </View>
-
             <View style={styles.dotRow}>
               {[0, 1, 2, 3].map((index) => {
-                const activeValue =
-                  pinStep === 'current' ? currentPinInput : pinStep === 'new' ? pinInput : pinConfirm
-                return (
-                  <View
-                    key={`pin-dot-${index}`}
-                    style={index < activeValue.length ? styles.dotFilled : styles.dotEmpty}
-                  />
-                )
+                const activeValue = pinStep === 'current' ? currentPinInput : pinStep === 'new' ? pinInput : pinConfirm
+                return <View key={`pin-dot-${index}`} style={index < activeValue.length ? styles.dotFilled : styles.dotEmpty} />
               })}
             </View>
-
             <View style={styles.keypad}>
               {keypadRows.map((row, rowIndex) => (
                 <View key={`row-${rowIndex}`} style={styles.keypadRow}>
                   {row.map((item, index) => {
-                    if (!item) {
-                      return <View key={`empty-${rowIndex}-${index}`} style={styles.keypadEmpty} />
-                    }
-                    if (item === 'back') {
-                      return (
-                        <Pressable
-                          key="back"
-                          style={({ pressed }) => [styles.keypadBack, pressed && styles.keypadPressed]}
-                          onPress={() => handleDigitPress('back')}
-                        >
-                          <MaterialIcons name="backspace" size={26} color="#3d4a3e" />
-                        </Pressable>
-                      )
-                    }
+                    if (!item) return <View key={`empty-${rowIndex}-${index}`} style={styles.keypadEmpty} />
+                    if (item === 'back') return (
+                      <Pressable key="back" style={({ pressed }) => [styles.keypadBack, pressed && styles.keypadPressed]} onPress={() => handleDigitPress('back')}>
+                        <MaterialIcons name="backspace" size={26} color="#3d4a3e" />
+                      </Pressable>
+                    )
                     return (
-                      <Pressable
-                        key={`${item}-${rowIndex}`}
-                        style={({ pressed }) => [styles.keypadButton, pressed && styles.keypadPressed]}
-                        onPress={() => handleDigitPress(item)}
-                      >
+                      <Pressable key={`${item}-${rowIndex}`} style={({ pressed }) => [styles.keypadButton, pressed && styles.keypadPressed]} onPress={() => handleDigitPress(item)}>
                         <Text style={styles.keypadText}>{item}</Text>
                       </Pressable>
                     )
@@ -588,87 +632,50 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
                 </View>
               ))}
             </View>
-
-            <TouchableOpacity
-              style={styles.modalCancel}
-              onPress={() => {
-                setPinModalVisible(false)
-                setPinError('')
-                setPinSuccess('')
-                if (pinCloseTimer.current) {
-                  clearTimeout(pinCloseTimer.current)
-                  pinCloseTimer.current = null
-                }
-              }}
-            >
+            <TouchableOpacity style={styles.modalCancel} onPress={() => { setPinModalVisible(false); setPinError(''); setPinSuccess(''); if (pinCloseTimer.current) { clearTimeout(pinCloseTimer.current); pinCloseTimer.current = null } }}>
               <Text style={styles.modalCancelText}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
+      {/* ── Transaction PIN Modal ───────────────────────────────────────── */}
       <Modal visible={txPinModalVisible} animationType="fade" transparent onRequestClose={() => setTxPinModalVisible(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>
-              {txPinStep === 'current'
-                ? 'Verify Current PIN'
-                : txPinStep === 'new'
-                  ? 'Set Transaction PIN'
-                  : 'Confirm PIN'}
+              {txPinStep === 'current' ? 'Verify Current PIN' : txPinStep === 'new' ? 'Set Transaction PIN' : 'Confirm PIN'}
             </Text>
             <Text style={styles.modalSubtitle}>
-              {txPinStep === 'current'
-                ? 'Enter your existing 4-digit PIN.'
-                : txPinStep === 'new'
-                  ? 'Create a new 4-digit transaction PIN.'
-                  : 'Re-enter your new PIN to confirm.'}
+              {txPinStep === 'current' ? 'Enter your existing 4-digit PIN.' : txPinStep === 'new' ? 'Create a new 4-digit transaction PIN.' : 'Re-enter your new PIN to confirm.'}
             </Text>
-
+            {txPinStep === 'current' && (
+              <TouchableOpacity onPress={openPinResetModal} style={{ alignSelf: 'flex-end' }} activeOpacity={0.7}>
+                <Text style={{ fontSize: 12, color: '#6A1B9A', fontWeight: '600' }}>Forgot PIN?</Text>
+              </TouchableOpacity>
+            )}
             <View style={styles.modalStatus}>
               {txPinError ? <Text style={styles.modalError}>{txPinError}</Text> : null}
               {!txPinError && txPinSuccess ? <Text style={styles.modalSuccess}>{txPinSuccess}</Text> : null}
             </View>
-
             <View style={styles.dotRow}>
               {[0, 1, 2, 3].map((index) => {
-                const activeValue =
-                  txPinStep === 'current' ? currentTxPinInput : txPinStep === 'new' ? txPinInput : txPinConfirm
-                return (
-                  <View
-                    key={`tx-pin-dot-${index}`}
-                    style={index < activeValue.length ? styles.dotFilled : styles.dotEmpty}
-                  />
-                )
+                const activeValue = txPinStep === 'current' ? currentTxPinInput : txPinStep === 'new' ? txPinInput : txPinConfirm
+                return <View key={`tx-pin-dot-${index}`} style={index < activeValue.length ? styles.dotFilled : styles.dotEmpty} />
               })}
             </View>
-
             <View style={styles.keypad}>
               {keypadRows.map((row, rowIndex) => (
                 <View key={`row-${rowIndex}`} style={styles.keypadRow}>
                   {row.map((item, index) => {
-                    if (!item) {
-                      return <View key={`empty-${rowIndex}-${index}`} style={styles.keypadEmpty} />
-                    }
-                    if (item === 'back') {
-                      return (
-                        <Pressable
-                          key="back"
-                          style={({ pressed }) => [styles.keypadBack, pressed && styles.keypadPressed]}
-                          onPress={() => handleTxDigitPress('back')}
-                          disabled={txPinLoading}
-                        >
-                          <MaterialIcons name="backspace" size={26} color="#3d4a3e" />
-                        </Pressable>
-                      )
-                    }
+                    if (!item) return <View key={`empty-${rowIndex}-${index}`} style={styles.keypadEmpty} />
+                    if (item === 'back') return (
+                      <Pressable key="back" style={({ pressed }) => [styles.keypadBack, pressed && styles.keypadPressed]} onPress={() => handleTxDigitPress('back')} disabled={txPinLoading}>
+                        <MaterialIcons name="backspace" size={26} color="#3d4a3e" />
+                      </Pressable>
+                    )
                     return (
-                      <Pressable
-                        key={`${item}-${rowIndex}`}
-                        style={({ pressed }) => [styles.keypadButton, pressed && styles.keypadPressed]}
-                        onPress={() => handleTxDigitPress(item)}
-                        disabled={txPinLoading}
-                      >
+                      <Pressable key={`${item}-${rowIndex}`} style={({ pressed }) => [styles.keypadButton, pressed && styles.keypadPressed]} onPress={() => handleTxDigitPress(item)} disabled={txPinLoading}>
                         <Text style={styles.keypadText}>{item}</Text>
                       </Pressable>
                     )
@@ -676,26 +683,119 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
                 </View>
               ))}
             </View>
-
-            <TouchableOpacity
-              style={styles.modalCancel}
-              onPress={() => {
-                setTxPinModalVisible(false)
-                setTxPinError('')
-                setTxPinSuccess('')
-                if (txPinCloseTimer.current) {
-                  clearTimeout(txPinCloseTimer.current)
-                  txPinCloseTimer.current = null
-                }
-              }}
-              disabled={txPinLoading}
-            >
+            <TouchableOpacity style={styles.modalCancel} onPress={() => { setTxPinModalVisible(false); setTxPinError(''); setTxPinSuccess(''); if (txPinCloseTimer.current) { clearTimeout(txPinCloseTimer.current); txPinCloseTimer.current = null } }} disabled={txPinLoading}>
               <Text style={styles.modalCancelText}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
+      {/* ── Forgot Transaction PIN (OTP Reset) Modal ────────────────────── */}
+      <Modal visible={pinResetModalVisible} animationType="fade" transparent onRequestClose={() => setPinResetModalVisible(false)}>
+        <View style={styles.modalBackdrop}>
+          <ScrollView style={{ width: '100%' }} contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingVertical: 20 }}>
+            <View style={[styles.modalCard, { paddingBottom: 24, margin: 0 }]}>
+              <Text style={styles.modalTitle}>Reset Transaction PIN</Text>
+
+              {pinResetStep === 'request' ? (
+                <>
+                  <Text style={styles.modalSubtitle}>
+                    We'll send a one-time code to your registered email. Use it to set a new transaction PIN.
+                  </Text>
+                  {pinResetError ? <Text style={[styles.modalError, { textAlign: 'center' }]}>{pinResetError}</Text> : null}
+                  {pinResetSuccess ? <Text style={[styles.modalSuccess, { textAlign: 'center' }]}>{pinResetSuccess}</Text> : null}
+                  <TouchableOpacity
+                    style={{ backgroundColor: '#6A1B9A', borderRadius: 10, paddingVertical: 14, marginTop: 8, alignItems: 'center' }}
+                    onPress={handleRequestPinResetOtp}
+                    disabled={pinResetLoading}
+                    activeOpacity={0.85}
+                  >
+                    {pinResetLoading
+                      ? <ActivityIndicator size="small" color="#ffffff" />
+                      : <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Send OTP to Email</Text>}
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.modalSubtitle}>
+                    Enter the 6-digit code sent to your email, then set your new PIN below.
+                  </Text>
+                  {pinResetError ? <Text style={[styles.modalError, { textAlign: 'center' }]}>{pinResetError}</Text> : null}
+                  {pinResetSuccess ? <Text style={[styles.modalSuccess, { textAlign: 'center' }]}>{pinResetSuccess}</Text> : null}
+
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#374151', marginBottom: 4, letterSpacing: 0.5 }}>OTP CODE</Text>
+                  <View style={{ flexDirection: 'row', gap: 6, justifyContent: 'center', marginBottom: 4, width: '100%' }}>
+                    {[0,1,2,3,4,5].map((i) => (
+                      <View key={i} style={{ flex: 1, maxWidth: 36, height: 44, borderRadius: 8, borderWidth: 2, borderColor: pinResetOtp.length > i ? '#6A1B9A' : '#e0d5eb', alignItems: 'center', justifyContent: 'center', backgroundColor: '#faf7fd' }}>
+                        <Text style={{ fontSize: 18, fontWeight: '700', color: '#1a1c1c' }}>{pinResetOtp[i] ?? ''}</Text>
+                      </View>
+                    ))}
+                  </View>
+
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#374151', marginBottom: 2, marginTop: 8, letterSpacing: 0.5 }}>NEW PIN</Text>
+                  <View style={styles.dotRow}>
+                    {[0,1,2,3].map((i) => <View key={i} style={i < pinResetNewPin.length ? styles.dotFilled : styles.dotEmpty} />)}
+                  </View>
+
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#374151', marginBottom: 2, marginTop: 10, letterSpacing: 0.5 }}>CONFIRM PIN</Text>
+                  <View style={styles.dotRow}>
+                    {[0,1,2,3].map((i) => <View key={i} style={i < pinResetConfirm.length ? styles.dotFilled : styles.dotEmpty} />)}
+                  </View>
+
+                  <View style={styles.keypad}>
+                    {keypadRows.map((row, rowIndex) => (
+                      <View key={`reset-row-${rowIndex}`} style={styles.keypadRow}>
+                        {row.map((item, idx) => {
+                          if (!item) return <View key={`re-${rowIndex}-${idx}`} style={styles.keypadEmpty} />
+                          if (item === 'back') return (
+                            <Pressable key="re-back" style={({ pressed }) => [styles.keypadBack, pressed && styles.keypadPressed]} disabled={pinResetLoading}
+                              onPress={() => {
+                                if (pinResetOtp.length < 6) setPinResetOtp(p => p.slice(0, -1))
+                                else if (pinResetNewPin.length < 4) setPinResetNewPin(p => p.slice(0, -1))
+                                else setPinResetConfirm(p => p.slice(0, -1))
+                              }}
+                            >
+                              <MaterialIcons name="backspace" size={26} color="#3d4a3e" />
+                            </Pressable>
+                          )
+                          return (
+                            <Pressable key={`re-${item}-${rowIndex}`} style={({ pressed }) => [styles.keypadButton, pressed && styles.keypadPressed]} disabled={pinResetLoading}
+                              onPress={() => {
+                                if (pinResetOtp.length < 6) setPinResetOtp(p => p + item)
+                                else if (pinResetNewPin.length < 4) setPinResetNewPin(p => p + item)
+                                else if (pinResetConfirm.length < 4) setPinResetConfirm(p => p + item)
+                              }}
+                            >
+                              <Text style={styles.keypadText}>{item}</Text>
+                            </Pressable>
+                          )
+                        })}
+                      </View>
+                    ))}
+                  </View>
+
+                  <TouchableOpacity
+                    style={{ backgroundColor: '#6A1B9A', borderRadius: 10, paddingVertical: 14, marginTop: 4, alignItems: 'center' }}
+                    onPress={handleConfirmPinReset}
+                    disabled={pinResetLoading}
+                    activeOpacity={0.85}
+                  >
+                    {pinResetLoading
+                      ? <ActivityIndicator size="small" color="#ffffff" />
+                      : <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Reset PIN</Text>}
+                  </TouchableOpacity>
+                </>
+              )}
+
+              <TouchableOpacity style={styles.modalCancel} onPress={() => { setPinResetModalVisible(false); setPinResetError('') }} disabled={pinResetLoading}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* ── Auto-lock Timeout Modal ─────────────────────────────────────── */}
       <Modal visible={timeoutModalVisible} animationType="fade" transparent onRequestClose={() => setTimeoutModalVisible(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
@@ -704,14 +804,7 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
               {TIMEOUT_OPTIONS.map((option) => {
                 const selected = lockTimeoutMinutes === option.value
                 return (
-                  <TouchableOpacity
-                    key={option.value}
-                    style={styles.modalRow}
-                    onPress={() => {
-                      setLockTimeoutMinutes(option.value)
-                      setTimeoutModalVisible(false)
-                    }}
-                  >
+                  <TouchableOpacity key={option.value} style={styles.modalRow} onPress={() => { setLockTimeoutMinutes(option.value); setTimeoutModalVisible(false) }}>
                     <View style={styles.radioOuter}>
                       {selected ? <View style={styles.radioInner} /> : null}
                     </View>
@@ -735,6 +828,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f9f9f9',
     padding: 20,
+    gap: 16,
   },
   header: {
     flexDirection: 'row',
@@ -881,6 +975,8 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     width: '100%',
+    maxWidth: 400,
+    alignSelf: 'center',
     backgroundColor: '#ffffff',
     borderRadius: 16,
     padding: 16,

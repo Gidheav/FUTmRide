@@ -12,6 +12,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django_filters.rest_framework import DjangoFilterBackend
+from apps.notifications.services import NotificationService
 
 from .models import Campus, CampusAdminProfile, DriverProfile, IntegrationSettings, OTPVerification, StudentProfile, User, UserRole, UserSettings, MapSettings
 from .permissions import IsAdminUser, IsAdminOrCampusAdmin
@@ -28,6 +29,7 @@ from .serializers import (
     IntegrationSettingsSerializer,
     PinSetSerializer,
     PinVerifySerializer,
+    PinResetConfirmSerializer,
     TwoFactorStartSerializer,
     TwoFactorConfirmSerializer,
     TwoFactorDisableSerializer,
@@ -937,6 +939,86 @@ class PinVerifyView(APIView):
             ])
         return Response({
             'verified': True,
+            'offline_pin_verifier': settings_obj.get_offline_pin_verifier(),
+        })
+
+
+class PinResetRequestOTPView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if not request.user.email:
+            return Response(
+                {'error': {'code': 'EMAIL_REQUIRED', 'message': 'You must have an email address to reset your PIN.'}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        EmailOTPService.create_and_send(request.user, OTPVerification.Purpose.TRANSACTION_PIN)
+        return Response({'message': 'OTP sent to your registered email address.'})
+
+
+class PinResetConfirmView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = PinResetConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        otp_code = serializer.validated_data['otp_code']
+        new_pin = serializer.validated_data['new_pin']
+
+        success, message = EmailOTPService.verify(request.user.email, otp_code, OTPVerification.Purpose.TRANSACTION_PIN)
+        if not success:
+            return Response(
+                {'error': {'code': 'OTP_INVALID', 'message': message}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        settings_obj = _get_user_settings(request.user)
+        settings_obj.pin_hash = make_password(new_pin)
+        settings_obj.pin_updated_at = timezone.now()
+        settings_obj.set_offline_pin_verifier(new_pin)
+        settings_obj.save(update_fields=[
+            'pin_hash',
+            'pin_updated_at',
+            'offline_pin_salt',
+            'offline_pin_hash',
+            'offline_pin_iterations',
+        ])
+        
+        NotificationService.notify(
+            user=request.user,
+            notification_type='system_alert',
+            title='Transaction PIN Reset',
+            body='Your transaction PIN has been successfully reset. If you did not initiate this change, please contact support immediately.',
+        )
+
+        # Also send email alert
+        try:
+            from django.core.mail import EmailMultiAlternatives
+            from django.template.loader import render_to_string
+            from django.conf import settings as django_settings
+            context = {
+                'app_name': 'LR-Ride',
+                'headline': 'Transaction PIN Reset Successful',
+                'code': '••••',  # not showing actual PIN
+                'expiry_minutes': 0,
+                'support_message': 'If you did not perform this action, please contact support immediately.',
+            }
+            html_body = render_to_string('emails/otp_email.html', context)
+            text_body = f'Your LR-Ride transaction PIN has been successfully reset. If this was not you, contact support immediately.'
+            msg = EmailMultiAlternatives(
+                subject='LR-Ride: Transaction PIN Reset',
+                body=text_body,
+                from_email=django_settings.DEFAULT_FROM_EMAIL,
+                to=[request.user.email],
+            )
+            msg.attach_alternative(html_body, 'text/html')
+            msg.send(fail_silently=True)
+        except Exception:
+            pass
+
+        return Response({
+            'message': 'PIN reset successfully.',
             'offline_pin_verifier': settings_obj.get_offline_pin_verifier(),
         })
 
