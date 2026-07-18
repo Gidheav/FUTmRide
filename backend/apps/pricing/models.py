@@ -101,3 +101,51 @@ class PlatformSettings(models.Model):
         """Load the singleton instance, creating defaults if not yet present."""
         obj, _ = cls.objects.get_or_create(defaults={})
         return obj
+
+
+class RouteGraphVersion(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    version_name = models.CharField(max_length=100)
+    is_published = models.BooleanField(default=False, db_index=True)
+    published_at = models.DateTimeField(auto_now_add=True)
+    author = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+
+    class Meta:
+        db_table = 'route_graph_versions'
+        ordering = ['-published_at']
+
+    def __str__(self):
+        return f'{self.version_name} ({"Active" if self.is_published else "Archived"})'
+
+    @classmethod
+    def get_active(cls):
+        return cls.objects.filter(is_published=True).order_by('-published_at').first()
+
+
+class RouteLane(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    graph_version = models.ForeignKey(RouteGraphVersion, on_delete=models.CASCADE, related_name='lanes')
+    name = models.CharField(max_length=255, blank=True)
+    geometry = models.JSONField(help_text='List of {lat, lng} coordinate dictionaries')
+    distance_km = models.DecimalField(max_digits=8, decimal_places=3)
+    
+    class Direction(models.TextChoices):
+        TWO_WAY = 'two_way', 'Two-way'
+        ONE_WAY = 'one_way', 'One-way'
+        
+    direction = models.CharField(max_length=20, choices=Direction.choices, default=Direction.TWO_WAY)
+    
+    class Status(models.TextChoices):
+        ACTIVE = 'active', 'Active'
+        BLOCKED = 'blocked', 'Blocked'
+        
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
+    
+    priority = models.CharField(max_length=50, default='main')
+    allowed_vehicles = models.JSONField(default=list, help_text='List of allowed vehicle types, e.g. ["motorbike", "sedan"]')
+
+    class Meta:
+        db_table = 'route_lanes'
+
+    def __str__(self):
+        return f'{self.name or "Unnamed Lane"} ({self.distance_km}km)'

@@ -6,6 +6,8 @@ from .views import (
     PlatformSettingsView,
     FareConfigDeactivateView,
     ActiveFareConfigsView,
+    RouteGraphActiveView,
+    RouteGraphPublishView,
 )
 
 urlpatterns = [
@@ -15,4 +17,6 @@ urlpatterns = [
     path('config/<uuid:pk>/deactivate/', FareConfigDeactivateView.as_view(), name='fare-config-deactivate'),
     path('estimate/', FareEstimateView.as_view(), name='fare-estimate'),
     path('settings/', PlatformSettingsView.as_view(), name='platform-settings'),
+    path('route-graph/active/', RouteGraphActiveView.as_view(), name='route-graph-active'),
+    path('route-graph/publish/', RouteGraphPublishView.as_view(), name='route-graph-publish'),
 ]

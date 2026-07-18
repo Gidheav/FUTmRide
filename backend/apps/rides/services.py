@@ -86,7 +86,27 @@ class RouteDistanceResolver:
         vehicle_type: str | None = None,
     ) -> RouteResolution:
         from apps.pricing.models import PlatformSettings
+        from apps.rides.routing import CampusRouter
 
+        # 1. Always attempt the calibrated Campus Graph first
+        campus_router = CampusRouter(vehicle_type=vehicle_type)
+        campus_route = campus_router.resolve(
+            pickup_lat=pickup_latitude,
+            pickup_lng=pickup_longitude,
+            dropoff_lat=dropoff_latitude,
+            dropoff_lng=dropoff_longitude,
+        )
+        if campus_route:
+            return RouteResolution(
+                distance_km=campus_route['distance_km'],
+                duration_minutes=None,
+                geometry=campus_route['geometry'],
+                provider=campus_route['provider'],
+                confidence=campus_route['confidence'],
+                metadata=campus_route.get('metadata', {}),
+            )
+
+        # 2. Fallback to Platform Setting provider
         platform = PlatformSettings.load()
         provider = (platform.distance_provider or 'haversine').lower()
 

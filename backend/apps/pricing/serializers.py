@@ -1,7 +1,20 @@
 from rest_framework import serializers
-from .models import FareConfiguration, PlatformSettings
+from .models import FareConfiguration, PlatformSettings, RouteGraphVersion, RouteLane
 
 
+class RouteLaneSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RouteLane
+        fields = ['id', 'name', 'geometry', 'distance_km', 'direction', 'status', 'priority', 'allowed_vehicles']
+
+
+class RouteGraphVersionSerializer(serializers.ModelSerializer):
+    lanes = RouteLaneSerializer(many=True, read_only=True)
+    author_name = serializers.CharField(source='author.full_name', read_only=True)
+
+    class Meta:
+        model = RouteGraphVersion
+        fields = ['id', 'version_name', 'is_published', 'published_at', 'author_name', 'lanes']
 class FareConfigSerializer(serializers.ModelSerializer):
     created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
 

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export const ENGINE_TABS = ['overview', 'tariffs', 'simulation', 'global', 'history'] as const
+export const ENGINE_TABS = ['overview', 'tariffs', 'simulation', 'calibration', 'global', 'history'] as const
 
 export type EngineTab = (typeof ENGINE_TABS)[number]
 
@@ -25,6 +25,7 @@ export const ENGINE_NAV_ITEMS: Array<{ label: string; tab: EngineTab }> = [
   { label: 'OVERVIEW', tab: 'overview' },
   { label: 'TARIFFS', tab: 'tariffs' },
   { label: 'SIMULATION', tab: 'simulation' },
+  { label: 'CALIBRATION', tab: 'calibration' },
   { label: 'GLOBAL', tab: 'global' },
   { label: 'HISTORY', tab: 'history' },
 ]

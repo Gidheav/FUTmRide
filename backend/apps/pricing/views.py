@@ -133,3 +133,65 @@ class FareConfigDeactivateView(APIView):
         config.is_active = False
         config.save(update_fields=['is_active'])
         return Response(FareConfigSerializer(config).data)
+
+
+class RouteGraphActiveView(APIView):
+    """Get the currently active published route graph."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from .models import RouteGraphVersion
+        from .serializers import RouteGraphVersionSerializer
+        
+        active_version = RouteGraphVersion.get_active()
+        if not active_version:
+            return Response(None)
+            
+        serializer = RouteGraphVersionSerializer(active_version)
+        return Response(serializer.data)
+
+
+class RouteGraphPublishView(APIView):
+    """Publish a new route graph version."""
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
+
+    def post(self, request):
+        from .models import RouteGraphVersion, RouteLane
+        from django.db import transaction
+        
+        data = request.data
+        version_name = data.get('version_name', 'Draft')
+        lanes_data = data.get('lanes', [])
+        
+        if not lanes_data:
+            return Response({'error': 'Cannot publish an empty graph.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        with transaction.atomic():
+            # Unpublish older versions
+            RouteGraphVersion.objects.filter(is_published=True).update(is_published=False)
+            
+            # Create new version
+            new_version = RouteGraphVersion.objects.create(
+                version_name=version_name,
+                is_published=True,
+                author=request.user
+            )
+            
+            # Create lanes
+            lanes_to_create = []
+            for lane_data in lanes_data:
+                lanes_to_create.append(RouteLane(
+                    graph_version=new_version,
+                    name=lane_data.get('name', ''),
+                    geometry=lane_data.get('path', []),
+                    distance_km=lane_data.get('distanceKm', 0),
+                    direction=lane_data.get('direction', 'two_way'),
+                    status=lane_data.get('status', 'active'),
+                    priority=lane_data.get('priority', 'main'),
+                    allowed_vehicles=lane_data.get('allowedVehicles', [])
+                ))
+            
+            RouteLane.objects.bulk_create(lanes_to_create)
+            
+        from .serializers import RouteGraphVersionSerializer
+        return Response(RouteGraphVersionSerializer(new_version).data)
