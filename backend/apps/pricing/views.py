@@ -1,10 +1,13 @@
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.conf import settings
 from apps.accounts.permissions import IsAdminOrCampusAdmin
 from apps.rides.services import FareCalculator, RouteDistanceResolver
 from .models import FareConfiguration, PlatformSettings
 from .serializers import FareConfigSerializer, FareEstimateSerializer, PlatformSettingsSerializer
+import os
+import requests
 
 
 class FareConfigListView(generics.ListCreateAPIView):
@@ -195,3 +198,117 @@ class RouteGraphPublishView(APIView):
             
         from .serializers import RouteGraphVersionSerializer
         return Response(RouteGraphVersionSerializer(new_version).data)
+
+
+class RouteGraphTraceView(APIView):
+    """Trace road-shaped route suggestions between two points for calibration."""
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
+
+    REQUEST_TIMEOUT_SECONDS = 8
+
+    def post(self, request):
+        try:
+            start_lat = float(request.data.get('start_latitude'))
+            start_lng = float(request.data.get('start_longitude'))
+            end_lat = float(request.data.get('end_latitude'))
+            end_lng = float(request.data.get('end_longitude'))
+        except (TypeError, ValueError):
+            return Response({'error': 'Valid start and end coordinates are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        routes = self._trace_osrm(start_lat, start_lng, end_lat, end_lng)
+        if not routes:
+            routes = self._trace_google(start_lat, start_lng, end_lat, end_lng)
+
+        if not routes:
+            return Response({'error': 'No road route found. Move the pins closer to visible roads.'}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({'routes': routes})
+
+    def _trace_osrm(self, start_lat, start_lng, end_lat, end_lng):
+        url = f'https://router.project-osrm.org/route/v1/driving/{start_lng},{start_lat};{end_lng},{end_lat}'
+        params = {
+            'overview': 'full',
+            'geometries': 'geojson',
+            'alternatives': 'true',
+            'steps': 'true',
+        }
+        try:
+            response = requests.get(url, params=params, timeout=self.REQUEST_TIMEOUT_SECONDS)
+            response.raise_for_status()
+            data = response.json()
+        except Exception:
+            return []
+
+        if data.get('code') != 'Ok' or not data.get('routes'):
+            return []
+
+        traced = []
+        for idx, route in enumerate(data.get('routes', [])):
+            coords = ((route.get('geometry') or {}).get('coordinates') or [])
+            path = [{'lat': round(float(lat), 6), 'lng': round(float(lng), 6)} for lng, lat in coords]
+            if len(path) < 2:
+                continue
+
+            road_names = []
+            seen = set()
+            for leg in route.get('legs') or []:
+                for step in leg.get('steps') or []:
+                    name = step.get('name')
+                    if name and name not in seen:
+                        seen.add(name)
+                        road_names.append(name)
+
+            traced.append({
+                'id': f'osrm-{idx}',
+                'path': path,
+                'distance_km': round(float(route.get('distance') or 0) / 1000, 3),
+                'duration_minutes': round(float(route.get('duration') or 0) / 60) if route.get('duration') else None,
+                'summary': f"via {', '.join(road_names[:3])}" if road_names else f'OSRM route {idx + 1}',
+                'provider': 'osrm',
+            })
+        return traced
+
+    def _trace_google(self, start_lat, start_lng, end_lat, end_lng):
+        api_key = getattr(settings, 'GOOGLE_MAPS_API_KEY', None) or os.getenv('GOOGLE_MAPS_API_KEY')
+        if not api_key:
+            return []
+
+        params = {
+            'origin': f'{start_lat},{start_lng}',
+            'destination': f'{end_lat},{end_lng}',
+            'mode': 'driving',
+            'alternatives': 'true',
+            'key': api_key,
+        }
+        try:
+            response = requests.get('https://maps.googleapis.com/maps/api/directions/json', params=params, timeout=self.REQUEST_TIMEOUT_SECONDS)
+            response.raise_for_status()
+            data = response.json()
+        except Exception:
+            return []
+
+        if data.get('status') != 'OK' or not data.get('routes'):
+            return []
+
+        traced = []
+        for idx, route in enumerate(data.get('routes', [])):
+            encoded = ((route.get('overview_polyline') or {}).get('points') or '')
+            try:
+                geometry = RouteDistanceResolver._decode_google_polyline(encoded) if encoded else []
+            except Exception:
+                geometry = []
+            path = [{'lat': point['latitude'], 'lng': point['longitude']} for point in geometry]
+            legs = route.get('legs') or []
+            distance_m = sum(float((leg.get('distance') or {}).get('value') or 0) for leg in legs)
+            duration_s = sum(float((leg.get('duration') or {}).get('value') or 0) for leg in legs)
+            if len(path) < 2 or distance_m <= 0:
+                continue
+            traced.append({
+                'id': f'google-{idx}',
+                'path': path,
+                'distance_km': round(distance_m / 1000, 3),
+                'duration_minutes': round(duration_s / 60) if duration_s else None,
+                'summary': route.get('summary') or f'Google route {idx + 1}',
+                'provider': 'google',
+            })
+        return traced

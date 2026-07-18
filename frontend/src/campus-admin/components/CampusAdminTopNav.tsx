@@ -72,7 +72,7 @@ export default function CampusAdminTopNav() {
   const activeTab = searchParams.get('tab') || 'personal'
   const isOpenRequestsPanel = location.pathname === '/' && searchParams.get('panel') === 'open'
   const testAreaMatch = searchParams.get('area')
-  const testArea = testAreaMatch === 'rides' ? 'rides' : testAreaMatch === 'map' ? 'map' : 'account'
+  const testArea = testAreaMatch === 'rides' ? 'rides' : testAreaMatch === 'map' ? 'map' : testAreaMatch === 'calibration' ? 'calibration' : 'account'
 
   const dashboardNavItems = NAV_ITEMS.filter((item) => item.path === '/')
 
@@ -87,10 +87,10 @@ export default function CampusAdminTopNav() {
     navigate({ pathname: location.pathname, search: search ? `?${search}` : '' })
   }
 
-  const setTestArea = (area: 'account' | 'rides' | 'map') => {
+  const setTestArea = (area: 'account' | 'rides' | 'map' | 'calibration') => {
     const params = new URLSearchParams()
     params.set('area', area)
-    params.set('section', area === 'rides' ? 'create' : area === 'map' ? 'manage' : 'student')
+    params.set('section', area === 'rides' ? 'create' : (area === 'map' || area === 'calibration') ? 'manage' : 'student')
     navigate({ pathname: location.pathname, search: `?${params.toString()}` })
   }
 
@@ -483,6 +483,14 @@ export default function CampusAdminTopNav() {
           >
             <Map size={13} strokeWidth={1.8} />
             <span>Map Data</span>
+          </button>
+          <button
+            type="button"
+            style={{ ...s.topNavBtn, color: testArea === 'calibration' ? T.accent : T.textSecondary, background: testArea === 'calibration' ? T.accentBg : 'transparent' }}
+            onClick={() => setTestArea('calibration')}
+          >
+            <Route size={13} strokeWidth={1.8} />
+            <span>Calibration</span>
           </button>
         </nav>
       ) : location.pathname === '/' ? (

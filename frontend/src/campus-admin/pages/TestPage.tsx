@@ -19,8 +19,11 @@ import {
 } from 'lucide-react'
 import { GoogleMap, useJsApiLoader, Marker, Circle } from '@react-google-maps/api'
 import apiService from '../../services/api.service'
+import api from '../../core/api'
 import { T, useCampusThemeStore } from '../theme'
 import { campusPanel } from '../shared/campusPanelStyles'
+import { CalibrationTab } from '../engine/tabs/CalibrationTab'
+import type { PlatformSettings } from '../engine/types'
 
 type TestRide = {
   id: string
@@ -94,8 +97,8 @@ export default function TestPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const queryArea = searchParams.get('area')
-  const area = queryArea === 'rides' ? 'rides' : queryArea === 'map' ? 'map' : 'account'
-  const defaultSection = area === 'rides' ? 'create' : area === 'map' ? 'manage' : 'student'
+  const area = queryArea === 'rides' ? 'rides' : queryArea === 'map' ? 'map' : queryArea === 'calibration' ? 'calibration' : 'account'
+  const defaultSection = area === 'rides' ? 'create' : (area === 'map' || area === 'calibration') ? 'manage' : 'student'
   const section = searchParams.get('section') || defaultSection
   const { mode } = useCampusThemeStore()
   const [counts, setCounts] = useState({
@@ -116,6 +119,23 @@ export default function TestPage() {
   const [sidebarTab, setSidebarTab] = useState<'builder' | 'locations' | 'console'>('builder')
   const [editorLocations, setEditorLocations] = useState<any[]>([])
   const [draftLocation, setDraftLocation] = useState<{lat: number, lng: number, name: string, category: string, id: string, overlapWarning?: boolean, allowOverlap?: boolean} | null>(null)
+
+  // Settings — required by CalibrationTab
+  const DEFAULT_SETTINGS: PlatformSettings = {
+    commission_rate: 10,
+    distance_provider: 'osrm',
+    max_distance_km: 50,
+    no_show_fee_enabled: false,
+    no_show_fee_amount: 0,
+    no_show_wait_minutes: 5,
+  }
+  const { data: settingsData } = useQuery<PlatformSettings>({
+    queryKey: ['platform-settings-testpage'],
+    queryFn: () => api.get('/pricing/config/active/').then(r => r.data?.settings ?? DEFAULT_SETTINGS),
+    staleTime: 60_000,
+  })
+  const settings: PlatformSettings = settingsData ?? DEFAULT_SETTINGS
+
 
   const existingLocationsQuery = useQuery({
     queryKey: ['existing-locations-snapshot'],
@@ -189,10 +209,10 @@ export default function TestPage() {
     setSearchParams(params)
   }
 
-  const setArea = (nextArea: 'account' | 'rides' | 'map') => {
+  const setArea = (nextArea: 'account' | 'rides' | 'map' | 'calibration') => {
     const params = new URLSearchParams()
     params.set('area', nextArea)
-    params.set('section', nextArea === 'rides' ? 'create' : nextArea === 'map' ? 'manage' : 'student')
+    params.set('section', nextArea === 'rides' ? 'create' : (nextArea === 'map' || nextArea === 'calibration') ? 'manage' : 'student')
     setSearchParams(params)
   }
 
@@ -357,10 +377,17 @@ export default function TestPage() {
       )}
 
       <div style={{ ...campusPanel.scrollMain, ...campusPanel.thinScroll, padding: 0, position: 'relative', zIndex: 1, pointerEvents: 'none' }}>
+        {/* ── Calibration Lab: full-bleed, bypasses stats/sidebar ── */}
+        {area === 'calibration' ? (
+          <div style={{ pointerEvents: 'auto', width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <CalibrationTab settings={settings} />
+          </div>
+        ) : (
         <div style={{ ...s.contentGrid, pointerEvents: 'auto' }}>
           <div style={s.contentCol}>
             
             {area !== 'map' && (
+
               <div style={s.stats}>
                 <Stat label="Campus" value={summary?.campus || 'Unavailable'} />
                 <Stat label="Students" value={summary?.counts.students ?? 0} />
@@ -915,6 +942,7 @@ export default function TestPage() {
           <aside style={s.sidebar}>
           </aside>
         </div>
+        )}
       </div>
     </div>
   )

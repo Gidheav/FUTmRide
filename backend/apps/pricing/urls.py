@@ -8,6 +8,7 @@ from .views import (
     ActiveFareConfigsView,
     RouteGraphActiveView,
     RouteGraphPublishView,
+    RouteGraphTraceView,
 )
 
 urlpatterns = [
@@ -19,4 +20,5 @@ urlpatterns = [
     path('settings/', PlatformSettingsView.as_view(), name='platform-settings'),
     path('route-graph/active/', RouteGraphActiveView.as_view(), name='route-graph-active'),
     path('route-graph/publish/', RouteGraphPublishView.as_view(), name='route-graph-publish'),
+    path('route-graph/trace/', RouteGraphTraceView.as_view(), name='route-graph-trace'),
 ]

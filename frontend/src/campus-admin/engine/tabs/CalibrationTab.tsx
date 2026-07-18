@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
   AlertTriangle, CheckCircle2, Copy, Download, GitBranch, MapPin, MousePointer2,
-  PenLine, Play, Plus, Route, Save, Scissors, Trash2, UploadCloud, Waypoints,
+  Navigation, PenLine, Play, Plus, Route, Save, Scissors, Trash2, UploadCloud, Waypoints,
 } from 'lucide-react'
 import { GoogleMap, Marker, Polyline, useJsApiLoader } from '@react-google-maps/api'
 import api from '../../../core/api'
@@ -10,14 +10,14 @@ import { T } from '../../theme'
 import { VEHICLE_TYPES } from '../constants'
 import type { PlatformSettings, SimulationResult } from '../types'
 
-const GMAP_LIBS: ('geometry' | 'places')[] = ['geometry', 'places']
+const GMAP_LIBS: ('drawing' | 'geometry' | 'places')[] = ['drawing', 'geometry', 'places']
 const MAP_CENTER = { lat: 9.6139, lng: 6.5569 }
 const STORAGE_KEY = 'lr-ride-route-calibration-draft-v1'
 
 type LatLng = { lat: number; lng: number }
 type LaneStatus = 'draft' | 'active' | 'blocked'
 type Direction = 'two_way' | 'one_way'
-type Tool = 'select' | 'pen' | 'curve' | 'simulate'
+type Tool = 'select' | 'pen' | 'curve' | 'trace' | 'simulate'
 
 type Lane = {
   id: string
@@ -53,6 +53,15 @@ type EstimateRoute = {
 
 type EstimateResult = SimulationResult & {
   route?: EstimateRoute
+}
+
+type TraceRoute = {
+  id: string
+  path: LatLng[]
+  distanceKm: number
+  durationMinutes: number | null
+  summary: string
+  provider: 'osrm' | 'google'
 }
 
 const btn: CSSProperties = {
@@ -112,6 +121,29 @@ const sampleQuadratic = (a: LatLng, c: LatLng, b: LatLng) => {
     }))
   }
   return points
+}
+
+const simplifyPath = (path: LatLng[], maxPoints = 160) => {
+  if (path.length <= maxPoints) return path
+  const stride = Math.ceil(path.length / maxPoints)
+  const simplified = path.filter((_, idx) => idx % stride === 0)
+  const last = path[path.length - 1]
+  if (simplified[simplified.length - 1] !== last) simplified.push(last)
+  return simplified
+}
+
+const curvePreviewPath = (points: LatLng[]) => (
+  points.length === 3 ? sampleQuadratic(points[0], points[1], points[2]) : points
+)
+
+const curveControlPoint = (start: LatLng, end: LatLng): LatLng => {
+  const mid = { lat: (start.lat + end.lat) / 2, lng: (start.lng + end.lng) / 2 }
+  const dx = end.lng - start.lng
+  const dy = end.lat - start.lat
+  return normalizePoint({
+    lat: mid.lat + dx * 0.22,
+    lng: mid.lng - dy * 0.22,
+  })
 }
 
 const defaultLane = (path: LatLng[], count: number): Lane => ({
@@ -258,7 +290,7 @@ function StatusPill({ children, tone = 'neutral' }: { children: string; tone?: '
 
 export function CalibrationTab({ settings }: { settings: PlatformSettings }) {
   const { isLoaded } = useJsApiLoader({
-    id: 'lr-ride-calibration-google-map',
+    id: 'google-map-script',
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? '',
     libraries: GMAP_LIBS,
   })
@@ -272,12 +304,20 @@ export function CalibrationTab({ settings }: { settings: PlatformSettings }) {
   const [vehicle, setVehicle] = useState('sedan')
   const [simStart, setSimStart] = useState<LatLng | null>(null)
   const [simEnd, setSimEnd] = useState<LatLng | null>(null)
+  const [traceStart, setTraceStart] = useState<LatLng | null>(null)
+  const [traceEnd, setTraceEnd] = useState<LatLng | null>(null)
+  const [traceRoutes, setTraceRoutes] = useState<TraceRoute[]>([])
+  const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null)
+  const [isTracingRoute, setIsTracingRoute] = useState(false)
+  const [traceError, setTraceError] = useState<string | null>(null)
   const [estimate, setEstimate] = useState<EstimateResult | null>(null)
   const [estimating, setEstimating] = useState(false)
   const [importText, setImportText] = useState('')
   const mapRef = useRef<google.maps.Map | null>(null)
+  const traceRequestIdRef = useRef(0)
 
   const selectedLane = lanes.find((lane) => lane.id === selectedLaneId) ?? null
+  const selectedTrace = traceRoutes.find((route) => route.id === selectedTraceId) ?? traceRoutes[0] ?? null
   const graphRoute = useMemo(() => solveGraphRoute(lanes, simStart, simEnd, vehicle), [lanes, simStart, simEnd, vehicle])
   const totalKm = useMemo(() => lanes.reduce((sum, lane) => sum + lane.distanceKm, 0), [lanes])
   const blockedCount = lanes.filter((lane) => lane.status === 'blocked').length
@@ -299,10 +339,95 @@ export function CalibrationTab({ settings }: { settings: PlatformSettings }) {
     setTool('select')
   }
 
+  const fetchTraceRoutes = useCallback(async (start: LatLng, end: LatLng) => {
+    const requestId = traceRequestIdRef.current + 1
+    traceRequestIdRef.current = requestId
+    setIsTracingRoute(true)
+    setTraceError(null)
+    setTraceRoutes([])
+    setSelectedTraceId(null)
+
+    try {
+      const { data } = await api.post('/pricing/route-graph/trace/', {
+        start_latitude: start.lat,
+        start_longitude: start.lng,
+        end_latitude: end.lat,
+        end_longitude: end.lng,
+      })
+      if (requestId !== traceRequestIdRef.current) return
+
+      const routes = Array.isArray(data?.routes)
+        ? data.routes.map((route: any, idx: number) => ({
+          id: route.id || `route-${idx}`,
+          path: simplifyPath((route.path || []).map((point: any) => normalizePoint({ lat: Number(point.lat), lng: Number(point.lng) }))),
+          distanceKm: Number(route.distance_km || 0),
+          durationMinutes: route.duration_minutes ?? null,
+          summary: route.summary || `Route ${idx + 1}`,
+          provider: route.provider === 'google' ? 'google' : 'osrm',
+        } satisfies TraceRoute))
+        : []
+      if (!routes?.length) {
+        setTraceError('No road route found. Move the pins closer to visible roads and trace again.')
+        return
+      }
+
+      setTraceRoutes(routes)
+      setSelectedTraceId(routes[0].id)
+      const bounds = new google.maps.LatLngBounds()
+      routes[0].path.forEach((point) => bounds.extend(point))
+      if (!bounds.isEmpty()) mapRef.current?.fitBounds(bounds, 72)
+    } catch (err: any) {
+      if (requestId === traceRequestIdRef.current) {
+        setTraceError(err?.response?.data?.error || 'Could not trace a road route from the backend.')
+      }
+    } finally {
+      if (requestId === traceRequestIdRef.current) setIsTracingRoute(false)
+    }
+  }, [])
+
+  const createLaneFromTrace = () => {
+    if (!selectedTrace || selectedTrace.path.length < 2) return
+    const lane = defaultLane(selectedTrace.path, lanes.length)
+    lane.name = `${selectedTrace.provider.toUpperCase()} ${lanes.length + 1}`
+    lane.distanceKm = selectedTrace.distanceKm
+    setLanes((prev) => [...prev, lane])
+    setSelectedLaneId(lane.id)
+    setTraceRoutes([])
+    setSelectedTraceId(null)
+    setTraceStart(null)
+    setTraceEnd(null)
+    setTool('select')
+  }
+
+  const updateLanePoint = (laneId: string, pointIndex: number, point: LatLng) => {
+    setLanes((prev) => prev.map((lane) => {
+      if (lane.id !== laneId) return lane
+      const nextPath = lane.path.map((item, idx) => idx === pointIndex ? normalizePoint(point) : item)
+      return {
+        ...lane,
+        path: nextPath,
+        distanceKm: Number((pathDistanceKm(nextPath) * lane.calibrationFactor).toFixed(3)),
+      }
+    }))
+  }
+
   const handleMapClick = useCallback((event: google.maps.MapMouseEvent) => {
     const latLng = event.latLng
     if (!latLng) return
     const point = normalizePoint({ lat: latLng.lat(), lng: latLng.lng() })
+    if (tool === 'trace') {
+      setTraceError(null)
+      setTraceRoutes([])
+      setSelectedTraceId(null)
+      if (!traceStart || (traceStart && traceEnd)) {
+        setTraceStart(point)
+        setTraceEnd(null)
+      } else {
+        setTraceEnd(point)
+        fetchTraceRoutes(traceStart, point)
+      }
+      return
+    }
     if (tool === 'simulate') {
       if (!simStart || (simStart && simEnd)) {
         setSimStart(point)
@@ -320,15 +445,12 @@ export function CalibrationTab({ settings }: { settings: PlatformSettings }) {
     }
     if (tool === 'curve') {
       setDraftPath((prev) => {
-        const next = [...prev, point]
-        if (next.length === 3) {
-          addLane(sampleQuadratic(next[0], next[1], next[2]))
-          return []
-        }
-        return next
+        if (prev.length === 0) return [point]
+        if (prev.length === 1) return [prev[0], curveControlPoint(prev[0], point), point]
+        return [point]
       })
     }
-  }, [tool, simStart, simEnd, lanes.length])
+  }, [tool, traceStart, traceEnd, simStart, simEnd, lanes.length, fetchTraceRoutes])
 
   const saveDraft = () => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ versionName, lanes }))
@@ -586,15 +708,35 @@ export function CalibrationTab({ settings }: { settings: PlatformSettings }) {
                   <button type="button" style={tool === 'select' ? activeBtn : btn} onClick={() => setTool('select')}><MousePointer2 size={14} /> Select</button>
                   <button type="button" style={tool === 'pen' ? activeBtn : btn} onClick={() => { setTool('pen'); setDraftPath([]) }}><PenLine size={14} /> Pen</button>
                   <button type="button" style={tool === 'curve' ? activeBtn : btn} onClick={() => { setTool('curve'); setDraftPath([]) }}><Waypoints size={14} /> Curve</button>
+                  <button type="button" style={tool === 'trace' ? activeBtn : btn} onClick={() => { setTool('trace'); setTraceRoutes([]); setSelectedTraceId(null) }}><Navigation size={14} /> Trace</button>
                   <button type="button" style={tool === 'simulate' ? activeBtn : btn} onClick={() => setTool('simulate')}><Play size={14} /> Simulate</button>
+                </div>
+              </div>
+
+              <div style={{ ...campusPanel.card, padding: 10 }}>
+                <div style={{ color: T.textPrimary, fontSize: 12, fontWeight: 900 }}>A to B calibration flow</div>
+                <div style={{ color: T.textSecondary, fontSize: 11, lineHeight: 1.55, marginTop: 6 }}>
+                  Use Trace, click point A, click point B. The lab follows the road first. Save the best route as a lane, select it, then drag its nodes or tune the distance factor before publishing.
                 </div>
               </div>
 
               {draftPath.length > 0 && (
                 <div style={{ ...campusPanel.card, padding: 10 }}>
-                  <div style={{ color: T.textPrimary, fontSize: 12, fontWeight: 800 }}>{draftPath.length} points in draft</div>
+                  <div style={{ color: T.textPrimary, fontSize: 12, fontWeight: 800 }}>
+                    {tool === 'curve' && draftPath.length === 3 ? 'Curve ready' : `${draftPath.length} points in draft`}
+                  </div>
+                  {tool === 'curve' && draftPath.length === 3 && (
+                    <div style={{ color: T.textSecondary, fontSize: 11, lineHeight: 1.45, marginTop: 5 }}>
+                      Drag handle C on the map to bend the lane, then create it.
+                    </div>
+                  )}
                   <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                    <button type="button" style={campusPanel.btnPrimary} disabled={draftPath.length < 2} onClick={() => addLane(draftPath)}>
+                    <button
+                      type="button"
+                      style={campusPanel.btnPrimary}
+                      disabled={tool === 'curve' ? draftPath.length !== 3 : draftPath.length < 2}
+                      onClick={() => addLane(tool === 'curve' ? curvePreviewPath(draftPath) : draftPath)}
+                    >
                       <Plus size={13} /> Create lane
                     </button>
                     <button type="button" style={campusPanel.btnSecondary} onClick={() => setDraftPath([])}>Clear</button>
@@ -612,7 +754,7 @@ export function CalibrationTab({ settings }: { settings: PlatformSettings }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {lanes.length === 0 && (
                     <div style={{ color: T.textSecondary, fontSize: 12, lineHeight: 1.5, border: `1px dashed ${T.border}`, padding: 12 }}>
-                      Use Pen for point-by-point lanes or Curve for a 3-click curved lane.
+                      Use Trace for road-following lanes, Curve for editable curved lanes, or Pen for manual point-by-point lanes.
                     </div>
                   )}
                   {lanes.map((lane) => (
@@ -642,7 +784,8 @@ export function CalibrationTab({ settings }: { settings: PlatformSettings }) {
           <div className="calibration-map-tools">
             <div className="calibration-floating">
               {tool === 'pen' ? 'Click map points, then create lane.' :
-                tool === 'curve' ? 'Click start, curve handle, then end.' :
+                tool === 'curve' ? 'Click start and end, then drag handle C to bend the curve.' :
+                  tool === 'trace' ? 'Click A, then B. The lab traces a road route for calibration.' :
                   tool === 'simulate' ? 'Click pickup and dropoff pins.' :
                     'Select lanes to inspect and tune.'}
             </div>
@@ -666,6 +809,7 @@ export function CalibrationTab({ settings }: { settings: PlatformSettings }) {
                 mapTypeControl: true,
                 clickableIcons: false,
                 gestureHandling: 'greedy',
+                draggableCursor: tool === 'select' ? undefined : 'crosshair',
               }}
             >
               {lanes.map((lane) => (
@@ -682,10 +826,55 @@ export function CalibrationTab({ settings }: { settings: PlatformSettings }) {
                 />
               ))}
               {draftPath.length >= 2 && (
-                <Polyline path={draftPath} options={{ strokeColor: T.warn, strokeOpacity: 0.9, strokeWeight: 3, clickable: false }} />
+                <Polyline path={curvePreviewPath(draftPath)} options={{ strokeColor: T.warn, strokeOpacity: 0.9, strokeWeight: 3, clickable: false }} />
               )}
               {draftPath.map((point, idx) => (
-                <Marker key={`${pointKey(point)}-${idx}`} position={point} label={`${idx + 1}`} />
+                <Marker
+                  key={`${pointKey(point)}-${idx}`}
+                  position={point}
+                  label={tool === 'curve' && draftPath.length === 3 ? (idx === 0 ? 'A' : idx === 1 ? 'C' : 'B') : `${idx + 1}`}
+                  draggable={tool === 'curve'}
+                  onDragEnd={(event) => {
+                    if (!event.latLng) return
+                    const nextPoint = normalizePoint({ lat: event.latLng.lat(), lng: event.latLng.lng() })
+                    setDraftPath((prev) => prev.map((item, pointIndex) => pointIndex === idx ? nextPoint : item))
+                  }}
+                />
+              ))}
+              {traceStart && <Marker position={traceStart} label="A" />}
+              {traceEnd && <Marker position={traceEnd} label="B" />}
+              {traceRoutes.map((route) => (
+                <Polyline
+                  key={route.id}
+                  path={route.path}
+                  onClick={() => setSelectedTraceId(route.id)}
+                  options={{
+                    strokeColor: route.id === selectedTrace?.id ? T.warn : '#64748b',
+                    strokeOpacity: route.id === selectedTrace?.id ? 0.95 : 0.45,
+                    strokeWeight: route.id === selectedTrace?.id ? 6 : 4,
+                    zIndex: route.id === selectedTrace?.id ? 7 : 4,
+                  }}
+                />
+              ))}
+              {selectedLane && tool === 'select' && selectedLane.path.map((point, idx) => (
+                <Marker
+                  key={`${selectedLane.id}-node-${idx}`}
+                  position={point}
+                  label={`${idx + 1}`}
+                  draggable
+                  onDragEnd={(event) => {
+                    if (!event.latLng) return
+                    updateLanePoint(selectedLane.id, idx, { lat: event.latLng.lat(), lng: event.latLng.lng() })
+                  }}
+                  icon={{
+                    path: google.maps.SymbolPath.CIRCLE,
+                    scale: idx === 0 || idx === selectedLane.path.length - 1 ? 7 : 5,
+                    fillColor: idx === 0 || idx === selectedLane.path.length - 1 ? T.accent : '#ffffff',
+                    fillOpacity: 1,
+                    strokeColor: T.accent,
+                    strokeWeight: 2,
+                  }}
+                />
               ))}
               {simStart && <Marker position={simStart} label="P" />}
               {simEnd && <Marker position={simEnd} label="D" />}
@@ -779,6 +968,62 @@ export function CalibrationTab({ settings }: { settings: PlatformSettings }) {
               ) : (
                 <div style={{ color: T.textSecondary, fontSize: 12, border: `1px dashed ${T.border}`, padding: 12 }}>Select a lane to edit rules and calibration.</div>
               )}
+
+              <div style={{ ...campusPanel.card, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Navigation size={15} color={T.warn} />
+                  <strong style={{ color: T.textPrimary, fontSize: 13 }}>Auto trace lane</strong>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                  <button type="button" style={tool === 'trace' ? activeBtn : btn} onClick={() => setTool('trace')}><MapPin size={13} /> Place A/B</button>
+                  <button
+                    type="button"
+                    style={btn}
+                    onClick={() => {
+                      setTraceStart(null)
+                      setTraceEnd(null)
+                      setTraceRoutes([])
+                      setSelectedTraceId(null)
+                      setTraceError(null)
+                    }}
+                  >
+                    Reset
+                  </button>
+                </div>
+                <div style={{ color: T.textSecondary, fontSize: 12, lineHeight: 1.6 }}>
+                  <div>A: {traceStart ? `${traceStart.lat}, ${traceStart.lng}` : 'not set'}</div>
+                  <div>B: {traceEnd ? `${traceEnd.lat}, ${traceEnd.lng}` : 'not set'}</div>
+                </div>
+                {isTracingRoute && <div style={{ color: T.warn, fontSize: 12 }}>Tracing road route...</div>}
+                {traceError && (
+                  <div style={{ color: T.warn, fontSize: 11, display: 'flex', gap: 6 }}>
+                    <AlertTriangle size={13} /> {traceError}
+                  </div>
+                )}
+                {traceRoutes.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {traceRoutes.map((route, idx) => (
+                      <button
+                        key={route.id}
+                        type="button"
+                        className={`calibration-lane-row ${route.id === selectedTrace?.id ? 'active' : ''}`}
+                        onClick={() => setSelectedTraceId(route.id)}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                          <strong style={{ fontSize: 12 }}>Route {idx + 1}</strong>
+                          <span style={{ fontSize: 11, fontFamily: 'monospace' }}>{route.distanceKm.toFixed(2)}km</span>
+                        </div>
+                        <div style={{ color: T.textSecondary, fontSize: 10, marginTop: 5 }}>
+                          {route.provider.toUpperCase()} {route.durationMinutes ? `/${route.durationMinutes} min` : ''} - {route.summary}
+                        </div>
+                      </button>
+                    ))}
+                    <button type="button" style={campusPanel.btnPrimary} onClick={createLaneFromTrace}>
+                      <Plus size={13} /> Create lane from selected route
+                    </button>
+                  </div>
+                )}
+              </div>
 
               <div style={{ ...campusPanel.card, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
