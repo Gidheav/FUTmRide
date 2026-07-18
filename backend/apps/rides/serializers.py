@@ -4,6 +4,20 @@ from rest_framework import serializers
 from apps.accounts.serializers import UserPublicSerializer
 from .models import Ride, DriverRideRequest, RideStatus, PaymentMethod, VehicleType
 
+# ── Vehicle seat policy for on-demand booking ──────────────────────────
+# min_seats = minimum seats a student must book (protects driver earnings)
+# max_seats = physical passenger capacity of the vehicle category
+VEHICLE_SEAT_POLICY = {
+    VehicleType.MOTORBIKE: {'min_seats': 1, 'max_seats': 2},
+    VehicleType.TRICYCLE:  {'min_seats': 3, 'max_seats': 4},
+    VehicleType.SEDAN:     {'min_seats': 3, 'max_seats': 5},
+    VehicleType.MPV:       {'min_seats': 7, 'max_seats': 9},
+}
+
+# Only these vehicle types are available for on-demand ride booking.
+# Minibus / Coach are reserved for scheduled/charter transport (future).
+BOOKABLE_VEHICLE_TYPES = set(VEHICLE_SEAT_POLICY.keys())
+
 
 class RideRequestSerializer(serializers.ModelSerializer):
     class Meta:
@@ -34,6 +48,10 @@ class RideRequestSerializer(serializers.ModelSerializer):
     def validate_vehicle_type_requested(self, value):
         if value not in VehicleType.values:
             raise serializers.ValidationError('Invalid vehicle type.')
+        if value not in BOOKABLE_VEHICLE_TYPES:
+            raise serializers.ValidationError(
+                f'{VehicleType(value).label} is not available for on-demand booking.'
+            )
         return value
 
     def validate_payment_method(self, value):
@@ -62,10 +80,22 @@ class RideRequestSerializer(serializers.ModelSerializer):
         attrs = super().validate(attrs)
         seats = attrs.get('requested_seats') or 1
         vehicle_type = attrs.get('vehicle_type_requested')
-        if vehicle_type == VehicleType.MOTORBIKE and seats > 2:
-            raise serializers.ValidationError({'requested_seats': 'Motorbike allows up to 2 seats.'})
-        if vehicle_type == VehicleType.TRICYCLE and seats > 4:
-            raise serializers.ValidationError({'requested_seats': 'Tricycle allows up to 4 seats.'})
+        policy = VEHICLE_SEAT_POLICY.get(vehicle_type)
+        if policy:
+            if seats < policy['min_seats']:
+                raise serializers.ValidationError({
+                    'requested_seats': (
+                        f'{VehicleType(vehicle_type).label} requires a '
+                        f'minimum booking of {policy["min_seats"]} seats.'
+                    )
+                })
+            if seats > policy['max_seats']:
+                raise serializers.ValidationError({
+                    'requested_seats': (
+                        f'{VehicleType(vehicle_type).label} allows up to '
+                        f'{policy["max_seats"]} seats.'
+                    )
+                })
         return attrs
 
     def create(self, validated_data):

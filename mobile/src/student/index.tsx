@@ -2,7 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Alert, AppState, BackHandler, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useAuthStore } from '../core/authStore'
 import { useSecurityStore } from '../core/securityStore'
-import { fetchCurrentUser, refreshStudentSessionTokens } from '../core/session'
+import {
+  fetchCurrentUser,
+  hydrateStudentSessionSnapshot,
+  logoutStudentSession,
+  refreshStudentSessionTokens,
+  saveStudentSessionSnapshotFromStores,
+  syncStudentSessionInBackground,
+} from '../core/session'
 import { StudentLoginScreen, StudentDashboardScreen } from './screens'
 import StudentRidesPage from './pages/RidesPage'
 import StudentWalletPage from './pages/WalletPage'
@@ -65,7 +72,7 @@ export default function StudentApp() {
 }
 
 function StudentAppInner() {
-  const { isAuthenticated, user, setTokens, setUser, logout, hasHydrated, hydrateTokens, isSessionExpired } = useAuthStore()
+  const { isAuthenticated, user, setTokens, setUser, hasHydrated, hydrateTokens, isSessionExpired } = useAuthStore()
   const [tokensLoaded, setTokensLoaded] = useState(false)
   const {
     appLockEnabled,
@@ -105,6 +112,7 @@ function StudentAppInner() {
   const lastBackPressAt = useRef(0)
   const lastWalletSyncAt = useRef(0)
   const appStateRef = useRef(AppState.currentState)
+  const wentBackgroundAtRef = useRef<number | null>(null)
   const announcementCheckRef = useRef<string | null>(null)
   const lockedRef = useRef(locked)
   const pendingNotificationActionRef = useRef<PendingNotificationAction | null>(null)
@@ -180,6 +188,21 @@ function StudentAppInner() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // run once on mount only
 
+  useEffect(() => {
+    if (!hasHydrated || !tokensLoaded || !isAuthenticated || !user?.id) return
+    let cancelled = false
+    hydrateStudentSessionSnapshot(user.id)
+      .then(() => {
+        if (!cancelled) {
+          void syncStudentSessionInBackground()
+        }
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [hasHydrated, isAuthenticated, tokensLoaded, user?.id])
+
   // ─── Session sync (fresh email/password login only) ─────────────────────
   // Only fires when the user just completed a full login (not after PIN unlock).
   // PIN unlock uses the proactive refresh in AppLockPage + the 401 interceptor.
@@ -253,18 +276,33 @@ function StudentAppInner() {
       }
 
       if (!appLockEnabled) return
-      if (state === 'background' || state === 'inactive') {
-        setLocked(true)
+      if (state === 'background') {
+        if (wentBackgroundAtRef.current === null) {
+          wentBackgroundAtRef.current = Date.now()
+        }
+        void saveStudentSessionSnapshotFromStores()
         return
       }
       if (state === 'active' && previousState !== 'active') {
+        const leftAt = wentBackgroundAtRef.current
+        wentBackgroundAtRef.current = null
+        if (!leftAt) return
+
         if (lockTimeoutMinutes === 0) {
           setLocked(true)
           return
         }
-        if (lastUnlockAt && (Date.now() - lastUnlockAt) / 60000 >= lockTimeoutMinutes) {
+
+        const awayMs = Date.now() - leftAt
+        const timeoutMs = lockTimeoutMinutes * 60 * 1000
+        if (awayMs >= timeoutMs) {
           setLocked(true)
+          return
         }
+
+        setLocked(false)
+        setLastUnlockAt(Date.now())
+        void syncStudentSessionInBackground()
       }
     }
 
@@ -272,7 +310,7 @@ function StudentAppInner() {
     return () => {
       changeSub.remove()
     }
-  }, [appLockEnabled, lastUnlockAt, lockTimeoutMinutes, setLocked])
+  }, [appLockEnabled, lockTimeoutMinutes, setLastUnlockAt, setLocked])
 
   useEffect(() => {
     // Only sync session after a fresh email/password login, not after PIN unlock.
@@ -567,7 +605,9 @@ function StudentAppInner() {
   // Handle 14-day session expiry limit
   if (isAuthenticated && isSessionExpired?.()) {
     // We defer the state update slightly to avoid rendering issues
-    setTimeout(() => logout(), 0)
+    setTimeout(() => {
+      void logoutStudentSession()
+    }, 0)
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#ffffff' }}>
         <ActivityIndicator size="large" color="#6A1B9A" />
@@ -587,13 +627,14 @@ function StudentAppInner() {
           // when these state updates trigger screen re-renders.
           setLocked(false)
           setLastUnlockAt(Date.now())
+          void saveStudentSessionSnapshotFromStores()
           // Do NOT call syncSession() here — it reads from Zustand (null on boot).
           // The 401 interceptor handles stale tokens transparently.
         }}
         onForgotPin={() => {
           setPinRecoveryRequired(true)
           setLocked(false)
-          logout()
+          void logoutStudentSession()
         }}
       />
     )
@@ -786,7 +827,9 @@ function StudentAppInner() {
           onOpenNotifications={() => setAccountMode('notifications')}
           onOpenSettings={() => setAccountMode('settings')}
           onOpenSecurity={() => setAccountMode('security')}
-          onLogout={logout}
+          onLogout={() => {
+            void logoutStudentSession()
+          }}
           refreshKey={accountRefreshKey}
         />
       )}

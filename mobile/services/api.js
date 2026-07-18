@@ -173,8 +173,21 @@ export { SessionExpiredError }
 async function _handleSessionExpired() {
   try {
     await clearAuthTokens()
+    try {
+      const { clearStudentSandbox, resetStudentRuntimeStores } = require('../src/core/studentSandbox')
+      await clearStudentSandbox()
+      resetStudentRuntimeStores()
+    } catch {
+      // Student sandbox may not be loaded yet.
+    }
     const { useAuthStore } = require('../src/core/authStore')
-    useAuthStore.getState().logout()
+    useAuthStore.setState({
+      user: null,
+      accessToken: null,
+      refreshToken: null,
+      isAuthenticated: false,
+      loginAt: null,
+    })
   } catch {
     // Best-effort: even if the store isn't ready, the user will hit the
     // login screen on the next render cycle because isAuthenticated will be false.

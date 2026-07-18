@@ -17,8 +17,8 @@ import {
 import { useEffect, useState } from 'react'
 import { MaterialIcons } from '@expo/vector-icons'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { useAuthStore } from '../../core/authStore'
 import api from '../../core/api'
+import { completeStudentLogin } from '../../core/session'
 import LoadingOverlay from '../components/LoadingOverlay'
 
 const ILLUSTRATION_IMAGE = require('../../homeslide3-1-1024x499.png')
@@ -118,7 +118,6 @@ export default function StudentLoginScreen() {
   const [verificationStatusMessage, setVerificationStatusMessage] = useState('')
   const [pendingSignupData, setPendingSignupData] = useState<{ email: string; password: string } | null>(null)
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false)
-  const setAuth = useAuthStore((state) => state.setAuth)
 
   // Forgot Password States
   const [forgotPasswordModalVisible, setForgotPasswordModalVisible] = useState(false)
@@ -170,7 +169,7 @@ export default function StudentLoginScreen() {
           const loginRes = await api.post('auth/login/', { email, password }, { timeout: 20000 })
 
           // Login response includes enriched user payload — no need for a separate /users/me/ call
-          setAuth(loginRes.data.user, loginRes.data.access, loginRes.data.refresh)
+          await completeStudentLogin(loginRes.data)
           return
         } catch (err: any) {
           const isNetworkError = !err?.response

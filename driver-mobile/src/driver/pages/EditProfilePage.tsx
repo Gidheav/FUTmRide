@@ -34,8 +34,6 @@ const VEHICLE_TYPES = [
   { value: 'tricycle', label: 'Tricycle' },
   { value: 'sedan', label: 'Sedan' },
   { value: 'mpv', label: 'MPV' },
-  { value: 'minibus', label: 'Minibus' },
-  { value: 'coach', label: 'Coach' },
 ];
 
 const InputField = ({

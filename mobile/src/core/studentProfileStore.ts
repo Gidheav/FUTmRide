@@ -24,6 +24,7 @@ interface StudentProfileStore {
   setUserProfile: (userId: string, profile: Partial<AuthUser> | null) => void
   setCampusOptions: (userId: string, options: CampusOption[]) => void
   clearUserProfile: (userId: string) => void
+  clearAllProfiles: () => void
 }
 
 export const useStudentProfileStore = create<StudentProfileStore>()(
@@ -76,6 +77,8 @@ export const useStudentProfileStore = create<StudentProfileStore>()(
           delete next[userId]
           return { profilesByUserId: next }
         }),
+
+      clearAllProfiles: () => set({ profilesByUserId: {} }),
     }),
     {
       name: 'student-profile-store',

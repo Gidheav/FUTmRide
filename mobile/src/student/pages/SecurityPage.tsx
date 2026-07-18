@@ -17,9 +17,11 @@ import { useSecurityStore } from '../../core/securityStore'
 import LoadingOverlay from '../components/LoadingOverlay'
 import api from '../../core/api'
 import { refreshTransactionPinStatus } from '../../core/transactionPin'
+import { saveStudentSessionSnapshotFromStores } from '../../core/session'
 
-const TIMEOUT_OPTIONS: Array<{ label: string; value: 0 | 1 | 5 | 15 }> = [
+const TIMEOUT_OPTIONS: Array<{ label: string; value: 0 | 0.25 | 1 | 5 | 15 }> = [
   { label: 'Immediate', value: 0 },
+  { label: '15 seconds', value: 0.25 },
   { label: '1 minute', value: 1 },
   { label: '5 minutes', value: 5 },
   { label: '15 minutes', value: 15 },
@@ -140,6 +142,7 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
   const handleToggleLock = (value: boolean) => {
     if (!value) {
       setAppLockEnabled(false)
+      void saveStudentSessionSnapshotFromStores()
       setError('')
       return
     }
@@ -151,6 +154,7 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
     }
     setError('')
     setAppLockEnabled(true)
+    void saveStudentSessionSnapshotFromStores()
   }
 
   const handleToggleBiometric = async (value: boolean) => {
@@ -173,11 +177,13 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
     setBiometricEnabled(value)
     if (value) {
       setAppLockEnabled(true)
+      void saveStudentSessionSnapshotFromStores()
       return
     }
     if (!value && appLockEnabled && !hasPin) {
       setAppLockEnabled(false)
     }
+    void saveStudentSessionSnapshotFromStores()
   }
 
   const openPinModal = (forceNew = false, action?: 'set' | 'update' | 'remove') => {
@@ -218,6 +224,7 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
         if (!biometricEnabled) {
           setAppLockEnabled(false)
         }
+        void saveStudentSessionSnapshotFromStores()
         setPinError('')
         setPinSuccess('PIN removed.')
         if (pinCloseTimer.current) {
@@ -251,6 +258,10 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
     await setStoredPinHash(pinInput)
     setHasPin(true)
     setAppLockEnabled(true)
+    if (!appLockEnabled) {
+      setLockTimeoutMinutes(0.25)
+    }
+    void saveStudentSessionSnapshotFromStores()
     setPinError('')
     setPinSuccess(pinAction === 'update' ? 'PIN updated successfully.' : 'PIN saved successfully.')
     if (pinCloseTimer.current) {
@@ -296,6 +307,7 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
     if (!biometricEnabled) {
       setAppLockEnabled(false)
     }
+    void saveStudentSessionSnapshotFromStores()
   }
 
   const openTxPinModal = (action: 'set' | 'update') => {
@@ -804,7 +816,7 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
               {TIMEOUT_OPTIONS.map((option) => {
                 const selected = lockTimeoutMinutes === option.value
                 return (
-                  <TouchableOpacity key={option.value} style={styles.modalRow} onPress={() => { setLockTimeoutMinutes(option.value); setTimeoutModalVisible(false) }}>
+                  <TouchableOpacity key={option.value} style={styles.modalRow} onPress={() => { setLockTimeoutMinutes(option.value); void saveStudentSessionSnapshotFromStores(); setTimeoutModalVisible(false) }}>
                     <View style={styles.radioOuter}>
                       {selected ? <View style={styles.radioInner} /> : null}
                     </View>

@@ -26,8 +26,6 @@ const VEHICLES = [
   { id: 'tricycle', label: 'Tricycle (Keke)' },
   { id: 'sedan', label: 'Sedan' },
   { id: 'mpv', label: 'MPV' },
-  { id: 'minibus', label: 'Minibus / Shuttle' },
-  { id: 'coach', label: 'Coach' },
 ]
 
 const SCHEDULE_OPTIONS = [0, 5, 10, 15, 20, 25, 30]
@@ -56,14 +54,19 @@ type BookRidePageProps = {
   onRideCreated: (rideId: string) => void
 }
 
-const getSeatLimit = (vehicleId: string) => {
-  if (vehicleId === 'motorbike') return 2
-  if (vehicleId === 'tricycle') return 4
-  if (vehicleId === 'mpv') return 7
-  if (vehicleId === 'minibus') return 18
-  if (vehicleId === 'coach') return 50
-  return 6
+// Vehicle seat policy — min protects driver earnings, max is physical capacity
+const VEHICLE_SEAT_POLICY: Record<string, { min: number; max: number }> = {
+  motorbike: { min: 1, max: 2 },
+  tricycle:  { min: 3, max: 4 },
+  sedan:     { min: 3, max: 5 },
+  mpv:       { min: 7, max: 9 },
 }
+
+const getSeatLimit = (vehicleId: string) =>
+  VEHICLE_SEAT_POLICY[vehicleId]?.max ?? 4
+
+const getMinSeats = (vehicleId: string) =>
+  VEHICLE_SEAT_POLICY[vehicleId]?.min ?? 1
 
 // Memoized list item to prevent re-renders
 const LocationItem = memo(({ item, onPress }: { item: LocationOption; onPress: () => void }) => (
@@ -125,7 +128,7 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
   const [pickup, setPickup] = useState<LocationOption | null>(null)
   const [dropoff, setDropoff] = useState<LocationOption | null>(null)
   const [vehicleType, setVehicleType] = useState('sedan')
-  const [seatCount, setSeatCount] = useState(1)
+  const [seatCount, setSeatCount] = useState(getMinSeats('sedan'))
   const [scheduledOffset, setScheduledOffset] = useState(0)
   const [mapDropoff, setMapDropoff] = useState<{ latitude: number; longitude: number } | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -470,15 +473,18 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
                 {VEHICLES.map((item) => (
                   <TouchableOpacity key={item.id} style={styles.modalItem} onPress={() => {
                     setVehicleType(item.id)
-                    setSeatCount((prev) => Math.min(prev, getSeatLimit(item.id)))
+                    // Auto-set seats to the minimum for the new vehicle type
+                    const newMin = getMinSeats(item.id)
+                    const newMax = getSeatLimit(item.id)
+                    setSeatCount((prev) => Math.max(newMin, Math.min(prev, newMax)))
                     closePicker()
                   }}>
                     <View style={styles.modalItemIcon}>
-                      <MaterialIcons name={item.id === 'motorbike' ? 'two-wheeler' : item.id === 'tricycle' ? 'electric-rickshaw' : item.id === 'minibus' || item.id === 'coach' ? 'directions-bus' : 'directions-car'} size={18} color="#6A1B9A" />
+                      <MaterialIcons name={item.id === 'motorbike' ? 'two-wheeler' : item.id === 'tricycle' ? 'electric-rickshaw' : item.id === 'mpv' ? 'airport-shuttle' : 'directions-car'} size={18} color="#6A1B9A" />
                     </View>
                     <View style={styles.modalItemContent}>
                       <Text style={styles.modalItemTitle}>{item.label}</Text>
-                      <Text style={styles.modalItemSub}>Max {getSeatLimit(item.id)} seats</Text>
+                      <Text style={styles.modalItemSub}>{getMinSeats(item.id) === getSeatLimit(item.id) ? `${getSeatLimit(item.id)} seats` : `${getMinSeats(item.id)}–${getSeatLimit(item.id)} seats`}</Text>
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -502,7 +508,7 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
               </ScrollView>
             ) : activePicker === 'seats' ? (
               <ScrollView style={styles.modalList} showsVerticalScrollIndicator={false}>
-                {Array.from({ length: seatLimit }, (_, i) => i + 1).map((num) => (
+                {Array.from({ length: seatLimit - getMinSeats(vehicleType) + 1 }, (_, i) => i + getMinSeats(vehicleType)).map((num) => (
                   <TouchableOpacity key={num} style={styles.modalItem} onPress={() => {
                     setSeatCount(num)
                     closePicker()
@@ -512,7 +518,7 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
                     </View>
                     <View style={styles.modalItemContent}>
                       <Text style={styles.modalItemTitle}>{num} {num === 1 ? 'Seat' : 'Seats'}</Text>
-                      <Text style={styles.modalItemSub}>Number of passengers</Text>
+                      <Text style={styles.modalItemSub}>{num === getMinSeats(vehicleType) ? 'Minimum booking' : 'Number of passengers'}</Text>
                     </View>
                   </TouchableOpacity>
                 ))}
