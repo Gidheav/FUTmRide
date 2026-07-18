@@ -7,7 +7,7 @@ pip install -r requirements/base.txt
 pip install -r requirements/production.txt
 
 # Run migrations automatically
-python manage.py makemigrations --merge
+python manage.py makemigrations --merge --noinput
 python manage.py migrate --settings=core.settings.production
 
 # Seed/repair admin accounts only when explicitly enabled.
