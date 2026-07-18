@@ -250,7 +250,7 @@ function StudentAppInner() {
   // On subsequent background → foreground transitions, only lock if the timeout
   // has elapsed (handled by the AppState listener below).
   useEffect(() => {
-    if (!appLockEnabled) { setLocked(false); return }
+    if (!appLockEnabled || lockTimeoutMinutes === -1) { setLocked(false); return }
     if (!hasPin && !biometricEnabled) { setAppLockEnabled(false); setLocked(false); return }
 
     if (isColdStartRef.current) {
@@ -288,6 +288,13 @@ function StudentAppInner() {
         wentBackgroundAtRef.current = null
         if (!leftAt) return
 
+        const hasUnlockMethod = hasPin || biometricEnabled
+        if (lockTimeoutMinutes === -1 || !hasUnlockMethod) {
+          setLocked(false)
+          void syncStudentSessionInBackground()
+          return
+        }
+
         if (lockTimeoutMinutes === 0) {
           setLocked(true)
           return
@@ -310,7 +317,7 @@ function StudentAppInner() {
     return () => {
       changeSub.remove()
     }
-  }, [appLockEnabled, lockTimeoutMinutes, setLastUnlockAt, setLocked])
+  }, [appLockEnabled, biometricEnabled, hasPin, lockTimeoutMinutes, setLastUnlockAt, setLocked])
 
   useEffect(() => {
     // Only sync session after a fresh email/password login, not after PIN unlock.

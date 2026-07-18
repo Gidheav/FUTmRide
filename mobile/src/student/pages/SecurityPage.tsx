@@ -19,12 +19,15 @@ import api from '../../core/api'
 import { refreshTransactionPinStatus } from '../../core/transactionPin'
 import { saveStudentSessionSnapshotFromStores } from '../../core/session'
 
-const TIMEOUT_OPTIONS: Array<{ label: string; value: 0 | 0.25 | 1 | 5 | 15 }> = [
+const TIMEOUT_OPTIONS: Array<{ label: string; value: -1 | 0 | 0.25 | 0.5 | 1 | 5 | 15 | 30 }> = [
+  { label: 'None (Disabled)', value: -1 },
   { label: 'Immediate', value: 0 },
   { label: '15 seconds', value: 0.25 },
+  { label: '30 seconds', value: 0.5 },
   { label: '1 minute', value: 1 },
   { label: '5 minutes', value: 5 },
   { label: '15 minutes', value: 15 },
+  { label: '30 minutes', value: 30 },
 ]
 
 type SecurityPageProps = {
@@ -41,6 +44,7 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
     setAppLockEnabled,
     setBiometricEnabled,
     setLockTimeoutMinutes,
+    setLocked,
     hasPin,
     setHasPin,
     hasTransactionPin,
@@ -142,6 +146,7 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
   const handleToggleLock = (value: boolean) => {
     if (!value) {
       setAppLockEnabled(false)
+      setLockTimeoutMinutes(-1)
       void saveStudentSessionSnapshotFromStores()
       setError('')
       return
@@ -154,7 +159,22 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
     }
     setError('')
     setAppLockEnabled(true)
+    if (lockTimeoutMinutes === -1) {
+      setLockTimeoutMinutes(0.25)
+    }
     void saveStudentSessionSnapshotFromStores()
+  }
+
+  const handleLockTimeoutSelect = (value: -1 | 0 | 0.25 | 0.5 | 1 | 5 | 15 | 30) => {
+    setLockTimeoutMinutes(value)
+    if (value === -1) {
+      setAppLockEnabled(false)
+      setLocked(false)
+    } else {
+      setAppLockEnabled(true)
+    }
+    void saveStudentSessionSnapshotFromStores()
+    setTimeoutModalVisible(false)
   }
 
   const handleToggleBiometric = async (value: boolean) => {
@@ -258,7 +278,7 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
     await setStoredPinHash(pinInput)
     setHasPin(true)
     setAppLockEnabled(true)
-    if (!appLockEnabled) {
+    if (!appLockEnabled || lockTimeoutMinutes === -1) {
       setLockTimeoutMinutes(0.25)
     }
     void saveStudentSessionSnapshotFromStores()
@@ -816,7 +836,7 @@ export default function SecurityPage({ onClose, openPinOnLoad, skipCurrentPin }:
               {TIMEOUT_OPTIONS.map((option) => {
                 const selected = lockTimeoutMinutes === option.value
                 return (
-                  <TouchableOpacity key={option.value} style={styles.modalRow} onPress={() => { setLockTimeoutMinutes(option.value); void saveStudentSessionSnapshotFromStores(); setTimeoutModalVisible(false) }}>
+                  <TouchableOpacity key={option.value} style={styles.modalRow} onPress={() => handleLockTimeoutSelect(option.value)}>
                     <View style={styles.radioOuter}>
                       {selected ? <View style={styles.radioInner} /> : null}
                     </View>

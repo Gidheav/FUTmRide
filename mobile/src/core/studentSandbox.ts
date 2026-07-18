@@ -9,7 +9,7 @@ import { clearStoredPinHash } from './security'
 
 const STUDENT_SESSION_SNAPSHOT_KEY = 'lr-ride:student:sandbox:session'
 const STUDENT_PENDING_LOGOUTS_KEY = 'lr-ride:student:sandbox:pending-logouts'
-type LockTimeout = 0 | 0.25 | 1 | 5 | 15
+type LockTimeout = -1 | 0 | 0.25 | 0.5 | 1 | 5 | 15 | 30
 
 const ASYNC_KEYS_TO_CLEAR = [
   'auth-store',

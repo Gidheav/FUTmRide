@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
-type LockTimeout = 0 | 0.25 | 1 | 5 | 15
+type LockTimeout = -1 | 0 | 0.25 | 0.5 | 1 | 5 | 15 | 30
 export type TransactionPinStatus = 'unknown' | 'loading' | 'ready' | 'error'
 
 interface SecurityStore {
@@ -33,7 +33,7 @@ export const useSecurityStore = create<SecurityStore>()(
     (set) => ({
       appLockEnabled: false,
       biometricEnabled: false,
-      lockTimeoutMinutes: 0.25,
+      lockTimeoutMinutes: -1,
       lastUnlockAt: null,
       // 'locked' is intentionally NOT persisted (see partialize below).
       // It always starts as false in memory; the boot-time effect in
@@ -56,7 +56,7 @@ export const useSecurityStore = create<SecurityStore>()(
       resetForLogout: () => set({
         appLockEnabled: false,
         biometricEnabled: false,
-        lockTimeoutMinutes: 0.25,
+        lockTimeoutMinutes: -1,
         lastUnlockAt: null,
         locked: false,
         hasPin: false,
