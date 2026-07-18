@@ -19,7 +19,7 @@ import * as LocationService from 'expo-location'
 import api from '../../core/api'
 import useWalletStore from '../../core/walletStore'
 import { useLocations } from '../../../services/locationDataService'
-import MapPickerPage from './MapPickerPage'
+import MapPickerPage, { RouteSelection } from './MapPickerPage'
 
 const VEHICLES = [
   { id: 'motorbike', label: 'Motorbike (Okada)' },
@@ -131,6 +131,7 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
   const [seatCount, setSeatCount] = useState(getMinSeats('sedan'))
   const [scheduledOffset, setScheduledOffset] = useState(0)
   const [mapDropoff, setMapDropoff] = useState<{ latitude: number; longitude: number } | null>(null)
+  const [selectedRoute, setSelectedRoute] = useState<RouteSelection['route'] | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [pinModalVisible, setPinModalVisible] = useState(false)
   const [pinInput, setPinInput] = useState('')
@@ -179,28 +180,40 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
   const handleSelectLocation = useCallback((item: LocationOption) => {
     if (activePicker === 'pickup') {
       setPickup(item)
+      setSelectedRoute(null)
     }
     if (activePicker === 'dropoff') {
       setDropoff(item)
       setMapDropoff(null)
+      setSelectedRoute(null)
     }
     setActivePicker(null)
   }, [activePicker])
 
-  const handleMapSelect = useCallback((coords: { latitude: number; longitude: number }) => {
+  const handleMapSelect = useCallback((selection: RouteSelection) => {
     const rounded = {
-      latitude: roundCoord(coords.latitude),
-      longitude: roundCoord(coords.longitude),
+      latitude: roundCoord(selection.dropoff.latitude),
+      longitude: roundCoord(selection.dropoff.longitude),
     }
     setMapDropoff(rounded)
+    setSelectedRoute(selection.route)
     setDropoff({
       id: 'map-pin',
       label: 'Pinned location',
-      description: 'Selected from map',
+      description: `${selection.route.distance_km.toFixed(2)} km route selected`,
       latitude: rounded.latitude,
       longitude: rounded.longitude,
     })
   }, [])
+
+  const formReady = Boolean(
+    pickup &&
+    dropoff &&
+    selectedRoute &&
+    seatCount >= getMinSeats(vehicleType) &&
+    seatCount <= seatLimit &&
+    !isSubmitting,
+  )
 
   const submitRide = async () => {
     if (!pickup) {
@@ -209,6 +222,10 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
     }
     if (!dropoff) {
       Alert.alert('Missing dropoff', 'Select a dropoff location.')
+      return
+    }
+    if (!selectedRoute) {
+      Alert.alert('Route required', 'Open the map and select a valid route before requesting this ride.')
       return
     }
     if (seatCount > seatLimit) {
@@ -229,6 +246,7 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
       requested_seats: seatCount,
       scheduled_pickup_time: scheduledTime,
       payment_method: 'wallet',
+      route_index: selectedRoute.index,
     }
 
     setIsSubmitting(true)
@@ -258,6 +276,10 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
     }
     if (!dropoff) {
       Alert.alert('Missing dropoff', 'Select a dropoff location.')
+      return
+    }
+    if (!selectedRoute) {
+      Alert.alert('Route required', 'Open the map and select a valid route before requesting this ride.')
       return
     }
     // Open Transaction PIN modal
@@ -354,25 +376,34 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
 
               <View style={[styles.routeInputGroup, { marginTop: 16 }]}>
                 <Text style={styles.routeInputLabel}>Dropoff Location</Text>
-                <TouchableOpacity style={styles.inputButton} onPress={() => openPicker('dropoff')}>
-                  <Text style={dropoff ? styles.inputValue : styles.inputPlaceholder} numberOfLines={1}>
-                    {dropoff ? dropoff.label : 'Search campus location'}
+                <View style={styles.pickupInputRow}>
+                  <TouchableOpacity style={[styles.inputButton, { flex: 1 }]} onPress={() => openPicker('dropoff')}>
+                    <Text style={dropoff ? styles.inputValue : styles.inputPlaceholder} numberOfLines={1}>
+                      {dropoff ? dropoff.label : 'Search campus location'}
+                    </Text>
+                    <MaterialIcons name="keyboard-arrow-down" size={18} color="#8b8b8b" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.currentLocationBtn, selectedRoute && styles.currentLocationBtnActive]}
+                    onPress={() => {
+                      if (!pickup) {
+                        Alert.alert('Pickup required', 'Select pickup before opening the route map.')
+                        return
+                      }
+                      setShowMapPicker(true)
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <MaterialIcons name="route" size={20} color={selectedRoute ? '#6A1B9A' : '#8b8b8b'} />
+                  </TouchableOpacity>
+                </View>
+                {selectedRoute && (
+                  <Text style={styles.helperText}>
+                    Route selected: {selectedRoute.distance_km.toFixed(2)} km{selectedRoute.duration_minutes ? ` · ${selectedRoute.duration_minutes} min` : ''}
                   </Text>
-                  <MaterialIcons name="keyboard-arrow-down" size={20} color="#8b8b8b" />
-                </TouchableOpacity>
+                )}
               </View>
             </View>
-          </View>
-
-          <View style={styles.mapButtonContainer}>
-            <TouchableOpacity 
-              style={styles.mapButton} 
-              activeOpacity={0.8}
-              onPress={() => setShowMapPicker(true)}
-            >
-              <MaterialIcons name="map" size={18} color="#6A1B9A" />
-              <Text style={styles.mapButtonText}>Choose Dropoff on Map</Text>
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -433,9 +464,9 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
 
         <View style={styles.submitContainer}>
           <TouchableOpacity
-            style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
+            style={[styles.submitButton, !formReady && styles.submitButtonDisabled]}
             onPress={handleSubmit}
-            disabled={isSubmitting}
+            disabled={!formReady}
             activeOpacity={0.8}
           >
             <Text style={styles.submitText}>{isSubmitting ? 'Booking...' : 'Request Ride'}</Text>
@@ -473,6 +504,7 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
                 {VEHICLES.map((item) => (
                   <TouchableOpacity key={item.id} style={styles.modalItem} onPress={() => {
                     setVehicleType(item.id)
+                    setSelectedRoute(null)
                     // Auto-set seats to the minimum for the new vehicle type
                     const newMin = getMinSeats(item.id)
                     const newMax = getSeatLimit(item.id)
@@ -557,7 +589,9 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
               handleMapSelect(coords)
               setShowMapPicker(false)
             }}
-            initialCoords={mapDropoff}
+            initialCoords={mapDropoff ?? (dropoff ? { latitude: dropoff.latitude, longitude: dropoff.longitude } : null)}
+            pickupCoords={pickup ? { latitude: pickup.latitude, longitude: pickup.longitude } : null}
+            vehicleType={vehicleType}
           />
         </View>
       )}

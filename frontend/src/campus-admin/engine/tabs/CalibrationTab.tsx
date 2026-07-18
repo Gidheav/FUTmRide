@@ -313,6 +313,7 @@ export function CalibrationTab({ settings }: { settings: PlatformSettings }) {
   const [estimate, setEstimate] = useState<EstimateResult | null>(null)
   const [estimating, setEstimating] = useState(false)
   const [importText, setImportText] = useState('')
+  const [showConfiguredMap, setShowConfiguredMap] = useState(true)
   const mapRef = useRef<google.maps.Map | null>(null)
   const traceRequestIdRef = useRef(0)
 
@@ -356,7 +357,7 @@ export function CalibrationTab({ settings }: { settings: PlatformSettings }) {
       })
       if (requestId !== traceRequestIdRef.current) return
 
-      const routes = Array.isArray(data?.routes)
+      const routes: TraceRoute[] = Array.isArray(data?.routes)
         ? data.routes.map((route: any, idx: number) => ({
           id: route.id || `route-${idx}`,
           path: simplifyPath((route.path || []).map((point: any) => normalizePoint({ lat: Number(point.lat), lng: Number(point.lng) }))),
@@ -578,6 +579,28 @@ export function CalibrationTab({ settings }: { settings: PlatformSettings }) {
     setSelectedLaneId(first.id)
   }
 
+  const addNodeToSelectedLane = () => {
+    if (!selectedLane || selectedLane.path.length < 2) return
+    let insertAfter = 0
+    let longest = 0
+    selectedLane.path.slice(1).forEach((point, idx) => {
+      const segmentKm = distanceKm(selectedLane.path[idx], point)
+      if (segmentKm > longest) {
+        longest = segmentKm
+        insertAfter = idx
+      }
+    })
+    const a = selectedLane.path[insertAfter]
+    const b = selectedLane.path[insertAfter + 1]
+    const midpoint = normalizePoint({ lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 })
+    const nextPath = [
+      ...selectedLane.path.slice(0, insertAfter + 1),
+      midpoint,
+      ...selectedLane.path.slice(insertAfter + 1),
+    ]
+    updateLane(selectedLane.id, { path: nextPath })
+  }
+
   const deleteSelectedLane = () => {
     if (!selectedLaneId) return
     setLanes((prev) => prev.filter((lane) => lane.id !== selectedLaneId))
@@ -794,6 +817,14 @@ export function CalibrationTab({ settings }: { settings: PlatformSettings }) {
                 Provider: {settings.distance_provider}
               </div>
             )}
+            <button
+              type="button"
+              className="calibration-floating"
+              style={{ cursor: 'pointer', color: showConfiguredMap ? T.accent : T.textSecondary }}
+              onClick={() => setShowConfiguredMap((value) => !value)}
+            >
+              {showConfiguredMap ? 'Google + configured map' : 'Google only'}
+            </button>
           </div>
 
           {isLoaded ? (
@@ -812,7 +843,7 @@ export function CalibrationTab({ settings }: { settings: PlatformSettings }) {
                 draggableCursor: tool === 'select' ? undefined : 'crosshair',
               }}
             >
-              {lanes.map((lane) => (
+              {showConfiguredMap && lanes.map((lane) => (
                 <Polyline
                   key={lane.id}
                   path={lane.path}
@@ -856,7 +887,7 @@ export function CalibrationTab({ settings }: { settings: PlatformSettings }) {
                   }}
                 />
               ))}
-              {selectedLane && tool === 'select' && selectedLane.path.map((point, idx) => (
+              {showConfiguredMap && selectedLane && tool === 'select' && selectedLane.path.map((point, idx) => (
                 <Marker
                   key={`${selectedLane.id}-node-${idx}`}
                   position={point}
@@ -961,7 +992,10 @@ export function CalibrationTab({ settings }: { settings: PlatformSettings }) {
                     {selectedLane.path.length} points, {selectedLane.distanceKm.toFixed(3)} calibrated km
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                    <button type="button" style={campusPanel.btnSecondary} onClick={addNodeToSelectedLane}><Plus size={13} /> Add node</button>
                     <button type="button" style={campusPanel.btnSecondary} onClick={splitSelectedLane}><Scissors size={13} /> Split</button>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 6 }}>
                     <button type="button" style={{ ...campusPanel.btnSecondary, color: T.error }} onClick={deleteSelectedLane}><Trash2 size={13} /> Delete</button>
                   </div>
                 </div>

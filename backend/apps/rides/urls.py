@@ -1,6 +1,7 @@
 from django.urls import path
 from .views import (
     RideRequestView,
+    RideRouteOptionsView,
     StudentRideListView,
     StudentActiveRideView,
     RideDetailView,
@@ -82,6 +83,7 @@ from .test_tools import (
 
 urlpatterns = [
     path('available/', AvailableRidesView.as_view(), name='ride-available'),
+    path('route-options/', RideRouteOptionsView.as_view(), name='ride-route-options'),
     path('request/', RideRequestView.as_view(), name='ride-request'),
     path('my/', StudentRideListView.as_view(), name='ride-student-list'),
     path('my/active/', StudentActiveRideView.as_view(), name='ride-student-active'),

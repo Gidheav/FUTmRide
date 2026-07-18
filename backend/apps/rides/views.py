@@ -64,13 +64,22 @@ class RideRequestView(generics.CreateAPIView):
         with transaction.atomic():
             ride = serializer.save()
             ride.transition_to(RideStatus.SEARCHING)
-            route = RouteDistanceResolver.resolve(
-                pickup_latitude=float(ride.pickup_latitude),
-                pickup_longitude=float(ride.pickup_longitude),
-                dropoff_latitude=float(ride.dropoff_latitude),
-                dropoff_longitude=float(ride.dropoff_longitude),
-                vehicle_type=ride.vehicle_type_requested,
-            )
+            try:
+                route = RouteDistanceResolver.resolve(
+                    pickup_latitude=float(ride.pickup_latitude),
+                    pickup_longitude=float(ride.pickup_longitude),
+                    dropoff_latitude=float(ride.dropoff_latitude),
+                    dropoff_longitude=float(ride.dropoff_longitude),
+                    vehicle_type=ride.vehicle_type_requested,
+                    allow_haversine_fallback=False,
+                    preferred_route_index=int(request.data.get('route_index') or 0),
+                )
+            except ValueError:
+                transaction.set_rollback(True)
+                return Response(
+                    {'error': {'code': 'ROUTE_NOT_FOUND', 'message': 'No valid route found for this trip.'}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             ride.estimated_distance_km = Decimal(str(route.distance_km))
             ride.estimated_duration_minutes = route.duration_minutes
             ride.estimated_route_geometry = route.geometry
@@ -120,6 +129,56 @@ class RideRequestView(generics.CreateAPIView):
         logger.info('ride_requested ref=%s student=%s assigned=%s', ride.reference, str(request.user.id), False)
         notify_student_ride_status(ride)
         return Response(RideDetailSerializer(ride, context={'request': request}).data, status=status.HTTP_201_CREATED)
+
+
+class RideRouteOptionsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role != UserRole.STUDENT:
+            return Response(
+                {'error': {'code': 'FORBIDDEN', 'message': 'Only students can estimate ride routes.'}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            pickup_latitude = float(request.data.get('pickup_latitude'))
+            pickup_longitude = float(request.data.get('pickup_longitude'))
+            dropoff_latitude = float(request.data.get('dropoff_latitude'))
+            dropoff_longitude = float(request.data.get('dropoff_longitude'))
+        except (TypeError, ValueError):
+            return Response(
+                {'error': {'code': 'INVALID_COORDINATES', 'message': 'Pickup and dropoff coordinates are required.'}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        vehicle_type = request.data.get('vehicle_type') or 'sedan'
+        routes = RouteDistanceResolver.resolve_options(
+            pickup_latitude=pickup_latitude,
+            pickup_longitude=pickup_longitude,
+            dropoff_latitude=dropoff_latitude,
+            dropoff_longitude=dropoff_longitude,
+            vehicle_type=vehicle_type,
+        )
+        if not routes:
+            return Response(
+                {'error': {'code': 'ROUTE_NOT_FOUND', 'message': 'No valid route found for this trip.'}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        return Response({
+            'routes': [
+                {
+                    'index': idx,
+                    'distance_km': route.distance_km,
+                    'duration_minutes': route.duration_minutes,
+                    'geometry': route.geometry,
+                    'provider': route.provider,
+                    'confidence': route.confidence,
+                    'metadata': route.metadata,
+                }
+                for idx, route in enumerate(routes)
+            ]
+        })
 
 
 class StudentRideListView(generics.ListAPIView):

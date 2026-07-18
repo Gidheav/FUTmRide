@@ -36,6 +36,9 @@ class RideRequestSerializer(serializers.ModelSerializer):
         ]
 
     def to_internal_value(self, data):
+        if 'route_index' in data:
+            data = data.copy()
+            data.pop('route_index', None)
         if 'requested_seats' not in data:
             if 'passengerCount' in data:
                 data = data.copy()

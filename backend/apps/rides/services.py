@@ -34,7 +34,7 @@ class RouteDistanceResolver:
 
     DEFAULT_OSRM_BASE_URL = 'https://router.project-osrm.org'
     HAVERSINE_ROAD_FACTOR = 1.25
-    REQUEST_TIMEOUT_SECONDS = 4
+    REQUEST_TIMEOUT_SECONDS = 2.5
 
     @staticmethod
     def _decode_google_polyline(encoded: str) -> list[dict]:
@@ -84,6 +84,8 @@ class RouteDistanceResolver:
         dropoff_latitude: float,
         dropoff_longitude: float,
         vehicle_type: str | None = None,
+        allow_haversine_fallback: bool = True,
+        preferred_route_index: int = 0,
     ) -> RouteResolution:
         from apps.pricing.models import PlatformSettings
         from apps.rides.routing import CampusRouter
@@ -117,6 +119,7 @@ class RouteDistanceResolver:
                 dropoff_latitude,
                 dropoff_longitude,
                 vehicle_type=vehicle_type,
+                route_index=preferred_route_index,
             )
             if route:
                 return route
@@ -128,9 +131,13 @@ class RouteDistanceResolver:
                 dropoff_latitude,
                 dropoff_longitude,
                 vehicle_type=vehicle_type,
+                route_index=preferred_route_index,
             )
             if route:
                 return route
+
+        if not allow_haversine_fallback:
+            raise ValueError('No valid road route found for this trip.')
 
         return cls._resolve_haversine(
             pickup_latitude,
@@ -149,6 +156,7 @@ class RouteDistanceResolver:
         dropoff_latitude: float,
         dropoff_longitude: float,
         vehicle_type: str | None = None,
+        route_index: int = 0,
     ) -> RouteResolution | None:
         base_url = (
             getattr(settings, 'OSRM_BASE_URL', None)
@@ -162,7 +170,7 @@ class RouteDistanceResolver:
         params = {
             'overview': 'full',
             'geometries': 'geojson',
-            'alternatives': 'false',
+            'alternatives': 'true' if route_index else 'false',
             'steps': 'false',
         }
 
@@ -179,7 +187,7 @@ class RouteDistanceResolver:
             logger.warning('route_osrm_no_route code=%s', data.get('code'))
             return None
 
-        route = routes[0]
+        route = routes[min(max(route_index, 0), len(routes) - 1)]
         distance_m = float(route.get('distance') or 0)
         if distance_m <= 0:
             return None
@@ -206,6 +214,7 @@ class RouteDistanceResolver:
                 'distance_meters': round(distance_m, 2),
                 'duration_seconds': round(float(duration_seconds), 2) if duration_seconds else None,
                 'fallback_used': False,
+                'route_index': route_index,
             },
         )
 
@@ -217,6 +226,7 @@ class RouteDistanceResolver:
         dropoff_latitude: float,
         dropoff_longitude: float,
         vehicle_type: str | None = None,
+        route_index: int = 0,
     ) -> RouteResolution | None:
         api_key = getattr(settings, 'GOOGLE_MAPS_API_KEY', None) or os.getenv('GOOGLE_MAPS_API_KEY')
         if not api_key:
@@ -227,6 +237,7 @@ class RouteDistanceResolver:
             'origin': f'{pickup_latitude},{pickup_longitude}',
             'destination': f'{dropoff_latitude},{dropoff_longitude}',
             'mode': 'driving',
+            'alternatives': 'true' if route_index else 'false',
             'key': api_key,
         }
 
@@ -243,8 +254,9 @@ class RouteDistanceResolver:
             logger.warning('route_google_no_route status=%s', data.get('status'))
             return None
 
-        legs = routes[0].get('legs') or []
-        overview_polyline = ((routes[0].get('overview_polyline') or {}).get('points') or '')
+        route = routes[min(max(route_index, 0), len(routes) - 1)]
+        legs = route.get('legs') or []
+        overview_polyline = ((route.get('overview_polyline') or {}).get('points') or '')
         if not legs:
             return None
 
@@ -278,8 +290,159 @@ class RouteDistanceResolver:
                 'duration_seconds': round(duration_seconds, 2) if duration_seconds else None,
                 'fallback_used': False,
                 'geometry_source': 'overview_polyline' if overview_polyline else 'endpoints',
+                'route_index': route_index,
             },
         )
+
+    @classmethod
+    def resolve_options(
+        cls,
+        pickup_latitude: float,
+        pickup_longitude: float,
+        dropoff_latitude: float,
+        dropoff_longitude: float,
+        vehicle_type: str | None = None,
+    ) -> list[RouteResolution]:
+        from apps.rides.routing import CampusRouter
+
+        campus_router = CampusRouter(vehicle_type=vehicle_type)
+        campus_route = campus_router.resolve(
+            pickup_lat=pickup_latitude,
+            pickup_lng=pickup_longitude,
+            dropoff_lat=dropoff_latitude,
+            dropoff_lng=dropoff_longitude,
+        )
+        if campus_route:
+            return [RouteResolution(
+                distance_km=campus_route['distance_km'],
+                duration_minutes=None,
+                geometry=campus_route['geometry'],
+                provider=campus_route['provider'],
+                confidence=campus_route['confidence'],
+                metadata=campus_route.get('metadata', {}),
+            )]
+
+        routes = cls._resolve_osrm_options(
+            pickup_latitude, pickup_longitude, dropoff_latitude, dropoff_longitude, vehicle_type=vehicle_type,
+        )
+        if routes:
+            return routes
+
+        routes = cls._resolve_google_options(
+            pickup_latitude, pickup_longitude, dropoff_latitude, dropoff_longitude, vehicle_type=vehicle_type,
+        )
+        return routes
+
+    @classmethod
+    def _resolve_osrm_options(
+        cls,
+        pickup_latitude: float,
+        pickup_longitude: float,
+        dropoff_latitude: float,
+        dropoff_longitude: float,
+        vehicle_type: str | None = None,
+    ) -> list[RouteResolution]:
+        base_url = (
+            getattr(settings, 'OSRM_BASE_URL', None)
+            or os.getenv('OSRM_BASE_URL')
+            or cls.DEFAULT_OSRM_BASE_URL
+        ).rstrip('/')
+        url = f'{base_url}/route/v1/driving/{pickup_longitude},{pickup_latitude};{dropoff_longitude},{dropoff_latitude}'
+        try:
+            response = requests.get(url, params={
+                'overview': 'full',
+                'geometries': 'geojson',
+                'alternatives': 'true',
+                'steps': 'false',
+            }, timeout=cls.REQUEST_TIMEOUT_SECONDS)
+            response.raise_for_status()
+            data = response.json()
+        except Exception as exc:
+            logger.warning('route_osrm_options_failed error=%s', exc)
+            return []
+
+        if data.get('code') != 'Ok' or not data.get('routes'):
+            return []
+
+        options = []
+        for idx, route in enumerate(data.get('routes') or []):
+            distance_m = float(route.get('distance') or 0)
+            coords = ((route.get('geometry') or {}).get('coordinates') or [])
+            if distance_m <= 0 or len(coords) < 2:
+                continue
+            geometry = [{'latitude': round(float(lat), 6), 'longitude': round(float(lng), 6)} for lng, lat in coords]
+            duration_seconds = route.get('duration')
+            options.append(RouteResolution(
+                distance_km=round(distance_m / 1000, 3),
+                duration_minutes=round(float(duration_seconds) / 60) if duration_seconds else None,
+                geometry=geometry,
+                provider='osrm',
+                confidence='high',
+                metadata={
+                    'vehicle_type': vehicle_type,
+                    'distance_meters': round(distance_m, 2),
+                    'duration_seconds': round(float(duration_seconds), 2) if duration_seconds else None,
+                    'fallback_used': False,
+                    'route_index': idx,
+                },
+            ))
+        return options
+
+    @classmethod
+    def _resolve_google_options(
+        cls,
+        pickup_latitude: float,
+        pickup_longitude: float,
+        dropoff_latitude: float,
+        dropoff_longitude: float,
+        vehicle_type: str | None = None,
+    ) -> list[RouteResolution]:
+        api_key = getattr(settings, 'GOOGLE_MAPS_API_KEY', None) or os.getenv('GOOGLE_MAPS_API_KEY')
+        if not api_key:
+            return []
+        try:
+            response = requests.get('https://maps.googleapis.com/maps/api/directions/json', params={
+                'origin': f'{pickup_latitude},{pickup_longitude}',
+                'destination': f'{dropoff_latitude},{dropoff_longitude}',
+                'mode': 'driving',
+                'alternatives': 'true',
+                'key': api_key,
+            }, timeout=cls.REQUEST_TIMEOUT_SECONDS)
+            response.raise_for_status()
+            data = response.json()
+        except Exception as exc:
+            logger.warning('route_google_options_failed error=%s', exc)
+            return []
+        if data.get('status') != 'OK' or not data.get('routes'):
+            return []
+
+        options = []
+        for idx, route in enumerate(data.get('routes') or []):
+            legs = route.get('legs') or []
+            distance_m = sum(float((leg.get('distance') or {}).get('value') or 0) for leg in legs)
+            duration_seconds = sum(float((leg.get('duration') or {}).get('value') or 0) for leg in legs)
+            encoded = ((route.get('overview_polyline') or {}).get('points') or '')
+            try:
+                geometry = cls._decode_google_polyline(encoded) if encoded else []
+            except Exception:
+                geometry = []
+            if distance_m <= 0 or len(geometry) < 2:
+                continue
+            options.append(RouteResolution(
+                distance_km=round(distance_m / 1000, 3),
+                duration_minutes=round(duration_seconds / 60) if duration_seconds else None,
+                geometry=geometry,
+                provider='google',
+                confidence='high',
+                metadata={
+                    'vehicle_type': vehicle_type,
+                    'distance_meters': round(distance_m, 2),
+                    'duration_seconds': round(duration_seconds, 2) if duration_seconds else None,
+                    'fallback_used': False,
+                    'route_index': idx,
+                },
+            ))
+        return options
 
     @classmethod
     def _resolve_haversine(
