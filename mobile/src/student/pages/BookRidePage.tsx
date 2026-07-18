@@ -387,14 +387,14 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
                     style={[styles.currentLocationBtn, selectedRoute && styles.currentLocationBtnActive]}
                     onPress={() => {
                       if (!pickup) {
-                        Alert.alert('Pickup required', 'Select pickup before opening the route map.')
+                        Alert.alert('Pickup required', 'Select pickup before pinning dropoff.')
                         return
                       }
                       setShowMapPicker(true)
                     }}
                     activeOpacity={0.8}
                   >
-                    <MaterialIcons name="route" size={20} color={selectedRoute ? '#6A1B9A' : '#8b8b8b'} />
+                    <MaterialIcons name="add-location-alt" size={20} color={selectedRoute ? '#6A1B9A' : '#8b8b8b'} />
                   </TouchableOpacity>
                 </View>
                 {selectedRoute && (
@@ -404,6 +404,33 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
                 )}
               </View>
             </View>
+          </View>
+
+          <View style={styles.mapButtonContainer}>
+            <TouchableOpacity
+              style={[
+                styles.mapButton,
+                (!pickup || !dropoff) && styles.mapButtonDisabled,
+              ]}
+              activeOpacity={0.8}
+              disabled={!pickup || !dropoff}
+              onPress={() => {
+                if (!pickup) {
+                  Alert.alert('Pickup required', 'Select pickup before viewing the route.')
+                  return
+                }
+                if (!dropoff) {
+                  Alert.alert('Dropoff required', 'Select or pin a dropoff before viewing the route.')
+                  return
+                }
+                setShowMapPicker(true)
+              }}
+            >
+              <MaterialIcons name="map" size={18} color={pickup && dropoff ? '#6A1B9A' : '#9ca3af'} />
+              <Text style={[styles.mapButtonText, (!pickup || !dropoff) && styles.mapButtonTextDisabled]}>
+                View Route on Map
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
 
