@@ -22,7 +22,7 @@ from .serializers import (
     AvailableRidesQuerySerializer,
     AvailableDriverSerializer,
 )
-from .services import FareCalculator, get_available_drivers_nearby
+from .services import FareCalculator, RouteDistanceResolver, get_available_drivers_nearby
 from .notifications import notify_student_ride_status
 
 logger = logging.getLogger('apps.rides')
@@ -64,9 +64,22 @@ class RideRequestView(generics.CreateAPIView):
         with transaction.atomic():
             ride = serializer.save()
             ride.transition_to(RideStatus.SEARCHING)
+            route = RouteDistanceResolver.resolve(
+                pickup_latitude=float(ride.pickup_latitude),
+                pickup_longitude=float(ride.pickup_longitude),
+                dropoff_latitude=float(ride.dropoff_latitude),
+                dropoff_longitude=float(ride.dropoff_longitude),
+                vehicle_type=ride.vehicle_type_requested,
+            )
+            ride.estimated_distance_km = Decimal(str(route.distance_km))
+            ride.estimated_duration_minutes = route.duration_minutes
+            ride.estimated_route_geometry = route.geometry
+            ride.route_distance_provider = route.provider
+            ride.route_confidence = route.confidence
+            ride.route_metadata = route.metadata
             fare_data = FareCalculator.calculate(
                 vehicle_type=ride.vehicle_type_requested,
-                distance_km=float(ride.estimated_distance_km or 2.0),
+                distance_km=route.distance_km,
                 passenger_count=ride.requested_seats,
             )
             ride.base_fare = fare_data['base_fare']

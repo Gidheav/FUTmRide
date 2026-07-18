@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import {
   Alert,
   AppState,
@@ -16,7 +16,7 @@ import {
 } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps'
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE, Region } from 'react-native-maps'
 import api from '../../core/api'
 import useWalletStore from '../../core/walletStore'
 import { showRideStatusNotification } from '../../core/pushNotifications'
@@ -37,6 +37,32 @@ const CANCELLED_STATUSES = [
   'cancelled_no_show',
 ]
 
+type MapCoordinate = {
+  latitude: number
+  longitude: number
+}
+
+const parseMapCoordinate = (latitude: unknown, longitude: unknown): MapCoordinate | null => {
+  const parsedLatitude = Number(latitude)
+  const parsedLongitude = Number(longitude)
+  if (
+    !Number.isFinite(parsedLatitude) ||
+    !Number.isFinite(parsedLongitude) ||
+    Math.abs(parsedLatitude) > 90 ||
+    Math.abs(parsedLongitude) > 180
+  ) {
+    return null
+  }
+  return { latitude: parsedLatitude, longitude: parsedLongitude }
+}
+
+const parseRouteGeometry = (geometry: unknown): MapCoordinate[] => {
+  if (!Array.isArray(geometry)) return []
+  return geometry
+    .map((point: any) => parseMapCoordinate(point?.latitude, point?.longitude))
+    .filter((point): point is MapCoordinate => Boolean(point))
+}
+
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: keyof typeof MaterialIcons.glyphMap }> = {
   driver_assigned: { label: 'Driver Assigned', color: '#6A1B9A', icon: 'person' },
   driver_en_route: { label: 'Driver En Route', color: '#1565C0', icon: 'directions-car' },
@@ -56,6 +82,8 @@ export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRi
   const [error, setError] = useState<string | null>(null)
   const [cancelling, setCancelling] = useState(false)
   const lastStatusRef = useRef<string | null>(null)
+  const mapRef = useRef<MapView>(null)
+  const [isMapReady, setIsMapReady] = useState(false)
   const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null)
   const [ratingVisible, setRatingVisible] = useState(false)
   const [ratingScore, setRatingScore] = useState(0)
@@ -334,12 +362,26 @@ export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRi
   const etaLabel = ride?.estimated_duration_minutes ? `${ride.estimated_duration_minutes} min` : null
   const refLabel = ride?.reference || ''
 
-  const pickupCoords = ride?.pickup_latitude && ride?.pickup_longitude
-    ? { latitude: Number(ride.pickup_latitude), longitude: Number(ride.pickup_longitude) }
-    : null
-  const dropoffCoords = ride?.dropoff_latitude && ride?.dropoff_longitude
-    ? { latitude: Number(ride.dropoff_latitude), longitude: Number(ride.dropoff_longitude) }
-    : null
+  const pickupCoords = parseMapCoordinate(ride?.pickup_latitude, ride?.pickup_longitude)
+  const dropoffCoords = parseMapCoordinate(ride?.dropoff_latitude, ride?.dropoff_longitude)
+  const storedRouteCoordinates = useMemo(
+    () => parseRouteGeometry(ride?.estimated_route_geometry),
+    [ride?.estimated_route_geometry],
+  )
+  const routeCoordinates = storedRouteCoordinates.length >= 2
+    ? storedRouteCoordinates
+    : [pickupCoords, dropoffCoords].filter((point): point is MapCoordinate => Boolean(point))
+
+  useEffect(() => {
+    if (!isMapReady || routeCoordinates.length < 2) return
+    const timer = setTimeout(() => {
+      mapRef.current?.fitToCoordinates(routeCoordinates, {
+        edgePadding: { top: 36, right: 36, bottom: 36, left: 36 },
+        animated: true,
+      })
+    }, 250)
+    return () => clearTimeout(timer)
+  }, [isMapReady, routeCoordinates])
 
   const mapRegion: Region | undefined = pickupCoords
     ? {
@@ -365,9 +407,12 @@ export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRi
         {mapRegion ? (
           <View style={styles.mapCard}>
             <MapView
+              ref={mapRef}
               style={styles.map}
               provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
               initialRegion={mapRegion}
+              onMapReady={() => setIsMapReady(true)}
+              onMapLoaded={() => setIsMapReady(true)}
             >
               {pickupCoords ? (
                 <Marker coordinate={pickupCoords} title="Pickup" />
@@ -377,6 +422,9 @@ export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRi
               ) : null}
               {driverLocation ? (
                 <Marker coordinate={driverLocation} title="Driver" pinColor="#6A1B9A" />
+              ) : null}
+              {routeCoordinates.length >= 2 ? (
+                <Polyline coordinates={routeCoordinates} strokeColor="#6A1B9A" strokeWidth={4} />
               ) : null}
             </MapView>
           </View>

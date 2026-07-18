@@ -61,7 +61,7 @@ class PlatformSettings(models.Model):
     class DistanceProvider(models.TextChoices):
         HAVERSINE = 'haversine', 'Haversine (Fallback)'
         OSRM = 'osrm', 'OSRM Routing (Primary)'
-        GOOGLE = 'google', 'Google Distance Matrix'
+        GOOGLE = 'google', 'Google Directions'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     commission_rate = models.DecimalField(
@@ -69,7 +69,7 @@ class PlatformSettings(models.Model):
         help_text='Platform commission as a decimal (e.g., 0.15 = 15%)',
     )
     distance_provider = models.CharField(
-        max_length=20, choices=DistanceProvider.choices, default=DistanceProvider.HAVERSINE,
+        max_length=20, choices=DistanceProvider.choices, default=DistanceProvider.OSRM,
     )
     max_distance_km = models.DecimalField(
         max_digits=6, decimal_places=2, default=150.00,

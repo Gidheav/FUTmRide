@@ -2,7 +2,7 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from apps.accounts.permissions import IsAdminOrCampusAdmin
-from apps.rides.services import FareCalculator
+from apps.rides.services import FareCalculator, RouteDistanceResolver
 from .models import FareConfiguration, PlatformSettings
 from .serializers import FareConfigSerializer, FareEstimateSerializer, PlatformSettingsSerializer
 
@@ -36,14 +36,34 @@ class FareEstimateView(APIView):
         serializer = FareEstimateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        route = None
+        distance_km = data.get('distance_km')
+        if distance_km is None:
+            route = RouteDistanceResolver.resolve(
+                pickup_latitude=data['pickup_latitude'],
+                pickup_longitude=data['pickup_longitude'],
+                dropoff_latitude=data['dropoff_latitude'],
+                dropoff_longitude=data['dropoff_longitude'],
+                vehicle_type=data['vehicle_type'],
+            )
+            distance_km = route.distance_km
         result = FareCalculator.calculate(
             vehicle_type=data['vehicle_type'],
-            distance_km=data['distance_km'],
+            distance_km=distance_km,
             surge_multiplier=data.get('surge_multiplier', 1.0),
             passenger_count=data.get('passenger_count', 1),
             config_override=data.get('config_override'),
             settings_override=data.get('settings_override'),
         )
+        if route:
+            result['route'] = {
+                'distance_km': route.distance_km,
+                'duration_minutes': route.duration_minutes,
+                'geometry': route.geometry,
+                'provider': route.provider,
+                'confidence': route.confidence,
+                'metadata': route.metadata,
+            }
         return Response(result)
 
 

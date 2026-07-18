@@ -79,7 +79,11 @@ class FareConfigOverrideSerializer(serializers.Serializer):
 
 class FareEstimateSerializer(serializers.Serializer):
     vehicle_type = serializers.ChoiceField(choices=FareConfiguration.VehicleType.choices)
-    distance_km = serializers.FloatField(min_value=0.1)
+    distance_km = serializers.FloatField(min_value=0.1, required=False)
+    pickup_latitude = serializers.FloatField(min_value=-90, max_value=90, required=False)
+    pickup_longitude = serializers.FloatField(min_value=-180, max_value=180, required=False)
+    dropoff_latitude = serializers.FloatField(min_value=-90, max_value=90, required=False)
+    dropoff_longitude = serializers.FloatField(min_value=-180, max_value=180, required=False)
     surge_multiplier = serializers.FloatField(min_value=1.0, max_value=5.0, default=1.0, required=False)
     passenger_count = serializers.IntegerField(min_value=1, max_value=99, default=1, required=False)
     config_override = FareConfigOverrideSerializer(required=False)
@@ -90,6 +94,28 @@ class FareEstimateSerializer(serializers.Serializer):
             data = data.copy()
             data['passenger_count'] = data['passengerCount']
         return super().to_internal_value(data)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        has_distance = attrs.get('distance_km') is not None
+        coordinate_fields = [
+            'pickup_latitude',
+            'pickup_longitude',
+            'dropoff_latitude',
+            'dropoff_longitude',
+        ]
+        has_all_coordinates = all(attrs.get(field) is not None for field in coordinate_fields)
+        has_any_coordinates = any(attrs.get(field) is not None for field in coordinate_fields)
+
+        if not has_distance and not has_all_coordinates:
+            raise serializers.ValidationError(
+                'Provide distance_km or complete pickup/dropoff coordinates.'
+            )
+        if has_any_coordinates and not has_all_coordinates:
+            raise serializers.ValidationError(
+                'Complete pickup/dropoff coordinates are required for route-based estimates.'
+            )
+        return attrs
 
 
 class PlatformSettingsSerializer(serializers.ModelSerializer):

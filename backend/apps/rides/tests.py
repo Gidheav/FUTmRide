@@ -18,7 +18,8 @@ from apps.accounts.models import (
 from apps.payments.models import WalletTransaction
 from apps.verification.models import AccountVerification, DriverDocument
 from .models import Ride, RideStatus
-from .services import FareCalculator
+from apps.pricing.models import PlatformSettings
+from .services import FareCalculator, RouteDistanceResolver
 from .scheduled_models import (
     PassengerStatus,
     PricingTier,
@@ -132,6 +133,9 @@ class RideBookingTestCase(TestCase):
         self.assertIn('reference', res.data)
         self.assertEqual(res.data['status'], RideStatus.SEARCHING)
         self.assertTrue(res.data['is_paid'])
+        self.assertGreater(float(res.data['estimated_distance_km']), 0)
+        self.assertIn('estimated_route_geometry', res.data)
+        self.assertEqual(res.data['route_distance_provider'], 'haversine_fallback')
 
     def test_multi_seat_wallet_ride_debits_multiplied_fare(self):
         payload = {**RIDE_PAYLOAD, 'requested_seats': 3}
@@ -141,11 +145,19 @@ class RideBookingTestCase(TestCase):
 
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
         self.student.student_profile.refresh_from_db()
-        self.assertEqual(Decimal(str(res.data['total_fare'])), Decimal('2400.00'))
-        self.assertEqual(self.student.student_profile.wallet_balance, before - Decimal('2400.00'))
+        route = RouteDistanceResolver.resolve(
+            pickup_latitude=float(payload['pickup_latitude']),
+            pickup_longitude=float(payload['pickup_longitude']),
+            dropoff_latitude=float(payload['dropoff_latitude']),
+            dropoff_longitude=float(payload['dropoff_longitude']),
+            vehicle_type=payload['vehicle_type_requested'],
+        )
+        expected_fare = Decimal(str(FareCalculator.calculate('sedan', route.distance_km, passenger_count=3)['total_fare']))
+        self.assertEqual(Decimal(str(res.data['total_fare'])), expected_fare)
+        self.assertEqual(self.student.student_profile.wallet_balance, before - expected_fare)
         ride = Ride.objects.get(id=res.data['id'])
         self.assertEqual(ride.requested_seats, 3)
-        self.assertEqual(ride.total_fare, Decimal('2400.00'))
+        self.assertEqual(ride.total_fare, expected_fare)
 
     def test_ride_request_accepts_passenger_count_alias(self):
         payload = {**RIDE_PAYLOAD, 'passengerCount': 2}
@@ -154,7 +166,7 @@ class RideBookingTestCase(TestCase):
 
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
         self.assertEqual(res.data['requested_seats'], 2)
-        self.assertEqual(Decimal(str(res.data['total_fare'])), Decimal('1600.00'))
+        self.assertGreater(Decimal(str(res.data['total_fare'])), Decimal('0'))
 
     def test_driver_can_accept_searching_ride(self):
         ride_res = self.client.post(reverse('ride-request'), RIDE_PAYLOAD, format='json')
@@ -206,6 +218,28 @@ class FareCalculatorTestCase(TestCase):
         self.assertEqual(multi['total_fare'], 2400)
         self.assertEqual(multi['platform_commission'], single['platform_commission'] * 3)
         self.assertEqual(multi['driver_earnings'], single['driver_earnings'] * 3)
+
+
+class RouteDistanceResolverTestCase(TestCase):
+    def test_haversine_fallback_returns_payable_route_payload(self):
+        PlatformSettings.objects.create(distance_provider=PlatformSettings.DistanceProvider.HAVERSINE)
+
+        route = RouteDistanceResolver.resolve(9.0820, 7.4891, 9.0750, 7.4800, vehicle_type='sedan')
+
+        self.assertGreater(route.distance_km, 0)
+        self.assertEqual(route.provider, 'haversine_fallback')
+        self.assertEqual(route.confidence, 'low')
+        self.assertEqual(len(route.geometry), 2)
+        self.assertEqual(route.metadata['road_factor'], RouteDistanceResolver.HAVERSINE_ROAD_FACTOR)
+
+    def test_google_polyline_decoder(self):
+        geometry = RouteDistanceResolver._decode_google_polyline('_p~iF~ps|U_ulLnnqC_mqNvxq`@')
+
+        self.assertEqual(geometry, [
+            {'latitude': 38.5, 'longitude': -120.2},
+            {'latitude': 40.7, 'longitude': -120.95},
+            {'latitude': 43.252, 'longitude': -126.453},
+        ])
 
 
 class RideLifecycleTestCase(TestCase):

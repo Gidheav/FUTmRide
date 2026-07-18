@@ -8,13 +8,15 @@ from .scheduled_models import ScheduledRide, ScheduledRidePassenger, ScheduledRi
 class RideAdmin(admin.ModelAdmin):
     list_display = [
         'reference', 'student', 'driver', 'status',
-        'vehicle_type_requested', 'total_fare', 'payment_method', 'is_paid', 'requested_at'
+        'vehicle_type_requested', 'estimated_distance_km', 'route_distance_provider',
+        'total_fare', 'payment_method', 'is_paid', 'requested_at'
     ]
-    list_filter = ['status', 'vehicle_type_requested', 'payment_method', 'is_paid']
+    list_filter = ['status', 'vehicle_type_requested', 'route_distance_provider', 'payment_method', 'is_paid']
     search_fields = ['reference', 'student__first_name', 'student__phone_number', 'driver__phone_number']
     readonly_fields = [
         'id', 'reference', 'requested_at', 'driver_assigned_at',
-        'driver_arrived_at', 'trip_started_at', 'trip_completed_at', 'updated_at'
+        'driver_arrived_at', 'trip_started_at', 'trip_completed_at', 'updated_at',
+        'estimated_route_geometry', 'route_distance_provider', 'route_confidence', 'route_metadata',
     ]
     ordering = ['-requested_at']
 

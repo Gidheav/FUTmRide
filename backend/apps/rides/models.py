@@ -66,6 +66,10 @@ class Ride(models.Model):
     actual_distance_km = models.DecimalField(max_digits=8, decimal_places=3, null=True, blank=True)
     estimated_duration_minutes = models.PositiveSmallIntegerField(null=True, blank=True)
     actual_duration_minutes = models.PositiveSmallIntegerField(null=True, blank=True)
+    estimated_route_geometry = models.JSONField(default=list, blank=True)
+    route_distance_provider = models.CharField(max_length=40, blank=True)
+    route_confidence = models.CharField(max_length=20, blank=True)
+    route_metadata = models.JSONField(default=dict, blank=True)
 
     base_fare = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     surge_multiplier = models.DecimalField(max_digits=4, decimal_places=2, default=1.00)

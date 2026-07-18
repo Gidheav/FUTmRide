@@ -127,6 +127,11 @@ type RideListItem = {
   dropoff_latitude?: number | string | null;
   dropoff_longitude?: number | string | null;
   estimated_distance_km: string | number | null;
+  estimated_duration_minutes?: number | null;
+  estimated_route_geometry?: Array<{ latitude: number | string; longitude: number | string }> | null;
+  route_distance_provider?: string | null;
+  route_confidence?: string | null;
+  route_metadata?: Record<string, unknown> | null;
   total_fare: string | number | null;
   student?: RideStudent | null;
 };
@@ -259,6 +264,16 @@ const parseMapCoordinate = (
     latitude: parsedLatitude,
     longitude: parsedLongitude,
   };
+};
+
+const parseRouteGeometry = (
+  geometry: RideListItem['estimated_route_geometry'],
+): MapCoordinate[] => {
+  if (!Array.isArray(geometry)) return [];
+
+  return geometry
+    .map((point) => parseMapCoordinate(point?.latitude, point?.longitude))
+    .filter((point): point is MapCoordinate => Boolean(point));
 };
 
 const getRideInitialRegion = (coordinates: MapCoordinate[]): Region => {
@@ -493,16 +508,24 @@ export default function DriverRidesPage() {
     () => parseMapCoordinate(selectedRideForMap?.dropoff_latitude, selectedRideForMap?.dropoff_longitude),
     [selectedRideForMap],
   );
+  const storedRouteCoordinates = useMemo(
+    () => parseRouteGeometry(selectedRideForMap?.estimated_route_geometry),
+    [selectedRideForMap],
+  );
   const selectedRideCoordinates = useMemo(
-    () => [pickupCoordinate, dropoffCoordinate].filter((coordinate): coordinate is MapCoordinate => Boolean(coordinate)),
-    [pickupCoordinate, dropoffCoordinate],
+    () => (
+      storedRouteCoordinates.length >= 2
+        ? storedRouteCoordinates
+        : [pickupCoordinate, dropoffCoordinate].filter((coordinate): coordinate is MapCoordinate => Boolean(coordinate))
+    ),
+    [storedRouteCoordinates, pickupCoordinate, dropoffCoordinate],
   );
   const selectedRideInitialRegion = useMemo(
     () => getRideInitialRegion(selectedRideCoordinates),
     [selectedRideCoordinates],
   );
   const hasRouteCoordinates = selectedRideCoordinates.length > 0;
-  const hasFullRouteCoordinates = Boolean(pickupCoordinate && dropoffCoordinate);
+  const hasFullRouteCoordinates = selectedRideCoordinates.length >= 2;
   const isRideMapReady = Boolean(selectedRideForMap && readyRideMapId === selectedRideForMap.id);
   const selectedStudentName = getStudentName(selectedRideForMap?.student);
   const selectedStudentPhoto = resolveMediaUrl(selectedRideForMap?.student?.profile_photo);
@@ -1518,53 +1541,99 @@ export default function DriverRidesPage() {
                 )}
               </View>
               <TouchableOpacity
-                style={styles.mapModalCloseBtn}
+                style={[styles.mapModalCloseBtn, { top: insets.top + 12 }]}
                 onPress={() => setSelectedRideForMap(null)}
+                activeOpacity={0.85}
               >
                 <MaterialIcons name="close" size={24} color={COLORS.onSurface} />
               </TouchableOpacity>
 
-              <View style={[styles.mapModalBottomSheet, AMBIENT_SHADOW]}>
-                <Text style={[FONTS.titleMd, { color: COLORS.onSurface, marginBottom: 8 }]}>
-                  Ride Details
-                </Text>
-                
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
-                  <View>
-                    <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Fare</Text>
-                    <Text style={[FONTS.titleLg, { color: COLORS.onSurface }]}>{formatCurrency(selectedRideForMap.total_fare)}</Text>
+              <View style={[styles.mapModalBottomSheet, { paddingBottom: Math.max(insets.bottom, 16) + 16 }, AMBIENT_SHADOW]}>
+                <View style={styles.mapSheetHandle} />
+
+                <View style={styles.mapSheetHeader}>
+                  <View style={styles.mapSheetStudentRow}>
+                    {selectedStudentPhoto ? (
+                      <Image source={{ uri: selectedStudentPhoto }} style={styles.mapSheetAvatarImage} />
+                    ) : (
+                      <View style={styles.mapSheetAvatarFallback}>
+                        <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>
+                          {getInitials(selectedStudentName)}
+                        </Text>
+                      </View>
+                    )}
+                    <View style={styles.mapSheetStudentCopy}>
+                      <Text style={[FONTS.titleMd, { color: COLORS.onSurface }]} numberOfLines={1}>
+                        {selectedStudentName}
+                      </Text>
+                      <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant }]} numberOfLines={1}>
+                        On-demand request
+                      </Text>
+                    </View>
                   </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Distance</Text>
-                    <Text style={[FONTS.titleLg, { color: COLORS.onSurface }]}>{formatDistance(selectedRideForMap.estimated_distance_km)}</Text>
+                  <View style={styles.mapSheetFarePill}>
+                    <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Fare</Text>
+                    <Text style={[FONTS.titleMd, { color: COLORS.onSurface }]}>
+                      {formatCurrency(selectedRideForMap.total_fare)}
+                    </Text>
                   </View>
                 </View>
 
-                <View style={styles.timelineRow}>
-                  <View style={styles.timelineGraphic}>
-                    <View style={styles.timelineDotTop} />
-                    <View style={styles.timelineLine} />
+                <View style={styles.mapSheetStatsRow}>
+                  <View style={styles.mapSheetStatCard}>
+                    <MaterialIcons name="route" size={18} color={COLORS.primary} />
+                    <View>
+                      <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Distance</Text>
+                      <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}>
+                        {formatDistance(selectedRideForMap.estimated_distance_km)}
+                      </Text>
+                    </View>
                   </View>
-                  <Text style={[FONTS.bodyMd, { color: COLORS.onSurface, flex: 1, paddingBottom: 8 }]} numberOfLines={2}>
-                    {selectedRideForMap.pickup_address}
-                  </Text>
+                  <View style={styles.mapSheetStatCard}>
+                    <MaterialIcons name="event-seat" size={18} color={COLORS.primary} />
+                    <View>
+                      <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Seats</Text>
+                      <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}>
+                        {selectedRideForMap.requested_seats || 1}
+                      </Text>
+                    </View>
+                  </View>
                 </View>
-                <View style={styles.timelineRow}>
-                  <View style={styles.timelineGraphic}>
-                    <View style={styles.timelineDotBottom} />
+
+                <View style={styles.mapSheetRouteCard}>
+                  <View style={styles.timelineRow}>
+                    <View style={styles.timelineGraphic}>
+                      <View style={styles.timelineDotTop} />
+                      <View style={styles.timelineLine} />
+                    </View>
+                    <View style={styles.mapSheetRouteText}>
+                      <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Pickup</Text>
+                      <Text style={[FONTS.bodyMd, { color: COLORS.onSurface }]} numberOfLines={2}>
+                        {selectedRideForMap.pickup_address || 'Pickup location'}
+                      </Text>
+                    </View>
                   </View>
-                  <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, flex: 1, paddingBottom: 16 }]} numberOfLines={2}>
-                    {selectedRideForMap.dropoff_address}
-                  </Text>
+                  <View style={styles.timelineRow}>
+                    <View style={styles.timelineGraphic}>
+                      <View style={styles.timelineDotBottom} />
+                    </View>
+                    <View style={styles.mapSheetRouteText}>
+                      <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Dropoff</Text>
+                      <Text style={[FONTS.bodyMd, { color: COLORS.onSurface }]} numberOfLines={2}>
+                        {selectedRideForMap.dropoff_address || 'Dropoff location'}
+                      </Text>
+                    </View>
+                  </View>
                 </View>
 
                 <TouchableOpacity
-                  style={[styles.actionColBtn, styles.actionColBtnPrimary]}
+                  style={[styles.mapSheetAcceptButton, acceptingRideId === selectedRideForMap.id && { opacity: 0.7 }]}
                   onPress={() => {
                     handleAcceptRide(selectedRideForMap.id);
                     setSelectedRideForMap(null);
                   }}
                   disabled={acceptingRideId === selectedRideForMap.id}
+                  activeOpacity={0.86}
                 >
                   {acceptingRideId === selectedRideForMap.id ? (
                     <LoadingOverlay visible={true} inline size={24} />
@@ -2343,7 +2412,6 @@ const styles = StyleSheet.create({
   },
   mapModalCloseBtn: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 50 : 20,
     left: 20,
     width: 44,
     height: 44,
@@ -2362,7 +2430,89 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    padding: 24,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    gap: 14,
+  },
+  mapSheetHandle: {
+    alignSelf: 'center',
+    width: 42,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.surfaceContainerHighest,
+    marginBottom: 2,
+  },
+  mapSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  mapSheetStudentRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  mapSheetAvatarImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: COLORS.surfaceContainer,
+  },
+  mapSheetAvatarFallback: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+  },
+  mapSheetStudentCopy: {
+    flex: 1,
+  },
+  mapSheetFarePill: {
+    minWidth: 92,
+    alignItems: 'flex-end',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: COLORS.surfaceContainerLowest,
+    borderWidth: 1,
+    borderColor: COLORS.surfaceContainerLow,
+  },
+  mapSheetStatsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  mapSheetStatCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 16,
+    backgroundColor: COLORS.surfaceContainerLowest,
+    borderWidth: 1,
+    borderColor: COLORS.surfaceContainerLow,
+  },
+  mapSheetRouteCard: {
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: COLORS.surfaceContainerLowest,
+    borderWidth: 1,
+    borderColor: COLORS.surfaceContainerLow,
+  },
+  mapSheetRouteText: {
+    flex: 1,
+    paddingBottom: 10,
+  },
+  mapSheetAcceptButton: {
+    minHeight: 52,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
   },
 });

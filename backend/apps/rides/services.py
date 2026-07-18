@@ -1,13 +1,301 @@
 import logging
 import math
+import os
 from datetime import timedelta
+from dataclasses import dataclass
 from django.utils import timezone
 from django.conf import settings
+import requests
 from apps.accounts.models import DriverProfile, UserRole
 from apps.tracking.models import DriverLocation
 from .models import Ride, DriverRideRequest, RideStatus
 
 logger = logging.getLogger('apps.rides')
+
+
+@dataclass(frozen=True)
+class RouteResolution:
+    distance_km: float
+    duration_minutes: int | None
+    geometry: list[dict]
+    provider: str
+    confidence: str
+    metadata: dict
+
+
+class RouteDistanceResolver:
+    """
+    Resolves payable route distance on the backend.
+
+    Today this uses configured road providers first and Haversine as a safe
+    fallback. The future calibrated campus graph should plug into this class as
+    the highest-priority provider without changing ride booking or pricing code.
+    """
+
+    DEFAULT_OSRM_BASE_URL = 'https://router.project-osrm.org'
+    HAVERSINE_ROAD_FACTOR = 1.25
+    REQUEST_TIMEOUT_SECONDS = 4
+
+    @staticmethod
+    def _decode_google_polyline(encoded: str) -> list[dict]:
+        """Decode Google's encoded overview polyline into map coordinates."""
+        coordinates = []
+        index = 0
+        lat = 0
+        lng = 0
+
+        while index < len(encoded):
+            shift = 0
+            result = 0
+            while True:
+                byte = ord(encoded[index]) - 63
+                index += 1
+                result |= (byte & 0x1F) << shift
+                shift += 5
+                if byte < 0x20:
+                    break
+            delta_lat = ~(result >> 1) if result & 1 else result >> 1
+            lat += delta_lat
+
+            shift = 0
+            result = 0
+            while True:
+                byte = ord(encoded[index]) - 63
+                index += 1
+                result |= (byte & 0x1F) << shift
+                shift += 5
+                if byte < 0x20:
+                    break
+            delta_lng = ~(result >> 1) if result & 1 else result >> 1
+            lng += delta_lng
+
+            coordinates.append({
+                'latitude': round(lat / 1e5, 6),
+                'longitude': round(lng / 1e5, 6),
+            })
+
+        return coordinates
+
+    @classmethod
+    def resolve(
+        cls,
+        pickup_latitude: float,
+        pickup_longitude: float,
+        dropoff_latitude: float,
+        dropoff_longitude: float,
+        vehicle_type: str | None = None,
+    ) -> RouteResolution:
+        from apps.pricing.models import PlatformSettings
+
+        platform = PlatformSettings.load()
+        provider = (platform.distance_provider or 'haversine').lower()
+
+        if provider == 'osrm':
+            route = cls._resolve_osrm(
+                pickup_latitude,
+                pickup_longitude,
+                dropoff_latitude,
+                dropoff_longitude,
+                vehicle_type=vehicle_type,
+            )
+            if route:
+                return route
+
+        if provider == 'google':
+            route = cls._resolve_google(
+                pickup_latitude,
+                pickup_longitude,
+                dropoff_latitude,
+                dropoff_longitude,
+                vehicle_type=vehicle_type,
+            )
+            if route:
+                return route
+
+        return cls._resolve_haversine(
+            pickup_latitude,
+            pickup_longitude,
+            dropoff_latitude,
+            dropoff_longitude,
+            requested_provider=provider,
+            vehicle_type=vehicle_type,
+        )
+
+    @classmethod
+    def _resolve_osrm(
+        cls,
+        pickup_latitude: float,
+        pickup_longitude: float,
+        dropoff_latitude: float,
+        dropoff_longitude: float,
+        vehicle_type: str | None = None,
+    ) -> RouteResolution | None:
+        base_url = (
+            getattr(settings, 'OSRM_BASE_URL', None)
+            or os.getenv('OSRM_BASE_URL')
+            or cls.DEFAULT_OSRM_BASE_URL
+        ).rstrip('/')
+        url = (
+            f'{base_url}/route/v1/driving/'
+            f'{pickup_longitude},{pickup_latitude};{dropoff_longitude},{dropoff_latitude}'
+        )
+        params = {
+            'overview': 'full',
+            'geometries': 'geojson',
+            'alternatives': 'false',
+            'steps': 'false',
+        }
+
+        try:
+            response = requests.get(url, params=params, timeout=cls.REQUEST_TIMEOUT_SECONDS)
+            response.raise_for_status()
+            data = response.json()
+        except Exception as exc:
+            logger.warning('route_osrm_failed error=%s', exc)
+            return None
+
+        routes = data.get('routes') or []
+        if data.get('code') != 'Ok' or not routes:
+            logger.warning('route_osrm_no_route code=%s', data.get('code'))
+            return None
+
+        route = routes[0]
+        distance_m = float(route.get('distance') or 0)
+        if distance_m <= 0:
+            return None
+
+        coordinates = (
+            ((route.get('geometry') or {}).get('coordinates') or [])
+            if isinstance(route.get('geometry'), dict)
+            else []
+        )
+        geometry = [
+            {'latitude': round(float(lat), 6), 'longitude': round(float(lng), 6)}
+            for lng, lat in coordinates
+        ]
+        duration_seconds = route.get('duration')
+
+        return RouteResolution(
+            distance_km=round(distance_m / 1000, 3),
+            duration_minutes=round(float(duration_seconds) / 60) if duration_seconds else None,
+            geometry=geometry,
+            provider='osrm',
+            confidence='high',
+            metadata={
+                'vehicle_type': vehicle_type,
+                'distance_meters': round(distance_m, 2),
+                'duration_seconds': round(float(duration_seconds), 2) if duration_seconds else None,
+                'fallback_used': False,
+            },
+        )
+
+    @classmethod
+    def _resolve_google(
+        cls,
+        pickup_latitude: float,
+        pickup_longitude: float,
+        dropoff_latitude: float,
+        dropoff_longitude: float,
+        vehicle_type: str | None = None,
+    ) -> RouteResolution | None:
+        api_key = getattr(settings, 'GOOGLE_MAPS_API_KEY', None) or os.getenv('GOOGLE_MAPS_API_KEY')
+        if not api_key:
+            return None
+
+        url = 'https://maps.googleapis.com/maps/api/directions/json'
+        params = {
+            'origin': f'{pickup_latitude},{pickup_longitude}',
+            'destination': f'{dropoff_latitude},{dropoff_longitude}',
+            'mode': 'driving',
+            'key': api_key,
+        }
+
+        try:
+            response = requests.get(url, params=params, timeout=cls.REQUEST_TIMEOUT_SECONDS)
+            response.raise_for_status()
+            data = response.json()
+        except Exception as exc:
+            logger.warning('route_google_failed error=%s', exc)
+            return None
+
+        routes = data.get('routes') or []
+        if data.get('status') != 'OK' or not routes:
+            logger.warning('route_google_no_route status=%s', data.get('status'))
+            return None
+
+        legs = routes[0].get('legs') or []
+        overview_polyline = ((routes[0].get('overview_polyline') or {}).get('points') or '')
+        if not legs:
+            return None
+
+        distance_m = sum(float((leg.get('distance') or {}).get('value') or 0) for leg in legs)
+        duration_seconds = sum(float((leg.get('duration') or {}).get('value') or 0) for leg in legs)
+        if distance_m <= 0:
+            return None
+
+        geometry = []
+        if overview_polyline:
+            try:
+                geometry = cls._decode_google_polyline(overview_polyline)
+            except Exception as exc:
+                logger.warning('route_google_polyline_decode_failed error=%s', exc)
+                geometry = []
+        if not geometry:
+            geometry = [
+                {'latitude': round(pickup_latitude, 6), 'longitude': round(pickup_longitude, 6)},
+                {'latitude': round(dropoff_latitude, 6), 'longitude': round(dropoff_longitude, 6)},
+            ]
+
+        return RouteResolution(
+            distance_km=round(distance_m / 1000, 3),
+            duration_minutes=round(duration_seconds / 60) if duration_seconds else None,
+            geometry=geometry,
+            provider='google',
+            confidence='high',
+            metadata={
+                'vehicle_type': vehicle_type,
+                'distance_meters': round(distance_m, 2),
+                'duration_seconds': round(duration_seconds, 2) if duration_seconds else None,
+                'fallback_used': False,
+                'geometry_source': 'overview_polyline' if overview_polyline else 'endpoints',
+            },
+        )
+
+    @classmethod
+    def _resolve_haversine(
+        cls,
+        pickup_latitude: float,
+        pickup_longitude: float,
+        dropoff_latitude: float,
+        dropoff_longitude: float,
+        requested_provider: str = 'haversine',
+        vehicle_type: str | None = None,
+    ) -> RouteResolution:
+        straight_km = haversine_km(
+            pickup_latitude,
+            pickup_longitude,
+            dropoff_latitude,
+            dropoff_longitude,
+        )
+        estimated_road_km = max(straight_km * cls.HAVERSINE_ROAD_FACTOR, 0.1)
+
+        return RouteResolution(
+            distance_km=round(estimated_road_km, 3),
+            duration_minutes=None,
+            geometry=[
+                {'latitude': round(pickup_latitude, 6), 'longitude': round(pickup_longitude, 6)},
+                {'latitude': round(dropoff_latitude, 6), 'longitude': round(dropoff_longitude, 6)},
+            ],
+            provider='haversine_fallback',
+            confidence='low',
+            metadata={
+                'vehicle_type': vehicle_type,
+                'requested_provider': requested_provider,
+                'straight_line_km': round(straight_km, 3),
+                'road_factor': cls.HAVERSINE_ROAD_FACTOR,
+                'fallback_used': requested_provider != 'haversine',
+            },
+        )
 
 
 class FareCalculator:

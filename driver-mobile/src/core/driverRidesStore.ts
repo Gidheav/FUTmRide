@@ -44,8 +44,17 @@ export type RideListItem = {
   vehicle_type_requested?: string | null
   requested_seats: number | null
   pickup_address: string | null
+  pickup_latitude?: string | number | null
+  pickup_longitude?: string | number | null
   dropoff_address: string | null
+  dropoff_latitude?: string | number | null
+  dropoff_longitude?: string | number | null
   estimated_distance_km: string | number | null
+  estimated_duration_minutes?: number | null
+  estimated_route_geometry?: Array<{ latitude: number | string; longitude: number | string }> | null
+  route_distance_provider?: string | null
+  route_confidence?: string | null
+  route_metadata?: Record<string, unknown> | null
   total_fare: string | number | null
   student?: {
     id: string
@@ -54,6 +63,7 @@ export type RideListItem = {
     last_name?: string | null
     phone_number?: string | null
     role?: string | null
+    profile_photo?: string | null
   } | null
 }
 
