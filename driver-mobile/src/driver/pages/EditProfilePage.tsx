@@ -26,14 +26,16 @@ const DEFAULT_DRIVER_PROFILE = {
   vehicle_year: 2020,
   vehicle_color: 'Unknown',
   plate_number: 'PENDING',
+  vehicle_seats: 4,
 };
 
 const VEHICLE_TYPES = [
-  { value: 'motorcycle', label: 'Motorcycle' },
+  { value: 'motorbike', label: 'Motorbike' },
   { value: 'tricycle', label: 'Tricycle' },
   { value: 'sedan', label: 'Sedan' },
-  { value: 'suv', label: 'SUV' },
-  { value: 'minivan', label: 'Minivan' },
+  { value: 'mpv', label: 'MPV' },
+  { value: 'minibus', label: 'Minibus' },
+  { value: 'coach', label: 'Coach' },
 ];
 
 const InputField = ({
@@ -85,6 +87,7 @@ export default function EditProfilePage({ onBack }: Props) {
   const [vehicleYear, setVehicleYear] = useState(String(cachedProfile?.vehicle_year ?? ''));
   const [vehicleColor, setVehicleColor] = useState(cachedProfile?.vehicle_color ?? '');
   const [plateNumber, setPlateNumber] = useState(cachedProfile?.plate_number ?? '');
+  const [vehicleSeats, setVehicleSeats] = useState(String(cachedProfile?.vehicle_seats ?? '4'));
   const [vehicleType, setVehicleType] = useState(cachedProfile?.vehicle_type ?? DEFAULT_DRIVER_PROFILE.vehicle_type);
 
   useEffect(() => {
@@ -107,6 +110,7 @@ export default function EditProfilePage({ onBack }: Props) {
         setVehicleYear(String(response?.data?.vehicle_year ?? ''));
         setVehicleColor(response?.data?.vehicle_color ?? '');
         setPlateNumber(response?.data?.plate_number ?? '');
+        setVehicleSeats(String(response?.data?.vehicle_seats ?? '4'));
         setVehicleType(response?.data?.vehicle_type ?? DEFAULT_DRIVER_PROFILE.vehicle_type);
         setCachedProfile(response?.data ?? null);
         setDriverProfile({ vehicle_type: response?.data?.vehicle_type ?? null });
@@ -121,6 +125,7 @@ export default function EditProfilePage({ onBack }: Props) {
             setVehicleYear(String(retry?.data?.vehicle_year ?? ''));
             setVehicleColor(retry?.data?.vehicle_color ?? '');
             setPlateNumber(retry?.data?.plate_number ?? '');
+            setVehicleSeats(String(retry?.data?.vehicle_seats ?? '4'));
             setVehicleType(retry?.data?.vehicle_type ?? DEFAULT_DRIVER_PROFILE.vehicle_type);
             setCachedProfile(retry?.data ?? null);
             setDriverProfile({ vehicle_type: retry?.data?.vehicle_type ?? null });
@@ -183,6 +188,7 @@ export default function EditProfilePage({ onBack }: Props) {
         vehicle_color: vehicleColor.trim(),
         vehicle_year: vehicleYear ? Number(vehicleYear) : undefined,
         plate_number: plateNumber.trim().toUpperCase(),
+        vehicle_seats: vehicleSeats ? Number(vehicleSeats) : 4,
       };
       await driverApi.updateProfile(payload);
       setCachedProfile({ ...(cachedProfile ?? {}), ...payload });
@@ -199,6 +205,7 @@ export default function EditProfilePage({ onBack }: Props) {
             vehicle_color: vehicleColor.trim(),
             vehicle_year: vehicleYear ? Number(vehicleYear) : DEFAULT_DRIVER_PROFILE.vehicle_year,
             plate_number: plateNumber.trim().toUpperCase(),
+            vehicle_seats: vehicleSeats ? Number(vehicleSeats) : 4,
           };
           await driverApi.createProfile(createPayload);
           setCachedProfile({ ...(cachedProfile ?? {}), ...createPayload });
@@ -282,6 +289,7 @@ export default function EditProfilePage({ onBack }: Props) {
             <InputField label="Vehicle year" value={vehicleYear} onChangeText={setVehicleYear} keyboardType="numeric" autoCapitalize="none" />
             <InputField label="Vehicle color" value={vehicleColor} onChangeText={setVehicleColor} autoCapitalize="words" />
             <InputField label="Plate number" value={plateNumber} onChangeText={setPlateNumber} autoCapitalize="characters" />
+            <InputField label="Number of passenger seats" value={vehicleSeats} onChangeText={setVehicleSeats} keyboardType="numeric" autoCapitalize="none" />
             <TouchableOpacity style={styles.primaryButton} onPress={saveVehicleDetails} disabled={savingVehicle}>
               {savingVehicle ? (
                 <LoadingOverlay visible={true} inline size={24} />
