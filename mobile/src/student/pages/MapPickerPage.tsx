@@ -206,9 +206,6 @@ export default function MapPickerPage({ onClose, onConfirm, initialCoords, picku
                 <Text style={styles.routeOptionMeta}>
                   {route.distance_km.toFixed(2)} km
                 </Text>
-                <Text style={styles.routeOptionProvider}>
-                  {route.provider.replace('_', ' ')} / {route.confidence}
-                </Text>
               </TouchableOpacity>
             ))}
           </View>

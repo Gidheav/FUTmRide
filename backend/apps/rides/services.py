@@ -77,6 +77,42 @@ class RouteDistanceResolver:
         return coordinates
 
     @classmethod
+    def _extract_step_geometry(cls, route: dict) -> list[dict]:
+        """Build lane-accurate geometry from step-level polylines.
+
+        Google's overview_polyline is simplified and can cut across road
+        medians on divided highways.  Step polylines follow the actual lane
+        the vehicle should use, giving a far more accurate trace.
+        Falls back to overview_polyline if steps are unavailable.
+        """
+        geometry: list[dict] = []
+        for leg in route.get('legs') or []:
+            for step in leg.get('steps') or []:
+                encoded = ((step.get('polyline') or {}).get('points') or '')
+                if not encoded:
+                    continue
+                try:
+                    points = cls._decode_google_polyline(encoded)
+                except Exception:
+                    continue
+                # Skip the first point of subsequent steps to avoid duplicates
+                # at the junction between consecutive steps.
+                if geometry and points:
+                    points = points[1:]
+                geometry.extend(points)
+
+        # Fallback to overview_polyline if step extraction yields nothing
+        if not geometry:
+            encoded = ((route.get('overview_polyline') or {}).get('points') or '')
+            if encoded:
+                try:
+                    geometry = cls._decode_google_polyline(encoded)
+                except Exception:
+                    geometry = []
+
+        return geometry
+
+    @classmethod
     def resolve(
         cls,
         pickup_latitude: float,
@@ -290,7 +326,6 @@ class RouteDistanceResolver:
 
         route = routes[min(max(route_index, 0), len(routes) - 1)]
         legs = route.get('legs') or []
-        overview_polyline = ((route.get('overview_polyline') or {}).get('points') or '')
         if not legs:
             return None
 
@@ -299,13 +334,9 @@ class RouteDistanceResolver:
         if distance_m <= 0:
             return None
 
-        geometry = []
-        if overview_polyline:
-            try:
-                geometry = cls._decode_google_polyline(overview_polyline)
-            except Exception as exc:
-                logger.warning('route_google_polyline_decode_failed error=%s', exc)
-                geometry = []
+        # Use step-level polylines for lane-accurate geometry on divided roads.
+        # overview_polyline is simplified and cuts across medians.
+        geometry = cls._extract_step_geometry(route)
         if not geometry:
             geometry = [
                 {'latitude': round(pickup_latitude, 6), 'longitude': round(pickup_longitude, 6)},
@@ -324,7 +355,7 @@ class RouteDistanceResolver:
                 'distance_meters': round(distance_m, 2),
                 'duration_seconds': round(duration_seconds, 2) if duration_seconds else None,
                 'fallback_used': False,
-                'geometry_source': 'overview_polyline' if overview_polyline else 'endpoints',
+                'geometry_source': 'step_polylines',
                 'route_index': route_index,
             },
         )
@@ -361,20 +392,21 @@ class RouteDistanceResolver:
 
         platform = PlatformSettings.load()
         preferred_provider = (platform.distance_provider or 'osrm').lower()
-        provider_order = ['google_driving', 'google_walking', preferred_provider, 'osrm']
+        # Only vehicular routes — no walking (this is a ride-hailing app)
+        provider_order = ['google_driving', preferred_provider, 'osrm']
+        seen_providers = set()
 
         for provider in provider_order:
+            if provider in seen_providers:
+                continue
+            seen_providers.add(provider)
             if provider == 'osrm':
                 options.extend(cls._resolve_osrm_options(
                     pickup_latitude, pickup_longitude, dropoff_latitude, dropoff_longitude, vehicle_type=vehicle_type,
                 ))
-            elif provider == 'google_driving':
+            elif provider in ('google_driving', 'google'):
                 options.extend(cls._resolve_google_options(
                     pickup_latitude, pickup_longitude, dropoff_latitude, dropoff_longitude, vehicle_type=vehicle_type, travel_mode='driving',
-                ))
-            elif provider == 'google_walking':
-                options.extend(cls._resolve_google_options(
-                    pickup_latitude, pickup_longitude, dropoff_latitude, dropoff_longitude, vehicle_type=vehicle_type, travel_mode='walking',
                 ))
 
         return cls._dedupe_route_options(options)
@@ -493,11 +525,8 @@ class RouteDistanceResolver:
             legs = route.get('legs') or []
             distance_m = sum(float((leg.get('distance') or {}).get('value') or 0) for leg in legs)
             duration_seconds = sum(float((leg.get('duration') or {}).get('value') or 0) for leg in legs)
-            encoded = ((route.get('overview_polyline') or {}).get('points') or '')
-            try:
-                geometry = cls._decode_google_polyline(encoded) if encoded else []
-            except Exception:
-                geometry = []
+            # Use step-level polylines for lane-accurate geometry
+            geometry = cls._extract_step_geometry(route)
             if distance_m <= 0 or len(geometry) < 2:
                 continue
             options.append(RouteResolution(
