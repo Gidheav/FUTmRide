@@ -110,33 +110,62 @@ class RouteDistanceResolver:
                     metadata={**campus_route.get('metadata', {}), 'route_index': 0},
                 )
 
-        # 2. Fallback to Platform Setting provider
+        # 2. Smart fallback chain — try multiple providers so partial OSRM
+        #    results (missing campus roads) don't block Google from being used.
         platform = PlatformSettings.load()
-        provider = (provider_override or platform.distance_provider or 'haversine').lower()
+        provider = (provider_override or platform.distance_provider or 'osrm').lower()
+
+        # Build an ordered list of providers to attempt.
+        # The configured provider goes first, then the others as fallbacks.
+        fallback_chain: list[tuple[str, str]] = []  # (resolver_key, travel_mode)
 
         if provider == 'osrm':
-            route = cls._resolve_osrm(
-                pickup_latitude,
-                pickup_longitude,
-                dropoff_latitude,
-                dropoff_longitude,
-                vehicle_type=vehicle_type,
-                route_index=preferred_route_index,
-            )
-            if route:
-                return route
+            fallback_chain = [
+                ('osrm', 'driving'),
+                ('google', 'driving'),
+                ('google', 'walking'),
+            ]
+        elif provider in ('google', 'google_driving'):
+            fallback_chain = [
+                ('google', 'driving'),
+                ('osrm', 'driving'),
+                ('google', 'walking'),
+            ]
+        elif provider == 'google_walking':
+            fallback_chain = [
+                ('google', 'walking'),
+                ('google', 'driving'),
+                ('osrm', 'driving'),
+            ]
+        else:
+            # Unknown provider — try everything
+            fallback_chain = [
+                ('google', 'driving'),
+                ('osrm', 'driving'),
+                ('google', 'walking'),
+            ]
 
-        if provider in ('google', 'google_driving', 'google_walking'):
-            travel_mode = 'walking' if provider == 'google_walking' else 'driving'
-            route = cls._resolve_google(
-                pickup_latitude,
-                pickup_longitude,
-                dropoff_latitude,
-                dropoff_longitude,
-                vehicle_type=vehicle_type,
-                route_index=preferred_route_index,
-                travel_mode=travel_mode,
-            )
+        for resolver_key, travel_mode in fallback_chain:
+            route = None
+            if resolver_key == 'osrm':
+                route = cls._resolve_osrm(
+                    pickup_latitude,
+                    pickup_longitude,
+                    dropoff_latitude,
+                    dropoff_longitude,
+                    vehicle_type=vehicle_type,
+                    route_index=preferred_route_index,
+                )
+            elif resolver_key == 'google':
+                route = cls._resolve_google(
+                    pickup_latitude,
+                    pickup_longitude,
+                    dropoff_latitude,
+                    dropoff_longitude,
+                    vehicle_type=vehicle_type,
+                    route_index=preferred_route_index,
+                    travel_mode=travel_mode,
+                )
             if route:
                 return route
 

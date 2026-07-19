@@ -22,6 +22,9 @@ elif os.path.exists('.env'):
 
 from .base import *
 
+# Google Maps API (Directions API for route resolution)
+GOOGLE_MAPS_API_KEY = env('GOOGLE_MAPS_API_KEY', default='')
+
 DEBUG = False
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['.onrender.com', 'localhost', '127.0.0.1'])
 
