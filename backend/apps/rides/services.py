@@ -88,7 +88,7 @@ class RouteDistanceResolver:
         preferred_route_index: int = 0,
     ) -> RouteResolution:
         from apps.pricing.models import PlatformSettings
-        from apps.rides.routing import CampusRouter
+        from apps.rides.engine import CampusRouter
 
         # 1. Always attempt the calibrated Campus Graph first
         campus_router = CampusRouter(vehicle_type=vehicle_type)
@@ -303,7 +303,7 @@ class RouteDistanceResolver:
         dropoff_longitude: float,
         vehicle_type: str | None = None,
     ) -> list[RouteResolution]:
-        from apps.rides.routing import CampusRouter
+        from apps.rides.engine import CampusRouter
 
         campus_router = CampusRouter(vehicle_type=vehicle_type)
         campus_route = campus_router.resolve(
