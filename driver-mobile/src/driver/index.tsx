@@ -4,7 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { useQuery } from '@tanstack/react-query'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useAuthStore } from '../core/authStore'
-import { authApi, settingsApi, verificationApi } from '../core/api'
+import { authApi, settingsApi, verificationApi, notificationsApi } from '../core/api'
 import { COLORS, FONTS } from '../core/theme'
 import { useSettingsStore } from '../core/settingsStore'
 import { useAppLockStore } from '../core/appLockStore'
@@ -478,7 +478,7 @@ export default function DriverApp() {
   // Fetch unread notifications count
   const { data: unreadCountData } = useQuery({
     queryKey: ['notifications-unread-count'],
-    queryFn: () => notificationsApi.getUnreadCount().then(r => r.data),
+    queryFn: () => notificationsApi.getUnreadCount().then((r: any) => r.data),
     enabled: sessionActive,
     refetchInterval: 60000, // Poll every minute
   })

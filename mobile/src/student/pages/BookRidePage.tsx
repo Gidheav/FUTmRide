@@ -246,7 +246,8 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
       requested_seats: seatCount,
       scheduled_pickup_time: scheduledTime,
       payment_method: 'wallet',
-      route_index: selectedRoute.index,
+      route_provider: selectedRoute.provider,
+      route_index: selectedRoute.metadata?.route_index ?? selectedRoute.index,
     }
 
     setIsSubmitting(true)
@@ -288,38 +289,36 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
     setPinModalVisible(true)
   }
 
-  const handlePinDigit = useCallback(async (digit: string) => {
+  const handlePinDigit = async (digit: string) => {
     if (pinLoading) return
     if (!digit) return
     if (digit === 'back') {
       setPinInput((prev) => prev.slice(0, -1))
       return
     }
+    
+    if (pinInput.length >= 4) return
+    const next = `${pinInput}${digit}`
+    
     setPinError('')
-    setPinInput((prev) => {
-      if (prev.length >= 4) return prev
-      const next = `${prev}${digit}`
-      if (next.length === 4) {
-        void (async () => {
-          setPinLoading(true)
-          try {
-            await api.post('auth/settings/pin/verify/', { pin: next })
-            setPinModalVisible(false)
-            setPinInput('')
-            await submitRide()
-          } catch (err: any) {
-            const msg = err?.response?.data?.message || err?.response?.data?.error?.message || 'Incorrect Transaction PIN.'
-            setPinError(String(msg))
-            setPinInput('')
-          } finally {
-            setPinLoading(false)
-          }
-        })()
+    setPinInput(next)
+
+    if (next.length === 4) {
+      setPinLoading(true)
+      try {
+        await api.post('auth/settings/pin/verify/', { pin: next })
+        setPinModalVisible(false)
+        setPinInput('')
+        await submitRide()
+      } catch (err: any) {
+        const msg = err?.response?.data?.message || err?.response?.data?.error?.message || 'Incorrect Transaction PIN.'
+        setPinError(String(msg))
+        setPinInput('')
+      } finally {
+        setPinLoading(false)
       }
-      return next
-    })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pinLoading])
+    }
+  }
 
   const renderLocationItem = useCallback(({ item }: { item: LocationOption }) => (
     <LocationItem item={item} onPress={() => handleSelectLocation(item)} />
@@ -775,10 +774,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e5d0f5',
   },
+  mapButtonDisabled: {
+    backgroundColor: '#f9fafb',
+    borderColor: '#e5e7eb',
+  },
   mapButtonText: {
     color: '#6A1B9A',
     fontWeight: '600',
     fontSize: 14,
+  },
+  mapButtonTextDisabled: {
+    color: '#9ca3af',
   },
   routeContainer: {
     flexDirection: 'row',

@@ -60,6 +60,8 @@ class RideRequestView(generics.CreateAPIView):
             )
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        requested_route_index = int(serializer.validated_data.get('route_index') or 0)
+        requested_route_provider = (serializer.validated_data.get('route_provider') or '').strip() or None
 
         with transaction.atomic():
             ride = serializer.save()
@@ -72,7 +74,8 @@ class RideRequestView(generics.CreateAPIView):
                     dropoff_longitude=float(ride.dropoff_longitude),
                     vehicle_type=ride.vehicle_type_requested,
                     allow_haversine_fallback=False,
-                    preferred_route_index=int(request.data.get('route_index') or 0),
+                    preferred_route_index=requested_route_index,
+                    provider_override=requested_route_provider,
                 )
             except ValueError:
                 transaction.set_rollback(True)

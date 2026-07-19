@@ -79,60 +79,143 @@ class CampusRouter:
                 if lane.direction == RouteLane.Direction.TWO_WAY:
                     self.edges[v].append((u, dist, str(lane.id)))
 
-    def _find_nearest_node(self, lat: float, lng: float) -> int | None:
-        if not self.nodes:
+    def _project_to_segment(
+        self,
+        lat: float,
+        lng: float,
+        a_lat: float,
+        a_lng: float,
+        b_lat: float,
+        b_lng: float,
+    ) -> tuple[float, float, float]:
+        origin_lat = math.radians(lat)
+        meters_per_deg_lat = 111_320
+        meters_per_deg_lng = 111_320 * math.cos(origin_lat)
+
+        px = lng * meters_per_deg_lng
+        py = lat * meters_per_deg_lat
+        ax = a_lng * meters_per_deg_lng
+        ay = a_lat * meters_per_deg_lat
+        bx = b_lng * meters_per_deg_lng
+        by = b_lat * meters_per_deg_lat
+        dx = bx - ax
+        dy = by - ay
+        length_sq = dx * dx + dy * dy
+        t = 0 if length_sq == 0 else max(0, min(1, ((px - ax) * dx + (py - ay) * dy) / length_sq))
+        projected_lat = a_lat + ((b_lat - a_lat) * t)
+        projected_lng = a_lng + ((b_lng - a_lng) * t)
+        snap_km = _haversine_distance(lat, lng, projected_lat, projected_lng)
+        return projected_lat, projected_lng, snap_km
+
+    def _find_nearest_segment(self, lat: float, lng: float) -> dict[str, Any] | None:
+        if not self.graph_version:
             return None
-            
-        best_node = None
-        min_dist = float('inf')
-        
-        # O(N) search is fine for < 10,000 nodes
-        for idx, (n_lat, n_lng) in self.nodes.items():
-            dist = _haversine_distance(lat, lng, n_lat, n_lng)
-            if dist < min_dist:
-                min_dist = dist
-                best_node = idx
-                
-        return best_node
+
+        best = None
+        lanes = self.graph_version.lanes.filter(status=RouteLane.Status.ACTIVE)
+        for lane in lanes:
+            if self.vehicle_type and lane.allowed_vehicles and self.vehicle_type not in lane.allowed_vehicles:
+                continue
+
+            geom = lane.geometry or []
+            if len(geom) < 2:
+                continue
+
+            for i in range(len(geom) - 1):
+                p1, p2 = geom[i], geom[i + 1]
+                lat1, lng1 = p1.get('lat', p1.get('latitude')), p1.get('lng', p1.get('longitude'))
+                lat2, lng2 = p2.get('lat', p2.get('latitude')), p2.get('lng', p2.get('longitude'))
+                if lat1 is None or lng1 is None or lat2 is None or lng2 is None:
+                    continue
+
+                projected_lat, projected_lng, snap_km = self._project_to_segment(
+                    lat,
+                    lng,
+                    float(lat1),
+                    float(lng1),
+                    float(lat2),
+                    float(lng2),
+                )
+                if best is None or snap_km < best['snap_km']:
+                    best = {
+                        'lane': lane,
+                        'from_node': self._get_node_idx(lat1, lng1),
+                        'to_node': self._get_node_idx(lat2, lng2),
+                        'from_coord': (float(lat1), float(lng1)),
+                        'to_coord': (float(lat2), float(lng2)),
+                        'projected_coord': (round(projected_lat, 6), round(projected_lng, 6)),
+                        'snap_km': snap_km,
+                    }
+        return best
+
+    def _connect_virtual_endpoint(self, edges, nodes, virtual_idx: int, segment: dict[str, Any], is_start: bool):
+        lane = segment['lane']
+        projected = segment['projected_coord']
+        from_node = segment['from_node']
+        to_node = segment['to_node']
+        from_coord = segment['from_coord']
+        to_coord = segment['to_coord']
+        snap_km = segment['snap_km']
+        to_from_km = _haversine_distance(projected[0], projected[1], from_coord[0], from_coord[1])
+        to_to_km = _haversine_distance(projected[0], projected[1], to_coord[0], to_coord[1])
+        lane_id = str(lane.id)
+        edges.setdefault(virtual_idx, [])
+
+        if is_start:
+            edges[virtual_idx].append((to_node, snap_km + to_to_km, lane_id))
+            if lane.direction == RouteLane.Direction.TWO_WAY:
+                edges[virtual_idx].append((from_node, snap_km + to_from_km, lane_id))
+        else:
+            edges.setdefault(from_node, []).append((virtual_idx, to_from_km + snap_km, lane_id))
+            if lane.direction == RouteLane.Direction.TWO_WAY:
+                edges.setdefault(to_node, []).append((virtual_idx, to_to_km + snap_km, lane_id))
+
+        nodes[virtual_idx] = projected
 
     def resolve(self, pickup_lat: float, pickup_lng: float, dropoff_lat: float, dropoff_lng: float) -> Dict[str, Any] | None:
         if not self.graph_version or not self.nodes:
             return None
-            
-        start_node = self._find_nearest_node(pickup_lat, pickup_lng)
-        end_node = self._find_nearest_node(dropoff_lat, dropoff_lng)
-        
-        if start_node is None or end_node is None:
+
+        start_segment = self._find_nearest_segment(pickup_lat, pickup_lng)
+        end_segment = self._find_nearest_segment(dropoff_lat, dropoff_lng)
+
+        if start_segment is None or end_segment is None:
             return None
 
-        # Snap distances
-        snap_pickup = _haversine_distance(pickup_lat, pickup_lng, *self.nodes[start_node])
-        snap_dropoff = _haversine_distance(dropoff_lat, dropoff_lng, *self.nodes[end_node])
-        
+        snap_pickup = start_segment['snap_km']
+        snap_dropoff = end_segment['snap_km']
+
         # If the nearest points on the campus graph are too far (>1km), fallback to OSRM/Google
         if snap_pickup > 1.0 or snap_dropoff > 1.0:
             logger.warning(f"CampusRouter: Points too far from graph. Pickup snap: {snap_pickup:.2f}km, Dropoff snap: {snap_dropoff:.2f}km")
             return None
 
+        nodes = dict(self.nodes)
+        edges = {node: list(values) for node, values in self.edges.items()}
+        start_node = max(nodes.keys()) + 1
+        end_node = start_node + 1
+        self._connect_virtual_endpoint(edges, nodes, start_node, start_segment, is_start=True)
+        self._connect_virtual_endpoint(edges, nodes, end_node, end_segment, is_start=False)
+
         # Dijkstra
-        distances = {node: float('inf') for node in self.nodes}
+        distances = {node: float('inf') for node in nodes}
         distances[start_node] = 0
-        previous = {node: None for node in self.nodes}
-        
+        previous = {node: None for node in nodes}
+
         pq = [(0, start_node)]
-        
+
         while pq:
             current_dist, u = heapq.heappop(pq)
-            
+
             if u == end_node:
                 break
-                
+
             if current_dist > distances[u]:
                 continue
-                
-            for v, weight, lane_id in self.edges.get(u, []):
+
+            for v, weight, lane_id in edges.get(u, []):
                 distance = current_dist + weight
-                
+
                 if distance < distances[v]:
                     distances[v] = distance
                     previous[v] = (u, lane_id)
@@ -159,10 +242,10 @@ class CampusRouter:
         
         geometry = []
         for idx in path_nodes:
-            lat, lng = self.nodes[idx]
+            lat, lng = nodes[idx]
             geometry.append({'latitude': lat, 'longitude': lng})
-            
-        total_distance = distances[end_node] + snap_pickup + snap_dropoff
+
+        total_distance = distances[end_node]
 
         return {
             'distance_km': round(total_distance, 3),
@@ -172,6 +255,7 @@ class CampusRouter:
             'metadata': {
                 'graph_version': str(self.graph_version.id),
                 'lanes_used': list(path_lanes),
+                'snap_method': 'nearest_lane_segment',
                 'snap_pickup_km': round(snap_pickup, 3),
                 'snap_dropoff_km': round(snap_dropoff, 3),
             }

@@ -34,7 +34,7 @@ class RouteDistanceResolver:
 
     DEFAULT_OSRM_BASE_URL = 'https://router.project-osrm.org'
     HAVERSINE_ROAD_FACTOR = 1.25
-    REQUEST_TIMEOUT_SECONDS = 2.5
+    REQUEST_TIMEOUT_SECONDS = 6
 
     @staticmethod
     def _decode_google_polyline(encoded: str) -> list[dict]:
@@ -86,31 +86,33 @@ class RouteDistanceResolver:
         vehicle_type: str | None = None,
         allow_haversine_fallback: bool = True,
         preferred_route_index: int = 0,
+        provider_override: str | None = None,
     ) -> RouteResolution:
         from apps.pricing.models import PlatformSettings
         from apps.rides.engine import CampusRouter
 
         # 1. Always attempt the calibrated Campus Graph first
-        campus_router = CampusRouter(vehicle_type=vehicle_type)
-        campus_route = campus_router.resolve(
-            pickup_lat=pickup_latitude,
-            pickup_lng=pickup_longitude,
-            dropoff_lat=dropoff_latitude,
-            dropoff_lng=dropoff_longitude,
-        )
-        if campus_route:
-            return RouteResolution(
-                distance_km=campus_route['distance_km'],
-                duration_minutes=None,
-                geometry=campus_route['geometry'],
-                provider=campus_route['provider'],
-                confidence=campus_route['confidence'],
-                metadata=campus_route.get('metadata', {}),
+        if provider_override in (None, '', 'calibrated_graph'):
+            campus_router = CampusRouter(vehicle_type=vehicle_type)
+            campus_route = campus_router.resolve(
+                pickup_lat=pickup_latitude,
+                pickup_lng=pickup_longitude,
+                dropoff_lat=dropoff_latitude,
+                dropoff_lng=dropoff_longitude,
             )
+            if campus_route:
+                return RouteResolution(
+                    distance_km=campus_route['distance_km'],
+                    duration_minutes=None,
+                    geometry=campus_route['geometry'],
+                    provider=campus_route['provider'],
+                    confidence=campus_route['confidence'],
+                    metadata={**campus_route.get('metadata', {}), 'route_index': 0},
+                )
 
         # 2. Fallback to Platform Setting provider
         platform = PlatformSettings.load()
-        provider = (platform.distance_provider or 'haversine').lower()
+        provider = (provider_override or platform.distance_provider or 'haversine').lower()
 
         if provider == 'osrm':
             route = cls._resolve_osrm(
@@ -170,7 +172,7 @@ class RouteDistanceResolver:
         params = {
             'overview': 'full',
             'geometries': 'geojson',
-            'alternatives': 'true' if route_index else 'false',
+            'alternatives': 'true',
             'steps': 'false',
         }
 
@@ -237,7 +239,7 @@ class RouteDistanceResolver:
             'origin': f'{pickup_latitude},{pickup_longitude}',
             'destination': f'{dropoff_latitude},{dropoff_longitude}',
             'mode': 'driving',
-            'alternatives': 'true' if route_index else 'false',
+            'alternatives': 'true',
             'key': api_key,
         }
 
@@ -303,8 +305,10 @@ class RouteDistanceResolver:
         dropoff_longitude: float,
         vehicle_type: str | None = None,
     ) -> list[RouteResolution]:
+        from apps.pricing.models import PlatformSettings
         from apps.rides.engine import CampusRouter
 
+        options: list[RouteResolution] = []
         campus_router = CampusRouter(vehicle_type=vehicle_type)
         campus_route = campus_router.resolve(
             pickup_lat=pickup_latitude,
@@ -313,25 +317,54 @@ class RouteDistanceResolver:
             dropoff_lng=dropoff_longitude,
         )
         if campus_route:
-            return [RouteResolution(
+            options.append(RouteResolution(
                 distance_km=campus_route['distance_km'],
                 duration_minutes=None,
                 geometry=campus_route['geometry'],
                 provider=campus_route['provider'],
                 confidence=campus_route['confidence'],
-                metadata=campus_route.get('metadata', {}),
-            )]
+                metadata={**campus_route.get('metadata', {}), 'route_index': 0},
+            ))
 
-        routes = cls._resolve_osrm_options(
-            pickup_latitude, pickup_longitude, dropoff_latitude, dropoff_longitude, vehicle_type=vehicle_type,
-        )
-        if routes:
-            return routes
+        platform = PlatformSettings.load()
+        preferred_provider = (platform.distance_provider or 'osrm').lower()
+        provider_order = [preferred_provider, 'google' if preferred_provider == 'osrm' else 'osrm']
 
-        routes = cls._resolve_google_options(
-            pickup_latitude, pickup_longitude, dropoff_latitude, dropoff_longitude, vehicle_type=vehicle_type,
-        )
-        return routes
+        for provider in provider_order:
+            if provider == 'osrm':
+                options.extend(cls._resolve_osrm_options(
+                    pickup_latitude, pickup_longitude, dropoff_latitude, dropoff_longitude, vehicle_type=vehicle_type,
+                ))
+            elif provider == 'google':
+                options.extend(cls._resolve_google_options(
+                    pickup_latitude, pickup_longitude, dropoff_latitude, dropoff_longitude, vehicle_type=vehicle_type,
+                ))
+
+        return cls._dedupe_route_options(options)
+
+    @staticmethod
+    def _dedupe_route_options(routes: list[RouteResolution]) -> list[RouteResolution]:
+        unique: list[RouteResolution] = []
+        seen = set()
+        for route in routes:
+            if len(route.geometry) >= 2:
+                first = route.geometry[0]
+                last = route.geometry[-1]
+                key = (
+                    route.provider,
+                    round(route.distance_km, 2),
+                    round(float(first.get('latitude', 0)), 4),
+                    round(float(first.get('longitude', 0)), 4),
+                    round(float(last.get('latitude', 0)), 4),
+                    round(float(last.get('longitude', 0)), 4),
+                )
+            else:
+                key = (route.provider, round(route.distance_km, 2))
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(route)
+        return unique[:6]
 
     @classmethod
     def _resolve_osrm_options(

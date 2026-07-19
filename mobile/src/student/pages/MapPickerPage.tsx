@@ -39,7 +39,7 @@ export type RouteOption = {
   geometry: Array<{ latitude: number; longitude: number }>
   provider: string
   confidence: string
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown> & { route_index?: number }
 }
 
 export type RouteSelection = {
@@ -102,10 +102,9 @@ export default function MapPickerPage({ onClose, onConfirm, initialCoords, picku
         setRouteError('No valid route found for this location.')
         return
       }
-      const sorted = [...nextRoutes].sort((a, b) => a.distance_km - b.distance_km)
-      setRoutes(sorted)
-      setSelectedRouteIndex(sorted[0].index)
-      const coords = sorted[0].geometry
+      setRoutes(nextRoutes)
+      setSelectedRouteIndex(nextRoutes[0].index)
+      const coords = nextRoutes[0].geometry
       if (coords.length >= 2) {
         requestAnimationFrame(() => {
           mapRef.current?.fitToCoordinates(coords, {
@@ -158,7 +157,21 @@ export default function MapPickerPage({ onClose, onConfirm, initialCoords, picku
           showsMyLocationButton
         >
           {pickupCoords && <Marker coordinate={pickupCoords} title="Pickup" pinColor="#6A1B9A" />}
-          {pin && <Marker coordinate={pin} />}
+          {pin && (
+            <Marker
+              coordinate={pin}
+              draggable
+              onDragEnd={(e) => {
+                const { latitude, longitude } = e.nativeEvent.coordinate
+                const nextPin = {
+                  latitude: Number(latitude.toFixed(6)),
+                  longitude: Number(longitude.toFixed(6)),
+                }
+                setPin(nextPin)
+                void fetchRoutes(nextPin)
+              }}
+            />
+          )}
           {routes.map((route) => (
             <Polyline
               key={`${route.provider}-${route.index}`}
@@ -190,10 +203,13 @@ export default function MapPickerPage({ onClose, onConfirm, initialCoords, picku
                 activeOpacity={0.85}
               >
                 <Text style={[styles.routeOptionTitle, route.index === selectedRouteIndex && styles.routeOptionTitleActive]}>
-                  {idx === 0 ? 'Shortest' : `Route ${idx + 1}`}
+                  {idx === 0 ? 'Recommended' : `Route ${idx + 1}`}
                 </Text>
                 <Text style={styles.routeOptionMeta}>
                   {route.distance_km.toFixed(2)} km{route.duration_minutes ? ` · ${route.duration_minutes} min` : ''}
+                </Text>
+                <Text style={styles.routeOptionProvider}>
+                  {route.provider.replace('_', ' ')} / {route.confidence}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -298,6 +314,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#6b7280',
     marginTop: 2,
+  },
+  routeOptionProvider: {
+    fontSize: 10,
+    color: '#8b8b8b',
+    marginTop: 3,
+    textTransform: 'capitalize',
   },
   coordText: {
     fontSize: 13,

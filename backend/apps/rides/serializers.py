@@ -20,6 +20,9 @@ BOOKABLE_VEHICLE_TYPES = set(VEHICLE_SEAT_POLICY.keys())
 
 
 class RideRequestSerializer(serializers.ModelSerializer):
+    route_index = serializers.IntegerField(min_value=0, required=False, write_only=True)
+    route_provider = serializers.CharField(required=False, allow_blank=True, write_only=True)
+
     class Meta:
         model = Ride
         fields = [
@@ -33,12 +36,11 @@ class RideRequestSerializer(serializers.ModelSerializer):
             'vehicle_type_requested',
             'requested_seats',
             'payment_method',
+            'route_index',
+            'route_provider',
         ]
 
     def to_internal_value(self, data):
-        if 'route_index' in data:
-            data = data.copy()
-            data.pop('route_index', None)
         if 'requested_seats' not in data:
             if 'passengerCount' in data:
                 data = data.copy()
@@ -102,6 +104,8 @@ class RideRequestSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
+        validated_data.pop('route_index', None)
+        validated_data.pop('route_provider', None)
         if not validated_data.get('scheduled_pickup_time'):
             validated_data['scheduled_pickup_time'] = timezone.now()
         reference = 'RD' + uuid.uuid4().hex[:8].upper()
