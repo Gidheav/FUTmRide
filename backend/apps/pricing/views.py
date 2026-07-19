@@ -215,9 +215,17 @@ class RouteGraphTraceView(APIView):
         except (TypeError, ValueError):
             return Response({'error': 'Valid start and end coordinates are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        routes = self._trace_osrm(start_lat, start_lng, end_lat, end_lng)
+        requested_mode = (request.data.get('travel_mode') or 'walking').lower()
+        modes = [requested_mode]
+        for mode in ['walking', 'driving']:
+            if mode not in modes:
+                modes.append(mode)
+
+        routes = []
+        for mode in modes:
+            routes.extend(self._trace_google(start_lat, start_lng, end_lat, end_lng, travel_mode=mode))
         if not routes:
-            routes = self._trace_google(start_lat, start_lng, end_lat, end_lng)
+            routes = self._trace_osrm(start_lat, start_lng, end_lat, end_lng)
 
         if not routes:
             return Response({'error': 'No road route found. Move the pins closer to visible roads.'}, status=status.HTTP_404_NOT_FOUND)
@@ -268,7 +276,7 @@ class RouteGraphTraceView(APIView):
             })
         return traced
 
-    def _trace_google(self, start_lat, start_lng, end_lat, end_lng):
+    def _trace_google(self, start_lat, start_lng, end_lat, end_lng, travel_mode='driving'):
         api_key = getattr(settings, 'GOOGLE_MAPS_API_KEY', None) or os.getenv('GOOGLE_MAPS_API_KEY')
         if not api_key:
             return []
@@ -276,7 +284,7 @@ class RouteGraphTraceView(APIView):
         params = {
             'origin': f'{start_lat},{start_lng}',
             'destination': f'{end_lat},{end_lng}',
-            'mode': 'driving',
+            'mode': travel_mode,
             'alternatives': 'true',
             'key': api_key,
         }
@@ -309,6 +317,7 @@ class RouteGraphTraceView(APIView):
                 'distance_km': round(distance_m / 1000, 3),
                 'duration_minutes': round(duration_s / 60) if duration_s else None,
                 'summary': route.get('summary') or f'Google route {idx + 1}',
-                'provider': 'google',
+                'provider': 'google' if travel_mode == 'driving' else f'google_{travel_mode}',
+                'travel_mode': travel_mode,
             })
         return traced

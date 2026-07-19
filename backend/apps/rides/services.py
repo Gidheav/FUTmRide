@@ -126,7 +126,8 @@ class RouteDistanceResolver:
             if route:
                 return route
 
-        if provider == 'google':
+        if provider in ('google', 'google_driving', 'google_walking'):
+            travel_mode = 'walking' if provider == 'google_walking' else 'driving'
             route = cls._resolve_google(
                 pickup_latitude,
                 pickup_longitude,
@@ -134,6 +135,7 @@ class RouteDistanceResolver:
                 dropoff_longitude,
                 vehicle_type=vehicle_type,
                 route_index=preferred_route_index,
+                travel_mode=travel_mode,
             )
             if route:
                 return route
@@ -229,6 +231,7 @@ class RouteDistanceResolver:
         dropoff_longitude: float,
         vehicle_type: str | None = None,
         route_index: int = 0,
+        travel_mode: str = 'driving',
     ) -> RouteResolution | None:
         api_key = getattr(settings, 'GOOGLE_MAPS_API_KEY', None) or os.getenv('GOOGLE_MAPS_API_KEY')
         if not api_key:
@@ -238,7 +241,7 @@ class RouteDistanceResolver:
         params = {
             'origin': f'{pickup_latitude},{pickup_longitude}',
             'destination': f'{dropoff_latitude},{dropoff_longitude}',
-            'mode': 'driving',
+            'mode': travel_mode,
             'alternatives': 'true',
             'key': api_key,
         }
@@ -284,10 +287,11 @@ class RouteDistanceResolver:
             distance_km=round(distance_m / 1000, 3),
             duration_minutes=round(duration_seconds / 60) if duration_seconds else None,
             geometry=geometry,
-            provider='google',
+            provider='google' if travel_mode == 'driving' else f'google_{travel_mode}',
             confidence='high',
             metadata={
                 'vehicle_type': vehicle_type,
+                'travel_mode': travel_mode,
                 'distance_meters': round(distance_m, 2),
                 'duration_seconds': round(duration_seconds, 2) if duration_seconds else None,
                 'fallback_used': False,
@@ -328,16 +332,20 @@ class RouteDistanceResolver:
 
         platform = PlatformSettings.load()
         preferred_provider = (platform.distance_provider or 'osrm').lower()
-        provider_order = [preferred_provider, 'google' if preferred_provider == 'osrm' else 'osrm']
+        provider_order = ['google_walking', 'google_driving', preferred_provider, 'osrm']
 
         for provider in provider_order:
             if provider == 'osrm':
                 options.extend(cls._resolve_osrm_options(
                     pickup_latitude, pickup_longitude, dropoff_latitude, dropoff_longitude, vehicle_type=vehicle_type,
                 ))
-            elif provider == 'google':
+            elif provider == 'google_driving':
                 options.extend(cls._resolve_google_options(
-                    pickup_latitude, pickup_longitude, dropoff_latitude, dropoff_longitude, vehicle_type=vehicle_type,
+                    pickup_latitude, pickup_longitude, dropoff_latitude, dropoff_longitude, vehicle_type=vehicle_type, travel_mode='driving',
+                ))
+            elif provider == 'google_walking':
+                options.extend(cls._resolve_google_options(
+                    pickup_latitude, pickup_longitude, dropoff_latitude, dropoff_longitude, vehicle_type=vehicle_type, travel_mode='walking',
                 ))
 
         return cls._dedupe_route_options(options)
@@ -352,6 +360,7 @@ class RouteDistanceResolver:
                 last = route.geometry[-1]
                 key = (
                     route.provider,
+                    route.metadata.get('travel_mode'),
                     round(route.distance_km, 2),
                     round(float(first.get('latitude', 0)), 4),
                     round(float(first.get('longitude', 0)), 4),
@@ -359,7 +368,7 @@ class RouteDistanceResolver:
                     round(float(last.get('longitude', 0)), 4),
                 )
             else:
-                key = (route.provider, round(route.distance_km, 2))
+                key = (route.provider, route.metadata.get('travel_mode'), round(route.distance_km, 2))
             if key in seen:
                 continue
             seen.add(key)
@@ -429,6 +438,7 @@ class RouteDistanceResolver:
         dropoff_latitude: float,
         dropoff_longitude: float,
         vehicle_type: str | None = None,
+        travel_mode: str = 'driving',
     ) -> list[RouteResolution]:
         api_key = getattr(settings, 'GOOGLE_MAPS_API_KEY', None) or os.getenv('GOOGLE_MAPS_API_KEY')
         if not api_key:
@@ -437,7 +447,7 @@ class RouteDistanceResolver:
             response = requests.get('https://maps.googleapis.com/maps/api/directions/json', params={
                 'origin': f'{pickup_latitude},{pickup_longitude}',
                 'destination': f'{dropoff_latitude},{dropoff_longitude}',
-                'mode': 'driving',
+                'mode': travel_mode,
                 'alternatives': 'true',
                 'key': api_key,
             }, timeout=cls.REQUEST_TIMEOUT_SECONDS)
@@ -465,10 +475,11 @@ class RouteDistanceResolver:
                 distance_km=round(distance_m / 1000, 3),
                 duration_minutes=round(duration_seconds / 60) if duration_seconds else None,
                 geometry=geometry,
-                provider='google',
+                provider='google' if travel_mode == 'driving' else f'google_{travel_mode}',
                 confidence='high',
                 metadata={
                     'vehicle_type': vehicle_type,
+                    'travel_mode': travel_mode,
                     'distance_meters': round(distance_m, 2),
                     'duration_seconds': round(duration_seconds, 2) if duration_seconds else None,
                     'fallback_used': False,

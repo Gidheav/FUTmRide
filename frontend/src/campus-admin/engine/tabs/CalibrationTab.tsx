@@ -61,7 +61,8 @@ type TraceRoute = {
   distanceKm: number
   durationMinutes: number | null
   summary: string
-  provider: 'osrm' | 'google'
+  provider: string
+  travelMode?: string
 }
 
 const btn: CSSProperties = {
@@ -364,7 +365,8 @@ export function CalibrationTab({ settings }: { settings: PlatformSettings }) {
           distanceKm: Number(route.distance_km || 0),
           durationMinutes: route.duration_minutes ?? null,
           summary: route.summary || `Route ${idx + 1}`,
-          provider: route.provider === 'google' ? 'google' : 'osrm',
+          provider: String(route.provider || 'route'),
+          travelMode: route.travel_mode,
         } satisfies TraceRoute))
         : []
       if (!routes?.length) {
