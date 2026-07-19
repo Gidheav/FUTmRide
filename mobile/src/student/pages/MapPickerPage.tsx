@@ -172,16 +172,14 @@ export default function MapPickerPage({ onClose, onConfirm, initialCoords, picku
               }}
             />
           )}
-          {routes.map((route) => (
+          {selectedRoute && (
             <Polyline
-              key={`${route.provider}-${route.index}`}
-              coordinates={route.geometry}
-              strokeColor={route.index === selectedRouteIndex ? '#6A1B9A' : '#8b8b8b'}
-              strokeWidth={route.index === selectedRouteIndex ? 5 : 3}
-              tappable
-              onPress={() => setSelectedRouteIndex(route.index)}
+              key={`${selectedRoute.provider}-${selectedRoute.index}`}
+              coordinates={selectedRoute.geometry}
+              strokeColor="#6A1B9A"
+              strokeWidth={5}
             />
-          ))}
+          )}
         </MapView>
       </View>
 
@@ -206,7 +204,7 @@ export default function MapPickerPage({ onClose, onConfirm, initialCoords, picku
                   {idx === 0 ? 'Recommended' : `Route ${idx + 1}`}
                 </Text>
                 <Text style={styles.routeOptionMeta}>
-                  {route.distance_km.toFixed(2)} km{route.duration_minutes ? ` · ${route.duration_minutes} min` : ''}
+                  {route.distance_km.toFixed(2)} km
                 </Text>
                 <Text style={styles.routeOptionProvider}>
                   {route.provider.replace('_', ' ')} / {route.confidence}

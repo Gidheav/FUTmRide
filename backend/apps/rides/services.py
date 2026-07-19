@@ -361,7 +361,7 @@ class RouteDistanceResolver:
 
         platform = PlatformSettings.load()
         preferred_provider = (platform.distance_provider or 'osrm').lower()
-        provider_order = ['google_walking', 'google_driving', preferred_provider, 'osrm']
+        provider_order = ['google_driving', 'google_walking', preferred_provider, 'osrm']
 
         for provider in provider_order:
             if provider == 'osrm':
@@ -402,7 +402,7 @@ class RouteDistanceResolver:
                 continue
             seen.add(key)
             unique.append(route)
-        return unique[:6]
+        return unique[:3]
 
     @classmethod
     def _resolve_osrm_options(
@@ -423,7 +423,7 @@ class RouteDistanceResolver:
             response = requests.get(url, params={
                 'overview': 'full',
                 'geometries': 'geojson',
-                'alternatives': 'true',
+                'alternatives': 'false',
                 'steps': 'false',
             }, timeout=cls.REQUEST_TIMEOUT_SECONDS)
             response.raise_for_status()
@@ -477,7 +477,7 @@ class RouteDistanceResolver:
                 'origin': f'{pickup_latitude},{pickup_longitude}',
                 'destination': f'{dropoff_latitude},{dropoff_longitude}',
                 'mode': travel_mode,
-                'alternatives': 'true',
+                'alternatives': 'false',
                 'key': api_key,
             }, timeout=cls.REQUEST_TIMEOUT_SECONDS)
             response.raise_for_status()
