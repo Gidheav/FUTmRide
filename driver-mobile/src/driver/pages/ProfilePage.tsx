@@ -149,14 +149,10 @@ export default function DriverProfilePage({ onNavigateToSettings, onEditProfile 
   }, [user?.first_name, user?.last_name]);
 
   const vehicleModel = [profile?.vehicle_make, profile?.vehicle_model, profile?.vehicle_year]
-    .filter(Boolean)
+    .filter(val => val && val !== 'Unknown')
     .join(' ');
 
-  const badges = [
-    profile?.average_rating && Number(profile.average_rating) >= 4.5 ? 'Top rated' : null,
-    profile?.acceptance_rate && Number(profile.acceptance_rate) >= 90 ? 'High acceptance' : null,
-    profile?.cancellation_rate && Number(profile.cancellation_rate) <= 5 ? 'Reliable' : null,
-  ].filter(Boolean) as string[];
+  const badges = profile?.badges || [];
 
   if (loading) {
     return (
@@ -173,6 +169,16 @@ export default function DriverProfilePage({ onNavigateToSettings, onEditProfile 
       onRefresh={onRefresh}
       style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       <View style={[styles.profileHeader, isWide && styles.profileHeaderWide]}>
+        
+        <View style={styles.topActionsAbsolute}>
+          <TouchableOpacity style={styles.iconButton} onPress={onEditProfile}>
+            <MaterialIcons name="edit" size={24} color={COLORS.onBackground} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.iconButton} onPress={onNavigateToSettings}>
+            <MaterialIcons name="settings" size={24} color={COLORS.onBackground} />
+          </TouchableOpacity>
+        </View>
+
         <TouchableOpacity style={styles.avatarContainer} onPress={handleUpdatePhoto} disabled={uploadingPhoto}>
           {user?.profile_photo ? (
             <Image source={{ uri: user.profile_photo }} style={[styles.profileImage, isWide && styles.profileImageWide]} />
@@ -198,7 +204,7 @@ export default function DriverProfilePage({ onNavigateToSettings, onEditProfile 
           <View style={styles.subRow}>
             <MaterialIcons name={user?.is_verified ? 'verified' : 'info'} size={16} color={COLORS.primary} />
             <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>
-              {user?.is_verified ? 'Verified driver' : 'Pending verification'}
+              {user?.is_verified ? 'Verified' : 'Pending'}
             </Text>
           </View>
           {user?.campus?.name ? (
@@ -233,15 +239,21 @@ export default function DriverProfilePage({ onNavigateToSettings, onEditProfile 
         </View>
         <View style={styles.detailRow}>
           <Text style={[FONTS.bodyMd, styles.detailLabel]}>Model</Text>
-          <Text style={[FONTS.labelLg, styles.detailValue]}>{vehicleModel || '-'}</Text>
+          <Text style={[FONTS.labelLg, styles.detailValue, !vehicleModel && { color: COLORS.error }]}>
+            {vehicleModel || 'Please update profile'}
+          </Text>
         </View>
         <View style={styles.detailRow}>
           <Text style={[FONTS.bodyMd, styles.detailLabel]}>Plate number</Text>
-          <Text style={[FONTS.labelLg, styles.detailValue]}>{profile?.plate_number || '-'}</Text>
+          <Text style={[FONTS.labelLg, styles.detailValue, profile?.plate_number === 'PENDING' && { color: COLORS.error }]}>
+            {profile?.plate_number === 'PENDING' ? 'Please update profile' : profile?.plate_number}
+          </Text>
         </View>
         <View style={styles.detailRow}>
           <Text style={[FONTS.bodyMd, styles.detailLabel]}>Color</Text>
-          <Text style={[FONTS.labelLg, styles.detailValue]}>{profile?.vehicle_color || '-'}</Text>
+          <Text style={[FONTS.labelLg, styles.detailValue, profile?.vehicle_color === 'Unknown' && { color: COLORS.error }]}>
+            {profile?.vehicle_color === 'Unknown' ? 'Please update profile' : profile?.vehicle_color}
+          </Text>
         </View>
       </View>
 
@@ -251,28 +263,17 @@ export default function DriverProfilePage({ onNavigateToSettings, onEditProfile 
           <Text style={[FONTS.labelLg, styles.sectionTitle]}>Badges</Text>
         </View>
         {badges.length === 0 ? (
-          <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant }]}>No badges yet.</Text>
+          <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant }]}>No badges earned yet. Complete more trips to earn badges!</Text>
         ) : (
           <View style={styles.badgeWrap}>
-            {badges.map((label) => (
-              <View key={label} style={styles.badgeChip}>
-                <MaterialIcons name="verified" size={14} color={COLORS.onPrimary} />
-                <Text style={[FONTS.labelMd, { color: COLORS.onPrimary }]}>{label}</Text>
+            {badges.map((badge: any) => (
+              <View key={badge.id} style={[styles.badgeChip, badge.color && { backgroundColor: badge.color }]}>
+                <MaterialIcons name={badge.icon || "verified"} size={14} color={COLORS.onPrimary} />
+                <Text style={[FONTS.labelMd, { color: COLORS.onPrimary }]}>{badge.name}</Text>
               </View>
             ))}
           </View>
         )}
-      </View>
-
-      <View style={styles.actionArea}>
-        <TouchableOpacity style={styles.primaryButton} onPress={onEditProfile}>
-          <MaterialIcons name="edit" size={20} color={COLORS.onPrimary} />
-          <Text style={[FONTS.labelLg, styles.primaryButtonText]}>Edit profile</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.secondaryButton} onPress={onNavigateToSettings}>
-          <MaterialIcons name="settings" size={20} color={COLORS.onBackground} />
-          <Text style={[FONTS.labelLg, styles.secondaryButtonText]}>Settings</Text>
-        </TouchableOpacity>
       </View>
     </CustomRefreshScrollView>
   );
@@ -285,9 +286,22 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 24,
+    paddingTop: 12,
     paddingBottom: 120,
     gap: 16,
+  },
+  topActionsAbsolute: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    flexDirection: 'row',
+    gap: 12,
+    zIndex: 10,
+  },
+  iconButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: COLORS.surfaceContainerLowest,
   },
   loadingWrap: {
     flex: 1,
@@ -298,22 +312,24 @@ const styles = StyleSheet.create({
   profileHeader: {
     alignItems: 'center',
     marginBottom: 8,
+    paddingTop: 4,
     gap: 10,
+    position: 'relative',
   },
   profileImage: {
-    width: '30%',
+    width: '35%',
     aspectRatio: 1,
     maxWidth: 160,
-    minWidth: 96,
+    minWidth: 110,
     borderRadius: 999,
     borderWidth: 4,
     borderColor: COLORS.surfaceContainerLowest,
   },
   initialsAvatar: {
-    width: '30%',
+    width: '35%',
     aspectRatio: 1,
     maxWidth: 160,
-    minWidth: 96,
+    minWidth: 110,
     borderRadius: 999,
     backgroundColor: COLORS.surfaceContainerHigh,
     alignItems: 'center',
@@ -403,14 +419,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: COLORS.primary,
   },
-  actionArea: {
-    gap: 12,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-  },
-
   /* Wide layout overrides */
   profileHeaderWide: {
     flexDirection: 'row',
@@ -449,35 +457,5 @@ const styles = StyleSheet.create({
     width: 120,
     minWidth: 120,
     maxWidth: 160,
-  },
-  primaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: COLORS.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    borderRadius: 14,
-    minWidth: 140,
-  },
-  primaryButtonText: {
-    color: COLORS.onPrimary,
-  },
-  secondaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: COLORS.surfaceContainerLowest,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.surfaceContainerLow,
-    minWidth: 140,
-  },
-  secondaryButtonText: {
-    color: COLORS.onBackground,
   },
 });

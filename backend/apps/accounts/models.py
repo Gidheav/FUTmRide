@@ -406,6 +406,53 @@ class DriverProfile(models.Model):
             and self.user.is_active
         )
 
+    @property
+    def badges(self) -> list[dict]:
+        """Compute badges based on driver performance metrics."""
+        earned_badges = []
+        
+        # 1. Top Rated: >4.8 avg rating and at least 50 trips
+        if self.average_rating and self.average_rating >= 4.8 and self.total_trips >= 50:
+            earned_badges.append({
+                'id': 'top_rated',
+                'name': 'Top Rated',
+                'icon': 'star',
+                'description': 'Maintains an exceptional rating above 4.8 with over 50 trips.',
+                'color': '#FFB300'
+            })
+            
+        # 2. Reliable: <2% cancellation rate and at least 100 trips
+        if self.cancellation_rate <= 2.0 and self.total_trips >= 100:
+            earned_badges.append({
+                'id': 'reliable',
+                'name': 'Reliable',
+                'icon': 'verified-user',
+                'description': 'Exceptional reliability with less than 2% cancellation rate.',
+                'color': '#4CAF50'
+            })
+            
+        # 3. Swift Pickup: >95% acceptance as a proxy for swift reliability
+        if self.acceptance_rate >= 95.0 and self.total_trips >= 20:
+            earned_badges.append({
+                'id': 'swift_pickup',
+                'name': 'Swift Pickup',
+                'icon': 'bolt',
+                'description': 'Known for fast acceptance and swift arrivals.',
+                'color': '#03A9F4'
+            })
+            
+        # 4. Campus Legend: >1000 trips
+        if self.total_trips >= 1000:
+            earned_badges.append({
+                'id': 'campus_legend',
+                'name': 'Campus Legend',
+                'icon': 'local-fire-department',
+                'description': 'A true veteran with over 1000 completed trips.',
+                'color': '#E91E63'
+            })
+            
+        return earned_badges
+
 
 class OTPVerification(models.Model):
     class Purpose(models.TextChoices):

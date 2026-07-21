@@ -18,7 +18,7 @@ import { settingsApi } from '../../core/api';
 import { useSettingsStore } from '../../core/settingsStore';
 import { useAppLockStore, type DriverLockTimeoutMinutes } from '../../core/appLockStore';
 import { saveDriverSessionSnapshotFromStores, saveOfflinePinVerifier } from '../../core/driverSandbox';
-
+import LocationDataService from '../../core/locationDataService';
 type Props = {
   onBack: () => void;
   onLogout: () => void;
@@ -156,6 +156,45 @@ export default function AccountSettingsPage({ onBack, onLogout, verificationProg
   const [twoFactorBackupCodes, setTwoFactorBackupCodes] = useState<string[]>([]);
   const [twoFactorBusy, setTwoFactorBusy] = useState(false);
   const [twoFactorStage, setTwoFactorStage] = useState<'idle' | 'verify' | 'disable'>('idle');
+
+  const [mapUpdateAvailable, setMapUpdateAvailable] = useState(false);
+  const [mapUpdateVersion, setMapUpdateVersion] = useState<number | null>(null);
+  const [mapUpdateBusy, setMapUpdateBusy] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    LocationDataService.checkForUpdate()
+      .then((res) => {
+        if (isMounted) {
+          setMapUpdateAvailable(res.updateAvailable);
+          setMapUpdateVersion(res.localVersion);
+        }
+      })
+      .catch(() => null);
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleUpdateMap = async () => {
+    if (mapUpdateBusy) return;
+    setMapUpdateBusy(true);
+    try {
+      const result = await LocationDataService.downloadUpdate();
+      if (result.success) {
+        Alert.alert('Map updated', 'Map locations have been successfully updated.');
+        const check = await LocationDataService.checkForUpdate();
+        setMapUpdateAvailable(check.updateAvailable);
+        setMapUpdateVersion(check.localVersion);
+      } else {
+        Alert.alert('Update failed', result.error || 'Please try again later.');
+      }
+    } catch (e) {
+      Alert.alert('Error', 'An unexpected error occurred while updating the map.');
+    } finally {
+      setMapUpdateBusy(false);
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -503,6 +542,28 @@ export default function AccountSettingsPage({ onBack, onLogout, verificationProg
                 <MaterialIcons name="check" size={20} color={COLORS.primary} />
               ) : null}
             </Pressable>
+
+            <View style={{ marginTop: 24 }}>
+              <Text style={styles.sectionTitle}>MAP LOCATIONS</Text>
+              <View style={[styles.card, AMBIENT_SHADOW]}>
+                <SettingsRow
+                  icon="update"
+                  title="Update Map"
+                  subtitle={mapUpdateVersion !== null ? `Version ${mapUpdateVersion}` : 'Checking version...'}
+                  trailing={
+                    mapUpdateBusy ? (
+                      <Text style={[FONTS.bodySm, { color: COLORS.primary }]}>Updating...</Text>
+                    ) : mapUpdateAvailable ? (
+                      <Text style={[FONTS.bodySm, { color: COLORS.error }]}>Recommended</Text>
+                    ) : (
+                      <Text style={[FONTS.bodySm, { color: COLORS.tertiary }]}>Up to date</Text>
+                    )
+                  }
+                  isLast
+                  onPress={mapUpdateAvailable ? handleUpdateMap : undefined}
+                />
+              </View>
+            </View>
           </View>
         );
 

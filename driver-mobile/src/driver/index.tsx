@@ -31,7 +31,7 @@ import {
   showRideStatusNotification,
   clearRideStatusNotification,
 } from '../core/pushNotifications'
-// Safe no-op Ã¢â‚¬â€œ expo-task-manager isn't installed; prevents the old ReferenceError
+// Safe no-op – expo-task-manager isn't installed; prevents the old ReferenceError
 const stopRideForegroundService = async () => { /* no-op */ }
 import { useDriverWalletStore } from '../core/driverWalletStore'
 import { useDriverRidesStore } from '../core/driverRidesStore'
@@ -40,6 +40,7 @@ import {
   markInAppAnnouncementSeen,
   type DriverInAppAnnouncement,
 } from './services/inAppAnnouncement'
+import LocationDataService from '../core/locationDataService'
 import InAppAnnouncementModal from './components/InAppAnnouncementModal'
 import DriverLoginScreen from './screens/LoginScreen'
 import DriverDashboardScreen from './screens/DashboardScreen'
@@ -436,6 +437,12 @@ export default function DriverApp() {
       }, 1500)
     }
   }, [garageRide, garagePassengers.length, sessionActive])
+
+  // ——— Map Locations Initialization —————————————————————————————————————————————
+  useEffect(() => {
+    if (!sessionActive) return
+    void LocationDataService.initialize()
+  }, [sessionActive])
 
   // ——— In-App Announcements —————————————————————————————————————————————————————
   useEffect(() => {

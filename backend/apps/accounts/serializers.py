@@ -387,6 +387,15 @@ class UserProfileSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({"non_field_errors": "Incorrect name"})
         return super().validate(attrs)
 
+    def update(self, instance, validated_data):
+        new_token = validated_data.get('fcm_token')
+        if new_token and new_token != instance.fcm_token:
+            # Revoke this push token from every other user who still has it.
+            # This prevents cross-account notification leaks when users share
+            # a device (e.g. Driver A logs out, Driver B logs in — same token).
+            User.objects.filter(fcm_token=new_token).exclude(id=instance.id).update(fcm_token=None)
+        return super().update(instance, validated_data)
+
 
 class UserSettingsSerializer(serializers.ModelSerializer):
     has_pin = serializers.SerializerMethodField()
@@ -494,6 +503,7 @@ class DriverProfileSerializer(serializers.ModelSerializer):
     pending_assignment = serializers.SerializerMethodField()
     last_route = serializers.SerializerMethodField()
     recommendation = serializers.SerializerMethodField()
+    badges = serializers.ReadOnlyField()
 
     class Meta:
         model = DriverProfile
@@ -504,7 +514,7 @@ class DriverProfileSerializer(serializers.ModelSerializer):
             "is_online", "is_on_trip", "wallet_balance", "daily_goal_target", "total_trips",
             "total_earnings", "average_rating", "acceptance_rate",
             "cancellation_rate", "verified_at", "created_at",
-            "fleet_state", "pending_assignment", "last_route", "recommendation",
+            "fleet_state", "pending_assignment", "last_route", "recommendation", "badges",
         ]
         read_only_fields = [
             "id", "verification_status", "maintenance_status", "last_service_date",

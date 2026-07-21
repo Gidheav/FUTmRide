@@ -237,6 +237,12 @@ class LogoutView(APIView):
 
     def post(self, request):
         try:
+            # Clear push token so this user stops receiving notifications
+            # on the device they are logging out from.
+            if request.user.fcm_token:
+                request.user.fcm_token = None
+                request.user.save(update_fields=['fcm_token'])
+
             refresh_token = request.data.get('refresh')
             if not refresh_token:
                 return Response(

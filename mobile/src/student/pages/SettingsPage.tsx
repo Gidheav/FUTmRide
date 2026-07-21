@@ -20,11 +20,11 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
       {/* Removed header since StudentLayout handles it */}
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        
+
         <View style={styles.section}>
           <View style={styles.card}>
-            <TouchableOpacity 
-              style={styles.cardHeader} 
+            <TouchableOpacity
+              style={styles.cardHeader}
               activeOpacity={0.7}
               onPress={() => setIsCategoriesExpanded(!isCategoriesExpanded)}
             >
@@ -32,17 +32,17 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                 <Text style={styles.cardTitle}>Quick Categories</Text>
                 <Text style={styles.cardSubtitle}>Choose which locations appear on your map dashboard.</Text>
               </View>
-              <MaterialIcons 
-                name={isCategoriesExpanded ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} 
-                size={24} 
-                color="#8e8e93" 
+              <MaterialIcons
+                name={isCategoriesExpanded ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
+                size={24}
+                color="#8e8e93"
               />
             </TouchableOpacity>
 
             {isCategoriesExpanded && QUICK_ITEMS.map((item, index) => {
               const isEnabled = enabledCategories.includes(item.category)
               const isLast = index === QUICK_ITEMS.length - 1
-              
+
               return (
                 <View key={item.id} style={[styles.row, !isLast && styles.rowBorder]}>
                   <View style={styles.rowIcon}>
@@ -62,7 +62,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
           </View>
         </View>
 
-        <Text style={styles.versionText}>TESSERA v{Constants.expoConfig?.version || '1.0.0'}</Text>
+        <Text style={styles.versionText}>FUTMRide v{Constants.expoConfig?.version || '1.0.0'}</Text>
       </ScrollView>
     </View>
   )

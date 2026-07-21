@@ -24,12 +24,12 @@
         "googleMapsApiKey": "AIzaSyD5nLbEz_xY6UOHJ1mbjvipD1PY1A14erQ"
       },
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "TSR needs your location to show nearby drivers and navigate your ride.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "TSR uses your location in the background to track active rides.",
-        "NSCameraUsageDescription": "TSR uses the camera to let you upload a profile photo or scan documents.",
-        "NSPhotoLibraryUsageDescription": "TSR needs photo library access to let you choose a profile picture.",
-        "NSContactsUsageDescription": "TSR optionally reads contacts to let you quickly add emergency contacts.",
-        "NSUserNotificationUsageDescription": "TSR sends ride status alerts and driver arrival updates via notifications."
+        "NSLocationWhenInUseUsageDescription": "FUTMRide needs your location to show nearby drivers and navigate your ride.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "FUTMRide uses your location in the background to track active rides.",
+        "NSCameraUsageDescription": "FUTMRide uses the camera to let you upload a profile photo or scan documents.",
+        "NSPhotoLibraryUsageDescription": "FUTMRide needs photo library access to let you choose a profile picture.",
+        "NSContactsUsageDescription": "FUTMRide optionally reads contacts to let you quickly add emergency contacts.",
+        "NSUserNotificationUsageDescription": "FUTMRide sends ride status alerts and driver arrival updates via notifications."
       }
     },
     "android": {
@@ -61,7 +61,7 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "TSR needs location in the background to show an active scanning notification.",
+          "locationAlwaysAndWhenInUsePermission": "FUTMRide needs location in the background to show an active scanning notification.",
           "isAndroidBackgroundLocationEnabled": true
         }
       ]

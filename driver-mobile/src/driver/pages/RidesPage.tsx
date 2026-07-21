@@ -32,7 +32,7 @@ import {
 } from '../../core/driverActivity';
 import * as Location from 'expo-location';
 import QRCode from 'react-native-qrcode-svg';
-import locationData from '../locations.json';
+import { useLocations } from '../../core/locationDataService';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
 if (
@@ -179,18 +179,10 @@ type LocationOption = {
   longitude: number;
 };
 
-const ALL_LOCATIONS: LocationOption[] = (locationData as any[]).map((loc) => ({
-  id: loc.id,
-  label: loc.name,
-  description: loc.description,
-  latitude: Number(loc.latitude),
-  longitude: Number(loc.longitude),
-}));
-
-const filterLocations = (query: string) => {
+const filterLocations = (query: string, locations: LocationOption[]) => {
   const normalized = query.trim().toLowerCase();
-  if (!normalized) return ALL_LOCATIONS;
-  return ALL_LOCATIONS.filter((item) => {
+  if (!normalized) return locations;
+  return locations.filter((item) => {
     const haystack = `${item.label} ${item.description}`.toLowerCase();
     return haystack.includes(normalized);
   });
@@ -566,6 +558,19 @@ export default function DriverRidesPage() {
   const { setStatus } = useGarageRideStore();
 
   const [locationQuery, setLocationQuery] = useState('');
+  
+  const rawLocations = useLocations();
+  const locations = useMemo(() => {
+    return rawLocations.map((loc) => ({
+      id: loc.id,
+      label: loc.name,
+      description: loc.description,
+      latitude: Number(loc.latitude),
+      longitude: Number(loc.longitude),
+    }));
+  }, [rawLocations]);
+
+  const filteredLocations = useMemo(() => filterLocations(locationQuery, locations), [locationQuery, locations]);
   
   // Scheduled Rides Bidding State
   const [availableScheduledRides, setAvailableScheduledRides] = useState<any[]>([]);

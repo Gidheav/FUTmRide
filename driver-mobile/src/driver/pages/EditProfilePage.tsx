@@ -1,6 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
+  BackHandler,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,7 +14,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import LoadingOverlay from '../components/LoadingOverlay';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
+import { COLORS, FONTS } from '../../core/theme';
 import { useAuthStore } from '../../core/authStore';
 import { authApi, driverApi } from '../../core/api';
 import { useDriverProfileStore } from '../../core/driverProfileStore';
@@ -30,40 +33,23 @@ const DEFAULT_DRIVER_PROFILE = {
 };
 
 const VEHICLE_TYPES = [
-  { value: 'motorbike', label: 'Motorbike' },
-  { value: 'tricycle', label: 'Tricycle' },
-  { value: 'sedan', label: 'Sedan' },
-  { value: 'mpv', label: 'MPV' },
+  { value: 'motorbike', label: 'Motorbike', icon: 'two-wheeler' as const, seats: 1 },
+  { value: 'tricycle', label: 'Tricycle (Keke)', icon: 'electric-rickshaw' as const, seats: 3 },
+  { value: 'sedan', label: 'Sedan', icon: 'directions-car' as const, seats: 4 },
+  { value: 'mpv', label: 'MPV / Minivan', icon: 'airport-shuttle' as const, seats: 6 },
+  { value: 'minibus', label: 'Minibus', icon: 'directions-bus' as const, seats: 14 },
+  { value: 'coach', label: 'Coach', icon: 'directions-bus' as const, seats: 40 },
 ];
 
-const InputField = ({
-  label,
-  value,
-  onChangeText,
-  placeholder,
-  keyboardType,
-  autoCapitalize,
-}: {
-  label: string;
-  value: string;
-  onChangeText: (text: string) => void;
-  placeholder?: string;
-  keyboardType?: 'default' | 'email-address' | 'phone-pad' | 'numeric';
-  autoCapitalize?: 'none' | 'words' | 'sentences' | 'characters';
-}) => (
-  <View style={styles.inputGroup}>
-    <Text style={styles.inputLabel}>{label}</Text>
-    <TextInput
-      style={styles.input}
-      value={value}
-      onChangeText={onChangeText}
-      placeholder={placeholder}
-      placeholderTextColor={COLORS.outline}
-      keyboardType={keyboardType ?? 'default'}
-      autoCapitalize={autoCapitalize ?? 'sentences'}
-    />
-  </View>
+const VEHICLE_CAPACITY: Record<string, number> = Object.fromEntries(
+  VEHICLE_TYPES.map((v) => [v.value, v.seats]),
 );
+
+const getVehicleLabel = (value: string) =>
+  VEHICLE_TYPES.find((v) => v.value === value)?.label ?? value;
+
+const getVehicleIcon = (value: string): string =>
+  VEHICLE_TYPES.find((v) => v.value === value)?.icon ?? 'directions-car';
 
 export default function EditProfilePage({ onBack }: Props) {
   const insets = useSafeAreaInsets();
@@ -73,6 +59,7 @@ export default function EditProfilePage({ onBack }: Props) {
   const [loading, setLoading] = useState(true);
   const [savingPersonal, setSavingPersonal] = useState(false);
   const [savingVehicle, setSavingVehicle] = useState(false);
+  const [vehiclePicker, setVehiclePicker] = useState(false);
 
   const [firstName, setFirstName] = useState(user?.first_name ?? '');
   const [lastName, setLastName] = useState(user?.last_name ?? '');
@@ -85,8 +72,20 @@ export default function EditProfilePage({ onBack }: Props) {
   const [vehicleYear, setVehicleYear] = useState(String(cachedProfile?.vehicle_year ?? ''));
   const [vehicleColor, setVehicleColor] = useState(cachedProfile?.vehicle_color ?? '');
   const [plateNumber, setPlateNumber] = useState(cachedProfile?.plate_number ?? '');
-  const [vehicleSeats, setVehicleSeats] = useState(String(cachedProfile?.vehicle_seats ?? '4'));
   const [vehicleType, setVehicleType] = useState(cachedProfile?.vehicle_type ?? DEFAULT_DRIVER_PROFILE.vehicle_type);
+
+  // Back handler for modal
+  useEffect(() => {
+    const handler = () => {
+      if (vehiclePicker) {
+        setVehiclePicker(false);
+        return true;
+      }
+      return false;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', handler);
+    return () => sub.remove();
+  }, [vehiclePicker]);
 
   useEffect(() => {
     setFirstName(user?.first_name ?? '');
@@ -108,7 +107,6 @@ export default function EditProfilePage({ onBack }: Props) {
         setVehicleYear(String(response?.data?.vehicle_year ?? ''));
         setVehicleColor(response?.data?.vehicle_color ?? '');
         setPlateNumber(response?.data?.plate_number ?? '');
-        setVehicleSeats(String(response?.data?.vehicle_seats ?? '4'));
         setVehicleType(response?.data?.vehicle_type ?? DEFAULT_DRIVER_PROFILE.vehicle_type);
         setCachedProfile(response?.data ?? null);
         setDriverProfile({ vehicle_type: response?.data?.vehicle_type ?? null });
@@ -123,7 +121,6 @@ export default function EditProfilePage({ onBack }: Props) {
             setVehicleYear(String(retry?.data?.vehicle_year ?? ''));
             setVehicleColor(retry?.data?.vehicle_color ?? '');
             setPlateNumber(retry?.data?.plate_number ?? '');
-            setVehicleSeats(String(retry?.data?.vehicle_seats ?? '4'));
             setVehicleType(retry?.data?.vehicle_type ?? DEFAULT_DRIVER_PROFILE.vehicle_type);
             setCachedProfile(retry?.data ?? null);
             setDriverProfile({ vehicle_type: retry?.data?.vehicle_type ?? null });
@@ -186,7 +183,7 @@ export default function EditProfilePage({ onBack }: Props) {
         vehicle_color: vehicleColor.trim(),
         vehicle_year: vehicleYear ? Number(vehicleYear) : undefined,
         plate_number: plateNumber.trim().toUpperCase(),
-        vehicle_seats: vehicleSeats ? Number(vehicleSeats) : 4,
+        vehicle_seats: VEHICLE_CAPACITY[vehicleType] || 4,
       };
       await driverApi.updateProfile(payload);
       setCachedProfile({ ...(cachedProfile ?? {}), ...payload });
@@ -203,7 +200,7 @@ export default function EditProfilePage({ onBack }: Props) {
             vehicle_color: vehicleColor.trim(),
             vehicle_year: vehicleYear ? Number(vehicleYear) : DEFAULT_DRIVER_PROFILE.vehicle_year,
             plate_number: plateNumber.trim().toUpperCase(),
-            vehicle_seats: vehicleSeats ? Number(vehicleSeats) : 4,
+            vehicle_seats: VEHICLE_CAPACITY[vehicleType] || 4,
           };
           await driverApi.createProfile(createPayload);
           setCachedProfile({ ...(cachedProfile ?? {}), ...createPayload });
@@ -228,75 +225,244 @@ export default function EditProfilePage({ onBack }: Props) {
     }
   };
 
+  const handleSelectVehicle = useCallback((value: string) => {
+    setVehicleType(value);
+    setVehiclePicker(false);
+  }, []);
+
   return (
     <View style={styles.root}>
-      <View style={[styles.topBar, { paddingTop: insets.top, height: 64 + insets.top }]}>
+      {/* Top bar */}
+      <View style={[styles.topBar, { paddingTop: insets.top, height: 56 + insets.top }]}>
         <TouchableOpacity style={styles.backButton} onPress={onBack}>
-          <MaterialIcons name="arrow-back" size={24} color={COLORS.primary} />
+          <MaterialIcons name="arrow-back" size={24} color="#1a1c1c" />
         </TouchableOpacity>
-        <Text style={[FONTS.headlineMd, { color: COLORS.onSurface, fontWeight: '700', flex: 1, textAlign: 'center' }]}>Edit Profile</Text>
+        <Text style={styles.topBarTitle}>Edit Profile</Text>
         <View style={styles.backButton} />
       </View>
 
       {loading ? (
         <View style={styles.loadingWrap}>
           <LoadingOverlay visible={true} inline size={60} />
-          <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, marginTop: 12 }]}>Loading profile...</Text>
+          <Text style={styles.loadingText}>Loading profile...</Text>
         </View>
       ) : (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          <View style={[styles.card, AMBIENT_SHADOW]}>
-            <Text style={[FONTS.labelLg, styles.sectionTitle]}>Personal information</Text>
-            <InputField label="First name" value={firstName} onChangeText={setFirstName} autoCapitalize="words" />
-            <InputField label="Last name" value={lastName} onChangeText={setLastName} autoCapitalize="words" />
-            <InputField label="Phone number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoCapitalize="none" />
-            <InputField label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
-            <InputField label="Home address" value={homeAddress} onChangeText={setHomeAddress} autoCapitalize="sentences" />
-            <TouchableOpacity style={styles.primaryButton} onPress={savePersonalDetails} disabled={savingPersonal}>
-              {savingPersonal ? (
-                <LoadingOverlay visible={true} inline size={24} />
-              ) : (
-                <Text style={[FONTS.labelLg, styles.primaryButtonText]}>Save personal details</Text>
-              )}
-            </TouchableOpacity>
-          </View>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior="padding"
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
+        >
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            bounces={false}
+          >
+            {/* ─── Personal Information ─── */}
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Personal Information</Text>
 
-          <View style={[styles.card, AMBIENT_SHADOW]}>
-            <Text style={[FONTS.labelLg, styles.sectionTitle]}>Vehicle details</Text>
-            <View style={styles.vehicleTypeWrap}>
-              <Text style={styles.inputLabel}>Vehicle category</Text>
-              <View style={styles.vehicleTypeRow}>
-                {VEHICLE_TYPES.map((item) => {
-                  const isActive = vehicleType === item.value;
-                  return (
-                    <TouchableOpacity
-                      key={item.value}
-                      style={[styles.vehicleTypeChip, isActive && styles.vehicleTypeChipActive]}
-                      onPress={() => setVehicleType(item.value)}
-                    >
-                      <Text style={isActive ? styles.vehicleTypeTextActive : styles.vehicleTypeText}>
-                        {item.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
+              <View style={styles.row}>
+                <View style={styles.halfCol}>
+                  <Text style={styles.fieldLabel}>First name</Text>
+                  <TextInput
+                    style={styles.fieldInput}
+                    value={firstName}
+                    onChangeText={setFirstName}
+                    autoCapitalize="words"
+                    placeholderTextColor="#9c9c9c"
+                  />
+                </View>
+                <View style={styles.halfCol}>
+                  <Text style={styles.fieldLabel}>Last name</Text>
+                  <TextInput
+                    style={styles.fieldInput}
+                    value={lastName}
+                    onChangeText={setLastName}
+                    autoCapitalize="words"
+                    placeholderTextColor="#9c9c9c"
+                  />
+                </View>
+              </View>
+
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>Phone number</Text>
+                <TextInput
+                  style={styles.fieldInput}
+                  value={phone}
+                  onChangeText={setPhone}
+                  keyboardType="phone-pad"
+                  autoCapitalize="none"
+                  placeholderTextColor="#9c9c9c"
+                />
+              </View>
+
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>Email</Text>
+                <TextInput
+                  style={styles.fieldInput}
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  placeholderTextColor="#9c9c9c"
+                />
+              </View>
+
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>Home address</Text>
+                <TextInput
+                  style={styles.fieldInput}
+                  value={homeAddress}
+                  onChangeText={setHomeAddress}
+                  autoCapitalize="sentences"
+                  placeholderTextColor="#9c9c9c"
+                />
+              </View>
+
+              <View style={styles.actionRow}>
+                <TouchableOpacity style={styles.saveBtn} onPress={savePersonalDetails} disabled={savingPersonal} activeOpacity={0.8}>
+                  {savingPersonal ? (
+                    <LoadingOverlay visible={true} inline size={18} />
+                  ) : (
+                    <>
+                      <Text style={styles.saveBtnText}>Save</Text>
+                      <MaterialIcons name="check" size={16} color="#ffffff" />
+                    </>
+                  )}
+                </TouchableOpacity>
               </View>
             </View>
-            <InputField label="Vehicle make" value={vehicleMake} onChangeText={setVehicleMake} autoCapitalize="words" />
-            <InputField label="Vehicle model" value={vehicleModel} onChangeText={setVehicleModel} autoCapitalize="words" />
-            <InputField label="Vehicle year" value={vehicleYear} onChangeText={setVehicleYear} keyboardType="numeric" autoCapitalize="none" />
-            <InputField label="Vehicle color" value={vehicleColor} onChangeText={setVehicleColor} autoCapitalize="words" />
-            <InputField label="Plate number" value={plateNumber} onChangeText={setPlateNumber} autoCapitalize="characters" />
-            <InputField label="Number of passenger seats" value={vehicleSeats} onChangeText={setVehicleSeats} keyboardType="numeric" autoCapitalize="none" />
-            <TouchableOpacity style={styles.primaryButton} onPress={saveVehicleDetails} disabled={savingVehicle}>
-              {savingVehicle ? (
-                <LoadingOverlay visible={true} inline size={24} />
-              ) : (
-                <Text style={[FONTS.labelLg, styles.primaryButtonText]}>Save vehicle details</Text>
-              )}
+
+            {/* ─── Vehicle Details ─── */}
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Vehicle Details</Text>
+
+              {/* Vehicle type dropdown */}
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>Vehicle category</Text>
+                <TouchableOpacity
+                  style={styles.dropdownButton}
+                  onPress={() => setVehiclePicker(true)}
+                  activeOpacity={0.8}
+                >
+                  <MaterialIcons name={getVehicleIcon(vehicleType) as any} size={18} color="#6A1B9A" />
+                  <Text style={styles.dropdownText} numberOfLines={1}>{getVehicleLabel(vehicleType)}</Text>
+                  <MaterialIcons name="keyboard-arrow-down" size={18} color="#8b8b8b" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.row}>
+                <View style={styles.halfCol}>
+                  <Text style={styles.fieldLabel}>Make</Text>
+                  <TextInput
+                    style={styles.fieldInput}
+                    value={vehicleMake}
+                    onChangeText={setVehicleMake}
+                    placeholder="e.g. Toyota"
+                    autoCapitalize="words"
+                    placeholderTextColor="#9c9c9c"
+                  />
+                </View>
+                <View style={styles.halfCol}>
+                  <Text style={styles.fieldLabel}>Model</Text>
+                  <TextInput
+                    style={styles.fieldInput}
+                    value={vehicleModel}
+                    onChangeText={setVehicleModel}
+                    placeholder="e.g. Camry"
+                    autoCapitalize="words"
+                    placeholderTextColor="#9c9c9c"
+                  />
+                </View>
+              </View>
+
+              <View style={styles.row}>
+                <View style={styles.halfCol}>
+                  <Text style={styles.fieldLabel}>Year</Text>
+                  <TextInput
+                    style={styles.fieldInput}
+                    value={vehicleYear}
+                    onChangeText={setVehicleYear}
+                    placeholder="e.g. 2022"
+                    keyboardType="numeric"
+                    placeholderTextColor="#9c9c9c"
+                  />
+                </View>
+                <View style={styles.halfCol}>
+                  <Text style={styles.fieldLabel}>Color</Text>
+                  <TextInput
+                    style={styles.fieldInput}
+                    value={vehicleColor}
+                    onChangeText={setVehicleColor}
+                    placeholder="e.g. White"
+                    autoCapitalize="words"
+                    placeholderTextColor="#9c9c9c"
+                  />
+                </View>
+              </View>
+
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>Plate number</Text>
+                <TextInput
+                  style={styles.fieldInput}
+                  value={plateNumber}
+                  onChangeText={setPlateNumber}
+                  placeholder="e.g. ABC 123 XY"
+                  autoCapitalize="characters"
+                  placeholderTextColor="#9c9c9c"
+                />
+              </View>
+
+              <View style={styles.actionRow}>
+                <TouchableOpacity style={styles.saveBtn} onPress={saveVehicleDetails} disabled={savingVehicle} activeOpacity={0.8}>
+                  {savingVehicle ? (
+                    <LoadingOverlay visible={true} inline size={18} />
+                  ) : (
+                    <>
+                      <Text style={styles.saveBtnText}>Save</Text>
+                      <MaterialIcons name="check" size={16} color="#ffffff" />
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      )}
+
+      {/* ─── Vehicle picker modal (same pattern as BookRidePage) ─── */}
+      {vehiclePicker && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Select Vehicle Category</Text>
+            <ScrollView style={styles.modalList} showsVerticalScrollIndicator={false}>
+              {VEHICLE_TYPES.map((item) => (
+                <TouchableOpacity
+                  key={item.value}
+                  style={styles.modalItem}
+                  onPress={() => handleSelectVehicle(item.value)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.modalItemIcon, vehicleType === item.value && styles.modalItemIconActive]}>
+                    <MaterialIcons name={item.icon as any} size={18} color={vehicleType === item.value ? '#ffffff' : '#6A1B9A'} />
+                  </View>
+                  <View style={styles.modalItemContent}>
+                    <Text style={[styles.modalItemTitle, vehicleType === item.value && styles.modalItemTitleActive]}>{item.label}</Text>
+                    <Text style={styles.modalItemSub}>{item.seats} {item.seats === 1 ? 'passenger seat' : 'passenger seats'}</Text>
+                  </View>
+                  {vehicleType === item.value && (
+                    <MaterialIcons name="check-circle" size={20} color="#6A1B9A" />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity style={styles.modalClose} onPress={() => setVehiclePicker(false)}>
+              <Text style={styles.modalCloseText}>Cancel</Text>
             </TouchableOpacity>
           </View>
-        </ScrollView>
+        </View>
       )}
     </View>
   );
@@ -305,18 +471,22 @@ export default function EditProfilePage({ onBack }: Props) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: '#f9f9f9',
   },
   topBar: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: '#ffffff',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  topBarTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#1a1c1c',
   },
   backButton: {
     width: 44,
@@ -326,85 +496,177 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 20,
-    paddingBottom: 24,
-    gap: 16,
+    padding: 5,
+    paddingBottom: 32,
   },
   loadingWrap: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  loadingText: {
+    fontSize: 14,
+    color: '#8b8b8b',
+    marginTop: 12,
+  },
+
+  // ── Cards ──
   card: {
-    backgroundColor: COLORS.surfaceContainerLowest,
-    borderRadius: 16,
-    padding: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 4,
+    padding: 12,
+    marginBottom: 2,
     borderWidth: 1,
-    borderColor: COLORS.surfaceContainerLow,
+    borderColor: '#f0f0f0',
     gap: 12,
   },
-  sectionTitle: {
-    color: COLORS.onSurface,
+  cardTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    color: '#8b8b8b',
+    marginBottom: 2,
+    letterSpacing: 0.6,
   },
-  inputGroup: {
+
+  // ── Fields ──
+  fieldGroup: {
     gap: 6,
   },
-  inputLabel: {
+  fieldLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: COLORS.onSurfaceVariant,
+    color: '#8b8b8b',
   },
-  vehicleTypeWrap: {
-    gap: 8,
-  },
-  vehicleTypeRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  vehicleTypeChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
+  fieldInput: {
+    height: 48,
     borderWidth: 1,
-    borderColor: COLORS.surfaceContainerHigh,
-    backgroundColor: COLORS.surfaceContainerLowest,
-  },
-  vehicleTypeChipActive: {
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.primaryContainer,
-  },
-  vehicleTypeText: {
-    color: COLORS.onSurfaceVariant,
-    fontWeight: '600',
-    fontSize: 12,
-  },
-  vehicleTypeTextActive: {
-    color: COLORS.onPrimaryContainer,
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: COLORS.surfaceContainerHigh,
+    borderColor: '#e2e2e2',
     borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: COLORS.onSurface,
-    ...FONTS.bodyMd,
-    backgroundColor: COLORS.surfaceContainerLowest,
+    paddingHorizontal: 14,
+    color: '#1a1c1c',
+    fontSize: 14,
+    fontWeight: '500',
+    backgroundColor: '#ffffff',
   },
-  primaryButton: {
-    marginTop: 8,
+  row: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  halfCol: {
+    flex: 1,
+    gap: 6,
+  },
+
+  // ── Dropdown button (vehicle type) ──
+  dropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 48,
+    borderWidth: 1,
+    borderColor: '#e2e2e2',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    backgroundColor: '#ffffff',
+    gap: 10,
+  },
+  dropdownText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1a1c1c',
+  },
+
+  // ── Action row ──
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 4,
+  },
+  saveBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.primary,
-    borderRadius: 12,
-    paddingVertical: 12,
+    gap: 6,
+    backgroundColor: '#6A1B9A',
+    borderRadius: 24,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
   },
-  primaryButtonText: {
-    color: COLORS.onPrimary,
+  saveBtnText: {
+    color: '#ffffff',
     fontWeight: '700',
+    fontSize: 14,
+  },
+
+  // ── Modal overlay (same as BookRidePage) ──
+  modalOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    justifyContent: 'center',
+    padding: 20,
+    paddingHorizontal: 10,
+    zIndex: 1000,
+  },
+  modalCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderColor: '#6b2e916a',
+    borderWidth: 1,
+    padding: 16,
+    maxHeight: '70%',
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1a1c1c',
+    marginBottom: 12,
+  },
+  modalList: {
+    marginTop: 4,
+  },
+  modalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f1f1',
+  },
+  modalItemIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#f5effb',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalItemIconActive: {
+    backgroundColor: '#6A1B9A',
+  },
+  modalItemContent: {
+    flex: 1,
+  },
+  modalItemTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1a1c1c',
+  },
+  modalItemTitleActive: {
+    color: '#6A1B9A',
+    fontWeight: '700',
+  },
+  modalItemSub: {
+    fontSize: 12,
+    color: '#8b8b8b',
+  },
+  modalClose: {
+    marginTop: 14,
+    alignSelf: 'flex-end',
+  },
+  modalCloseText: {
+    color: '#6A1B9A',
+    fontWeight: '600',
+    fontSize: 14,
   },
 });

@@ -19,7 +19,7 @@ import api, { driverApi } from '../../core/api'
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme'
 import { useGarageRideStore } from '../../core/garageRideStore'
 import { useDriverRidesStore } from '../../core/driverRidesStore'
-import locationData from '../locations.json'
+import { useLocations } from '../../core/locationDataService'
 
 type CreateGarageRideScreenProps = {
   onBack: () => void
@@ -33,18 +33,10 @@ type LocationOption = {
   longitude: number
 }
 
-const ALL_LOCATIONS: LocationOption[] = (locationData as any[]).map((loc) => ({
-  id: loc.id,
-  label: loc.name,
-  description: loc.description,
-  latitude: Number(loc.latitude),
-  longitude: Number(loc.longitude),
-}))
-
-const filterLocations = (query: string) => {
+const filterLocations = (query: string, locations: LocationOption[]) => {
   const normalized = query.trim().toLowerCase()
-  if (!normalized) return ALL_LOCATIONS
-  return ALL_LOCATIONS.filter((item) => {
+  if (!normalized) return locations
+  return locations.filter((item) => {
     const haystack = `${item.label} ${item.description}`.toLowerCase()
     return haystack.includes(normalized)
   })
@@ -146,7 +138,18 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
     }
   }, [])
 
-  const filteredLocations = useMemo(() => filterLocations(locationQuery), [locationQuery])
+  const rawLocations = useLocations()
+  const locations = useMemo(() => {
+    return rawLocations.map((loc) => ({
+      id: loc.id,
+      label: loc.name,
+      description: loc.description,
+      latitude: Number(loc.latitude),
+      longitude: Number(loc.longitude),
+    }))
+  }, [rawLocations])
+
+  const filteredLocations = useMemo(() => filterLocations(locationQuery, locations), [locationQuery, locations])
 
   useEffect(() => {
     let isMounted = true

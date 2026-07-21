@@ -203,7 +203,7 @@ def get_route_cumulative_distances(stops, validate=False):
 
 
 def calculate_scheduled_segment_fare(ride, boarding_stop, alighting_stop):
-    stops, cumulative = get_route_cumulative_distances(list(ride.stops.all()), validate=True)
+    stops, cumulative = get_route_cumulative_distances(list(ride.stops.all()), validate=False)
     order_to_index = {stop.order: idx for idx, stop in enumerate(stops)}
     board_idx = order_to_index.get(boarding_stop.order)
     alight_idx = order_to_index.get(alighting_stop.order)
@@ -310,7 +310,7 @@ class ScheduledRideStopsUpdateSerializer(serializers.Serializer):
             if not stop.get('is_pickup', True) and not stop.get('is_dropoff', True):
                 raise serializers.ValidationError('Each stop must allow pickup, dropoff, or both.')
         sorted_value = sorted(value, key=lambda item: item['order'])
-        get_route_cumulative_distances(sorted_value, validate=True)
+        get_route_cumulative_distances(sorted_value, validate=False)
         return sorted_value
 
 class ScheduledRideCreateSerializer(serializers.ModelSerializer):
@@ -356,7 +356,7 @@ class ScheduledRideCreateSerializer(serializers.ModelSerializer):
             if not stop.get('is_pickup', True) and not stop.get('is_dropoff', True):
                 raise serializers.ValidationError('Each stop must allow pickup, dropoff, or both.')
         sorted_value = sorted(value, key=lambda item: item['order'])
-        get_route_cumulative_distances(sorted_value, validate=True)
+        get_route_cumulative_distances(sorted_value, validate=False)
         return sorted_value
 
     def validate(self, attrs):
