@@ -202,7 +202,8 @@ def get_route_cumulative_distances(stops, validate=False):
     return ordered, positions
 
 
-def calculate_scheduled_segment_fare(ride, boarding_stop, alighting_stop):
+def calculate_scheduled_segment_fare(ride, boarding_stop, alighting_stop, tier=PricingTier.STANDARD):
+    """Proportional fare from admin-set price. No FareCalculator invocation."""
     stops, cumulative = get_route_cumulative_distances(list(ride.stops.all()), validate=False)
     order_to_index = {stop.order: idx for idx, stop in enumerate(stops)}
     board_idx = order_to_index.get(boarding_stop.order)
@@ -211,30 +212,37 @@ def calculate_scheduled_segment_fare(ride, boarding_stop, alighting_stop):
         raise serializers.ValidationError({
             'alighting_stop_id': 'Alighting stop must come after boarding stop on the route.',
         })
-    distance_km = max(0.01, cumulative[alight_idx] - cumulative[board_idx])
-    vehicle_type = get_scheduled_fare_vehicle_type(ride)
-    result = FareCalculator.calculate(
-        vehicle_type=vehicle_type,
-        distance_km=distance_km,
-        surge_multiplier=1.0,
-    )
-    amount = Decimal(str(result['total_fare'])).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-    return amount, result
+
+    total_distance = max(Decimal('0.01'), Decimal(str(cumulative[-1])))
+    segment_distance = max(Decimal('0.01'), Decimal(str(cumulative[alight_idx] - cumulative[board_idx])))
+    ratio = segment_distance / total_distance
+
+    # Pick the base price from admin-set values based on tier
+    if tier == PricingTier.STANDING and ride.standing_enabled:
+        full_price = ride.standing_price
+    else:
+        full_price = ride.standard_price
+
+    amount = (full_price * ratio).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    return amount
 
 
 def build_scheduled_fare_matrix(ride):
+    """Proportional fare matrix from admin-set prices. No FareCalculator invocation."""
     stops, cumulative = get_route_cumulative_distances(list(ride.stops.all()))
-    vehicle_type = get_scheduled_fare_vehicle_type(ride)
+    total_distance = max(Decimal('0.01'), Decimal(str(cumulative[-1]))) if len(cumulative) >= 2 else Decimal('1')
     rows = []
     for from_idx, boarding in enumerate(stops[:-1]):
         for to_idx in range(from_idx + 1, len(stops)):
             alighting = stops[to_idx]
-            distance_km = max(0.01, cumulative[to_idx] - cumulative[from_idx])
-            result = FareCalculator.calculate(
-                vehicle_type=vehicle_type,
-                distance_km=distance_km,
-                surge_multiplier=1.0,
-            )
+            segment_distance = max(Decimal('0.01'), Decimal(str(cumulative[to_idx] - cumulative[from_idx])))
+            ratio = segment_distance / total_distance
+
+            standard_fare = (ride.standard_price * ratio).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            standing_fare = None
+            if ride.standing_enabled and ride.standing_price > 0:
+                standing_fare = (ride.standing_price * ratio).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
             rows.append({
                 'boarding_stop_id': str(boarding.id),
                 'boarding_stop_name': boarding.name,
@@ -244,32 +252,24 @@ def build_scheduled_fare_matrix(ride):
                 'alighting_stop_name': alighting.name,
                 'alighting_stop_address': alighting.address,
                 'alighting_order': alighting.order,
-                'distance_km': round(distance_km, 3),
-                'vehicle_type': vehicle_type,
-                'fare': result['total_fare'],
-                'platform_commission': result['platform_commission'],
-                'driver_earnings': result['driver_earnings'],
+                'distance_km': round(float(segment_distance), 3),
+                'standard_fare': str(standard_fare),
+                'standing_fare': str(standing_fare) if standing_fare is not None else None,
             })
     return rows
 
 
 def get_full_route_fare_summary(ride):
+    """Return admin-stored price directly. No FareCalculator invocation."""
     stops, cumulative = get_route_cumulative_distances(list(ride.stops.all()))
     if len(stops) < 2:
         return None
     distance_km = max(0.01, cumulative[-1])
-    vehicle_type = get_scheduled_fare_vehicle_type(ride)
-    result = FareCalculator.calculate(
-        vehicle_type=vehicle_type,
-        distance_km=distance_km,
-        surge_multiplier=1.0,
-    )
     return {
-        'vehicle_type': vehicle_type,
+        'vehicle_type': get_scheduled_fare_vehicle_type(ride),
         'distance_km': round(distance_km, 3),
-        'fare': result['total_fare'],
-        'platform_commission': result['platform_commission'],
-        'driver_earnings': result['driver_earnings'],
+        'fare': float(ride.standard_price),
+        'standing_fare': float(ride.standing_price) if ride.standing_enabled else None,
     }
 
 
@@ -390,11 +390,21 @@ class ScheduledRideCreateSerializer(serializers.ModelSerializer):
         if not isinstance(allowed_vehicle_types, list) or not allowed_vehicle_types:
             raise serializers.ValidationError({'allowed_vehicle_types': 'Must provide a list of allowed vehicle types.'})
 
+        # Block motorbike and tricycle for scheduled rides
+        DISALLOWED_SCHEDULED = {'motorbike', 'tricycle'}
+        invalid = set(allowed_vehicle_types) & DISALLOWED_SCHEDULED
+        if invalid:
+            raise serializers.ValidationError({
+                'allowed_vehicle_types': 'Motorbike and Tricycle are not allowed for scheduled rides.',
+            })
+
         attrs['standard_enabled'] = True
-        attrs['standing_enabled'] = False
+        # Standing is auto-enabled for coach, disabled for all others
+        has_coach = 'coach' in allowed_vehicle_types
+        attrs['standing_enabled'] = has_coach
         attrs['premium_enabled'] = False
         attrs['freight_enabled'] = False
-        attrs['standing_price'] = Decimal('0')
+        attrs['standing_price'] = Decimal('0')  # Will be set after standard_price is finalized in create()
         attrs['premium_price'] = Decimal('0')
         attrs['freight_price'] = Decimal('0')
         attrs['cargo_capacity_kg'] = 0
@@ -500,7 +510,13 @@ class ScheduledRideCreateSerializer(serializers.ModelSerializer):
                 Decimal('0.01'),
                 rounding=ROUND_HALF_UP,
             )
-            ride.save(update_fields=['standard_price', 'updated_at'])
+            # Auto-set standing price to 80% of standard for coach
+            if 'coach' in (ride.allowed_vehicle_types or []):
+                ride.standing_enabled = True
+                ride.standing_price = (ride.standard_price * Decimal('0.80')).quantize(
+                    Decimal('0.01'), rounding=ROUND_HALF_UP,
+                )
+            ride.save(update_fields=['standard_price', 'standing_enabled', 'standing_price', 'updated_at'])
         return ride
 
 
@@ -742,12 +758,18 @@ class ScheduledRideJoinSerializer(serializers.Serializer):
         if alighting_stop.order <= boarding_stop.order:
             raise serializers.ValidationError({'alighting_stop_id': 'Alighting stop must come after boarding stop.'})
 
-        amount, fare_result = calculate_scheduled_segment_fare(ride, boarding_stop, alighting_stop)
-        attrs['pricing_tier'] = PricingTier.STANDARD
+        # Validate pricing tier
+        tier = attrs.get('pricing_tier', PricingTier.STANDARD)
+        if tier == PricingTier.STANDING and not ride.standing_enabled:
+            raise serializers.ValidationError({'pricing_tier': 'Standing tier is not available for this ride.'})
+        if tier not in (PricingTier.STANDARD, PricingTier.STANDING):
+            raise serializers.ValidationError({'pricing_tier': 'Only standard and standing tiers are available for scheduled rides.'})
+
+        amount = calculate_scheduled_segment_fare(ride, boarding_stop, alighting_stop, tier=tier)
+        attrs['pricing_tier'] = tier
         attrs['boarding_stop'] = boarding_stop
         attrs['alighting_stop'] = alighting_stop
         attrs['calculated_amount'] = amount
-        attrs['fare_result'] = fare_result
         return attrs
 
     @transaction.atomic
@@ -756,7 +778,6 @@ class ScheduledRideJoinSerializer(serializers.Serializer):
         student = self.context['request'].user
         tier = validated_data['pricing_tier']
         price = validated_data['calculated_amount']
-        fare_result = validated_data['fare_result']
         boarding_stop = validated_data['boarding_stop']
         alighting_stop = validated_data['alighting_stop']
 
@@ -772,9 +793,7 @@ class ScheduledRideJoinSerializer(serializers.Serializer):
                     'pricing_tier': tier,
                     'boarding_stop_id': str(boarding_stop.id),
                     'alighting_stop_id': str(alighting_stop.id),
-                    'distance_km': fare_result.get('distance_km'),
-                    'fare_engine_source': fare_result.get('config_source'),
-                    'vehicle_type': fare_result.get('vehicle_type') or get_scheduled_fare_vehicle_type(ride),
+                    'vehicle_type': get_scheduled_fare_vehicle_type(ride),
                 },
             )
         except ValueError as exc:

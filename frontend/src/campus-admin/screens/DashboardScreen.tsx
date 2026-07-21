@@ -250,7 +250,7 @@ export default function DashboardPage() {
   const [windowStart, setWindowStart] = useState(getNextHour())
   const [windowEnd, setWindowEnd] = useState(getNextHourPlus30())
   const [waypoints, setWaypoints] = useState<RouteWaypoint[]>([{ name: '', address: '' }, { name: '', address: '' }])
-  const [allowedVehicleTypes, setAllowedVehicleTypes] = useState<string[]>(['sedan'])
+  const [allowedVehicleTypes, setAllowedVehicleTypes] = useState<string[]>(['coach'])
   const [activeWaypointIndex, setActiveWaypointIndex] = useState<number | null>(null)
   const [routeStopKm, setRouteStopKm] = useState<number[]>([])
   const [routeStopOffsetM, setRouteStopOffsetM] = useState<number[]>([])
@@ -1895,8 +1895,6 @@ export default function DashboardPage() {
                   <div style={s.rpLabel}>Allowed Vehicle Types</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
                     {[
-                      { key: 'motorbike', label: 'Motorbike' },
-                      { key: 'tricycle', label: 'Tricycle' },
                       { key: 'sedan', label: 'Sedan' },
                       { key: 'mpv', label: 'MPV' },
                       { key: 'minibus', label: 'Minibus' },

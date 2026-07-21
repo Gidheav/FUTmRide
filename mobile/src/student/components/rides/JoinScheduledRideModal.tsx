@@ -25,9 +25,18 @@ type Stop = {
   is_dropoff: boolean
 }
 
+type FareMatrixRow = {
+  boarding_stop_id: string
+  alighting_stop_id: string
+  standard_fare: string | number
+  standing_fare?: string | number | null
+}
+
 type RideDetail = ScheduledRide & {
   stops: Stop[]
   passenger_count: number
+  standing_enabled: boolean
+  fare_matrix?: FareMatrixRow[]
 }
 
 type Props = {
@@ -44,6 +53,7 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
   
   const [boardingStopId, setBoardingStopId] = useState<string | null>(null)
   const [alightingStopId, setAlightingStopId] = useState<string | null>(null)
+  const [pricingTier, setPricingTier] = useState<'standard' | 'standing'>('standard')
 
   const [pinModalVisible, setPinModalVisible] = useState(false)
   const [pinInput, setPinInput] = useState('')
@@ -94,6 +104,7 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
     setWorking(true)
     try {
       await api.post(`rides/scheduled/${ride.id}/join/`, {
+        pricing_tier: pricingTier,
         boarding_stop_id: boardingStopId,
         alighting_stop_id: alightingStopId,
       })
@@ -191,6 +202,11 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
     }
   }
 
+  const currentSegment = detail?.fare_matrix?.find(
+    (row) => row.boarding_stop_id === boardingStopId && row.alighting_stop_id === alightingStopId
+  )
+  const currentSegmentFare = pricingTier === 'standing' ? currentSegment?.standing_fare : currentSegment?.standard_fare
+
   return (
     <Modal visible animationType="slide" transparent>
       {/* Full-screen loading overlay */}
@@ -272,8 +288,33 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
                   </View>
                 ) : !isLeaveMode ? (
                   <>
+                    {/* Join mode: Tier selector */}
+                    {detail.standing_enabled && (
+                      <View style={styles.tierContainer}>
+                        <TouchableOpacity
+                          style={[styles.tierOption, pricingTier === 'standard' && styles.tierOptionActive]}
+                          onPress={() => setPricingTier('standard')}
+                          activeOpacity={0.7}
+                        >
+                          <MaterialIcons name="event-seat" size={20} color={pricingTier === 'standard' ? '#6A1B9A' : '#6b7280'} />
+                          <Text style={[styles.tierOptionTitle, pricingTier === 'standard' && styles.tierOptionTitleActive]}>Standard</Text>
+                          <Text style={styles.tierOptionDesc}>Assigned seat</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[styles.tierOption, pricingTier === 'standing' && styles.tierOptionActive]}
+                          onPress={() => setPricingTier('standing')}
+                          activeOpacity={0.7}
+                        >
+                          <MaterialIcons name="directions-run" size={20} color={pricingTier === 'standing' ? '#6A1B9A' : '#6b7280'} />
+                          <Text style={[styles.tierOptionTitle, pricingTier === 'standing' && styles.tierOptionTitleActive]}>Standing</Text>
+                          <Text style={styles.tierOptionDesc}>Discounted</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+
                     {/* Join mode: stop selectors */}
-                    <View style={styles.sectionHeaderRow}>
+                    <View style={[styles.sectionHeaderRow, detail.standing_enabled && { marginTop: 24 }]}>
                       <MaterialIcons name="my-location" size={18} color="#1a1c1c" />
                       <Text style={styles.sectionTitle}>Boarding Stop</Text>
                     </View>
@@ -382,7 +423,9 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
                       disabled={working || !detail.is_joinable}
                     >
                       <MaterialIcons name="fingerprint" size={20} color="#ffffff" />
-                      <Text style={styles.joinBtnText}>Confirm & Pay</Text>
+                      <Text style={styles.joinBtnText}>
+                        {currentSegmentFare ? `Confirm & Pay ₦${currentSegmentFare}` : 'Confirm & Pay'}
+                      </Text>
                     </TouchableOpacity>
                   </>
                 )}
@@ -396,7 +439,9 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
         <View style={pinStyles.backdrop}>
           <View style={pinStyles.card}>
             <Text style={pinStyles.title}>Confirm Action</Text>
-            <Text style={pinStyles.subtitle}>Enter your Transaction PIN to {pendingAction === 'join' ? 'join' : 'leave'} this ride.</Text>
+            <Text style={pinStyles.subtitle}>
+              Enter your Transaction PIN to {pendingAction === 'join' ? (currentSegmentFare ? `pay ₦${currentSegmentFare} and join` : 'join') : 'leave'} this ride.
+            </Text>
             {pinError ? <Text style={pinStyles.error}>{pinError}</Text> : null}
             <View style={pinStyles.dotsRow}>
               {[0, 1, 2, 3].map((i) => (
@@ -621,6 +666,47 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#1a1c1c',
     fontWeight: '700',
+    marginTop: 2,
+  },
+  infoText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 13,
+    color: '#374151',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  // ── Tier Selector ────────────────────────────────────────────────────────
+  tierContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  tierOption: {
+    flex: 1,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    alignItems: 'center',
+  },
+  tierOptionActive: {
+    backgroundColor: '#F3E5F5',
+    borderColor: '#AB47BC',
+  },
+  tierOptionTitle: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    color: '#4b5563',
+    marginTop: 6,
+  },
+  tierOptionTitleActive: {
+    color: '#6A1B9A',
+  },
+  tierOptionDesc: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    color: '#6b7280',
     marginTop: 2,
   },
   ticketRefRow: {

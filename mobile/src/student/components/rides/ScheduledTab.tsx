@@ -149,6 +149,11 @@ export default function ScheduledTab({ isActive }: { isActive?: boolean }) {
           </View>
           <View style={[styles.priceWrap, isJoined && styles.priceWrapJoined]}>
             <Text style={[styles.priceText, isJoined && styles.priceTextJoined]}>₦{item.standard_price}</Text>
+            {item.standing_enabled && (
+              <View style={[styles.standingBadge, isJoined && { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+                <Text style={[styles.standingBadgeText, isJoined && { color: '#ffffff' }]}>Standing avg.</Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -375,6 +380,19 @@ const styles = StyleSheet.create({
   },
   priceTextJoined: {
     color: '#ffffff',
+  },
+  standingBadge: {
+    marginTop: 2,
+    backgroundColor: '#E1BEE7',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+  },
+  standingBadgeText: {
+    fontSize: 9,
+    fontFamily: 'Inter-Medium',
+    color: '#6A1B9A',
   },
   routeWrap: {
     paddingLeft: 4,
