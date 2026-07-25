@@ -133,6 +133,32 @@ class SharedRideService:
 
     @staticmethod
     @transaction.atomic
+    def refund_rider(rider: SharedRideRider) -> bool:
+        """
+        Refunds the rider if they have already confirmed/paid.
+        """
+        if rider.status != SharedRideRider.Status.CONFIRMED:
+            return False
+            
+        shared_ride = rider.shared_ride
+        
+        if not rider.fare_share:
+            return False
+            
+        WalletService.credit(
+            user=rider.user,
+            amount=rider.fare_share,
+            source=WalletTransaction.Source.RIDE_REFUND,
+            narration=f'Shared Ride Refund - {shared_ride.share_code}'
+        )
+        
+        rider.status = SharedRideRider.Status.CANCELLED
+        rider.save(update_fields=['status'])
+        
+        return True
+
+    @staticmethod
+    @transaction.atomic
     def dispatch_ride(shared_ride: SharedRide) -> Ride:
         """
         Locks the shared ride and dispatches a single composite Ride to the driver pool.

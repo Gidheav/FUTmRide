@@ -1,11 +1,24 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View, SafeAreaView } from 'react-native'
 import ScheduledTab from '../components/rides/ScheduledTab'
 import FindNearbyTab from '../components/rides/FindNearbyTab'
 import SharedRideTab from '../components/rides/SharedRideTab'
 
-export default function StudentRidesPage({ isActive }: { isActive?: boolean }) {
+type Props = {
+  isActive?: boolean
+  deepLinkShareCode?: string | null
+  onDeepLinkConsumed?: () => void
+}
+
+export default function StudentRidesPage({ isActive, deepLinkShareCode, onDeepLinkConsumed }: Props) {
   const [activeTab, setActiveTab] = useState<'scheduled' | 'nearby' | 'shared'>('nearby')
+
+  // Auto-switch to Shared tab when a deep-link share code arrives
+  useEffect(() => {
+    if (deepLinkShareCode) {
+      setActiveTab('shared')
+    }
+  }, [deepLinkShareCode])
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -49,7 +62,7 @@ export default function StudentRidesPage({ isActive }: { isActive?: boolean }) {
           <FindNearbyTab />
         </View>
         <View style={{ display: activeTab === 'shared' ? 'flex' : 'none', flex: 1 }}>
-          <SharedRideTab />
+          <SharedRideTab deepLinkShareCode={deepLinkShareCode} onDeepLinkConsumed={onDeepLinkConsumed} />
         </View>
       </View>
     </SafeAreaView>

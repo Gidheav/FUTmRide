@@ -15,6 +15,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import api from '../../core/api'
+import { useAuthStore } from '../../core/authStore'
 
 type Rider = {
   id: string
@@ -49,6 +50,8 @@ type Props = {
   onClose: () => void
 }
 
+// Uses Android App Links so it is clickable in WhatsApp and opens the app directly
+// Format: https://futmride.app/share/CODE
 const SHARE_BASE_URL = 'https://futmride.app/share/'
 
 const STATUS_ICON: Record<string, keyof typeof MaterialIcons.glyphMap> = {
@@ -126,8 +129,16 @@ export default function SharedRideLobbyPage({ shareCode, onClose }: Props) {
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `Join my ride to ${ride?.dropoff_address}!\n\nUse code: ${shareCode}\nOr tap: ${shareLink}`,
-        title: 'Join my shared ride',
+        message: [
+          `🚗 Join my shared ride to ${ride?.dropoff_address || 'our destination'}!`,
+          ``,
+          `📌 Share Code: *${shareCode}*`,
+          ``,
+          `Open the FUTMRide app and enter this code in the "Shared" tab → "Have a share code?"`,
+          ``,
+          `Or tap this link (if app is installed): ${shareLink}`,
+        ].join('\n'),
+        title: 'Join my shared ride on FUTMRide',
       })
     } catch (e) {
       console.warn('Share error', e)
@@ -136,7 +147,15 @@ export default function SharedRideLobbyPage({ shareCode, onClose }: Props) {
 
   const handleWhatsApp = () => {
     const msg = encodeURIComponent(
-      `Join my ride to ${ride?.dropoff_address}! Use code *${shareCode}* or tap: ${shareLink}`
+      [
+        `🚗 Join my shared ride to *${ride?.dropoff_address || 'our destination'}*!`,
+        ``,
+        `Share Code: *${shareCode}*`,
+        ``,
+        `Open the *FUTMRide* app → Rides → Shared tab → "Have a share code?" → enter the code above.`,
+        ``,
+        `_(Tap to open in app if installed: ${shareLink})_`,
+      ].join('\n')
     )
     Linking.openURL(`https://wa.me/?text=${msg}`)
   }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Alert, AppState, BackHandler, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, Alert, AppState, BackHandler, Linking, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useAuthStore } from '../core/authStore'
 import { useSecurityStore } from '../core/securityStore'
 import {
@@ -138,6 +138,31 @@ function StudentAppInner() {
   const [garageQrToken, setGarageQrToken] = useState<string | null>(null)
   // Track if we have already done the initial active-ride check
   const rideCheckedRef = useRef(false)
+
+  // ─── Deep link: lrride://share/CODE ──────────────────────────────────────
+  const [deepLinkShareCode, setDeepLinkShareCode] = useState<string | null>(null)
+
+  const handleDeepLink = useCallback((url: string | null) => {
+    if (!url) return
+    try {
+      // Supports: lrride://share/CODE and https://futmride.app/share/CODE
+      const match = url.match(/(?:lrride:\/\/|https:\/\/futmride\.app\/)share\/([A-Z0-9]+)/i)
+      if (match?.[1]) {
+        setDeepLinkShareCode(match[1].toUpperCase())
+        setActiveTab('rides')
+      }
+    } catch {
+      // Malformed URL — ignore
+    }
+  }, [setActiveTab])
+
+  useEffect(() => {
+    // Cold start: app was launched from a share link
+    Linking.getInitialURL().then(handleDeepLink).catch(() => null)
+    // Warm start: link opened while app is running
+    const sub = Linking.addEventListener('url', (event) => handleDeepLink(event.url))
+    return () => sub.remove()
+  }, [handleDeepLink])
 
   // ─── Check backend for an existing active ride ────────────────────────────
   const checkActiveRide = useCallback(async () => {
@@ -792,7 +817,7 @@ function StudentAppInner() {
       </View>
 
       <View style={{ display: activeTab === 'rides' ? 'flex' : 'none', flex: 1 }}>
-        <StudentRidesPage isActive={activeTab === 'rides'} />
+        <StudentRidesPage isActive={activeTab === 'rides'} deepLinkShareCode={deepLinkShareCode} onDeepLinkConsumed={() => setDeepLinkShareCode(null)} />
       </View>
 
       <View style={{ display: activeTab === 'wallet' ? 'flex' : 'none', flex: 1 }}>

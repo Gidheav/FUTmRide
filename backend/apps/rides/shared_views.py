@@ -34,6 +34,19 @@ class SharedRideCreateView(generics.CreateAPIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        active_statuses = [
+            SharedRide.Status.GATHERING,
+            SharedRide.Status.MATCHING,
+            SharedRide.Status.MATCHED,
+            SharedRide.Status.IN_PROGRESS
+        ]
+        
+        if SharedRide.objects.filter(creator=request.user, status__in=active_statuses).exists():
+            return Response(
+                {'error': {'code': 'ACTIVE_RIDE_EXISTS', 'message': 'You already have an active shared ride.'}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
@@ -85,6 +98,26 @@ class SharedRideDetailView(generics.RetrieveAPIView):
         if len(lookup) <= 12:
             return get_object_or_404(SharedRide, share_code=lookup.upper())
         return get_object_or_404(SharedRide, id=lookup)
+
+    def delete(self, request, *args, **kwargs):
+        """Allow creator to delete cancelled, expired or completed shared rides from their history."""
+        shared_ride = self.get_object()
+        
+        if shared_ride.creator != request.user:
+            return Response(
+                {'error': {'code': 'FORBIDDEN', 'message': 'Only the creator can delete this ride.'}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+            
+        allowed_statuses = [SharedRide.Status.CANCELLED, SharedRide.Status.EXPIRED, SharedRide.Status.COMPLETED]
+        if shared_ride.status not in allowed_statuses:
+            return Response(
+                {'error': {'code': 'CANNOT_DELETE', 'message': f'Cannot delete a ride in {shared_ride.status} state.'}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+            
+        shared_ride.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class SharedRideJoinView(APIView):
@@ -215,24 +248,33 @@ class SharedRideCancelView(APIView):
 
         if shared_ride.creator == request.user:
             # Creator cancels the whole ride
-            if shared_ride.status not in (SharedRide.Status.GATHERING,):
+            if shared_ride.status not in (SharedRide.Status.GATHERING, SharedRide.Status.MATCHING):
                 return Response(
                     {'error': {'code': 'CANNOT_CANCEL', 'message': 'This ride cannot be cancelled at this stage.'}},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            shared_ride.status = SharedRide.Status.CANCELLED
-            shared_ride.save()
+            
+            # Refund all confirmed riders
+            with transaction.atomic():
+                for rider in shared_ride.riders.filter(status=SharedRideRider.Status.CONFIRMED):
+                    SharedRideService.refund_rider(rider)
+                
+                shared_ride.status = SharedRide.Status.CANCELLED
+                shared_ride.save()
         else:
             # Rider cancels their own seat
             rider = get_object_or_404(SharedRideRider, shared_ride=shared_ride, user=request.user)
-            if rider.status == SharedRideRider.Status.CONFIRMED:
-                return Response(
-                    {'error': {'code': 'ALREADY_PAID', 'message': 'You have already confirmed payment. Contact support to cancel.'}},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            rider.status = SharedRideRider.Status.CANCELLED
-            rider.save()
-            SharedRideService.compute_fares(shared_ride)
+            
+            with transaction.atomic():
+                if rider.status == SharedRideRider.Status.CONFIRMED:
+                    SharedRideService.refund_rider(rider)
+                else:
+                    rider.status = SharedRideRider.Status.CANCELLED
+                    rider.save()
+                    
+                # Recompute fares for remaining riders if it's still gathering
+                if shared_ride.status == SharedRide.Status.GATHERING:
+                    SharedRideService.compute_fares(shared_ride)
 
         shared_ride.refresh_from_db()
         return Response(SharedRideDetailSerializer(shared_ride).data)
