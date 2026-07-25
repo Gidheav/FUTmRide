@@ -25,6 +25,7 @@ export default function CreateSharedRidePage({ onClose }: { onClose: () => void 
   const [step, setStep] = useState(1)
   const [vehicle, setVehicle] = useState('sedan')
   const [maxRiders, setMaxRiders] = useState(4)
+  const [pickup, setPickup] = useState<any>(null)
   const [dropoff, setDropoff] = useState<any>(null)
   const [loading, setLoading] = useState(false)
 
@@ -40,14 +41,17 @@ export default function CreateSharedRidePage({ onClose }: { onClose: () => void 
   }, [rawLocations])
 
   const handleCreate = async () => {
-    if (!dropoff) {
-      Alert.alert('Error', 'Please select a drop-off location')
+    if (!pickup || !dropoff) {
+      Alert.alert('Error', 'Please select pickup and drop-off locations')
       return
     }
     try {
       setLoading(true)
-      await api.post('/student/rides/shared/create/', {
+      await api.post('rides/shared/create/', {
         vehicle_type: vehicle,
+        pickup_latitude: pickup.latitude,
+        pickup_longitude: pickup.longitude,
+        pickup_address: pickup.label,
         dropoff_latitude: dropoff.latitude,
         dropoff_longitude: dropoff.longitude,
         dropoff_address: dropoff.label,
@@ -76,6 +80,36 @@ export default function CreateSharedRidePage({ onClose }: { onClose: () => void 
       <View style={styles.content}>
         {step === 1 && (
           <>
+            <Text style={styles.stepTitle}>Where are you starting?</Text>
+            <FlatList
+              data={locations}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={{ paddingVertical: 16 }}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[styles.locationItem, pickup?.id === item.id && styles.locationItemSelected]}
+                  onPress={() => setPickup(item)}
+                >
+                  <MaterialIcons name="my-location" size={24} color={pickup?.id === item.id ? '#6A1B9A' : '#6b7280'} />
+                  <View style={styles.locationTextContainer}>
+                    <Text style={styles.locationLabel}>{item.label}</Text>
+                    <Text style={styles.locationSub}>{item.description}</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+            />
+            <TouchableOpacity 
+              style={[styles.primaryButton, !pickup && styles.disabledButton]} 
+              disabled={!pickup}
+              onPress={() => setStep(2)}
+            >
+              <Text style={styles.primaryButtonText}>Next</Text>
+            </TouchableOpacity>
+          </>
+        )}
+
+        {step === 2 && (
+          <>
             <Text style={styles.stepTitle}>Where are you all going?</Text>
             <FlatList
               data={locations}
@@ -97,14 +131,14 @@ export default function CreateSharedRidePage({ onClose }: { onClose: () => void 
             <TouchableOpacity 
               style={[styles.primaryButton, !dropoff && styles.disabledButton]} 
               disabled={!dropoff}
-              onPress={() => setStep(2)}
+              onPress={() => setStep(3)}
             >
               <Text style={styles.primaryButtonText}>Next</Text>
             </TouchableOpacity>
           </>
         )}
 
-        {step === 2 && (
+        {step === 3 && (
           <>
             <Text style={styles.stepTitle}>Vehicle & Capacity</Text>
             

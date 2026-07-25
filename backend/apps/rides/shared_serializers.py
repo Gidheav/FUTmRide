@@ -34,11 +34,16 @@ class SharedRideDetailSerializer(serializers.ModelSerializer):
 
 
 class SharedRideCreateSerializer(serializers.ModelSerializer):
+    pickup_latitude = serializers.DecimalField(max_digits=9, decimal_places=6, write_only=True)
+    pickup_longitude = serializers.DecimalField(max_digits=9, decimal_places=6, write_only=True)
+    pickup_address = serializers.CharField(max_length=255, write_only=True)
+
     class Meta:
         model = SharedRide
         fields = [
             'vehicle_type', 'dropoff_latitude', 'dropoff_longitude', 
-            'dropoff_address', 'max_riders'
+            'dropoff_address', 'max_riders',
+            'pickup_latitude', 'pickup_longitude', 'pickup_address'
         ]
 
     def validate_vehicle_type(self, value):

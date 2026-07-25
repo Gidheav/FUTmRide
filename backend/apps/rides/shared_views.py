@@ -43,6 +43,11 @@ class SharedRideCreateView(generics.CreateAPIView):
             while SharedRide.objects.filter(share_code=code).exists():
                 code = generate_share_code()
 
+            # Extract pickup fields which are not on the SharedRide model
+            pickup_latitude = serializer.validated_data.pop('pickup_latitude', None)
+            pickup_longitude = serializer.validated_data.pop('pickup_longitude', None)
+            pickup_address = serializer.validated_data.pop('pickup_address', '')
+
             shared_ride = serializer.save(
                 creator=request.user,
                 reference='SH' + uuid.uuid4().hex[:8].upper(),
@@ -56,7 +61,13 @@ class SharedRideCreateView(generics.CreateAPIView):
                 user=request.user,
                 status=SharedRideRider.Status.JOINED,
                 joined_at=timezone.now(),
+                pickup_latitude=pickup_latitude,
+                pickup_longitude=pickup_longitude,
+                pickup_address=pickup_address
             )
+
+            # Compute the initial fare for the creator
+            SharedRideService.compute_fares(shared_ride)
 
         return Response(
             SharedRideDetailSerializer(shared_ride).data, 

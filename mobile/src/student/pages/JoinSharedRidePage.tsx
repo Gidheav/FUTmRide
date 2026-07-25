@@ -38,7 +38,7 @@ export default function JoinSharedRidePage({ initialCode = '', onClose }: { init
     if (!code || code.length < 4) return
     try {
       setLoading(true)
-      const res = await api.get(`/student/rides/shared/${code.toUpperCase()}/`)
+      const res = await api.get(`rides/shared/${code.toUpperCase()}/`)
       setRide(res.data)
       setStep(2)
     } catch (e: any) {
@@ -55,7 +55,7 @@ export default function JoinSharedRidePage({ initialCode = '', onClose }: { init
     }
     try {
       setLoading(true)
-      await api.post(`/student/rides/shared/${ride.id}/join/`, {
+      await api.post(`rides/shared/${ride.id}/join/`, {
         pickup_latitude: pickup.latitude,
         pickup_longitude: pickup.longitude,
         pickup_address: pickup.label,

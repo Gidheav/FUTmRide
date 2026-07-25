@@ -21,7 +21,7 @@ export default function SharedRideTab() {
   const fetchRides = async () => {
     try {
       setLoading(true)
-      const res = await api.get('/student/rides/shared/my/')
+      const res = await api.get('rides/shared/my/')
       setRides(res.data)
     } catch (e) {
       console.warn('Failed to fetch shared rides', e)

@@ -23,7 +23,7 @@ export default function SharedRideLobbyPage({ shareCode, onClose }: { shareCode:
 
   const fetchRide = async () => {
     try {
-      const res = await api.get(`/student/rides/shared/${shareCode}/`)
+      const res = await api.get(`rides/shared/${shareCode}/`)
       setRide(res.data)
     } catch (e: any) {
       if (!ride) {
@@ -54,7 +54,7 @@ export default function SharedRideLobbyPage({ shareCode, onClose }: { shareCode:
   const handleDispatch = async () => {
     try {
       setDispatching(true)
-      await api.post(`/student/rides/shared/${ride.id}/dispatch/`)
+      await api.post(`rides/shared/${ride.id}/dispatch/`)
       Alert.alert('Success', 'Ride dispatched to drivers!')
       fetchRide()
     } catch (e: any) {
@@ -67,7 +67,7 @@ export default function SharedRideLobbyPage({ shareCode, onClose }: { shareCode:
   const handleConfirm = async () => {
     try {
       setConfirming(true)
-      await api.post(`/student/rides/shared/${ride.id}/confirm/`)
+      await api.post(`rides/shared/${ride.id}/confirm/`)
       fetchRide()
     } catch (e: any) {
       Alert.alert('Error', e?.response?.data?.error?.message || 'Payment failed')
