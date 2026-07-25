@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from apps.accounts.serializers import UserListSerializer
+from apps.accounts.serializers import UserPublicSerializer
 from .shared_models import SharedRide, SharedRideRider
 from .models import VehicleType
 from .serializers import RideDetailSerializer
@@ -7,7 +7,7 @@ from apps.pricing.models import FareConfiguration
 
 
 class SharedRideRiderSerializer(serializers.ModelSerializer):
-    user = UserListSerializer(read_only=True)
+    user = UserPublicSerializer(read_only=True)
 
     class Meta:
         model = SharedRideRider
@@ -18,7 +18,7 @@ class SharedRideRiderSerializer(serializers.ModelSerializer):
 
 
 class SharedRideDetailSerializer(serializers.ModelSerializer):
-    creator = UserListSerializer(read_only=True)
+    creator = UserPublicSerializer(read_only=True)
     riders = SharedRideRiderSerializer(many=True, read_only=True)
     ride = RideDetailSerializer(read_only=True)
     vehicle_type_label = serializers.CharField(source='get_vehicle_type_display', read_only=True)
