@@ -81,7 +81,25 @@ from .test_tools import (
     TestToolFlushOnDemandRidesView,
 )
 
+from .shared_views import (
+    SharedRideCreateView,
+    SharedRideDetailView,
+    SharedRideJoinView,
+    SharedRideConfirmView,
+    SharedRideDispatchView,
+    MySharedRidesView,
+)
+
 urlpatterns = [
+    # ---- Shared Rides ----
+    path('shared/create/', SharedRideCreateView.as_view(), name='shared-ride-create'),
+    path('shared/my/', MySharedRidesView.as_view(), name='shared-ride-my'),
+    path('shared/<str:pk>/', SharedRideDetailView.as_view(), name='shared-ride-detail'),
+    path('shared/<str:pk>/join/', SharedRideJoinView.as_view(), name='shared-ride-join'),
+    path('shared/<str:pk>/confirm/', SharedRideConfirmView.as_view(), name='shared-ride-confirm'),
+    path('shared/<str:pk>/dispatch/', SharedRideDispatchView.as_view(), name='shared-ride-dispatch'),
+
+    # ---- Operations/Campus Admin ----
     path('available/', AvailableRidesView.as_view(), name='ride-available'),
     path('route-options/', RideRouteOptionsView.as_view(), name='ride-route-options'),
     path('request/', RideRequestView.as_view(), name='ride-request'),

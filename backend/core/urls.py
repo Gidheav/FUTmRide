@@ -31,6 +31,8 @@ def app_config(request):
         "driver_events_url": os.environ.get("MOBILE_DRIVER_EVENTS_URL", default_webview_url("campus-events")),
         "community_url": os.environ.get("MOBILE_DRIVER_COMMUNITY_URL", default_webview_url("driver-community")),
         "driver_guidelines_url": os.environ.get("MOBILE_DRIVER_GUIDELINES_URL", default_webview_url("driver-guidelines")),
+        "support_url": os.environ.get("MOBILE_SUPPORT_URL", default_webview_url("support")),
+        "terms_url": os.environ.get("MOBILE_TERMS_URL", default_webview_url("terms")),
     })
 
 

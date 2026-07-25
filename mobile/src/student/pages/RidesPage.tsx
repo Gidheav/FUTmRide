@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View, SafeAreaView } from 'react-native'
 import ScheduledTab from '../components/rides/ScheduledTab'
 import FindNearbyTab from '../components/rides/FindNearbyTab'
+import SharedRideTab from '../components/rides/SharedRideTab'
 
 export default function StudentRidesPage({ isActive }: { isActive?: boolean }) {
-  const [activeTab, setActiveTab] = useState<'scheduled' | 'nearby'>('nearby')
+  const [activeTab, setActiveTab] = useState<'scheduled' | 'nearby' | 'shared'>('nearby')
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -25,7 +26,16 @@ export default function StudentRidesPage({ isActive }: { isActive?: boolean }) {
             activeOpacity={0.8}
           >
             <Text style={activeTab === 'scheduled' ? styles.segmentTextActive : styles.segmentText}>
-              Scheduled Rides
+              Scheduled
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.segment, activeTab === 'shared' && styles.segmentActive]}
+            onPress={() => setActiveTab('shared')}
+            activeOpacity={0.8}
+          >
+            <Text style={activeTab === 'shared' ? styles.segmentTextActive : styles.segmentText}>
+              Shared
             </Text>
           </TouchableOpacity>
         </View>
@@ -37,6 +47,9 @@ export default function StudentRidesPage({ isActive }: { isActive?: boolean }) {
         </View>
         <View style={{ display: activeTab === 'nearby' ? 'flex' : 'none', flex: 1 }}>
           <FindNearbyTab />
+        </View>
+        <View style={{ display: activeTab === 'shared' ? 'flex' : 'none', flex: 1 }}>
+          <SharedRideTab />
         </View>
       </View>
     </SafeAreaView>

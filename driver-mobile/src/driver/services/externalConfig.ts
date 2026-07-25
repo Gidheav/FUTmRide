@@ -6,6 +6,8 @@ export type ExternalWebViewConfig = {
   driver_events_url: string
   community_url: string
   driver_guidelines_url: string
+  support_url: string
+  terms_url: string
 }
 
 const WEBVIEW_TOKEN = process.env.EXPO_PUBLIC_WEBVIEW_TOKEN || 'LzR_Secure_App_2026'
@@ -25,6 +27,8 @@ const DEFAULT_CONFIG: ExternalWebViewConfig = {
   driver_events_url: buildDefaultWebViewUrl('campus-events'),
   community_url: buildDefaultWebViewUrl('driver-community'),
   driver_guidelines_url: buildDefaultWebViewUrl('driver-guidelines'),
+  support_url: buildDefaultWebViewUrl('support'),
+  terms_url: buildDefaultWebViewUrl('terms'),
 }
 
 // Global cache to prevent re-fetching on every screen navigation

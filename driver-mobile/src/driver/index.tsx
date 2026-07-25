@@ -246,8 +246,6 @@ export default function DriverApp() {
     loginCompletedAt,
     resetLock,
     setLocked,
-    settings.biometricEnabled,
-    settings.hasPin,
     user?.id,
   ])
 

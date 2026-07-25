@@ -824,11 +824,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
   },
-  infoText: {
-    color: '#6b7280',
-    fontSize: 13,
-    textAlign: 'center',
-  },
+
 })
 
 const pinStyles = StyleSheet.create({

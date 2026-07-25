@@ -198,3 +198,4 @@ class DriverRideRequest(models.Model):
 # avoid circular imports with VehicleType.
 from .garage_models import DriverSavedRoute, GarageRide, GarageRidePassenger  # noqa: E402,F401
 from .scheduled_models import ScheduledRide, ScheduledRidePassenger, ScheduledRideStop  # noqa: E402,F401
+from .shared_models import SharedRide, SharedRideRider  # noqa: E402,F401

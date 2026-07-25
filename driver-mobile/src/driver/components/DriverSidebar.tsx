@@ -39,6 +39,8 @@ export default function DriverSidebar({
   const driverEventsUrl = useExternalWebViewUrl('driver_events_url')
   const communityUrl = useExternalWebViewUrl('community_url')
   const driverGuidelinesUrl = useExternalWebViewUrl('driver_guidelines_url')
+  const supportUrl = useExternalWebViewUrl('support_url')
+  const termsUrl = useExternalWebViewUrl('terms_url')
 
   useEffect(() => {
     if (visible) {
@@ -148,7 +150,7 @@ export default function DriverSidebar({
 
                 <TouchableOpacity 
                   style={styles.menuItem} 
-                  onPress={() => handleMenuPress('https://lrride.com/support', 'Help & Support')}
+                  onPress={() => handleMenuPress(supportUrl, 'Help & Support')}
                   activeOpacity={0.7}
                 >
                   <MaterialIcons name="help-outline" size={22} color={COLORS.onSurfaceVariant} />
@@ -157,7 +159,7 @@ export default function DriverSidebar({
 
                 <TouchableOpacity 
                   style={styles.menuItem} 
-                  onPress={() => handleMenuPress('https://lrride.com/terms', 'Terms of Service')}
+                  onPress={() => handleMenuPress(termsUrl, 'Terms of Service')}
                   activeOpacity={0.7}
                 >
                   <MaterialIcons name="description" size={22} color={COLORS.onSurfaceVariant} />
