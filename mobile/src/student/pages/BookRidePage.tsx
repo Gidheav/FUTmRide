@@ -7,6 +7,7 @@ import {
   ScrollView,
   FlatList,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -20,6 +21,7 @@ import api from '../../core/api'
 import useWalletStore from '../../core/walletStore'
 import { useLocations } from '../../../services/locationDataService'
 import MapPickerPage, { RouteSelection } from './MapPickerPage'
+import SharedRideLobbyPage from './SharedRideLobbyPage'
 
 const VEHICLES = [
   { id: 'motorbike', label: 'Motorbike (Okada)' },
@@ -137,6 +139,11 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
   const [pinInput, setPinInput] = useState('')
   const [pinError, setPinError] = useState('')
   const [pinLoading, setPinLoading] = useState(false)
+  // Shared ride toggle
+  const [isSharedRide, setIsSharedRide] = useState(false)
+  const [maxRiders, setMaxRiders] = useState(4)
+  // After shared ride created → show lobby
+  const [sharedRideCode, setSharedRideCode] = useState<string | null>(null)
   const pinRows = useMemo(() => (['1','2','3','4','5','6','7','8','9','','0','back'].reduce<string[][]>((acc, item, i) => {
     if (i % 3 === 0) acc.push([])
     acc[acc.length - 1].push(item)
@@ -216,25 +223,12 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
   )
 
   const submitRide = async () => {
-    if (!pickup) {
-      Alert.alert('Missing pickup', 'Select a pickup location.')
-      return
-    }
-    if (!dropoff) {
-      Alert.alert('Missing dropoff', 'Select a dropoff location.')
-      return
-    }
-    if (!selectedRoute) {
-      Alert.alert('Route required', 'Open the map and select a valid route before requesting this ride.')
-      return
-    }
+    if (!pickup || !dropoff || !selectedRoute) return
     if (seatCount > seatLimit) {
       Alert.alert('Seat limit', `This vehicle allows up to ${seatLimit} seats.`)
       return
     }
-
     const scheduledTime = new Date(Date.now() + scheduledOffset * 60000).toISOString()
-
     const payload = {
       pickup_address: pickup.label,
       pickup_latitude: pickup.latitude,
@@ -249,7 +243,6 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
       route_provider: selectedRoute.provider,
       route_index: selectedRoute.metadata?.route_index ?? selectedRoute.index,
     }
-
     setIsSubmitting(true)
     try {
       const response = await api.post('rides/request/', payload)
@@ -258,13 +251,40 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
         Alert.alert('Booking failed', 'Ride was created without an id.')
         return
       }
-      // Sync wallet balance to reflect the ride payment
       useWalletStore.getState().syncBalance()
-      // Hand off to parent — no internal state machine needed
       onRideCreated(String(rideId))
     } catch (error: any) {
       const message = error?.response?.data?.error?.message || 'Unable to request a ride.'
       Alert.alert('Booking failed', message)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const submitSharedRide = async () => {
+    if (!pickup || !dropoff) return
+    setIsSubmitting(true)
+    try {
+      const response = await api.post('rides/shared/create/', {
+        vehicle_type: vehicleType,
+        pickup_latitude: pickup.latitude,
+        pickup_longitude: pickup.longitude,
+        pickup_address: pickup.label,
+        dropoff_latitude: dropoff.latitude,
+        dropoff_longitude: dropoff.longitude,
+        dropoff_address: dropoff.label,
+        max_riders: maxRiders,
+      })
+      const shareCode = response?.data?.share_code
+      if (!shareCode) {
+        Alert.alert('Error', 'Shared ride was created but share code is missing.')
+        return
+      }
+      // Open the lobby full-screen
+      setSharedRideCode(shareCode)
+    } catch (error: any) {
+      const message = error?.response?.data?.error?.message || 'Failed to create shared ride.'
+      Alert.alert('Error', message)
     } finally {
       setIsSubmitting(false)
     }
@@ -279,7 +299,7 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
       Alert.alert('Missing dropoff', 'Select a dropoff location.')
       return
     }
-    if (!selectedRoute) {
+    if (!isSharedRide && !selectedRoute) {
       Alert.alert('Route required', 'Open the map and select a valid route before requesting this ride.')
       return
     }
@@ -309,7 +329,11 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
         await api.post('auth/settings/pin/verify/', { pin: next })
         setPinModalVisible(false)
         setPinInput('')
-        await submitRide()
+        if (isSharedRide) {
+          await submitSharedRide()
+        } else {
+          await submitRide()
+        }
       } catch (err: any) {
         const msg = err?.response?.data?.message || err?.response?.data?.error?.message || 'Incorrect Transaction PIN.'
         setPinError(String(msg))
@@ -325,6 +349,21 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
   ), [handleSelectLocation])
 
   const keyExtractor = useCallback((item: LocationOption) => item.id, [])
+
+  // If a shared ride was just created, show the lobby full-screen
+  if (sharedRideCode) {
+    return (
+      <View style={StyleSheet.absoluteFill}>
+        <SharedRideLobbyPage
+          shareCode={sharedRideCode}
+          onClose={() => {
+            setSharedRideCode(null)
+            onClose()
+          }}
+        />
+      </View>
+    )
+  }
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -480,6 +519,59 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
           </View>
         </View>
 
+
+
+        {/* Share This Ride Toggle */}
+        <View style={styles.card}>
+          <View style={styles.shareToggleRow}>
+            <View style={styles.shareToggleLeft}>
+              <MaterialIcons name="group" size={22} color="#6A1B9A" />
+              <View style={{ marginLeft: 12 }}>
+                <Text style={styles.shareToggleTitle}>Share this ride</Text>
+                <Text style={styles.shareToggleSub}>
+                  {isSharedRide ? 'Fare split with friends who join' : 'Solo ride — full fare applies'}
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={isSharedRide}
+              onValueChange={(v) => {
+                setIsSharedRide(v)
+                if (v) {
+                  // Default max riders for vehicle
+                  setMaxRiders(getSeatLimit(vehicleType))
+                }
+              }}
+              trackColor={{ false: '#e0e0e0', true: '#d1b3e6' }}
+              thumbColor={isSharedRide ? '#6A1B9A' : '#bdbdbd'}
+            />
+          </View>
+
+          {isSharedRide && (
+            <View style={styles.shareExpandedArea}>
+              <View style={styles.shareDivider} />
+              <Text style={styles.shareExpandedLabel}>Max friends in this ride</Text>
+              <View style={styles.riderSelectorRow}>
+                {[2, 3, 4, 5, 6].filter(n => n <= getSeatLimit(vehicleType)).map(n => (
+                  <TouchableOpacity
+                    key={n}
+                    style={[styles.riderChip, maxRiders === n && styles.riderChipActive]}
+                    onPress={() => setMaxRiders(n)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.riderChipText, maxRiders === n && styles.riderChipTextActive]}>
+                      {n}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={styles.shareInfoNote}>
+                💡 You will share the fare proportionally. Each person pays based on their pickup distance.
+              </Text>
+            </View>
+          )}
+        </View>
+
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Payment</Text>
           <View style={styles.paymentRow}>
@@ -490,13 +582,25 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
 
         <View style={styles.submitContainer}>
           <TouchableOpacity
-            style={[styles.submitButton, !formReady && styles.submitButtonDisabled]}
+            style={[
+              styles.submitButton,
+              isSharedRide && styles.submitButtonShared,
+              !(isSharedRide ? (pickup && dropoff) : formReady) && styles.submitButtonDisabled
+            ]}
             onPress={handleSubmit}
-            disabled={!formReady}
+            disabled={isSharedRide ? !(pickup && dropoff) : !formReady}
             activeOpacity={0.8}
           >
-            <Text style={styles.submitText}>{isSubmitting ? 'Booking...' : 'Request Ride'}</Text>
-            <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
+            <MaterialIcons
+              name={isSharedRide ? 'group-add' : 'arrow-forward'}
+              size={18}
+              color="#ffffff"
+            />
+            <Text style={[styles.submitText, { marginLeft: 6 }]}>
+              {isSubmitting
+                ? (isSharedRide ? 'Creating...' : 'Booking...')
+                : (isSharedRide ? 'Create Shared Ride' : 'Request Ride')}
+            </Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -894,6 +998,9 @@ const styles = StyleSheet.create({
   submitButtonDisabled: {
     backgroundColor: '#b79cd5',
   },
+  submitButtonShared: {
+    backgroundColor: '#4a148c',
+  },
   submitText: {
     color: '#ffffff',
     fontWeight: '700',
@@ -1065,4 +1172,79 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 14,
   },
+  // ── Shared ride toggle ──────────────────────────────────────────────────────
+  shareToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  shareToggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 12,
+  },
+  shareToggleTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1a1c1c',
+  },
+  shareToggleSub: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  shareExpandedArea: {
+    marginTop: 4,
+  },
+  shareDivider: {
+    height: 1,
+    backgroundColor: '#f0f0f0',
+    marginVertical: 12,
+  },
+  shareExpandedLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8b8b8b',
+    marginBottom: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  riderSelectorRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  riderChip: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#e0e0e0',
+  },
+  riderChipActive: {
+    backgroundColor: '#f5effb',
+    borderColor: '#6A1B9A',
+  },
+  riderChipText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  riderChipTextActive: {
+    color: '#6A1B9A',
+  },
+  shareInfoNote: {
+    fontSize: 12,
+    color: '#6b7280',
+    lineHeight: 18,
+    backgroundColor: '#fafafa',
+    padding: 10,
+    borderRadius: 8,
+  },
+
 })
+

@@ -184,12 +184,56 @@ class SharedRideDispatchView(APIView):
         return Response(SharedRideDetailSerializer(shared_ride).data)
 
 
-class MySharedRidesView(generics.ListAPIView):
-    serializer_class = SharedRideDetailSerializer
+
+class MySharedRidesView(APIView):
+    """
+    Returns two lists:
+    - created: shared rides where this user is the creator
+    - invited: shared rides where this user is a rider (NOT creator)
+    """
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_queryset(self):
-        # Return all shared rides this user is part of
-        return SharedRide.objects.filter(
-            riders__user=self.request.user
-        ).distinct()
+    def get(self, request):
+        user = request.user
+        created = SharedRide.objects.filter(creator=user).order_by('-created_at')
+        invited = SharedRide.objects.filter(
+            riders__user=user
+        ).exclude(creator=user).distinct().order_by('-created_at')
+
+        return Response({
+            'created': SharedRideDetailSerializer(created, many=True).data,
+            'invited': SharedRideDetailSerializer(invited, many=True).data,
+        })
+
+
+class SharedRideCancelView(APIView):
+    """Cancel your participation or (if creator) the entire ride."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        shared_ride = get_object_or_404(SharedRide, id=pk)
+
+        if shared_ride.creator == request.user:
+            # Creator cancels the whole ride
+            if shared_ride.status not in (SharedRide.Status.GATHERING,):
+                return Response(
+                    {'error': {'code': 'CANNOT_CANCEL', 'message': 'This ride cannot be cancelled at this stage.'}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            shared_ride.status = SharedRide.Status.CANCELLED
+            shared_ride.save()
+        else:
+            # Rider cancels their own seat
+            rider = get_object_or_404(SharedRideRider, shared_ride=shared_ride, user=request.user)
+            if rider.status == SharedRideRider.Status.CONFIRMED:
+                return Response(
+                    {'error': {'code': 'ALREADY_PAID', 'message': 'You have already confirmed payment. Contact support to cancel.'}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            rider.status = SharedRideRider.Status.CANCELLED
+            rider.save()
+            SharedRideService.compute_fares(shared_ride)
+
+        shared_ride.refresh_from_db()
+        return Response(SharedRideDetailSerializer(shared_ride).data)
+

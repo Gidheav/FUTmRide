@@ -1,188 +1,493 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
+  Linking,
+  RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import api from '../../../core/api'
-import CreateSharedRidePage from '../../pages/CreateSharedRidePage'
 import SharedRideLobbyPage from '../../pages/SharedRideLobbyPage'
+import JoinSharedRidePage from '../../pages/JoinSharedRidePage'
 
-export default function SharedRideTab() {
-  const [loading, setLoading] = useState(true)
-  const [rides, setRides] = useState<any[]>([])
-  const [showCreate, setShowCreate] = useState(false)
-  const [selectedRideCode, setSelectedRideCode] = useState<string | null>(null)
+type Rider = {
+  id: string
+  user: { id: string; first_name: string; last_name: string }
+  pickup_address: string
+  fare_share: string | null
+  status: 'invited' | 'joined' | 'confirmed' | 'cancelled'
+}
 
-  const fetchRides = async () => {
-    try {
-      setLoading(true)
-      const res = await api.get('rides/shared/my/')
-      setRides(res.data)
-    } catch (e) {
-      console.warn('Failed to fetch shared rides', e)
-    } finally {
-      setLoading(false)
-    }
-  }
+type SharedRide = {
+  id: string
+  reference: string
+  share_code: string
+  creator: { id: string; first_name: string; last_name: string }
+  vehicle_type: string
+  vehicle_type_label: string
+  dropoff_address: string
+  max_riders: number
+  status: string
+  expires_at: string
+  created_at: string
+  riders: Rider[]
+  anchor_fare: string | null
+  total_collected: string | null
+}
 
-  useEffect(() => {
-    fetchRides()
-  }, [])
+const STATUS_COLORS: Record<string, string> = {
+  gathering: '#f59e0b',
+  matching: '#3b82f6',
+  matched: '#8b5cf6',
+  in_progress: '#10b981',
+  completed: '#6b7280',
+  cancelled: '#ef4444',
+  expired: '#9ca3af',
+}
 
-  if (showCreate) {
-    return <CreateSharedRidePage onClose={() => { setShowCreate(false); fetchRides() }} />
-  }
+function StatusBadge({ status }: { status: string }) {
+  const color = STATUS_COLORS[status] ?? '#6b7280'
+  return (
+    <View style={[styles.badge, { backgroundColor: color + '22' }]}>
+      <Text style={[styles.badgeText, { color }]}>{status.replace('_', ' ').toUpperCase()}</Text>
+    </View>
+  )
+}
 
-  if (selectedRideCode) {
-    return <SharedRideLobbyPage shareCode={selectedRideCode} onClose={() => { setSelectedRideCode(null); fetchRides() }} />
-  }
-
-  const renderItem = ({ item }: { item: any }) => {
-    const isCreator = item.creator.id === 'FIXME_ME' // We'll fix this or just use the badge
-    return (
-      <TouchableOpacity 
-        style={styles.card}
-        activeOpacity={0.8}
-        onPress={() => setSelectedRideCode(item.share_code)}
-      >
-        <View style={styles.cardHeader}>
-          <Text style={styles.cardTitle}>To {item.dropoff_address}</Text>
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{item.status.toUpperCase()}</Text>
-          </View>
-        </View>
-        <Text style={styles.cardSub}>Code: {item.share_code}</Text>
-        <Text style={styles.cardSub}>{item.vehicle_type_label} • {item.riders.length}/{item.max_riders} joined</Text>
-      </TouchableOpacity>
-    )
-  }
+function RideCard({
+  ride,
+  onPress,
+}: {
+  ride: SharedRide
+  onPress: () => void
+}) {
+  const joined = ride.riders.filter(r => r.status !== 'cancelled').length
+  const confirmed = ride.riders.filter(r => r.status === 'confirmed').length
 
   return (
-    <View style={styles.container}>
-      <View style={styles.headerRow}>
-        <Text style={styles.sectionTitle}>My Shared Rides</Text>
-        <TouchableOpacity style={styles.createButton} onPress={() => setShowCreate(true)}>
-          <MaterialIcons name="add" size={20} color="#fff" />
-          <Text style={styles.createButtonText}>Create</Text>
-        </TouchableOpacity>
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
+      <View style={styles.cardHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.cardDestination} numberOfLines={1}>
+            To: {ride.dropoff_address}
+          </Text>
+          <Text style={styles.cardCode}>Code: {ride.share_code}</Text>
+        </View>
+        <StatusBadge status={ride.status} />
+      </View>
+      <View style={styles.cardMeta}>
+        <View style={styles.metaItem}>
+          <MaterialIcons name="directions-car" size={14} color="#8b8b8b" />
+          <Text style={styles.metaText}>{ride.vehicle_type_label}</Text>
+        </View>
+        <View style={styles.metaItem}>
+          <MaterialIcons name="group" size={14} color="#8b8b8b" />
+          <Text style={styles.metaText}>{joined}/{ride.max_riders} joined · {confirmed} confirmed</Text>
+        </View>
+        {ride.anchor_fare && (
+          <View style={styles.metaItem}>
+            <MaterialIcons name="account-balance-wallet" size={14} color="#6A1B9A" />
+            <Text style={[styles.metaText, { color: '#6A1B9A', fontWeight: '600' }]}>
+              Total: ₦{parseFloat(ride.total_collected || ride.anchor_fare).toLocaleString()}
+            </Text>
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
+  )
+}
+
+function InviteCard({
+  ride,
+  myRider,
+  onAccept,
+  onDecline,
+  accepting,
+}: {
+  ride: SharedRide
+  myRider: Rider
+  onAccept: () => void
+  onDecline: () => void
+  accepting: boolean
+}) {
+  const joined = ride.riders.filter(r => r.status !== 'cancelled').length
+  const myFare = myRider.fare_share ? `₦${parseFloat(myRider.fare_share).toLocaleString()}` : 'Calculating...'
+  const isPending = myRider.status === 'joined'
+  const isConfirmed = myRider.status === 'confirmed'
+
+  return (
+    <View style={styles.inviteCard}>
+      <View style={styles.inviteHeader}>
+        <MaterialIcons name="card-giftcard" size={20} color="#6A1B9A" />
+        <Text style={styles.inviteFrom}>
+          Invited by {ride.creator.first_name}
+        </Text>
+        {isConfirmed
+          ? <View style={styles.confirmedBadge}><Text style={styles.confirmedBadgeText}>✓ Confirmed</Text></View>
+          : <StatusBadge status={ride.status} />
+        }
       </View>
 
-      {loading ? (
-        <ActivityIndicator size="large" color="#6A1B9A" style={{ marginTop: 40 }} />
-      ) : rides.length === 0 ? (
-        <View style={styles.emptyState}>
-          <MaterialIcons name="group-add" size={48} color="#ccc" />
-          <Text style={styles.emptyTitle}>No Shared Rides</Text>
-          <Text style={styles.emptySub}>Create a shared ride and split the fare with friends.</Text>
+      <Text style={styles.inviteDestination} numberOfLines={2}>
+        📍 To: {ride.dropoff_address}
+      </Text>
+      <Text style={styles.inviteMeta}>
+        {ride.vehicle_type_label} · {joined}/{ride.max_riders} riders
+        {myRider.fare_share ? ` · Your share: ${myFare}` : ''}
+      </Text>
+
+      {!isConfirmed && isPending && (
+        <View style={styles.inviteActions}>
+          <TouchableOpacity
+            style={styles.declineBtn}
+            onPress={onDecline}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.declineBtnText}>Decline</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.acceptBtn, accepting && styles.acceptBtnDisabled]}
+            onPress={onAccept}
+            disabled={accepting}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.acceptBtnText}>{accepting ? 'Processing…' : 'Confirm & Pay'}</Text>
+          </TouchableOpacity>
         </View>
-      ) : (
-        <FlatList
-          data={rides}
-          keyExtractor={(r) => r.id}
-          renderItem={renderItem}
-          contentContainerStyle={styles.list}
-          refreshing={loading}
-          onRefresh={fetchRides}
-        />
       )}
     </View>
   )
 }
 
+export default function SharedRideTab({ currentUserId }: { currentUserId?: string }) {
+  const insets = useSafeAreaInsets()
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [created, setCreated] = useState<SharedRide[]>([])
+  const [invited, setInvited] = useState<SharedRide[]>([])
+  const [openRideCode, setOpenRideCode] = useState<string | null>(null)
+  const [openJoinCode, setOpenJoinCode] = useState<string | null>(null)
+  const [joinCode, setJoinCode] = useState('')
+  const [acceptingId, setAcceptingId] = useState<string | null>(null)
+
+  const fetchRides = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
+    try {
+      const res = await api.get('rides/shared/my/')
+      setCreated(res.data.created || [])
+      setInvited(res.data.invited || [])
+    } catch (e) {
+      console.warn('SharedRideTab: fetch error', e)
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchRides()
+  }, [fetchRides])
+
+  const handleAccept = async (ride: SharedRide) => {
+    setAcceptingId(ride.id)
+    try {
+      await api.post(`rides/shared/${ride.id}/confirm/`)
+      await fetchRides(true)
+    } catch (e: any) {
+      const msg = e?.response?.data?.error?.message || 'Failed to confirm. Check your wallet balance.'
+      Alert.alert('Error', msg)
+    } finally {
+      setAcceptingId(null)
+    }
+  }
+
+  const handleDecline = async (ride: SharedRide) => {
+    Alert.alert('Decline Invitation', 'Are you sure you want to leave this shared ride?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Decline',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await api.post(`rides/shared/${ride.id}/cancel/`)
+            await fetchRides(true)
+          } catch (e: any) {
+            Alert.alert('Error', e?.response?.data?.error?.message || 'Failed to decline.')
+          }
+        },
+      },
+    ])
+  }
+
+  const handleJoinCode = () => {
+    const code = joinCode.trim().toUpperCase()
+    if (code.length < 4) {
+      Alert.alert('Invalid code', 'Enter a valid share code.')
+      return
+    }
+    setOpenJoinCode(code)
+  }
+
+  // Full-screen lobby overlay
+  if (openRideCode) {
+    return (
+      <View style={StyleSheet.absoluteFill}>
+        <SharedRideLobbyPage
+          shareCode={openRideCode}
+          onClose={() => { setOpenRideCode(null); fetchRides(true) }}
+        />
+      </View>
+    )
+  }
+
+  // Join via code overlay
+  if (openJoinCode) {
+    return (
+      <View style={StyleSheet.absoluteFill}>
+        <JoinSharedRidePage
+          initialCode={openJoinCode}
+          onClose={() => { setOpenJoinCode(null); fetchRides(true) }}
+        />
+      </View>
+    )
+  }
+
+  const isEmpty = created.length === 0 && invited.length === 0
+
+  return (
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => { setRefreshing(true); fetchRides(true) }}
+          tintColor="#6A1B9A"
+        />
+      }
+    >
+      {/* Join by code */}
+      <View style={styles.joinSection}>
+        <Text style={styles.joinLabel}>Have a share code?</Text>
+        <View style={styles.joinRow}>
+          <TextInput
+            style={styles.joinInput}
+            placeholder="Enter code (e.g. AB3X7F2K)"
+            placeholderTextColor="#9c9c9c"
+            value={joinCode}
+            onChangeText={t => setJoinCode(t.toUpperCase())}
+            autoCapitalize="characters"
+            maxLength={12}
+          />
+          <TouchableOpacity
+            style={[styles.joinBtn, !joinCode.trim() && styles.joinBtnDisabled]}
+            onPress={handleJoinCode}
+            disabled={!joinCode.trim()}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.joinBtnText}>Join</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {loading ? (
+        <ActivityIndicator size="large" color="#6A1B9A" style={{ marginTop: 48 }} />
+      ) : isEmpty ? (
+        <View style={styles.emptyState}>
+          <MaterialIcons name="group-add" size={52} color="#d1d5db" />
+          <Text style={styles.emptyTitle}>No shared rides yet</Text>
+          <Text style={styles.emptySub}>
+            When you book a ride and toggle "Share this ride", it will appear here.{'\n'}
+            You can also join a friend's ride using their share code above.
+          </Text>
+        </View>
+      ) : (
+        <>
+          {/* Invitations section */}
+          {invited.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>
+                <MaterialIcons name="mail" size={15} color="#6A1B9A" /> Invitations ({invited.length})
+              </Text>
+              {invited.map(ride => {
+                const myRider = ride.riders.find(r => r.user.id === currentUserId) || ride.riders[0]
+                return (
+                  <InviteCard
+                    key={ride.id}
+                    ride={ride}
+                    myRider={myRider}
+                    onAccept={() => handleAccept(ride)}
+                    onDecline={() => handleDecline(ride)}
+                    accepting={acceptingId === ride.id}
+                  />
+                )
+              })}
+            </View>
+          )}
+
+          {/* Created rides section */}
+          {created.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>
+                <MaterialIcons name="directions-car" size={15} color="#6A1B9A" /> My Shared Rides ({created.length})
+              </Text>
+              {created.map(ride => (
+                <RideCard
+                  key={ride.id}
+                  ride={ride}
+                  onPress={() => setOpenRideCode(ride.share_code)}
+                />
+              ))}
+            </View>
+          )}
+        </>
+      )}
+    </ScrollView>
+  )
+}
+
 const styles = StyleSheet.create({
-  container: {
+  container: { flex: 1, backgroundColor: '#f9f9f9' },
+  content: { padding: 16 },
+
+  // Join section
+  joinSection: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  joinLabel: { fontSize: 13, fontWeight: '600', color: '#6b7280', marginBottom: 10 },
+  joinRow: { flexDirection: 'row', gap: 8 },
+  joinInput: {
     flex: 1,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1a1c1c',
-  },
-  createButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#6A1B9A',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  createButtonText: {
-    color: '#fff',
+    height: 46,
+    borderWidth: 1.5,
+    borderColor: '#e0e0e0',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    fontSize: 15,
     fontWeight: '600',
-    marginLeft: 4,
+    color: '#1a1c1c',
+    letterSpacing: 1.5,
+    backgroundColor: '#fafafa',
   },
-  list: {
-    padding: 20,
-    paddingTop: 0,
+  joinBtn: {
+    backgroundColor: '#6A1B9A',
+    borderRadius: 10,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  joinBtnDisabled: { backgroundColor: '#c4b0d9' },
+  joinBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+
+  // Section
+  section: { marginBottom: 24 },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#6A1B9A',
+    marginBottom: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+
+  // Created ride card
   card: {
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
-    marginBottom: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
     shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1a1c1c',
-    flex: 1,
-  },
+  cardHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 10 },
+  cardDestination: { fontSize: 15, fontWeight: '700', color: '#1a1c1c', flex: 1, marginRight: 8 },
+  cardCode: { fontSize: 12, color: '#8b8b8b', marginTop: 2, fontFamily: 'monospace' },
+  cardMeta: { gap: 6 },
+  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  metaText: { fontSize: 13, color: '#6b7280' },
+
+  // Badge
   badge: {
-    backgroundColor: '#f3e5f5',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 4,
-    marginLeft: 12,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
   },
-  badgeText: {
-    color: '#6A1B9A',
-    fontSize: 10,
-    fontWeight: '700',
+  badgeText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.3 },
+
+  // Invite card
+  inviteCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 10,
+    borderWidth: 1.5,
+    borderColor: '#e9d5f5',
+    shadowColor: '#6A1B9A',
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
-  cardSub: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginTop: 4,
+  inviteHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
   },
-  emptyState: {
+  inviteFrom: { flex: 1, fontSize: 14, fontWeight: '600', color: '#1a1c1c' },
+  inviteDestination: { fontSize: 14, color: '#374151', marginBottom: 6, lineHeight: 20 },
+  inviteMeta: { fontSize: 13, color: '#6b7280', marginBottom: 12 },
+  inviteActions: { flexDirection: 'row', gap: 10 },
+  declineBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: '#e0e0e0',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 40,
-    marginTop: 40,
   },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1a1c1c',
-    marginTop: 16,
+  declineBtnText: { fontSize: 14, fontWeight: '600', color: '#6b7280' },
+  acceptBtn: {
+    flex: 2,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#6A1B9A',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  emptySub: {
-    fontSize: 14,
-    color: '#6b7280',
-    textAlign: 'center',
-    marginTop: 8,
+  acceptBtnDisabled: { backgroundColor: '#c4b0d9' },
+  acceptBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  confirmedBadge: {
+    backgroundColor: '#d1fae5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
+  confirmedBadgeText: { color: '#059669', fontSize: 11, fontWeight: '700' },
+
+  // Empty state
+  emptyState: { alignItems: 'center', paddingTop: 60, paddingHorizontal: 24 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', color: '#1a1c1c', marginTop: 16, marginBottom: 8 },
+  emptySub: { fontSize: 14, color: '#6b7280', textAlign: 'center', lineHeight: 22 },
 })

@@ -87,6 +87,7 @@ from .shared_views import (
     SharedRideJoinView,
     SharedRideConfirmView,
     SharedRideDispatchView,
+    SharedRideCancelView,
     MySharedRidesView,
 )
 
@@ -98,6 +99,7 @@ urlpatterns = [
     path('shared/<str:pk>/join/', SharedRideJoinView.as_view(), name='shared-ride-join'),
     path('shared/<str:pk>/confirm/', SharedRideConfirmView.as_view(), name='shared-ride-confirm'),
     path('shared/<str:pk>/dispatch/', SharedRideDispatchView.as_view(), name='shared-ride-dispatch'),
+    path('shared/<str:pk>/cancel/', SharedRideCancelView.as_view(), name='shared-ride-cancel'),
 
     # ---- Operations/Campus Admin ----
     path('available/', AvailableRidesView.as_view(), name='ride-available'),

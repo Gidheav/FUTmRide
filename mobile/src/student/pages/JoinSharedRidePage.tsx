@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -34,19 +34,27 @@ export default function JoinSharedRidePage({ initialCode = '', onClose }: { init
     }))
   }, [rawLocations])
 
-  const handleFetchRide = async () => {
-    if (!code || code.length < 4) return
+  const handleFetchRide = async (codeToFetch: string) => {
+    if (!codeToFetch || codeToFetch.length < 4) return
     try {
       setLoading(true)
-      const res = await api.get(`rides/shared/${code.toUpperCase()}/`)
+      const res = await api.get(`rides/shared/${codeToFetch.toUpperCase()}/`)
       setRide(res.data)
       setStep(2)
     } catch (e: any) {
       Alert.alert('Error', 'Shared ride not found or expired')
+      setStep(1)
     } finally {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (initialCode) {
+      handleFetchRide(initialCode)
+    }
+  }, [initialCode])
+
 
   const handleJoin = async () => {
     if (!pickup) {
@@ -100,7 +108,7 @@ export default function JoinSharedRidePage({ initialCode = '', onClose }: { init
             <TouchableOpacity 
               style={[styles.primaryButton, code.length < 4 && styles.disabledButton]} 
               disabled={code.length < 4 || loading}
-              onPress={handleFetchRide}
+              onPress={() => handleFetchRide(code)}
             >
               {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Find Ride</Text>}
             </TouchableOpacity>
