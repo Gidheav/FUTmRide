@@ -14,6 +14,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons'
 import * as LocationService from 'expo-location'
 import * as TaskManager from 'expo-task-manager'
+import { getVerifiedLocation, LocationError, roundCoord } from '../../../core/locationService'
 import api, { classifyApiError } from '../../../core/api'
 import { useLocations } from '../../../../services/locationDataService'
 import ActiveRidePage from '../../pages/ActiveRidePage'
@@ -35,9 +36,7 @@ try {
 }
 
 const RADIUS_OPTIONS = [0.1, 0.5, 1, 2, 5]
-
-const roundCoord = (value: number) => Number(value.toFixed(6))
-
+// Used for distance formatting
 type Location = {
   id: string
   name: string
@@ -191,29 +190,18 @@ export default function FindNearbyTab() {
   }, [])
 
   const resolveCurrentLocation = async () => {
-    const status = await LocationService.getForegroundPermissionsAsync()
-    if (!status.granted) {
-      const request = await LocationService.requestForegroundPermissionsAsync()
-      if (!request.granted) {
-        throw new Error('Location permission denied.')
+    try {
+      const coords = await getVerifiedLocation()
+      return {
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        label: 'Current location',
       }
-    }
-    const bgStatus = await LocationService.getBackgroundPermissionsAsync()
-    if (!bgStatus.granted) {
-      await LocationService.requestBackgroundPermissionsAsync()
-    }
-    
-    let current = await LocationService.getLastKnownPositionAsync()
-    if (!current) {
-      current = await LocationService.getCurrentPositionAsync({
-        accuracy: LocationService.Accuracy.Balanced,
-      })
-    }
-    
-    return {
-      latitude: roundCoord(current.coords.latitude),
-      longitude: roundCoord(current.coords.longitude),
-      label: 'Current location',
+    } catch (err: any) {
+      if (err instanceof LocationError) {
+        throw new Error(err.message)
+      }
+      throw new Error('Unable to fetch your location.')
     }
   }
 

@@ -11,11 +11,14 @@ from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 
 from apps.accounts.models import UserRole
+from .models import Ride, RideStatus
 from .shared_models import SharedRide, SharedRideRider
 from .shared_serializers import (
     SharedRideCreateSerializer, SharedRideDetailSerializer, SharedRideJoinSerializer
 )
 from .shared_services import SharedRideService
+from .geofence import validate_coordinates_in_service_area
+from .utils import has_blocking_active_ride
 
 
 def generate_share_code(length=8):
@@ -34,16 +37,9 @@ class SharedRideCreateView(generics.CreateAPIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        active_statuses = [
-            SharedRide.Status.GATHERING,
-            SharedRide.Status.MATCHING,
-            SharedRide.Status.MATCHED,
-            SharedRide.Status.IN_PROGRESS
-        ]
-        
-        if SharedRide.objects.filter(creator=request.user, status__in=active_statuses).exists():
+        if has_blocking_active_ride(request.user):
             return Response(
-                {'error': {'code': 'ACTIVE_RIDE_EXISTS', 'message': 'You already have an active shared ride.'}},
+                {'error': {'code': 'ACTIVE_RIDE_EXISTS', 'message': 'You already have an active ride. Please complete or cancel it first.'}},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -56,10 +52,21 @@ class SharedRideCreateView(generics.CreateAPIView):
             while SharedRide.objects.filter(share_code=code).exists():
                 code = generate_share_code()
 
-            # Extract pickup fields which are not on the SharedRide model
             pickup_latitude = serializer.validated_data.pop('pickup_latitude', None)
             pickup_longitude = serializer.validated_data.pop('pickup_longitude', None)
             pickup_address = serializer.validated_data.pop('pickup_address', '')
+            dropoff_latitude = serializer.validated_data.get('dropoff_latitude')
+            dropoff_longitude = serializer.validated_data.get('dropoff_longitude')
+
+            # Geofence validation
+            try:
+                validate_coordinates_in_service_area(pickup_latitude, pickup_longitude, label='Pickup')
+                validate_coordinates_in_service_area(dropoff_latitude, dropoff_longitude, label='Dropoff')
+            except ValueError as e:
+                return Response(
+                    {'error': {'code': 'OUTSIDE_SERVICE_AREA', 'message': str(e)}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             shared_ride = serializer.save(
                 creator=request.user,
@@ -147,6 +154,23 @@ class SharedRideJoinView(APIView):
 
         serializer = SharedRideJoinSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        
+        pickup_latitude = serializer.validated_data.get('pickup_latitude')
+        pickup_longitude = serializer.validated_data.get('pickup_longitude')
+        
+        try:
+            validate_coordinates_in_service_area(pickup_latitude, pickup_longitude, label='Pickup')
+        except ValueError as e:
+            return Response(
+                {'error': {'code': 'OUTSIDE_SERVICE_AREA', 'message': str(e)}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if has_blocking_active_ride(request.user):
+            return Response(
+                {'error': {'code': 'ACTIVE_RIDE_EXISTS', 'message': 'You already have an active ride.'}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         
         with transaction.atomic():
             rider, created = SharedRideRider.objects.get_or_create(

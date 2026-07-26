@@ -4,12 +4,12 @@ import {
   Alert,
   FlatList,
   Modal,
-  SafeAreaView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import api from '../../core/api'
 import { useLocations } from '../../../services/locationDataService'

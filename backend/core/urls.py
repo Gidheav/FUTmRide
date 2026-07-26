@@ -3,13 +3,49 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
-from django.http import JsonResponse, Http404
+from django.http import JsonResponse, Http404, HttpResponse
 from django.shortcuts import render
 from core.health import HealthCheckView
 
 
 def healthcheck(request):
     return JsonResponse({"status": "ok", "service": "lrride-api"})
+
+def share_redirect_view(request, code):
+    """
+    Returns a simple HTML page that automatically redirects the user
+    into the FUTMRide app using its custom URL scheme.
+    This acts as a deep link trampoline.
+    """
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>FUTMRide - Shared Ride</title>
+        <style>
+            body {{ font-family: sans-serif; text-align: center; padding-top: 50px; background-color: #f9f9f9; color: #333; }}
+            .loader {{ margin: 20px auto; border: 4px solid #f3f3f3; border-top: 4px solid #6A1B9A; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; }}
+            @keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}
+            a {{ color: #6A1B9A; text-decoration: none; font-weight: bold; padding: 12px 24px; border: 1px solid #6A1B9A; border-radius: 8px; display: inline-block; margin-top: 20px; }}
+        </style>
+    </head>
+    <body>
+        <h2>Opening FUTMRide...</h2>
+        <div class="loader"></div>
+        <p>If you are not automatically redirected, tap the button below:</p>
+        <a href="lrride://share/{code}">Open App</a>
+        
+        <script>
+            setTimeout(function() {{
+                window.location.href = "lrride://share/{code}";
+            }}, 100);
+        </script>
+    </body>
+    </html>
+    """
+    return HttpResponse(html)
 
 def app_config(request):
     """
@@ -101,6 +137,7 @@ def secure_webview(request, page):
 urlpatterns = [
     path("", healthcheck, name="root"),
     path("api/v1/app-config/", app_config, name="app-config"),
+    path("share/<str:code>/", share_redirect_view, name="share-redirect"),
     path("admin/", admin.site.urls),
     path("health/", HealthCheckView.as_view(), name="health-detail"),
     path("health-simple/", healthcheck, name="healthcheck"),

@@ -24,6 +24,8 @@ from .serializers import (
 )
 from .services import FareCalculator, RouteDistanceResolver, get_available_drivers_nearby
 from .notifications import notify_student_ride_status
+from .geofence import validate_coordinates_in_service_area
+from .utils import has_blocking_active_ride
 
 logger = logging.getLogger('apps.rides')
 
@@ -45,21 +47,27 @@ class RideRequestView(generics.CreateAPIView):
                 {'error': {'code': 'FORBIDDEN', 'message': 'Only students can request rides.'}},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        active_ride = Ride.objects.filter(
-            student=request.user,
-            status__in=[
-                RideStatus.REQUESTED, RideStatus.SEARCHING,
-                RideStatus.DRIVER_ASSIGNED, RideStatus.DRIVER_EN_ROUTE,
-                RideStatus.DRIVER_ARRIVED, RideStatus.IN_PROGRESS,
-            ]
-        ).first()
-        if active_ride:
+        if has_blocking_active_ride(request.user):
             return Response(
-                {'error': {'code': 'ACTIVE_RIDE_EXISTS', 'message': 'You already have an active ride.'}},
+                {'error': {'code': 'ACTIVE_RIDE_EXISTS', 'message': 'You already have an active ride. Please complete or cancel it first.'}},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        
+        pickup_lat = serializer.validated_data.get('pickup_latitude')
+        pickup_lng = serializer.validated_data.get('pickup_longitude')
+        dropoff_lat = serializer.validated_data.get('dropoff_latitude')
+        dropoff_lng = serializer.validated_data.get('dropoff_longitude')
+
+        try:
+            validate_coordinates_in_service_area(pickup_lat, pickup_lng, label='Pickup')
+            validate_coordinates_in_service_area(dropoff_lat, dropoff_lng, label='Dropoff')
+        except ValueError as e:
+            return Response(
+                {'error': {'code': 'OUTSIDE_SERVICE_AREA', 'message': str(e)}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         requested_route_index = int(serializer.validated_data.get('route_index') or 0)
         requested_route_provider = (serializer.validated_data.get('route_provider') or '').strip() or None
 

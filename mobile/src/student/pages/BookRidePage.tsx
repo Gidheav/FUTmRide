@@ -16,9 +16,10 @@ import {
 } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import * as LocationService from 'expo-location'
+import * as Location from 'expo-location'
 import api from '../../core/api'
 import useWalletStore from '../../core/walletStore'
+import { getVerifiedLocation, LocationError, roundCoord } from '../../core/locationService'
 import { useLocations } from '../../../services/locationDataService'
 import MapPickerPage, { RouteSelection } from './MapPickerPage'
 import SharedRideLobbyPage from './SharedRideLobbyPage'
@@ -31,8 +32,6 @@ const VEHICLES = [
 ]
 
 const SCHEDULE_OPTIONS = [0, 5, 10, 15, 20, 25, 30]
-
-const roundCoord = (value: number) => Number(value.toFixed(6))
 
 type Location = {
   id: string
@@ -163,25 +162,23 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
   }, [query, activePicker, ALL_LOCATIONS])
 
   const handleUseCurrentLocation = async () => {
-    const status = await LocationService.getForegroundPermissionsAsync()
-    if (!status.granted) {
-      const request = await LocationService.requestForegroundPermissionsAsync()
-      if (!request.granted) {
-        Alert.alert('Location denied', 'Enable location permission to use current location.')
-        return
+    try {
+      const coords = await getVerifiedLocation()
+      setPickup({
+        id: 'current-location',
+        label: 'Current location',
+        description: 'Using your current location',
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+      })
+      closePicker()
+    } catch (err: any) {
+      if (err instanceof LocationError) {
+        Alert.alert('Location Error', err.message)
+      } else {
+        Alert.alert('Location Error', 'An unexpected error occurred while fetching your location.')
       }
     }
-    const current = await LocationService.getCurrentPositionAsync({
-      accuracy: LocationService.Accuracy.Highest,
-    })
-    setPickup({
-      id: 'current-location',
-      label: 'Current location',
-      description: 'Using your current location',
-      latitude: roundCoord(current.coords.latitude),
-      longitude: roundCoord(current.coords.longitude),
-    })
-    closePicker()
   }
 
   const handleSelectLocation = useCallback((item: LocationOption) => {
@@ -566,7 +563,7 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
                 ))}
               </View>
               <Text style={styles.shareInfoNote}>
-                💡 You will share the fare proportionally. Each person pays based on their pickup distance.
+                Fare will be shared proportionally, each person pays based on their pickup distance.
               </Text>
             </View>
           )}

@@ -22,6 +22,7 @@ type Rider = {
   id: string
   user: { id: string; first_name: string; last_name: string }
   pickup_address: string
+  distance_km: string | null
   fare_share: string | null
   status: 'invited' | 'joined' | 'confirmed' | 'cancelled'
 }
@@ -40,7 +41,9 @@ type SharedRide = {
   created_at: string
   riders: Rider[]
   anchor_fare: string | null
+  anchor_distance_km: string | null
   total_collected: string | null
+  driver_earnings: string | null
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -65,9 +68,11 @@ function StatusBadge({ status }: { status: string }) {
 function RideCard({
   ride,
   onPress,
+  onDelete,
 }: {
   ride: SharedRide
   onPress: () => void
+  onDelete?: () => void
 }) {
   const joined = ride.riders.filter(r => r.status !== 'cancelled').length
   const confirmed = ride.riders.filter(r => r.status === 'confirmed').length
@@ -82,6 +87,11 @@ function RideCard({
           <Text style={styles.cardCode}>Code: {ride.share_code}</Text>
         </View>
         <StatusBadge status={ride.status} />
+        {onDelete && (
+          <TouchableOpacity onPress={onDelete} style={styles.deleteBtn} activeOpacity={0.7}>
+            <MaterialIcons name="delete-outline" size={20} color="#ef4444" />
+          </TouchableOpacity>
+        )}
       </View>
       <View style={styles.cardMeta}>
         <View style={styles.metaItem}>
@@ -167,13 +177,19 @@ function InviteCard({
   )
 }
 
-export default function SharedRideTab({ currentUserId }: { currentUserId?: string }) {
+type SharedRideTabProps = {
+  currentUserId?: string
+  deepLinkShareCode?: string | null
+  onDeepLinkConsumed?: () => void
+}
+
+export default function SharedRideTab({ currentUserId, deepLinkShareCode, onDeepLinkConsumed }: SharedRideTabProps) {
   const insets = useSafeAreaInsets()
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [created, setCreated] = useState<SharedRide[]>([])
   const [invited, setInvited] = useState<SharedRide[]>([])
-  const [openRideCode, setOpenRideCode] = useState<string | null>(null)
+  const [openRide, setOpenRide] = useState<SharedRide | null>(null)
   const [openJoinCode, setOpenJoinCode] = useState<string | null>(null)
   const [joinCode, setJoinCode] = useState('')
   const [acceptingId, setAcceptingId] = useState<string | null>(null)
@@ -195,6 +211,13 @@ export default function SharedRideTab({ currentUserId }: { currentUserId?: strin
   useEffect(() => {
     fetchRides()
   }, [fetchRides])
+
+  useEffect(() => {
+    if (deepLinkShareCode) {
+      setOpenJoinCode(deepLinkShareCode)
+      if (onDeepLinkConsumed) onDeepLinkConsumed()
+    }
+  }, [deepLinkShareCode, onDeepLinkConsumed])
 
   const handleAccept = async (ride: SharedRide) => {
     setAcceptingId(ride.id)
@@ -227,6 +250,24 @@ export default function SharedRideTab({ currentUserId }: { currentUserId?: strin
     ])
   }
 
+  const handleDeleteRide = async (ride: SharedRide) => {
+    Alert.alert('Delete Ride', 'Are you sure you want to delete this ride from your history?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await api.delete(`rides/shared/${ride.id}/`)
+            await fetchRides(true)
+          } catch (e: any) {
+            Alert.alert('Error', e?.response?.data?.error?.message || 'Failed to delete.')
+          }
+        },
+      },
+    ])
+  }
+
   const handleJoinCode = () => {
     const code = joinCode.trim().toUpperCase()
     if (code.length < 4) {
@@ -237,12 +278,14 @@ export default function SharedRideTab({ currentUserId }: { currentUserId?: strin
   }
 
   // Full-screen lobby overlay
-  if (openRideCode) {
+  if (openRide) {
     return (
       <View style={StyleSheet.absoluteFill}>
         <SharedRideLobbyPage
-          shareCode={openRideCode}
-          onClose={() => { setOpenRideCode(null); fetchRides(true) }}
+          shareCode={openRide.share_code}
+          initialRide={openRide}
+          onClose={() => { setOpenRide(null); fetchRides(true) }}
+          hideTopInset={true}
         />
       </View>
     )
@@ -255,6 +298,7 @@ export default function SharedRideTab({ currentUserId }: { currentUserId?: strin
         <JoinSharedRidePage
           initialCode={openJoinCode}
           onClose={() => { setOpenJoinCode(null); fetchRides(true) }}
+          hideTopInset={true}
         />
       </View>
     )
@@ -306,8 +350,7 @@ export default function SharedRideTab({ currentUserId }: { currentUserId?: strin
           <MaterialIcons name="group-add" size={52} color="#d1d5db" />
           <Text style={styles.emptyTitle}>No shared rides yet</Text>
           <Text style={styles.emptySub}>
-            When you book a ride and toggle "Share this ride", it will appear here.{'\n'}
-            You can also join a friend's ride using their share code above.
+            When you join or share a ride, it will appear here.
           </Text>
         </View>
       ) : (
@@ -340,13 +383,17 @@ export default function SharedRideTab({ currentUserId }: { currentUserId?: strin
               <Text style={styles.sectionTitle}>
                 <MaterialIcons name="directions-car" size={15} color="#6A1B9A" /> My Shared Rides ({created.length})
               </Text>
-              {created.map(ride => (
-                <RideCard
-                  key={ride.id}
-                  ride={ride}
-                  onPress={() => setOpenRideCode(ride.share_code)}
-                />
-              ))}
+              {created.map(ride => {
+                const canDelete = ['cancelled', 'expired', 'completed'].includes(ride.status)
+                return (
+                  <RideCard
+                    key={ride.id}
+                    ride={ride}
+                    onPress={() => setOpenRide(ride)}
+                    onDelete={canDelete ? () => handleDeleteRide(ride) : undefined}
+                  />
+                )
+              })}
             </View>
           )}
         </>
@@ -357,14 +404,14 @@ export default function SharedRideTab({ currentUserId }: { currentUserId?: strin
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f9f9f9' },
-  content: { padding: 16 },
+  content: { padding:  2},
 
   // Join section
   joinSection: {
     backgroundColor: '#fff',
     borderRadius: 14,
     padding: 16,
-    marginBottom: 20,
+    marginBottom: 6,
     borderWidth: 1,
     borderColor: '#f0f0f0',
   },
@@ -399,17 +446,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#6A1B9A',
-    marginBottom: 12,
+    marginBottom: 6,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+    marginLeft:8,
   },
 
   // Created ride card
   card: {
     backgroundColor: '#fff',
-    borderRadius: 14,
+    borderRadius: 2,
     padding: 16,
     marginBottom: 10,
+    marginLeft: 2,
+    marginRight:2,
     borderWidth: 1,
     borderColor: '#f0f0f0',
     shadowColor: '#000',
@@ -424,6 +474,7 @@ const styles = StyleSheet.create({
   cardMeta: { gap: 6 },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   metaText: { fontSize: 13, color: '#6b7280' },
+  deleteBtn: { paddingLeft: 8, paddingBottom: 8 },
 
   // Badge
   badge: {

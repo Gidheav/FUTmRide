@@ -11,15 +11,16 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Image,
 } from 'react-native'
-import { MaterialIcons } from '@expo/vector-icons'
+import { MaterialIcons, FontAwesome } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import api from '../../core/api'
 import { useAuthStore } from '../../core/authStore'
 
 type Rider = {
   id: string
-  user: { id: string; first_name: string; last_name: string }
+  user: { id: string; first_name: string; last_name: string; profile_photo?: string | null }
   pickup_address: string
   distance_km: string | null
   fare_share: string | null
@@ -47,12 +48,16 @@ type SharedRide = {
 
 type Props = {
   shareCode: string
+  initialRide?: SharedRide | null
   onClose: () => void
+  hideTopInset?: boolean
 }
 
-// Uses Android App Links so it is clickable in WhatsApp and opens the app directly
-// Format: https://futmride.app/share/CODE
-const SHARE_BASE_URL = 'https://futmride.app/share/'
+// Uses the Render backend domain which we already own.
+// lrride-server.onrender.com/share/CODE is a real HTTPS link — WhatsApp renders it as
+// a clickable link. Tapping it loads a redirect page on the backend that bounces
+// the user into the app via the lrride:// custom URL scheme.
+const SHARE_BASE_URL = 'https://lrride-server.onrender.com/share/'
 
 const STATUS_ICON: Record<string, keyof typeof MaterialIcons.glyphMap> = {
   invited: 'hourglass-empty',
@@ -74,17 +79,26 @@ function formatCountdown(expiresAt: string) {
   return diff === 0 ? 'Expired' : `${mins}:${secs.toString().padStart(2, '0')}`
 }
 
-export default function SharedRideLobbyPage({ shareCode, onClose }: Props) {
+function getVehicleIcon(type: string): keyof typeof MaterialIcons.glyphMap {
+  const t = (type || '').toLowerCase()
+  if (t.includes('bike') || t.includes('motor')) return 'motorcycle'
+  if (t.includes('bus') || t.includes('shuttle')) return 'directions-bus'
+  if (t.includes('keke') || t.includes('tricycle')) return 'electric-rickshaw'
+  return 'directions-car'
+}
+
+export default function SharedRideLobbyPage({ shareCode, initialRide, onClose, hideTopInset }: Props) {
   const insets = useSafeAreaInsets()
-  const [ride, setRide] = useState<SharedRide | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [ride, setRide] = useState<SharedRide | null>(initialRide || null)
+  const [loading, setLoading] = useState(!initialRide)
   const [dispatching, setDispatching] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [countdown, setCountdown] = useState('')
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const fetchRide = useCallback(async () => {
+  const fetchRide = useCallback(async (silent = false) => {
+    if (!silent && !ride) setLoading(true)
     try {
       const res = await api.get(`rides/shared/${shareCode}/`)
       setRide(res.data)
@@ -95,12 +109,12 @@ export default function SharedRideLobbyPage({ shareCode, onClose }: Props) {
     } finally {
       setLoading(false)
     }
-  }, [shareCode])
+  }, [shareCode, ride])
 
   useEffect(() => {
-    fetchRide()
+    fetchRide(true) // first fetch can be silent if we already have initialRide, otherwise it will set loading to true internally
     // Poll every 5s while gathering or matching
-    pollRef.current = setInterval(() => fetchRide(), 5000)
+    pollRef.current = setInterval(() => fetchRide(true), 5000)
     return () => {
       if (pollRef.current) clearInterval(pollRef.current)
       if (timerRef.current) clearInterval(timerRef.current)
@@ -134,9 +148,7 @@ export default function SharedRideLobbyPage({ shareCode, onClose }: Props) {
           ``,
           `📌 Share Code: *${shareCode}*`,
           ``,
-          `Open the FUTMRide app and enter this code in the "Shared" tab → "Have a share code?"`,
-          ``,
-          `Or tap this link (if app is installed): ${shareLink}`,
+          `Open the FUTMRide app and enter this code in the "Shared" tab → "Have a share code?", or scan my code from your Dashboard.`,
         ].join('\n'),
         title: 'Join my shared ride on FUTMRide',
       })
@@ -150,11 +162,9 @@ export default function SharedRideLobbyPage({ shareCode, onClose }: Props) {
       [
         `🚗 Join my shared ride to *${ride?.dropoff_address || 'our destination'}*!`,
         ``,
-        `Share Code: *${shareCode}*`,
+        `📌 Share Code: *${shareCode}*`,
         ``,
-        `Open the *FUTMRide* app → Rides → Shared tab → "Have a share code?" → enter the code above.`,
-        ``,
-        `_(Tap to open in app if installed: ${shareLink})_`,
+        `Open the FUTMRide app and enter this code in the "Shared" tab → "Have a share code?", or scan my code from your Dashboard.`,
       ].join('\n')
     )
     Linking.openURL(`https://wa.me/?text=${msg}`)
@@ -214,9 +224,33 @@ export default function SharedRideLobbyPage({ shareCode, onClose }: Props) {
     )
   }
 
-  // Determine current user role — for now use creator comparison
-  const myRider = ride?.riders[0] // We'll use first rider as placeholder
-  const isCreator = true // The creator is always viewing their own lobby from BookRidePage
+  const { user } = useAuthStore()
+
+  const handleCancelRide = async () => {
+    Alert.alert(
+      'Cancel Shared Ride',
+      'Are you sure you want to cancel this shared ride? Any confirmed riders will be refunded.',
+      [
+        { text: 'Keep Ride', style: 'cancel' },
+        {
+          text: 'Cancel Ride',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api.post(`rides/shared/${ride?.id}/cancel/`)
+              Alert.alert('Cancelled', 'The shared ride has been cancelled.')
+              onClose()
+            } catch (e: any) {
+              Alert.alert('Error', e?.response?.data?.error?.message || 'Could not cancel ride.')
+            }
+          },
+        },
+      ]
+    )
+  }
+
+  const isCreator = ride?.creator.id === user?.id
+  const myRider = ride?.riders.find(r => r.user.id === user?.id)
   const activeRiders = ride?.riders.filter(r => r.status !== 'cancelled') || []
   const confirmedCount = activeRiders.filter(r => r.status === 'confirmed').length
   const canDispatch = isCreator && ride?.status === 'gathering' && confirmedCount >= 1
@@ -247,107 +281,100 @@ export default function SharedRideLobbyPage({ shareCode, onClose }: Props) {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: hideTopInset ? 0 : insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={onClose} activeOpacity={0.8}>
           <MaterialIcons name="arrow-back" size={20} color="#1a1c1c" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Shared Ride Lobby</Text>
-        <View style={{ width: 36 }} />
+        <Text style={styles.headerTitle}>Shared Ride</Text>
+        <Text style={[
+          styles.headerStatus,
+          isGathering ? { color: '#f59e0b' } : isMatching ? { color: '#3b82f6' } : { color: '#10b981' }
+        ]}>
+          {isGathering ? 'Waiting' : isMatching ? 'Matching' : ride.status === 'matched' ? 'Matched' : ride.status.replace('_', ' ')}
+        </Text>
       </View>
 
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Status banner */}
-        <View style={[styles.statusBanner, isGathering && styles.bannerGathering, isMatching && styles.bannerMatching, (isMatched || ride.status === 'in_progress') && styles.bannerMatched]}>
-          <MaterialIcons
-            name={isGathering ? 'hourglass-empty' : isMatching ? 'search' : 'check-circle'}
-            size={20}
-            color="#fff"
-          />
-          <Text style={styles.statusBannerText}>
-            {isGathering
-              ? `Waiting for friends · ${countdown}`
-              : isMatching
-              ? 'Finding a driver…'
-              : ride.status === 'matched'
-              ? 'Driver matched!'
-              : ride.status.replace('_', ' ')}
-          </Text>
-        </View>
-
-        {/* Destination card */}
         <View style={styles.card}>
-          <Text style={styles.cardLabel}>DROP-OFF</Text>
-          <View style={styles.destinationRow}>
-            <MaterialIcons name="place" size={22} color="#6A1B9A" />
+
+          <View style={styles.compactDestinationRow}>
+            <MaterialIcons name="place" size={20} color="#6A1B9A" />
             <Text style={styles.destinationText}>{ride.dropoff_address}</Text>
           </View>
-          <View style={styles.metaRow}>
-            <View style={styles.metaPill}>
-              <MaterialIcons name="directions-car" size={13} color="#6b7280" />
-              <Text style={styles.metaPillText}>{ride.vehicle_type_label}</Text>
+          <View style={styles.compactMetaRow}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <MaterialIcons name={getVehicleIcon(ride.vehicle_type)} size={16} color="#6b7280" />
+              <Text style={styles.compactMetaText}>{ride.vehicle_type_label}</Text>
             </View>
-            <View style={styles.metaPill}>
-              <MaterialIcons name="group" size={13} color="#6b7280" />
-              <Text style={styles.metaPillText}>{activeRiders.length}/{ride.max_riders} joined</Text>
+            <Text style={styles.compactMetaDot}>•</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <MaterialIcons name="group" size={16} color="#6b7280" />
+              <Text style={styles.compactMetaText}>{activeRiders.length}/{ride.max_riders}</Text>
             </View>
-            <View style={styles.metaPill}>
-              <MaterialIcons name="check-circle" size={13} color="#10b981" />
-              <Text style={[styles.metaPillText, { color: '#10b981' }]}>{confirmedCount} confirmed</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Share code card */}
-        {isGathering && (
-          <View style={styles.card}>
-            <Text style={styles.cardLabel}>SHARE CODE</Text>
-            <View style={styles.codeRow}>
-              <Text style={styles.shareCode}>{shareCode}</Text>
-              <TouchableOpacity style={styles.copyBtn} onPress={handleCopyCode} activeOpacity={0.8}>
-                <MaterialIcons name="content-copy" size={18} color="#6A1B9A" />
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.codeHint}>Friends can enter this code in the app's Shared tab to join.</Text>
-
-            {/* Share actions */}
-            <View style={styles.shareActionsRow}>
-              <TouchableOpacity style={styles.shareActionBtn} onPress={handleWhatsApp} activeOpacity={0.8}>
-                <Text style={styles.shareActionIcon}>💬</Text>
-                <Text style={styles.shareActionText}>WhatsApp</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.shareActionBtn} onPress={handleShare} activeOpacity={0.8}>
-                <MaterialIcons name="share" size={22} color="#6A1B9A" />
-                <Text style={styles.shareActionText}>Share</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.shareActionBtn} onPress={handleCopyCode} activeOpacity={0.8}>
-                <MaterialIcons name="link" size={22} color="#6A1B9A" />
-                <Text style={styles.shareActionText}>Copy Link</Text>
-              </TouchableOpacity>
+            <Text style={styles.compactMetaDot}>•</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <MaterialIcons name="check-circle" size={16} color="#10b981" />
+              <Text style={[styles.compactMetaText, { color: '#10b981' }]}>{confirmedCount}</Text>
             </View>
           </View>
-        )}
 
-        {/* Riders list */}
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>RIDERS</Text>
+          {isGathering && (
+            <>
+              <View style={styles.divider} />
+
+              <View style={styles.qrContainer}>
+                <Image
+                  source={{ uri: `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(shareCode)}` }}
+                  style={styles.qrImage}
+                />
+                <View style={styles.codeBadge}>
+                  <Text style={styles.shareCodeText}>{shareCode}</Text>
+
+                  <View style={styles.inlineActionDivider} />
+
+                  <TouchableOpacity style={styles.iconBtn} onPress={handleCopyCode} activeOpacity={0.8}>
+                    <MaterialIcons name="content-copy" size={20} color="#6A1B9A" />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.iconBtn} onPress={handleWhatsApp} activeOpacity={0.8}>
+                    <FontAwesome name="whatsapp" size={22} color="#25D366" />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.iconBtn} onPress={handleShare} activeOpacity={0.8}>
+                    <MaterialIcons name="share" size={22} color="#6A1B9A" />
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.qrHint}>Scan to join instantly</Text>
+              </View>
+            </>
+          )}
+
+          <View style={styles.divider} />
+
+          <Text style={styles.cardLabel}>CO-RIDERS</Text>
           {activeRiders.map((rider, i) => (
             <View key={rider.id} style={[styles.riderRow, i < activeRiders.length - 1 && styles.riderRowBorder]}>
               <View style={[styles.riderAvatar, { backgroundColor: STATUS_COLOR[rider.status] + '22' }]}>
-                <Text style={[styles.riderAvatarText, { color: STATUS_COLOR[rider.status] }]}>
-                  {rider.user.first_name[0]}{rider.user.last_name[0]}
-                </Text>
+                {rider.user.profile_photo ? (
+                  <Image source={{ uri: rider.user.profile_photo }} style={{ width: 40, height: 40, borderRadius: 20 }} />
+                ) : (
+                  <Text style={[styles.riderAvatarText, { color: STATUS_COLOR[rider.status] }]}>
+                    {rider.user.first_name[0]}{rider.user.last_name[0]}
+                  </Text>
+                )}
               </View>
               <View style={styles.riderInfo}>
                 <Text style={styles.riderName}>
                   {rider.user.first_name} {rider.user.last_name}
                 </Text>
                 {rider.pickup_address ? (
-                  <Text style={styles.riderPickup} numberOfLines={1}>📍 {rider.pickup_address}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                    <MaterialIcons name="trip-origin" size={12} color="#8b5cf6" />
+                    <Text style={[styles.riderPickup, { marginTop: 0, flex: 1 }]} numberOfLines={1}>{rider.pickup_address}</Text>
+                  </View>
                 ) : null}
                 {rider.distance_km && (
                   <Text style={styles.riderDist}>{parseFloat(rider.distance_km).toFixed(1)} km away</Text>
@@ -369,70 +396,83 @@ export default function SharedRideLobbyPage({ shareCode, onClose }: Props) {
           {activeRiders.length === 0 && (
             <Text style={styles.noRidersText}>No riders yet. Share the code above.</Text>
           )}
+
+          {ride.anchor_fare && (
+            <>
+              <View style={styles.divider} />
+              <Text style={styles.cardLabel}>FARE BREAKDOWN</Text>
+              <View style={styles.fareRow}>
+                <Text style={styles.fareLabel}>Anchor fare (longest leg)</Text>
+                <Text style={styles.fareValue}>₦{parseFloat(ride.anchor_fare).toLocaleString()}</Text>
+              </View>
+              {ride.total_collected && (
+                <View style={styles.fareRow}>
+                  <Text style={styles.fareLabel}>Total collected</Text>
+                  <Text style={[styles.fareValue, { color: '#10b981', fontWeight: '700' }]}>
+                    ₦{parseFloat(ride.total_collected).toLocaleString()}
+                  </Text>
+                </View>
+              )}
+              {ride.driver_earnings && (
+                <View style={styles.fareRow}>
+                  <Text style={styles.fareLabel}>Driver earnings</Text>
+                  <Text style={styles.fareValue}>₦{parseFloat(ride.driver_earnings).toLocaleString()}</Text>
+                </View>
+              )}
+            </>
+          )}
+
+          {isGathering && (
+            <>
+              <View style={styles.divider} />
+              {canDispatch && (
+                <TouchableOpacity
+                  style={[styles.dispatchBtn, dispatching && styles.dispatchBtnDisabled]}
+                  onPress={handleDispatch}
+                  disabled={dispatching}
+                  activeOpacity={0.8}
+                >
+                  <MaterialIcons name="send" size={18} color="#fff" />
+                  <Text style={styles.dispatchBtnText}>
+                    {dispatching ? 'Dispatching…' : 'Dispatch Ride Now'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              <Text style={styles.dispatchHint}>
+                {canDispatch
+                  ? `${confirmedCount} rider(s) confirmed. You can dispatch now or wait for more.`
+                  : 'Waiting for at least one other rider to confirm before dispatching.'}
+              </Text>
+
+              {isCreator && (
+                <TouchableOpacity style={styles.cancelBtn} onPress={handleCancelRide}>
+                  <Text style={styles.cancelBtnText}>Cancel Ride</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+
+          {isMatching && (
+            <>
+              <View style={styles.divider} />
+              <View style={styles.matchingCard}>
+                <ActivityIndicator size="small" color="#3b82f6" />
+                <Text style={styles.matchingText}>Searching for an available driver…</Text>
+              </View>
+            </>
+          )}
+
+          {isMatched && (
+            <>
+              <View style={styles.divider} />
+              <View style={[styles.matchingCard, { borderColor: '#10b981' }]}>
+                <MaterialIcons name="check-circle" size={24} color="#10b981" />
+                <Text style={[styles.matchingText, { color: '#10b981' }]}>Driver matched! Check your active ride.</Text>
+              </View>
+            </>
+          )}
+
         </View>
-
-        {/* Fare breakdown */}
-        {ride.anchor_fare && (
-          <View style={styles.card}>
-            <Text style={styles.cardLabel}>FARE BREAKDOWN</Text>
-            <View style={styles.fareRow}>
-              <Text style={styles.fareLabel}>Anchor fare (longest leg)</Text>
-              <Text style={styles.fareValue}>₦{parseFloat(ride.anchor_fare).toLocaleString()}</Text>
-            </View>
-            {ride.total_collected && (
-              <View style={styles.fareRow}>
-                <Text style={styles.fareLabel}>Total collected</Text>
-                <Text style={[styles.fareValue, { color: '#10b981', fontWeight: '700' }]}>
-                  ₦{parseFloat(ride.total_collected).toLocaleString()}
-                </Text>
-              </View>
-            )}
-            {ride.driver_earnings && (
-              <View style={styles.fareRow}>
-                <Text style={styles.fareLabel}>Driver earnings</Text>
-                <Text style={styles.fareValue}>₦{parseFloat(ride.driver_earnings).toLocaleString()}</Text>
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* Actions */}
-        {isGathering && (
-          <View style={styles.actionsCard}>
-            {canDispatch && (
-              <TouchableOpacity
-                style={[styles.dispatchBtn, dispatching && styles.dispatchBtnDisabled]}
-                onPress={handleDispatch}
-                disabled={dispatching}
-                activeOpacity={0.8}
-              >
-                <MaterialIcons name="send" size={18} color="#fff" />
-                <Text style={styles.dispatchBtnText}>
-                  {dispatching ? 'Dispatching…' : 'Dispatch Ride Now'}
-                </Text>
-              </TouchableOpacity>
-            )}
-            <Text style={styles.dispatchHint}>
-              {canDispatch
-                ? `${confirmedCount} rider(s) confirmed. You can dispatch now or wait for more.`
-                : 'Waiting for at least one other rider to confirm before dispatching.'}
-            </Text>
-          </View>
-        )}
-
-        {isMatching && (
-          <View style={styles.matchingCard}>
-            <ActivityIndicator size="small" color="#3b82f6" />
-            <Text style={styles.matchingText}>Searching for an available driver…</Text>
-          </View>
-        )}
-
-        {isMatched && (
-          <View style={[styles.matchingCard, { borderColor: '#10b981' }]}>
-            <MaterialIcons name="check-circle" size={24} color="#10b981" />
-            <Text style={[styles.matchingText, { color: '#10b981' }]}>Driver matched! Check your active ride.</Text>
-          </View>
-        )}
       </ScrollView>
     </View>
   )
@@ -453,63 +493,45 @@ const styles = StyleSheet.create({
     width: 36, height: 36, borderRadius: 18,
     backgroundColor: '#f3f3f3', alignItems: 'center', justifyContent: 'center',
   },
-  headerTitle: { flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '700', color: '#1a1c1c' },
+  headerTitle: { flex: 1, fontSize: 16, fontWeight: '700', color: '#1a1c1c', marginLeft: 12 },
+  headerStatus: { fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
   loadingText: { marginTop: 12, color: '#8b8b8b', fontSize: 14 },
   errorText: { marginTop: 12, color: '#1a1c1c', fontSize: 16, fontWeight: '600' },
   retryBtn: { marginTop: 16, paddingHorizontal: 24, paddingVertical: 12, backgroundColor: '#6A1B9A', borderRadius: 10 },
   retryBtnText: { color: '#fff', fontWeight: '700' },
-  content: { padding: 16 },
+  content: { paddingTop: 4, paddingHorizontal: 0 },
 
-  // Status banner
-  statusBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: '#f59e0b', borderRadius: 12,
-    paddingHorizontal: 16, paddingVertical: 12, marginBottom: 14,
-  },
-  bannerGathering: { backgroundColor: '#f59e0b' },
-  bannerMatching: { backgroundColor: '#3b82f6' },
-  bannerMatched: { backgroundColor: '#10b981' },
-  statusBannerText: { color: '#fff', fontWeight: '700', fontSize: 14, flex: 1 },
-
-  // Cards
+  // Cards & Layout
   card: {
-    backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 12,
+    backgroundColor: '#ffffffff', padding: 16, marginBottom: 0,
     borderWidth: 1, borderColor: '#f0f0f0',
+    marginHorizontal: 4, marginTop: 0,
   },
+  divider: { height: 1, backgroundColor: '#f0f0f0', marginVertical: 16 },
   cardLabel: {
     fontSize: 11, fontWeight: '700', color: '#9ca3af',
     letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 10,
   },
 
-  // Destination
-  destinationRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 12 },
+  // Compact Destination
+  compactDestinationRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   destinationText: { fontSize: 16, fontWeight: '700', color: '#1a1c1c', flex: 1, lineHeight: 22 },
-  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  metaPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#f3f4f6', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20,
-  },
-  metaPillText: { fontSize: 12, color: '#6b7280', fontWeight: '500' },
+  compactMetaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginLeft: 0 },
+  compactMetaText: { fontSize: 13, color: '#6b7280', fontWeight: '500' },
+  compactMetaDot: { fontSize: 13, color: '#d1d5db', marginHorizontal: 2 },
 
   // Share code
-  codeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  shareCode: {
-    fontSize: 28, fontWeight: '900', letterSpacing: 6, color: '#6A1B9A',
-    fontFamily: 'monospace', flex: 1,
+  qrContainer: { alignItems: 'center', marginBottom: 16 },
+  qrImage: { width: 220, height: 220, marginBottom: 16 },
+  codeBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#f5effb', paddingHorizontal: 18, paddingVertical: 10,
+    borderRadius: 24,
   },
-  copyBtn: {
-    width: 40, height: 40, borderRadius: 10,
-    backgroundColor: '#f5effb', alignItems: 'center', justifyContent: 'center',
-  },
-  codeHint: { fontSize: 12, color: '#9ca3af', marginBottom: 14 },
-  shareActionsRow: { flexDirection: 'row', gap: 8 },
-  shareActionBtn: {
-    flex: 1, alignItems: 'center', paddingVertical: 12,
-    backgroundColor: '#f9f9f9', borderRadius: 12, gap: 4,
-    borderWidth: 1, borderColor: '#f0f0f0',
-  },
-  shareActionIcon: { fontSize: 22 },
-  shareActionText: { fontSize: 11, fontWeight: '600', color: '#6b7280' },
+  shareCodeText: { fontSize: 20, fontWeight: '900', letterSpacing: 4, color: '#6A1B9A', fontFamily: 'monospace' },
+  inlineActionDivider: { width: 1, height: 22, backgroundColor: '#e5d5f5', marginHorizontal: 2 },
+  iconBtn: { padding: 4 },
+  qrHint: { fontSize: 13, color: '#9ca3af', marginTop: 14, textAlign: 'center' },
 
   // Riders
   riderRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12 },
@@ -532,19 +554,20 @@ const styles = StyleSheet.create({
   fareValue: { fontSize: 13, fontWeight: '600', color: '#1a1c1c' },
 
   // Actions
-  actionsCard: { backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#f0f0f0' },
   dispatchBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: '#4a148c', borderRadius: 12, paddingVertical: 14, marginBottom: 10,
+    backgroundColor: '#6A1B9A', flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'center', paddingVertical: 14, borderRadius: 10, gap: 8,
   },
   dispatchBtnDisabled: { backgroundColor: '#c4b0d9' },
-  dispatchBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  dispatchHint: { fontSize: 12, color: '#8b8b8b', textAlign: 'center', lineHeight: 18 },
+  dispatchBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  dispatchHint: { color: '#6b7280', fontSize: 12, textAlign: 'center', marginTop: 10, lineHeight: 18 },
+  cancelBtn: { marginTop: 16, alignItems: 'center' },
+  cancelBtnText: { color: '#ef4444', fontSize: 14, fontWeight: '600' },
 
   // Matching
   matchingCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 12,
+    backgroundColor: '#fff', borderRadius: 14, padding: 16,
     borderWidth: 1.5, borderColor: '#3b82f6',
   },
   matchingText: { fontSize: 14, fontWeight: '600', color: '#3b82f6', flex: 1 },

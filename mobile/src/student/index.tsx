@@ -145,8 +145,10 @@ function StudentAppInner() {
   const handleDeepLink = useCallback((url: string | null) => {
     if (!url) return
     try {
-      // Supports: lrride://share/CODE and https://futmride.app/share/CODE
-      const match = url.match(/(?:lrride:\/\/|https:\/\/futmride\.app\/)share\/([A-Z0-9]+)/i)
+      // Supports:
+      //   lrride://share/CODE         (custom scheme, also what the backend redirect page bounces to)
+      //   https://lrride-server.onrender.com/share/CODE  (real HTTPS link shared in WhatsApp)
+      const match = url.match(/(?:lrride:\/\/|https:\/\/(?:lrride-server\.onrender\.com|futmride\.app)\/)share\/([A-Z0-9]+)/i)
       if (match?.[1]) {
         setDeepLinkShareCode(match[1].toUpperCase())
         setActiveTab('rides')
@@ -811,6 +813,10 @@ function StudentAppInner() {
           onQrScanned={(token) => {
             setGarageQrToken(token)
             setRideScreen('garage')
+          }}
+          onShareCodeScanned={(code) => {
+            setDeepLinkShareCode(code)
+            setActiveTab('rides')
           }}
           activeRide={activeRideSummary}
         />

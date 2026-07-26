@@ -19,7 +19,12 @@ import { useSettingsStore } from '../../core/settingsStore'
 import { useUIPreferencesStore } from '../../core/uiPreferencesStore'
 import MapView, { Marker, Callout, Circle, Region, PROVIDER_GOOGLE } from 'react-native-maps'
 import { CameraView, useCameraPermissions } from 'expo-camera'
-import * as LocationService from 'expo-location'
+import * as Location from 'expo-location'
+import {
+  getVerifiedLocation,
+  LocationError,
+  MINNA_SERVICE_AREA,
+} from '../../core/locationService'
 import useWalletStore from '../../core/walletStore'
 import { useLocations } from '../../../services/locationDataService'
 import { useStudentProfileStore } from '../../core/studentProfileStore'
@@ -108,15 +113,21 @@ type Location = {
 const LOCATION_BUFFER_KM = 25
 
 const computeBounds = (locations: Location[], bufferKm: number) => {
-  const latitudes = locations.map((loc) => loc.latitude)
-  const longitudes = locations.map((loc) => loc.longitude)
-  const minLat = Math.min(...latitudes)
-  const maxLat = Math.max(...latitudes)
-  const minLng = Math.min(...longitudes)
-  const maxLng = Math.max(...longitudes)
-  const avgLat = (minLat + maxLat) / 2
-  const latBuffer = bufferKm / 110.574
-  const lngBuffer = bufferKm / (111.32 * Math.cos((avgLat * Math.PI) / 180))
+  if (!locations || locations.length === 0) return { northEast: { latitude: 0, longitude: 0 }, southWest: { latitude: 0, longitude: 0 } }
+  let minLat = locations[0].latitude
+  let maxLat = locations[0].latitude
+  let minLng = locations[0].longitude
+  let maxLng = locations[0].longitude
+
+  for (const loc of locations) {
+    if (loc.latitude < minLat) minLat = loc.latitude
+    if (loc.latitude > maxLat) maxLat = loc.latitude
+    if (loc.longitude < minLng) minLng = loc.longitude
+    if (loc.longitude > maxLng) maxLng = loc.longitude
+  }
+
+  const latBuffer = bufferKm / 111.0
+  const lngBuffer = bufferKm / 111.32
 
   return {
     northEast: { latitude: maxLat + latBuffer, longitude: maxLng + lngBuffer },
@@ -175,6 +186,7 @@ type StudentDashboardScreenProps = {
   onBookRide?: () => void
   onViewRideStatus?: () => void
   onQrScanned?: (qrToken: string) => void
+  onShareCodeScanned?: (code: string) => void
   activeRide?: { id: string; status: string } | null
 }
 
@@ -183,6 +195,7 @@ export default function StudentDashboardScreen({
   onBookRide,
   onViewRideStatus,
   onQrScanned,
+  onShareCodeScanned,
   activeRide,
 }: StudentDashboardScreenProps) {
   const insets = useSafeAreaInsets()
@@ -339,67 +352,62 @@ export default function StudentDashboardScreen({
   const handleScan = ({ data }: { data: string }) => {
     setScanned(true)
     setScannerVisible(false)
-    // Extract the UUID qr_token from the scanned data.
-    // The QR payload could be a plain UUID, or a URL containing a UUID.
+    
+    // First, check if it's a UUID (used for garage dispatch)
     const uuidPattern = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
-    const match = data.match(uuidPattern)
-    if (match && onQrScanned) {
-      onQrScanned(match[0])
-    } else {
-      // If no valid UUID found, show an alert
-      const { Alert } = require('react-native')
-      Alert.alert('Invalid QR', 'This QR code is not a valid ride code.')
+    const uuidMatch = data.match(uuidPattern)
+    if (uuidMatch && onQrScanned) {
+      onQrScanned(uuidMatch[0])
+      return
     }
+
+    // Then, check if it's a shared ride code (typically a custom URL scheme or just the code)
+    // The code might be embedded in lrride://share/CODE or https://lrride-server.onrender.com/share/CODE
+    const shareUrlPattern = /(?:lrride:\/\/|https:\/\/(?:[^\/]+\/)?)share\/([A-Z0-9]+)/i
+    const shareUrlMatch = data.match(shareUrlPattern)
+    
+    // Or if they just scanned the raw share code (e.g. 8-12 alphanumeric characters)
+    const rawShareCodePattern = /^([A-Z0-9]{6,12})$/i
+    const rawShareCodeMatch = data.match(rawShareCodePattern)
+
+    const shareCode = shareUrlMatch?.[1] || rawShareCodeMatch?.[1]
+    
+    if (shareCode && onShareCodeScanned) {
+      onShareCodeScanned(shareCode.toUpperCase())
+      return
+    }
+
+    // If no valid format found, show an alert
+    const { Alert } = require('react-native')
+    Alert.alert('Invalid QR', 'This barcode is not a valid ride code.')
   }
 
   const handleLocateUser = async () => {
+    setLocationStatus('unknown')
     setLocationMessage(null)
-    const existing = await LocationService.getForegroundPermissionsAsync()
-    let status = existing.status
-    if (status !== 'granted') {
-      const request = await LocationService.requestForegroundPermissionsAsync()
-      status = request.status
-    }
-    if (status !== 'granted') {
-      setLocationStatus('denied')
-      setUserLocation(null)
-      setLocationMessage('Location permission denied.')
-      return
-    }
 
-    let coords: { latitude: number; longitude: number } | null = null
     try {
-      const current = await LocationService.getCurrentPositionAsync({
-        accuracy: LocationService.Accuracy.Highest,
-      })
-      coords = { latitude: current.coords.latitude, longitude: current.coords.longitude }
-    } catch (err) {
-      const lastKnown = await LocationService.getLastKnownPositionAsync({ maxAge: 600000, requiredAccuracy: 100 })
-      if (lastKnown) {
-        coords = { latitude: lastKnown.coords.latitude, longitude: lastKnown.coords.longitude }
+      const coords = await getVerifiedLocation()
+      setLocationStatus('granted')
+      setUserLocation(coords)
+      mapRef.current?.animateToRegion(
+        { latitude: coords.latitude, longitude: coords.longitude, latitudeDelta: 0.004, longitudeDelta: 0.004 },
+        500,
+      )
+    } catch (err: any) {
+      if (err instanceof LocationError) {
+        if (err.code === 'PERMISSION_DENIED') setLocationStatus('denied')
+        else if (err.code === 'OUTSIDE_SERVICE_AREA') setLocationStatus('outOfAxis')
+        else setLocationStatus('error')
+        
+        setUserLocation(null)
+        setLocationMessage(err.message)
+      } else {
+        setLocationStatus('error')
+        setUserLocation(null)
+        setLocationMessage('An unexpected error occurred while fetching your location.')
       }
     }
-
-    if (!coords) {
-      setLocationStatus('error')
-      setLocationMessage('Unable to fetch your location.')
-      return
-    }
-
-    const withinAxis = isWithinBounds(coords, MINNA_BOUNDS)
-    if (!withinAxis) {
-      setLocationStatus('outOfAxis')
-      setUserLocation(null)
-      setLocationMessage('Service is currently Minna-only. You appear outside the service area.')
-      return
-    }
-
-    setLocationStatus('granted')
-    setUserLocation(coords)
-    mapRef.current?.animateToRegion(
-      { latitude: coords.latitude, longitude: coords.longitude, latitudeDelta: 0.004, longitudeDelta: 0.004 },
-      500,
-    )
   }
 
   const locationIconColor =

@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "FUTMstd",
-    "slug": "lr-ride-mobile",
+    "name": "FUTMStd",
+    "slug": "testermode",
     "version": "1.0.0",
     "sdkVersion": "54.0.0",
     "runtimeVersion": "54.0.0",
@@ -48,8 +48,20 @@
           "data": [
             {
               "scheme": "https",
-              "host": "futmride.app",
+              "host": "lrride-server.onrender.com",
               "pathPrefix": "/share"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        },
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "lrride"
             }
           ],
           "category": [
@@ -62,7 +74,7 @@
     "scheme": "lrride",
     "extra": {
       "eas": {
-        "projectId": "f7d791f1-e8c4-4454-a701-5bbfc5c1e80b"
+        "projectId": "9c583883-3a9d-4f4c-b8cf-c5778a44cb99"
       }
     },
     "plugins": [
@@ -81,7 +93,6 @@
           "isAndroidBackgroundLocationEnabled": true
         }
       ]
-    ],
-    "owner": "heavpro"
+    ]
   }
 }
