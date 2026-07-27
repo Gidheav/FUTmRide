@@ -21,6 +21,19 @@ from .geofence import validate_coordinates_in_service_area
 from .utils import has_blocking_active_ride
 
 
+def _notify_shared_ride(user, notification_type: str, title: str, body: str, data: dict = None):
+    """Fire-and-forget push + in-app notification for shared ride events."""
+    try:
+        from apps.notifications.services import NotificationService
+        NotificationService.notify(user=user, notification_type=notification_type,
+                                   title=title, body=body, data=data or {})
+    except Exception as exc:
+        import logging
+        logging.getLogger('apps.rides').error(
+            'shared_ride_notify_failed user=%s type=%s error=%s', user.id, notification_type, str(exc)
+        )
+
+
 def generate_share_code(length=8):
     """Generate a random alphanumeric share code."""
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
@@ -207,6 +220,24 @@ class SharedRideJoinView(APIView):
             SharedRideService.compute_fares(shared_ride)
             
         shared_ride.refresh_from_db()
+
+        # Notify the joining user
+        _notify_shared_ride(
+            user=request.user,
+            notification_type='shared_ride_joined',
+            title='Joined Shared Ride',
+            body=f'You have joined a shared ride to {shared_ride.dropoff_address}.',
+            data={'share_code': shared_ride.share_code, 'ride_id': str(shared_ride.id)},
+        )
+        # Notify the creator that someone joined
+        if shared_ride.creator != request.user:
+            _notify_shared_ride(
+                user=shared_ride.creator,
+                notification_type='shared_ride_joined',
+                title='New Rider Joined',
+                body=f'{request.user.first_name} has joined your shared ride.',
+                data={'share_code': shared_ride.share_code, 'ride_id': str(shared_ride.id)},
+            )
         return Response(SharedRideDetailSerializer(shared_ride).data)
 
 
@@ -227,6 +258,25 @@ class SharedRideConfirmView(APIView):
             )
             
         shared_ride.refresh_from_db()
+        rider.refresh_from_db()
+
+        # Notify rider of successful payment
+        _notify_shared_ride(
+            user=request.user,
+            notification_type='shared_ride_confirmed',
+            title='Seat Confirmed & Paid',
+            body=f'Your seat for the shared ride to {shared_ride.dropoff_address} is confirmed. ₦{rider.fare_share or ""} debited.',
+            data={'share_code': shared_ride.share_code, 'ride_id': str(shared_ride.id)},
+        )
+        # Notify creator
+        if shared_ride.creator != request.user:
+            _notify_shared_ride(
+                user=shared_ride.creator,
+                notification_type='shared_ride_confirmed',
+                title='Rider Confirmed',
+                body=f'{request.user.first_name} has confirmed and paid their share.',
+                data={'share_code': shared_ride.share_code, 'ride_id': str(shared_ride.id)},
+            )
         return Response(SharedRideDetailSerializer(shared_ride).data)
 
 
@@ -246,6 +296,16 @@ class SharedRideDispatchView(APIView):
             )
 
         shared_ride.refresh_from_db()
+
+        # Notify all confirmed riders that the ride has been dispatched
+        for rider in shared_ride.riders.filter(status=SharedRideRider.Status.CONFIRMED):
+            _notify_shared_ride(
+                user=rider.user,
+                notification_type='shared_ride_dispatched',
+                title='Ride Dispatched! 🚗',
+                body=f'Your shared ride to {shared_ride.dropoff_address} is now being matched to a driver.',
+                data={'share_code': shared_ride.share_code, 'ride_id': str(shared_ride.id)},
+            )
         return Response(SharedRideDetailSerializer(shared_ride).data)
 
 
@@ -286,13 +346,23 @@ class SharedRideCancelView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             
-            # Refund all confirmed riders
+            # Refund all confirmed riders + notify them
             with transaction.atomic():
-                for rider in shared_ride.riders.filter(status=SharedRideRider.Status.CONFIRMED):
+                confirmed_riders = list(shared_ride.riders.filter(status=SharedRideRider.Status.CONFIRMED))
+                for rider in confirmed_riders:
                     SharedRideService.refund_rider(rider)
                 
                 shared_ride.status = SharedRide.Status.CANCELLED
                 shared_ride.save()
+
+            for rider in confirmed_riders:
+                _notify_shared_ride(
+                    user=rider.user,
+                    notification_type='shared_ride_cancelled',
+                    title='Shared Ride Cancelled',
+                    body=f'The shared ride to {shared_ride.dropoff_address} was cancelled by the creator. Your fare has been refunded.',
+                    data={'share_code': shared_ride.share_code, 'ride_id': str(shared_ride.id)},
+                )
         else:
             # Rider cancels their own seat
             rider = get_object_or_404(SharedRideRider, shared_ride=shared_ride, user=request.user)
@@ -300,13 +370,36 @@ class SharedRideCancelView(APIView):
             with transaction.atomic():
                 if rider.status == SharedRideRider.Status.CONFIRMED:
                     SharedRideService.refund_rider(rider)
+                    _notify_shared_ride(
+                        user=request.user,
+                        notification_type='shared_ride_cancelled',
+                        title='Left Shared Ride',
+                        body=f'You have left the shared ride. Your fare has been refunded to your wallet.',
+                        data={'share_code': shared_ride.share_code, 'ride_id': str(shared_ride.id)},
+                    )
                 else:
                     rider.status = SharedRideRider.Status.CANCELLED
                     rider.save()
+                    _notify_shared_ride(
+                        user=request.user,
+                        notification_type='shared_ride_cancelled',
+                        title='Left Shared Ride',
+                        body=f'You have left the shared ride to {shared_ride.dropoff_address}.',
+                        data={'share_code': shared_ride.share_code, 'ride_id': str(shared_ride.id)},
+                    )
                     
                 # Recompute fares for remaining riders if it's still gathering
                 if shared_ride.status == SharedRide.Status.GATHERING:
                     SharedRideService.compute_fares(shared_ride)
+            # Notify the creator a rider left
+            if shared_ride.creator != request.user:
+                _notify_shared_ride(
+                    user=shared_ride.creator,
+                    notification_type='shared_ride_cancelled',
+                    title='Rider Left',
+                    body=f'{request.user.first_name} has left your shared ride.',
+                    data={'share_code': shared_ride.share_code, 'ride_id': str(shared_ride.id)},
+                )
 
         shared_ride.refresh_from_db()
         return Response(SharedRideDetailSerializer(shared_ride).data)
