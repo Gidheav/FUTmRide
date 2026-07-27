@@ -82,36 +82,32 @@ export function isWithinServiceArea(coords: Coords): boolean {
 // Core GPS fetch
 // ---------------------------------------------------------------------------
 
-/**
- * Fetch the device's current GPS coordinates with highest accuracy.
- * Falls back to last-known position (max 10 min old, 100 m accuracy).
- *
- * Does NOT check permissions or service area — use `getVerifiedLocation`
- * for the full pipeline.
- *
- * @throws {LocationError} with code `LOCATION_UNAVAILABLE` if GPS fails.
- */
 export async function getCurrentLocation(): Promise<Coords> {
   try {
-    const current = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Highest,
-    })
-    return {
-      latitude: roundCoord(current.coords.latitude),
-      longitude: roundCoord(current.coords.longitude),
-    }
-  } catch {
-    // Fallback to last known
+    // 1. Try to get a recent cached location first (super fast)
     const lastKnown = await Location.getLastKnownPositionAsync({
-      maxAge: 600_000,        // 10 minutes
-      requiredAccuracy: 100,  // 100 metres
+      maxAge: 300_000,        // 5 minutes
+      requiredAccuracy: 200,  // 200 metres
     })
+    
     if (lastKnown) {
       return {
         latitude: roundCoord(lastKnown.coords.latitude),
         longitude: roundCoord(lastKnown.coords.longitude),
       }
     }
+
+    // 2. If no recent location, fetch fresh.
+    // Use Balanced accuracy (WiFi/Cell + GPS) which is extremely fast and perfectly sufficient for a city-level geofence check.
+    const current = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.Balanced,
+    })
+    
+    return {
+      latitude: roundCoord(current.coords.latitude),
+      longitude: roundCoord(current.coords.longitude),
+    }
+  } catch {
     throw new LocationError(
       'LOCATION_UNAVAILABLE',
       'Unable to determine your location. Please ensure GPS is enabled and try again.',
@@ -150,7 +146,7 @@ export async function getVerifiedLocation(): Promise<Coords> {
   if (!isWithinServiceArea(coords)) {
     throw new LocationError(
       'OUTSIDE_SERVICE_AREA',
-      'FUTMRide is currently available only in Minna, Niger State. You appear to be outside the service area.',
+      'You appear to be outside the service area.',
     )
   }
 

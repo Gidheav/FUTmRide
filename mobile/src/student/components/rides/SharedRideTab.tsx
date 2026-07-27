@@ -56,11 +56,25 @@ const STATUS_COLORS: Record<string, string> = {
   expired: '#9ca3af',
 }
 
+function getVehicleIcon(type: string): keyof typeof MaterialIcons.glyphMap {
+  const t = (type || '').toLowerCase()
+  if (t.includes('bike') || t.includes('motor')) return 'two-wheeler'
+  if (t.includes('bus') || t.includes('shuttle')) return 'directions-bus'
+  if (t.includes('keke') || t.includes('tricycle')) return 'electric-rickshaw'
+  return 'directions-car'
+}
+
+function formatRideStatus(status: string) {
+  if (!status) return ''
+  if (status === 'gathering') return 'WAITING'
+  return status.replace(/_/g, ' ').toUpperCase()
+}
+
 function StatusBadge({ status }: { status: string }) {
   const color = STATUS_COLORS[status] ?? '#6b7280'
   return (
     <View style={[styles.badge, { backgroundColor: color + '22' }]}>
-      <Text style={[styles.badgeText, { color }]}>{status.replace('_', ' ').toUpperCase()}</Text>
+      <Text style={[styles.badgeText, { color }]}>{formatRideStatus(status)}</Text>
     </View>
   )
 }
@@ -95,7 +109,7 @@ function RideCard({
       </View>
       <View style={styles.cardMeta}>
         <View style={styles.metaItem}>
-          <MaterialIcons name="directions-car" size={14} color="#8b8b8b" />
+          <MaterialIcons name={getVehicleIcon(ride.vehicle_type)} size={14} color="#8b8b8b" />
           <Text style={styles.metaText}>{ride.vehicle_type_label}</Text>
         </View>
         <View style={styles.metaItem}>
@@ -118,15 +132,11 @@ function RideCard({
 function InviteCard({
   ride,
   myRider,
-  onAccept,
-  onDecline,
-  accepting,
+  onPress,
 }: {
   ride: SharedRide
   myRider: Rider
-  onAccept: () => void
-  onDecline: () => void
-  accepting: boolean
+  onPress: () => void
 }) {
   const joined = ride.riders.filter(r => r.status !== 'cancelled').length
   const myFare = myRider.fare_share ? `₦${parseFloat(myRider.fare_share).toLocaleString()}` : 'Calculating...'
@@ -134,9 +144,9 @@ function InviteCard({
   const isConfirmed = myRider.status === 'confirmed'
 
   return (
-    <View style={styles.inviteCard}>
+    <TouchableOpacity style={styles.inviteCard} onPress={onPress} activeOpacity={0.85}>
       <View style={styles.inviteHeader}>
-        <MaterialIcons name="card-giftcard" size={20} color="#6A1B9A" />
+        <MaterialIcons name="mail-outline" size={20} color="#6A1B9A" />
         <Text style={styles.inviteFrom}>
           Invited by {ride.creator.first_name}
         </Text>
@@ -146,34 +156,19 @@ function InviteCard({
         }
       </View>
 
-      <Text style={styles.inviteDestination} numberOfLines={2}>
-        📍 To: {ride.dropoff_address}
-      </Text>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 4, marginBottom: 6 }}>
+        <MaterialIcons name="place" size={16} color="#ef4444" style={{ marginTop: 2 }} />
+        <Text style={[styles.inviteDestination, { marginBottom: 0, flex: 1 }]} numberOfLines={2}>
+          {ride.dropoff_address}
+        </Text>
+      </View>
       <Text style={styles.inviteMeta}>
         {ride.vehicle_type_label} · {joined}/{ride.max_riders} riders
         {myRider.fare_share ? ` · Your share: ${myFare}` : ''}
       </Text>
 
-      {!isConfirmed && isPending && (
-        <View style={styles.inviteActions}>
-          <TouchableOpacity
-            style={styles.declineBtn}
-            onPress={onDecline}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.declineBtnText}>Decline</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.acceptBtn, accepting && styles.acceptBtnDisabled]}
-            onPress={onAccept}
-            disabled={accepting}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.acceptBtnText}>{accepting ? 'Processing…' : 'Confirm & Pay'}</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-    </View>
+
+    </TouchableOpacity>
   )
 }
 
@@ -285,6 +280,11 @@ export default function SharedRideTab({ currentUserId, deepLinkShareCode, onDeep
           shareCode={openRide.share_code}
           initialRide={openRide}
           onClose={() => { setOpenRide(null); fetchRides(true) }}
+          onEditPickup={() => { 
+            const code = openRide.share_code; 
+            setOpenRide(null); 
+            setOpenJoinCode(code); 
+          }}
           hideTopInset={true}
         />
       </View>
@@ -368,9 +368,7 @@ export default function SharedRideTab({ currentUserId, deepLinkShareCode, onDeep
                     key={ride.id}
                     ride={ride}
                     myRider={myRider}
-                    onAccept={() => handleAccept(ride)}
-                    onDecline={() => handleDecline(ride)}
-                    accepting={acceptingId === ride.id}
+                    onPress={() => setOpenRide(ride)}
                   />
                 )
               })}
@@ -441,7 +439,7 @@ const styles = StyleSheet.create({
   joinBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
 
   // Section
-  section: { marginBottom: 24 },
+  section: { marginBottom: 16 },
   sectionTitle: {
     fontSize: 13,
     fontWeight: '700',

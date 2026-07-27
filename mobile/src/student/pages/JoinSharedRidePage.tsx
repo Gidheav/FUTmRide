@@ -1,7 +1,6 @@
 import { useMemo, useState, useEffect } from 'react'
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   StyleSheet,
   Text,
@@ -10,6 +9,8 @@ import {
   TouchableWithoutFeedback,
   View,
   Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
@@ -18,6 +19,8 @@ import { getVerifiedLocation, LocationError } from '../../core/locationService'
 import { useLocations } from '../../../services/locationDataService'
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps'
 import SharedRideLobbyPage from './SharedRideLobbyPage'
+import { useToastStore } from '../../core/toastStore'
+import { isFuzzyMatch } from '../../core/searchUtils'
 
 function getDistanceKM(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371;
@@ -42,6 +45,8 @@ export default function JoinSharedRidePage({ initialCode = '', onClose, hideTopI
   const [searchQuery, setSearchQuery] = useState('')
   const [isFetchingLocation, setIsFetchingLocation] = useState(false)
 
+  const showToast = useToastStore((state) => state.showToast)
+
   const rawLocations = useLocations()
   const locations = useMemo(() => {
     return (rawLocations as any[]).map((loc) => ({
@@ -54,11 +59,15 @@ export default function JoinSharedRidePage({ initialCode = '', onClose, hideTopI
   }, [rawLocations])
 
   const filteredLocations = useMemo(() => {
-    if (!searchQuery) return locations
-    return locations.filter(l => 
-      l.label.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      (l.description && l.description.toLowerCase().includes(searchQuery.toLowerCase()))
-    )
+    const query = searchQuery.trim()
+    const list = !query
+      ? locations
+      : locations.filter(l => {
+          const fields = [l.label, l.description].filter(Boolean) as string[]
+          return fields.some(field => isFuzzyMatch(query, field))
+        })
+    // Always display alphabetically for consistent, easy scanning
+    return [...list].sort((a, b) => a.label.localeCompare(b.label))
   }, [locations, searchQuery])
 
   const handleFetchRide = async (codeToFetch: string) => {
@@ -70,9 +79,9 @@ export default function JoinSharedRidePage({ initialCode = '', onClose, hideTopI
       setStep(2)
     } catch (err: any) {
       if (err.response?.data?.error?.message) {
-        Alert.alert('Error', err.response.data.error.message)
+        showToast(err.response.data.error.message, 'error')
       } else {
-        Alert.alert('Error', 'Invalid or expired share code')
+        showToast('Invalid or expired share code', 'error')
       }
     } finally {
       setLoading(false)
@@ -94,9 +103,9 @@ export default function JoinSharedRidePage({ initialCode = '', onClose, hideTopI
       setShowLocationModal(false)
     } catch (err: any) {
       if (err instanceof LocationError) {
-        Alert.alert('Location Error', err.message)
+        showToast(err.message, 'error')
       } else {
-        Alert.alert('Location Error', 'An unexpected error occurred while fetching your location.')
+        showToast('An unexpected error occurred while fetching your location.', 'error')
       }
     } finally {
       setIsFetchingLocation(false)
@@ -112,7 +121,7 @@ export default function JoinSharedRidePage({ initialCode = '', onClose, hideTopI
 
   const handleJoin = async () => {
     if (!pickup) {
-      Alert.alert('Error', 'Please select your pickup location')
+      showToast('Please select your pickup location', 'error')
       return
     }
 
@@ -124,10 +133,7 @@ export default function JoinSharedRidePage({ initialCode = '', onClose, hideTopI
         Number(ride.dropoff_longitude)
       );
       if (dist < 0.2) {
-        Alert.alert(
-          'Too Close to Destination',
-          'Your selected pickup location is extremely close to the drop-off point. Please choose a valid starting point for this shared ride.'
-        );
+        showToast('Your selected pickup location is extremely close to the drop-off point. Please choose a valid starting point for this shared ride.', 'error')
         return;
       }
     }
@@ -141,7 +147,7 @@ export default function JoinSharedRidePage({ initialCode = '', onClose, hideTopI
       })
       setJoinedCode(ride.share_code)
     } catch (e: any) {
-      Alert.alert('Error', e?.response?.data?.error?.message || 'Failed to join ride')
+      showToast(e?.response?.data?.error?.message || 'Failed to join ride', 'error')
     } finally {
       setLoading(false)
     }
@@ -153,49 +159,60 @@ export default function JoinSharedRidePage({ initialCode = '', onClose, hideTopI
 
   return (
     <SafeAreaView style={styles.container} edges={hideTopInset ? ['left', 'right', 'bottom'] : ['top', 'left', 'right', 'bottom']}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={onClose}>
+      {/* Floating Header Overlay */}
+      <View style={styles.floatingHeader} pointerEvents="box-none">
+        <TouchableOpacity style={styles.floatingIconBtn} onPress={onClose} activeOpacity={0.8}>
           <MaterialIcons name="close" size={24} color="#1a1c1c" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Join Shared Ride</Text>
+        
+        <View style={styles.floatingTitlePill}>
+          <Text style={styles.floatingTitleText}>Join Shared Ride</Text>
+        </View>
+
         {step === 2 ? (
-          <TouchableOpacity onPress={() => setShowLocationModal(true)} style={{ padding: 8, marginRight: -8 }}>
+          <TouchableOpacity style={styles.floatingIconBtn} onPress={() => setShowLocationModal(true)} activeOpacity={0.8}>
             <MaterialIcons name="search" size={24} color="#1a1c1c" />
           </TouchableOpacity>
         ) : (
-          <View style={{ width: 40 }} />
+          <View style={{ width: 44 }} />
         )}
       </View>
 
-      <View style={[styles.content, step === 2 && { padding: 0 }]}>
+      <View style={[styles.content, step === 2 ? { padding: 0 } : { paddingTop: 80 }]}>
         {step === 1 && (
-          <>
-            <Text style={styles.stepTitle}>Enter Share Code</Text>
-            <Text style={styles.stepSub}>Ask your friend for the 8-character code.</Text>
+          <View style={styles.stepOneContainer}>
+            <Text style={styles.stepTitle}>Enter the 8-character shared ride code</Text>
             
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. ABCD1234"
-              value={code}
-              onChangeText={setCode}
-              autoCapitalize="characters"
-              maxLength={12}
-            />
+            <View style={styles.searchRow}>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="e.g. ABCD1234"
+                value={code}
+                onChangeText={setCode}
+                autoCapitalize="characters"
+                maxLength={12}
+              />
 
-            <TouchableOpacity 
-              style={[styles.primaryButton, code.length < 4 && styles.disabledButton]} 
-              disabled={code.length < 4 || loading}
-              onPress={() => handleFetchRide(code)}
-            >
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Find Ride</Text>}
-            </TouchableOpacity>
-          </>
+              <TouchableOpacity 
+                style={[styles.searchButton, code.length < 4 && styles.disabledButton]} 
+                disabled={code.length < 4 || loading}
+                onPress={() => handleFetchRide(code)}
+              >
+                {loading ? <ActivityIndicator color="#fff" /> : (
+                  <>
+                    <MaterialIcons name="search" size={20} color="#fff" style={{ marginRight: 6 }} />
+                    <Text style={styles.searchButtonText}>Search</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
         )}
 
         {step === 2 && ride && (
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, overflow: 'hidden' }}>
             <MapView
-              style={{ flex: 1 }}
+              style={{ flex: 1, marginBottom: -30 }} // Hides Google logo via overflow
               provider={PROVIDER_GOOGLE}
               initialRegion={{
                 latitude: Number(ride.dropoff_latitude) || 9.544,
@@ -207,6 +224,7 @@ export default function JoinSharedRidePage({ initialCode = '', onClose, hideTopI
               zoomEnabled={true}
               showsUserLocation={true}
               showsMyLocationButton={false}
+              toolbarEnabled={false}
               minZoomLevel={11}
             >
               <Marker
@@ -214,8 +232,19 @@ export default function JoinSharedRidePage({ initialCode = '', onClose, hideTopI
                   latitude: Number(ride.dropoff_latitude) || 9.544,
                   longitude: Number(ride.dropoff_longitude) || 6.541,
                 }}
-                pinColor="#6A1B9A"
+                pinColor="red"
+                title="Destination"
               />
+              {pickup && (
+                <Marker
+                  coordinate={{
+                    latitude: pickup.latitude,
+                    longitude: pickup.longitude,
+                  }}
+                  pinColor="#6A1B9A"
+                  title="Pickup"
+                />
+              )}
             </MapView>
             
             <TouchableOpacity 
@@ -256,9 +285,12 @@ export default function JoinSharedRidePage({ initialCode = '', onClose, hideTopI
         )}
       </View>
 
-      <Modal visible={showLocationModal} animationType="slide" transparent={true} onRequestClose={() => setShowLocationModal(false)}>
+      {showLocationModal && (
         <TouchableWithoutFeedback onPress={() => setShowLocationModal(false)}>
-          <View style={styles.bottomSheetOverlay}>
+          <KeyboardAvoidingView 
+            style={styles.bottomSheetOverlay} 
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
             <TouchableWithoutFeedback onPress={() => {}}>
               <View style={[styles.bottomSheetContent, { height: '85%' }]}>
                 <View style={styles.bottomSheetDragHandle} />
@@ -286,6 +318,11 @@ export default function JoinSharedRidePage({ initialCode = '', onClose, hideTopI
                   keyExtractor={item => item.id}
                   keyboardShouldPersistTaps="handled"
                   style={{ flex: 1 }}
+                  initialNumToRender={20}
+                  maxToRenderPerBatch={20}
+                  windowSize={5}
+                  removeClippedSubviews={true}
+                  getItemLayout={(_, index) => ({ length: 44, offset: 44 * index, index })}
                   ListHeaderComponent={
                     <TouchableOpacity
                       style={styles.locationItemModal}
@@ -307,67 +344,109 @@ export default function JoinSharedRidePage({ initialCode = '', onClose, hideTopI
                   }
             renderItem={({ item }) => (
               <TouchableOpacity
-                style={styles.locationItemModal}
+                style={styles.locationItemPlain}
                 onPress={() => {
                   setPickup(item)
                   setShowLocationModal(false)
                 }}
-                activeOpacity={0.7}
+                activeOpacity={0.6}
               >
-                <View style={[styles.mapIconCircle, { backgroundColor: '#f3f4f6' }]}>
-                   <MaterialIcons name="place" size={20} color="#6b7280" />
-                </View>
-                <View style={styles.locationTextContainer}>
-                  <Text style={styles.locationLabel}>{item.label}</Text>
+                <Text style={styles.locationLabelNormal}>{item.label}</Text>
+                {item.description ? (
                   <Text style={styles.locationSub}>{item.description}</Text>
-                </View>
-                  </TouchableOpacity>
-                )}
+                ) : null}
+              </TouchableOpacity>
+            )}
               />
             </View>
             </TouchableWithoutFeedback>
-          </View>
+          </KeyboardAvoidingView>
         </TouchableWithoutFeedback>
-      </Modal>
+      )}
     </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  header: {
+  floatingHeader: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    right: 16,
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    zIndex: 10,
   },
-  backButton: { padding: 8, marginLeft: -8 },
-  headerTitle: { flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '600' },
-  content: { flex: 1, padding: 20 },
-  stepTitle: { fontSize: 24, fontWeight: '700', color: '#1a1c1c', marginBottom: 8 },
-  stepSub: { fontSize: 14, color: '#6b7280', marginBottom: 24 },
-  input: {
-    backgroundColor: '#f3f4f6',
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 24,
+  floatingIconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  floatingTitlePill: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  floatingTitleText: {
+    fontSize: 14,
     fontWeight: '700',
     color: '#1a1c1c',
-    textAlign: 'center',
-    letterSpacing: 4,
-    marginBottom: 24,
   },
-  primaryButton: {
+  content: { flex: 1, padding: 20 },
+  stepOneContainer: {
+    flex: 1,
+    paddingTop: 80,
+    paddingHorizontal: 8,
+  },
+  stepTitle: { 
+    fontSize: 22, 
+    fontWeight: '700', 
+    color: '#1a1c1c', 
+    marginBottom: 32,
+    lineHeight: 32,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 12,
+    height: 56,
+  },
+  searchInput: {
+    flex: 1,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1a1c1c',
+    letterSpacing: 2,
+  },
+  searchButton: {
     backgroundColor: '#6A1B9A',
-    padding: 16,
-    borderRadius: 12,
+    borderRadius: 16,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 16,
+    justifyContent: 'center',
   },
   disabledButton: { opacity: 0.5 },
-  primaryButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  searchButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   rideInfoCard: {
     backgroundColor: '#f3e5f5',
     padding: 16,
@@ -451,7 +530,7 @@ const styles = StyleSheet.create({
   },
   floatingLocationBtn: {
     position: 'absolute',
-    top: 16,
+    top: 76,
     right: 16,
     width: 44,
     height: 44,
@@ -505,9 +584,11 @@ const styles = StyleSheet.create({
     color: '#1a1c1c',
   },
   bottomSheetOverlay: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     justifyContent: 'flex-end',
     backgroundColor: 'rgba(0,0,0,0.4)',
+    zIndex: 100,
+    elevation: 100,
   },
   bottomSheetContent: {
     backgroundColor: '#fff',
@@ -546,8 +627,21 @@ const styles = StyleSheet.create({
   locationItemModal: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#f9fafb',
+    borderBottomColor: '#f3f4f6',
+  },
+  locationItemPlain: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e5e7eb',
+    justifyContent: 'center',
+  },
+  locationLabelNormal: {
+    fontSize: 15,
+    fontWeight: '400',
+    color: '#1a1c1c',
   },
 })

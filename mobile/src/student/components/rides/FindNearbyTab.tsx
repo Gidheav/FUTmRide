@@ -9,7 +9,6 @@ import {
   View,
   BackHandler,
   ActivityIndicator,
-  Alert,
 } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
 import * as LocationService from 'expo-location'
@@ -17,6 +16,7 @@ import * as TaskManager from 'expo-task-manager'
 import { getVerifiedLocation, LocationError, roundCoord } from '../../../core/locationService'
 import api, { classifyApiError } from '../../../core/api'
 import { useLocations } from '../../../../services/locationDataService'
+import { useToastStore } from '../../../core/toastStore'
 import ActiveRidePage from '../../pages/ActiveRidePage'
 import RideMatchingPage from '../../pages/RideMatchingPage'
 import BookRidePage from '../../pages/BookRidePage'
@@ -88,25 +88,9 @@ export default function FindNearbyTab() {
   const [showBooking, setShowBooking] = useState(false)
   const [rideId, setRideId] = useState<string | null>(null)
 
-  const [locationSource, setLocationSource] = useState<'gps' | 'manual'>('gps')
-  const [manualLocation, setManualLocation] = useState<LocationOption | null>(null)
-  const [query, setQuery] = useState('')
-  const [locationPickerOpen, setLocationPickerOpen] = useState(false)
+  const showToast = useToastStore((s) => s.showToast)
 
-  // OTA location data — refreshes after silent background download
-  const rawLocations = useLocations()
-  const ALL_LOCATIONS = useMemo<LocationOption[]>(
-    () => (rawLocations as Location[]).map((loc) => ({
-      id: loc.id,
-      label: loc.name,
-      description: loc.description,
-      latitude: roundCoord(loc.latitude),
-      longitude: roundCoord(loc.longitude),
-    })),
-    [rawLocations],
-  )
-
-  const [radiusKm, setRadiusKm] = useState(DEFAULT_RADIUS_KM)
+  const [radiusKm, setRadiusKm] = useState(0.1) // Start at 100m
   const [scanError, setScanError] = useState<string | null>(null)
   const [scanLoading, setScanLoading] = useState(false)
   const [scanActive, setScanActive] = useState(false)
@@ -120,28 +104,6 @@ export default function FindNearbyTab() {
   const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  const filteredLocations = useMemo(() => {
-    if (!locationPickerOpen) return [] // Prevent mapping items when closed
-    const normalized = query.trim().toLowerCase()
-    if (!normalized) return ALL_LOCATIONS
-    return ALL_LOCATIONS.filter((item) => {
-      const haystack = `${item.label} ${item.description}`.toLowerCase()
-      return haystack.includes(normalized)
-    })
-  }, [query, locationPickerOpen, ALL_LOCATIONS])
-
-  useEffect(() => {
-    const handleBack = () => {
-      if (locationPickerOpen) {
-        setLocationPickerOpen(false)
-        return true
-      }
-      return false
-    }
-    const sub = BackHandler.addEventListener('hardwareBackPress', handleBack)
-    return () => sub.remove()
-  }, [locationPickerOpen])
 
   const stopScan = useCallback(async () => {
     if (scanIntervalRef.current) clearInterval(scanIntervalRef.current)
@@ -198,10 +160,9 @@ export default function FindNearbyTab() {
         label: 'Current location',
       }
     } catch (err: any) {
-      if (err instanceof LocationError) {
-        throw new Error(err.message)
-      }
-      throw new Error('Unable to fetch your location.')
+      const msg = err instanceof LocationError ? err.message : 'Unable to fetch your location.'
+      showToast(msg, 'error')
+      throw new Error(msg)
     }
   }
 
@@ -211,19 +172,7 @@ export default function FindNearbyTab() {
     setScanExpired(false)
 
     try {
-      let location: { latitude: number; longitude: number; label: string }
-      if (locationSource === 'manual') {
-        if (!manualLocation) {
-          throw new Error('Select a location before scanning.')
-        }
-        location = {
-          latitude: manualLocation.latitude,
-          longitude: manualLocation.longitude,
-          label: manualLocation.label,
-        }
-      } else {
-        location = await resolveCurrentLocation()
-      }
+      const location = await resolveCurrentLocation()
 
       const params: ScanParams = {
         latitude: location.latitude,
@@ -269,12 +218,13 @@ export default function FindNearbyTab() {
         // Fallback gracefully if background location is blocked by system OS
       }
     } catch (err: any) {
-      setScanError(String(err?.message || 'Unable to start scan.'))
+      const msg = String(err?.message || 'Unable to start scan.')
+      showToast(msg, 'error')
       setScanActive(false)
     } finally {
       setScanLoading(false)
     }
-  }, [fetchAvailable, locationSource, manualLocation, radiusKm, stopScan])
+  }, [fetchAvailable, radiusKm, stopScan])
 
   useEffect(() => {
     return () => {
@@ -289,25 +239,12 @@ export default function FindNearbyTab() {
     void startScan()
   }
 
-  const handleSelectLocation = (item: LocationOption) => {
-    setManualLocation(item)
-    setQuery('')
-    setLocationPickerOpen(false)
-  }
 
-  const handleLocationPress = () => {
-    Alert.alert(
-      'Location Source',
-      'Where should we search for rides?',
-      [
-        { text: 'Current GPS Location', onPress: () => setLocationSource('gps') },
-        { text: 'Search Manually', onPress: () => {
-            setLocationSource('manual')
-            setLocationPickerOpen(true)
-        }},
-        { text: 'Cancel', style: 'cancel' }
-      ]
-    )
+
+  const handleRadiusToggle = () => {
+    const currentIndex = RADIUS_OPTIONS.indexOf(radiusKm)
+    const nextIndex = (currentIndex + 1) % RADIUS_OPTIONS.length
+    setRadiusKm(RADIUS_OPTIONS[nextIndex])
   }
 
   const timeLeftLabel = scanActive ? formatRemaining(scanRemainingMs) : null
@@ -346,30 +283,18 @@ export default function FindNearbyTab() {
     )
   }
 
-  const renderLocationItem = useCallback(({ item }: { item: LocationOption }) => (
-    <TouchableOpacity
-      style={styles.modalItem}
-      onPress={() => handleSelectLocation(item)}
-    >
-      <MaterialIcons name="place" size={18} color="#6A1B9A" />
-      <View style={{ flex: 1 }}>
-        <Text style={styles.modalItemTitle}>{item.label}</Text>
-        <Text style={styles.modalItemSubtitle}>{item.description}</Text>
-      </View>
-    </TouchableOpacity>
-  ), [])
+
 
   return (
     <View style={{ flex: 1 }}>
     <ScrollView style={styles.page} contentContainerStyle={styles.pageContent} showsVerticalScrollIndicator={false}>
       <View style={styles.mainCard}>
         <View style={styles.filterTopRow}>
-          <TouchableOpacity style={styles.filterLocationBtn} onPress={handleLocationPress} activeOpacity={0.7}>
-            <MaterialIcons name={locationSource === 'gps' ? 'my-location' : 'map'} size={18} color="#6A1B9A" />
+          <TouchableOpacity style={styles.filterLocationBtn} onPress={handleRadiusToggle} activeOpacity={0.7}>
+            <MaterialIcons name="gps-fixed" size={18} color="#6A1B9A" />
             <Text style={styles.filterLocationText} numberOfLines={1}>
-              {locationSource === 'gps' ? 'Current location' : (manualLocation?.label || 'Select location')}
+              Within {radiusKm < 1 ? `${radiusKm * 1000}m` : `${radiusKm}km`}
             </Text>
-            <MaterialIcons name="arrow-drop-down" size={20} color="#8b8b8b" />
           </TouchableOpacity>
 
           <TouchableOpacity 
@@ -387,23 +312,6 @@ export default function FindNearbyTab() {
             )}
             <Text style={styles.filterScanBtnText}>{scanActive ? 'Stop' : 'Scan'}</Text>
           </TouchableOpacity>
-        </View>
-
-        <View style={styles.filterBottomRow}>
-          <Text style={styles.filterRadiusLabel}>Within:</Text>
-          <View style={styles.filterRadiusOptions}>
-            {RADIUS_OPTIONS.map((value) => (
-              <TouchableOpacity
-                key={value}
-                style={[styles.filterRadiusChip, radiusKm === value && styles.filterRadiusChipActive]}
-                onPress={() => setRadiusKm(value)}
-              >
-                <Text style={radiusKm === value ? styles.filterRadiusChipTextActive : styles.filterRadiusChipText}>
-                  {value < 1 ? `${value * 1000}m` : `${value}km`}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
         </View>
 
         {(scanActive || scanExpired || lastUpdatedAt || drivers.length > 0) && (
@@ -503,46 +411,6 @@ export default function FindNearbyTab() {
 
     </ScrollView>
 
-      {locationPickerOpen && (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#ffffff', zIndex: 999, elevation: 999 }]}>
-          <View style={styles.modalPage}>
-            <View style={styles.modalHeader}>
-              <TouchableOpacity onPress={() => setLocationPickerOpen(false)} style={styles.modalBack}>
-                <MaterialIcons name="close" size={20} color="#1a1c1c" />
-              </TouchableOpacity>
-              <Text style={styles.modalTitle}>Select location</Text>
-              <View style={styles.modalSpacer} />
-            </View>
-
-            <View style={styles.modalSearch}>
-              <MaterialIcons name="search" size={18} color="#6b7280" />
-              <TextInput
-                style={styles.modalInput}
-                placeholder="Search locations"
-                value={query}
-                onChangeText={setQuery}
-              />
-            </View>
-
-            <FlatList
-              data={filteredLocations}
-              keyExtractor={(item) => item.id}
-              showsVerticalScrollIndicator={false}
-              initialNumToRender={15}
-              maxToRenderPerBatch={10}
-              windowSize={3}
-              keyboardShouldPersistTaps="handled"
-              renderItem={renderLocationItem}
-              removeClippedSubviews={true}
-              getItemLayout={(_, index) => ({
-                length: 64,
-                offset: 64 * index,
-                index,
-              })}
-            />
-          </View>
-        </View>
-      )}
     </View>
   )
 }
@@ -576,13 +444,7 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f9f9f9',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
+    gap: 6,
   },
   filterLocationText: {
     flex: 1,
@@ -797,70 +659,5 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '600',
     fontSize: 13,
-  },
-  modalPage: {
-    flex: 1,
-    backgroundColor: '#ffffff',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  modalBack: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#f3f4f6',
-  },
-  modalTitle: {
-    flex: 1,
-    textAlign: 'center',
-    fontWeight: '700',
-    color: '#1a1c1c',
-  },
-  modalSpacer: {
-    width: 32,
-  },
-  modalSearch: {
-    margin: 16,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  modalInput: {
-    flex: 1,
-    fontSize: 14,
-  },
-  modalList: {
-    paddingHorizontal: 16,
-    paddingBottom: 24,
-    gap: 12,
-  },
-  modalItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#f0f0f0',
-  },
-  modalItemTitle: {
-    fontWeight: '600',
-    color: '#1a1c1c',
-  },
-  modalItemSubtitle: {
-    fontSize: 12,
-    color: '#6b7280',
   },
 })

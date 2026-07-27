@@ -50,6 +50,7 @@ type Props = {
   shareCode: string
   initialRide?: SharedRide | null
   onClose: () => void
+  onEditPickup?: () => void
   hideTopInset?: boolean
 }
 
@@ -72,12 +73,12 @@ const STATUS_COLOR: Record<string, string> = {
   cancelled: '#9ca3af',
 }
 
-function formatCountdown(expiresAt: string) {
-  const diff = Math.max(0, new Date(expiresAt).getTime() - Date.now())
-  const mins = Math.floor(diff / 60000)
-  const secs = Math.floor((diff % 60000) / 1000)
-  return diff === 0 ? 'Expired' : `${mins}:${secs.toString().padStart(2, '0')}`
+function formatRideStatus(status: string) {
+  if (!status) return ''
+  if (status === 'gathering') return 'Waiting'
+  return status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
+
 
 function getVehicleIcon(type: string): keyof typeof MaterialIcons.glyphMap {
   const t = (type || '').toLowerCase()
@@ -87,15 +88,13 @@ function getVehicleIcon(type: string): keyof typeof MaterialIcons.glyphMap {
   return 'directions-car'
 }
 
-export default function SharedRideLobbyPage({ shareCode, initialRide, onClose, hideTopInset }: Props) {
+export default function SharedRideLobbyPage({ shareCode, initialRide, onClose, onEditPickup, hideTopInset = false }: Props) {
   const insets = useSafeAreaInsets()
   const [ride, setRide] = useState<SharedRide | null>(initialRide || null)
   const [loading, setLoading] = useState(!initialRide)
   const [dispatching, setDispatching] = useState(false)
   const [confirming, setConfirming] = useState(false)
-  const [countdown, setCountdown] = useState('')
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const fetchRide = useCallback(async (silent = false) => {
     if (!silent && !ride) setLoading(true)
@@ -117,19 +116,10 @@ export default function SharedRideLobbyPage({ shareCode, initialRide, onClose, h
     pollRef.current = setInterval(() => fetchRide(true), 5000)
     return () => {
       if (pollRef.current) clearInterval(pollRef.current)
-      if (timerRef.current) clearInterval(timerRef.current)
     }
   }, [fetchRide])
 
-  // Countdown timer
-  useEffect(() => {
-    if (!ride?.expires_at) return
-    setCountdown(formatCountdown(ride.expires_at))
-    timerRef.current = setInterval(() => {
-      setCountdown(formatCountdown(ride.expires_at))
-    }, 1000)
-    return () => { if (timerRef.current) clearInterval(timerRef.current) }
-  }, [ride?.expires_at])
+
 
   // Stop polling if ride is no longer live
   useEffect(() => {
@@ -200,30 +190,6 @@ export default function SharedRideLobbyPage({ shareCode, initialRide, onClose, h
     )
   }
 
-  const handleConfirmMyShare = async () => {
-    Alert.alert(
-      'Confirm & Pay',
-      `Your share: ₦${myRider ? parseFloat(myRider.fare_share || '0').toLocaleString() : '—'}. This will debit your wallet.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm',
-          onPress: async () => {
-            try {
-              setConfirming(true)
-              await api.post(`rides/shared/${ride?.id}/confirm/`)
-              await fetchRide()
-            } catch (e: any) {
-              Alert.alert('Error', e?.response?.data?.error?.message || 'Could not confirm payment.')
-            } finally {
-              setConfirming(false)
-            }
-          },
-        },
-      ]
-    )
-  }
-
   const { user } = useAuthStore()
 
   const handleCancelRide = async () => {
@@ -247,6 +213,40 @@ export default function SharedRideLobbyPage({ shareCode, initialRide, onClose, h
         },
       ]
     )
+  }
+
+  const handleLeaveRide = async () => {
+    Alert.alert(
+      'Leave Ride',
+      'Are you sure you want to leave this shared ride?',
+      [
+        { text: 'Stay', style: 'cancel' },
+        {
+          text: 'Leave',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api.post(`rides/shared/${ride?.id}/cancel/`)
+              onClose()
+            } catch (e: any) {
+              Alert.alert('Error', e?.response?.data?.error?.message || 'Could not leave ride.')
+            }
+          },
+        },
+      ]
+    )
+  }
+
+  const handleConfirmAndPay = async () => {
+    setConfirming(true)
+    try {
+      await api.post(`rides/shared/${ride?.id}/confirm/`)
+      await fetchRide(true)
+    } catch (e: any) {
+      Alert.alert('Error', e?.response?.data?.error?.message || 'Failed to confirm. Check wallet balance.')
+    } finally {
+      setConfirming(false)
+    }
   }
 
   const isCreator = ride?.creator.id === user?.id
@@ -292,7 +292,7 @@ export default function SharedRideLobbyPage({ shareCode, initialRide, onClose, h
           styles.headerStatus,
           isGathering ? { color: '#f59e0b' } : isMatching ? { color: '#3b82f6' } : { color: '#10b981' }
         ]}>
-          {isGathering ? 'Waiting' : isMatching ? 'Matching' : ride.status === 'matched' ? 'Matched' : ride.status.replace('_', ' ')}
+          {formatRideStatus(ride.status)}
         </Text>
       </View>
 
@@ -323,7 +323,7 @@ export default function SharedRideLobbyPage({ shareCode, initialRide, onClose, h
             </View>
           </View>
 
-          {isGathering && (
+          {isGathering && isCreator && (
             <>
               <View style={styles.divider} />
 
@@ -424,30 +424,60 @@ export default function SharedRideLobbyPage({ shareCode, initialRide, onClose, h
 
           {isGathering && (
             <>
-              <View style={styles.divider} />
               {canDispatch && (
-                <TouchableOpacity
-                  style={[styles.dispatchBtn, dispatching && styles.dispatchBtnDisabled]}
-                  onPress={handleDispatch}
-                  disabled={dispatching}
-                  activeOpacity={0.8}
-                >
-                  <MaterialIcons name="send" size={18} color="#fff" />
-                  <Text style={styles.dispatchBtnText}>
-                    {dispatching ? 'Dispatching…' : 'Dispatch Ride Now'}
+                <>
+                  <View style={styles.divider} />
+                  <TouchableOpacity
+                    style={[styles.dispatchBtn, dispatching && styles.dispatchBtnDisabled]}
+                    onPress={handleDispatch}
+                    disabled={dispatching}
+                    activeOpacity={0.8}
+                  >
+                    <MaterialIcons name="send" size={18} color="#fff" />
+                    <Text style={styles.dispatchBtnText}>
+                      {dispatching ? 'Dispatching…' : 'Dispatch Ride Now'}
+                    </Text>
+                  </TouchableOpacity>
+                  <Text style={styles.dispatchHint}>
+                    {canDispatch
+                      ? `${confirmedCount} rider(s) confirmed. You can dispatch now or wait for more.`
+                      : 'Waiting for at least one other rider to confirm before dispatching.'}
                   </Text>
-                </TouchableOpacity>
+                </>
               )}
-              <Text style={styles.dispatchHint}>
-                {canDispatch
-                  ? `${confirmedCount} rider(s) confirmed. You can dispatch now or wait for more.`
-                  : 'Waiting for at least one other rider to confirm before dispatching.'}
-              </Text>
 
               {isCreator && (
-                <TouchableOpacity style={styles.cancelBtn} onPress={handleCancelRide}>
-                  <Text style={styles.cancelBtnText}>Cancel Ride</Text>
-                </TouchableOpacity>
+                <>
+                  {!canDispatch && <View style={styles.divider} />}
+                  <TouchableOpacity style={styles.cancelBtn} onPress={handleCancelRide}>
+                    <Text style={styles.cancelBtnText}>Cancel Ride</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+
+              {!isCreator && myRider && (
+                <View style={styles.riderActionsContainer}>
+                  {myRider.status === 'joined' && (
+                    <TouchableOpacity
+                      style={[styles.acceptBtn, confirming && styles.acceptBtnDisabled]}
+                      onPress={handleConfirmAndPay}
+                      disabled={confirming}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.acceptBtnText}>{confirming ? 'Processing…' : 'Confirm & Pay'}</Text>
+                    </TouchableOpacity>
+                  )}
+                  <View style={styles.riderSecondaryActions}>
+                    {onEditPickup && myRider.status === 'joined' && (
+                      <TouchableOpacity style={styles.editBtn} onPress={onEditPickup} activeOpacity={0.8}>
+                        <Text style={styles.editBtnText}>Edit Pickup</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity style={styles.leaveBtn} onPress={handleLeaveRide} activeOpacity={0.8}>
+                      <Text style={styles.leaveBtnText}>Leave Ride</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               )}
             </>
           )}
@@ -562,7 +592,43 @@ const styles = StyleSheet.create({
   dispatchBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   dispatchHint: { color: '#6b7280', fontSize: 12, textAlign: 'center', marginTop: 10, lineHeight: 18 },
   cancelBtn: { marginTop: 16, alignItems: 'center' },
-  cancelBtnText: { color: '#ef4444', fontSize: 14, fontWeight: '600' },
+  cancelBtnText: { color: '#ef4444', fontWeight: '700', fontSize: 16 },
+
+  riderActionsContainer: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+    gap: 12,
+  },
+  acceptBtn: {
+    backgroundColor: '#10b981',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  acceptBtnDisabled: { opacity: 0.6 },
+  acceptBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  riderSecondaryActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  editBtn: {
+    flex: 1,
+    backgroundColor: '#f3f4f6',
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  editBtnText: { color: '#4b5563', fontSize: 15, fontWeight: '600' },
+  leaveBtn: {
+    flex: 1,
+    backgroundColor: '#fee2e2',
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  leaveBtnText: { color: '#ef4444', fontSize: 15, fontWeight: '600' },
 
   // Matching
   matchingCard: {

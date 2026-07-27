@@ -145,12 +145,16 @@ class SharedRideJoinView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        active_count = shared_ride.riders.exclude(status=SharedRideRider.Status.CANCELLED).count()
-        if active_count >= shared_ride.max_riders:
-            return Response(
-                {'error': {'code': 'FULL', 'message': 'This shared ride is full.'}},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        existing_rider = shared_ride.riders.filter(user=request.user).first()
+        is_active_rider = existing_rider and existing_rider.status != SharedRideRider.Status.CANCELLED
+
+        if not is_active_rider:
+            active_count = shared_ride.riders.exclude(status=SharedRideRider.Status.CANCELLED).count()
+            if active_count >= shared_ride.max_riders:
+                return Response(
+                    {'error': {'code': 'FULL', 'message': 'This shared ride is full.'}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         serializer = SharedRideJoinSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -166,7 +170,7 @@ class SharedRideJoinView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if has_blocking_active_ride(request.user):
+        if not is_active_rider and has_blocking_active_ride(request.user):
             return Response(
                 {'error': {'code': 'ACTIVE_RIDE_EXISTS', 'message': 'You already have an active ride.'}},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -189,9 +193,13 @@ class SharedRideJoinView(APIView):
                     for key, value in serializer.validated_data.items():
                         setattr(rider, key, value)
                     rider.save()
+                elif rider.status == SharedRideRider.Status.JOINED:
+                    for key, value in serializer.validated_data.items():
+                        setattr(rider, key, value)
+                    rider.save()
                 else:
                     return Response(
-                        {'error': {'code': 'ALREADY_JOINED', 'message': 'You have already joined this ride.'}},
+                        {'error': {'code': 'ALREADY_JOINED', 'message': 'You cannot edit pickup after confirming.'}},
                         status=status.HTTP_400_BAD_REQUEST,
                     )
             

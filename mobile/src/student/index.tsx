@@ -35,6 +35,7 @@ import StudentLayout from './layout/StudentLayout'
 import InAppAnnouncementModal from './components/InAppAnnouncementModal'
 import StudentSidebar from './components/StudentSidebar'
 import GenericWebPage from './components/GenericWebPage'
+import GlobalToast from './components/GlobalToast'
 import { WebPageProvider, useWebPage } from './context/WebPageContext'
 import type { StudentTab } from './types'
 import { clearStoredPinHash } from '../core/security'
@@ -1023,6 +1024,7 @@ function StudentAppInner() {
 
       {/* Generic in-app webview: opened from notifications or any link */}
       {renderGenericWebPage()}
+      <GlobalToast />
     </View>
   )
 }
