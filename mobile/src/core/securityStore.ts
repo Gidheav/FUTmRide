@@ -78,6 +78,9 @@ export const useSecurityStore = create<SecurityStore>()(
         lockTimeoutMinutes: state.lockTimeoutMinutes,
         lastUnlockAt: state.lastUnlockAt,
         hasPin: state.hasPin,
+        // Persist so handleRequireSecurity uses cached value on cold start
+        // without a blocking network call. Always refreshed in background.
+        hasTransactionPin: state.hasTransactionPin,
         pinRecoveryRequired: state.pinRecoveryRequired,
       }),
     }

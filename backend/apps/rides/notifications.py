@@ -23,6 +23,7 @@ def notify_student_ride_status(ride: Ride):
         title = 'Driver found'
         body = f'{driver_name} accepted your ride request.'
     elif status == RideStatus.DRIVER_EN_ROUTE:
+        notification_type = Notification.NotificationType.DRIVER_EN_ROUTE
         title = 'Driver en route'
         body = 'Your driver is on the way to your pickup location.'
     elif status == RideStatus.DRIVER_ARRIVED:

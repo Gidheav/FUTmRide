@@ -140,6 +140,25 @@ class NotificationService:
     RIDE_CHANNEL_ID = 'ride-status-alerts'
     WALLET_TYPES = {'payment_received', 'payment_debited'}
 
+    # Maps each notification type to its UserSettings preference field.
+    # If a type isn't listed here it has no dedicated toggle (always sends
+    # when the global push_enabled is True).
+    NOTIF_TYPE_PREF_FIELD = {
+        'ride_requested':       'notif_ride_requested',
+        'driver_assigned':      'notif_driver_assigned',
+        'driver_en_route':      'notif_driver_en_route',
+        'driver_arrived':       'notif_driver_arrived',
+        'trip_started':         'notif_trip_started',
+        'trip_completed':       'notif_trip_completed',
+        'ride_cancelled':       'notif_ride_cancelled',
+        'payment_received':     'notif_wallet_credit',
+        'payment_debited':      'notif_wallet_debit',
+        'shared_ride_joined':   'notif_ride_requested',
+        'shared_ride_confirmed': 'notif_ride_requested',
+        'shared_ride_dispatched': 'notif_trip_started',
+        'shared_ride_cancelled':  'notif_ride_cancelled',
+    }
+
     @staticmethod
     def notify(user, notification_type: str, title: str, body: str, data: dict = None) -> 'Notification | None':
         from .models import Notification
@@ -160,7 +179,8 @@ class NotificationService:
             logger.error('notification_create_failed user=%s type=%s error=%s', user.id, notification_type, str(e))
             notif = None
 
-        # Always attempt push — check user push preference
+        # ── Determine whether to send a push ────────────────────────────────
+        # Step 1: check the global push_enabled master toggle.
         push_enabled = True
         try:
             if hasattr(user, 'settings'):
@@ -168,27 +188,44 @@ class NotificationService:
         except Exception:
             push_enabled = True
 
-        token = getattr(user, 'fcm_token', None)
-        if push_enabled and token:
-            channel = (
-                NotificationService.WALLET_CHANNEL_ID
-                if notification_type in NotificationService.WALLET_TYPES
-                else NotificationService.RIDE_CHANNEL_ID
-            )
-            # Temporarily override channelId for wallet pushes
-            _orig_channel = PushNotificationService.RIDE_STATUS_CHANNEL_ID
-            PushNotificationService.RIDE_STATUS_CHANNEL_ID = channel
+        if not push_enabled:
+            logger.info('push_skipped_disabled user=%s type=%s', user.id, notification_type)
+            return notif
+
+        # Step 2: check the granular per-type toggle (if one exists).
+        pref_field = NotificationService.NOTIF_TYPE_PREF_FIELD.get(notification_type)
+        if pref_field:
             try:
-                sent = PushNotificationService.send(token, title, body, data)
-                if not sent:
-                    logger.warning('push_not_sent user=%s type=%s', user.id, notification_type)
-            finally:
-                PushNotificationService.RIDE_STATUS_CHANNEL_ID = _orig_channel
-        else:
-            if not token:
-                logger.info('push_skipped_no_token user=%s type=%s', user.id, notification_type)
-            elif not push_enabled:
-                logger.info('push_skipped_disabled user=%s type=%s', user.id, notification_type)
+                granular_enabled = getattr(user.settings, pref_field, True)
+            except Exception:
+                granular_enabled = True
+            if not granular_enabled:
+                logger.info(
+                    'push_skipped_pref user=%s type=%s pref=%s',
+                    user.id, notification_type, pref_field,
+                )
+                return notif
+
+        # Step 3: send the push.
+        token = getattr(user, 'fcm_token', None)
+        if not token:
+            logger.info('push_skipped_no_token user=%s type=%s', user.id, notification_type)
+            return notif
+
+        channel = (
+            NotificationService.WALLET_CHANNEL_ID
+            if notification_type in NotificationService.WALLET_TYPES
+            else NotificationService.RIDE_CHANNEL_ID
+        )
+        # Temporarily override channelId for wallet pushes
+        _orig_channel = PushNotificationService.RIDE_STATUS_CHANNEL_ID
+        PushNotificationService.RIDE_STATUS_CHANNEL_ID = channel
+        try:
+            sent = PushNotificationService.send(token, title, body, data)
+            if not sent:
+                logger.warning('push_not_sent user=%s type=%s', user.id, notification_type)
+        finally:
+            PushNotificationService.RIDE_STATUS_CHANNEL_ID = _orig_channel
 
         return notif
 

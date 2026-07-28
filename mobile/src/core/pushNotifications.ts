@@ -5,6 +5,7 @@ import * as Notifications from 'expo-notifications'
 import api from './api'
 
 const RIDE_STATUS_CHANNEL_ID = 'ride-status-alerts'
+const WALLET_CHANNEL_ID = 'wallet-alerts'
 const COMPACT_PREVIEW_FLAG = '__compact_preview'
 const NOTIFICATION_TITLE_PREVIEW_LENGTH = 48
 const NOTIFICATION_BODY_PREVIEW_LENGTH = 96
@@ -12,6 +13,7 @@ const NOTIFICATION_BODY_PREVIEW_LENGTH = 96
 let notificationHandlerReady = false
 let pushConfigWarningShown = false
 let rideChannelReady = false
+let walletChannelReady = false
 let lastHandledNotificationResponseId: string | null = null
 
 const truncatePreviewText = (value: unknown, maxLength: number) => {
@@ -93,6 +95,18 @@ const ensureRideChannel = async () => {
   rideChannelReady = true
 }
 
+const ensureWalletChannel = async () => {
+  if (walletChannelReady || Platform.OS !== 'android') return
+  await Notifications.setNotificationChannelAsync(WALLET_CHANNEL_ID, {
+    name: 'Wallet & Payments',
+    importance: Notifications.AndroidImportance.HIGH,
+    sound: 'default',
+    enableVibrate: true,
+    vibrationPattern: [0, 80, 60, 80],
+  })
+  walletChannelReady = true
+}
+
 const getProjectId = () =>
   Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId
 
@@ -128,6 +142,7 @@ export const registerStudentPushToken = async (currentServerToken?: string | nul
         return null
       }
       await ensureRideChannel()
+      await ensureWalletChannel()
     }
 
     const permissions = await Notifications.getPermissionsAsync()

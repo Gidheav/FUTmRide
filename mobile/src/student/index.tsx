@@ -105,7 +105,6 @@ function StudentAppInner() {
   const [pendingAnnouncement, setPendingAnnouncement] = useState<StudentInAppAnnouncement | null>(null)
   const [announcementGateVisible, setAnnouncementGateVisible] = useState(false)
   const [announcementRefreshKey, setAnnouncementRefreshKey] = useState(0)
-  const [transactionPinGateLoading, setTransactionPinGateLoading] = useState(false)
   const { openWebPage, closWebPage, webPage } = useWebPage()
   // Generic in-app webview — used by notifications and other deep links
   // (state managed by WebPageContext, accessible from any component via useWebPage())
@@ -249,6 +248,8 @@ function StudentAppInner() {
           useWalletStore.getState().setWalletBalance(profile.wallet_balance)
         }
       }
+      // Silently fetch transaction PIN status in the background
+      refreshTransactionPinStatus().catch(() => {})
     } catch {
       // Sync failure on login is non-fatal — the interceptor will handle
       // the next 401 transparently.
@@ -754,7 +755,7 @@ function StudentAppInner() {
   const showTransactionPinRequired = () => {
     Alert.alert(
       'Transaction PIN Required',
-      'Please set up a Transaction PIN in Security settings before you can book rides or access your wallet.',
+      'Please set up a Transaction PIN in Security settings before you can proceed.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Setup PIN', onPress: () => {
@@ -765,7 +766,11 @@ function StudentAppInner() {
     )
   }
 
+  // Optimistic security gate — never blocks the user with a spinner.
+  // Uses the persisted hasTransactionPin value immediately and silently
+  // re-checks in the background so the store is always up to date.
   const handleRequireSecurity = (onSuccess: () => void) => {
+    // If we already have a definitive answer, use it.
     if (transactionPinStatus === 'ready') {
       if (hasTransactionPin) {
         onSuccess()
@@ -775,24 +780,20 @@ function StudentAppInner() {
       return
     }
 
-    setTransactionPinGateLoading(true)
-    refreshTransactionPinStatus()
-      .then((hasPin) => {
-        if (hasPin) {
-          onSuccess()
-        } else {
-          showTransactionPinRequired()
-        }
+    // Use the persisted cached value immediately — no blocking spinner.
+    // Kick a silent background refresh to keep the store current.
+    if (hasTransactionPin) {
+      onSuccess()
+    } else {
+      showTransactionPinRequired()
+    }
+
+    // Refresh silently in the background regardless of the cached outcome.
+    if (transactionPinStatus !== 'loading') {
+      void refreshTransactionPinStatus().catch(() => {
+        // Non-fatal — the next user action will retry.
       })
-      .catch(() => {
-        Alert.alert(
-          'Connection Required',
-          'Unable to confirm your Transaction PIN status. Please check your internet connection and try again.',
-        )
-      })
-      .finally(() => {
-        setTransactionPinGateLoading(false)
-      })
+    }
   }
 
   // ─── Main app shell (always accessible) ───────────────────────────────────
@@ -800,7 +801,7 @@ function StudentAppInner() {
     <View style={{ flex: 1, position: 'relative' }}>
       <View style={{ display: activeTab === 'home' ? 'flex' : 'none', flex: 1 }}>
         <StudentDashboardScreen
-          onNavigateToWallet={() => handleRequireSecurity(() => setActiveTab('wallet'))}
+          onNavigateToWallet={() => setActiveTab('wallet')}
           onBookRide={() => handleRequireSecurity(() => setRideScreen('booking'))}
           onViewRideStatus={() => {
             if (!activeRideSummary) return
@@ -1003,19 +1004,6 @@ function StudentAppInner() {
         </View>
       </Modal>
 
-      <Modal
-        visible={transactionPinGateLoading}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={() => undefined}
-      >
-        <View style={styles.securityGate}>
-          <ActivityIndicator size="large" color="#6A1B9A" />
-          <Text style={styles.securityGateText}>Checking Transaction PIN...</Text>
-        </View>
-      </Modal>
-
       <InAppAnnouncementModal
         visible={Boolean(pendingAnnouncement)}
         announcement={pendingAnnouncement}
@@ -1035,18 +1023,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#ffffff',
-  },
-  securityGate: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    backgroundColor: 'rgba(255,255,255,0.92)',
-  },
-  securityGateText: {
-    color: '#3d4a3e',
-    fontSize: 13,
-    fontWeight: '600',
   },
   recoveryBackdrop: {
     flex: 1,

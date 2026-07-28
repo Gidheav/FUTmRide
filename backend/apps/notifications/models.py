@@ -7,6 +7,7 @@ class Notification(models.Model):
     class NotificationType(models.TextChoices):
         RIDE_REQUESTED = 'ride_requested', 'Ride Requested'
         DRIVER_ASSIGNED = 'driver_assigned', 'Driver Assigned'
+        DRIVER_EN_ROUTE = 'driver_en_route', 'Driver En Route'
         DRIVER_ARRIVED = 'driver_arrived', 'Driver Arrived'
         TRIP_STARTED = 'trip_started', 'Trip Started'
         TRIP_COMPLETED = 'trip_completed', 'Trip Completed'
