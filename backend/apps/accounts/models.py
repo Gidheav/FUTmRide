@@ -138,7 +138,7 @@ class UserSettings(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='settings')
     language = models.CharField(max_length=10, default='en')
     theme_mode = models.CharField(max_length=10, choices=ThemeMode.choices, default=ThemeMode.SYSTEM)
-    push_enabled = models.BooleanField(default=False)
+    push_enabled = models.BooleanField(default=True)
     
     # Email notification toggles
     email_announcements = models.BooleanField(
@@ -154,18 +154,18 @@ class UserSettings(models.Model):
         help_text='Send email for ride status updates (assigned, started, completed).',
     )
     
-    # Detailed push notification toggles
-    notif_sound_enabled = models.BooleanField(default=False)
-    notif_ride_requested = models.BooleanField(default=False)
-    notif_driver_assigned = models.BooleanField(default=False)
-    notif_driver_en_route = models.BooleanField(default=False)
-    notif_driver_arrived = models.BooleanField(default=False)
-    notif_trip_started = models.BooleanField(default=False)
-    notif_trip_completed = models.BooleanField(default=False)
-    notif_ride_cancelled = models.BooleanField(default=False)
-    notif_wallet_credit = models.BooleanField(default=False)
-    notif_wallet_debit = models.BooleanField(default=False)
-    notif_promotions = models.BooleanField(default=False)
+    # Detailed push notification toggles (default True = opt-out, not opt-in)
+    notif_sound_enabled = models.BooleanField(default=True)
+    notif_ride_requested = models.BooleanField(default=True)
+    notif_driver_assigned = models.BooleanField(default=True)
+    notif_driver_en_route = models.BooleanField(default=True)
+    notif_driver_arrived = models.BooleanField(default=True)
+    notif_trip_started = models.BooleanField(default=True)
+    notif_trip_completed = models.BooleanField(default=True)
+    notif_ride_cancelled = models.BooleanField(default=True)
+    notif_wallet_credit = models.BooleanField(default=True)
+    notif_wallet_debit = models.BooleanField(default=True)
+    notif_promotions = models.BooleanField(default=True)
 
     navigation_app = models.CharField(
         max_length=30,

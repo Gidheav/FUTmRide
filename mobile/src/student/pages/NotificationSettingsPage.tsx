@@ -22,17 +22,17 @@ type NotifPrefs = {
 }
 
 const DEFAULT_PREFS: NotifPrefs = {
-  notif_sound_enabled: false,
-  notif_ride_requested: false,
-  notif_driver_assigned: false,
-  notif_driver_en_route: false,
-  notif_driver_arrived: false,
-  notif_trip_started: false,
-  notif_trip_completed: false,
-  notif_ride_cancelled: false,
-  notif_wallet_credit: false,
-  notif_wallet_debit: false,
-  notif_promotions: false,
+  notif_sound_enabled: true,
+  notif_ride_requested: true,
+  notif_driver_assigned: true,
+  notif_driver_en_route: true,
+  notif_driver_arrived: true,
+  notif_trip_started: true,
+  notif_trip_completed: true,
+  notif_ride_cancelled: true,
+  notif_wallet_credit: true,
+  notif_wallet_debit: true,
+  notif_promotions: true,
   email_announcements: false,
   email_transactions: false,
   email_rides: false,
@@ -77,7 +77,6 @@ function ToggleRow({ icon, iconColor, iconBg, label, description, value, onValue
 export default function StudentNotificationSettingsPage({ onClose }: Props) {
   const [prefs, setPrefs] = useState<NotifPrefs>(DEFAULT_PREFS)
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
   const insets = useSafeAreaInsets()
 
   useEffect(() => {
@@ -91,17 +90,14 @@ export default function StudentNotificationSettingsPage({ onClose }: Props) {
       .finally(() => setLoading(false))
   }, [])
 
-  const update = async (key: keyof NotifPrefs, value: boolean) => {
-    const next = { ...prefs, [key]: value }
-    setPrefs(next)
-    setSaving(true)
-    try {
-      await api.patch('auth/settings/preferences/', { [key]: value })
-    } catch {
-      setPrefs(prefs)
-    } finally {
-      setSaving(false)
-    }
+  // Optimistic update: toggle flips instantly, PATCH fires in background.
+  // Only reverts the specific toggle on failure — page stays responsive.
+  const update = (key: keyof NotifPrefs, value: boolean) => {
+    const prev = prefs[key]
+    setPrefs((current) => ({ ...current, [key]: value }))
+    api.patch('auth/settings/preferences/', { [key]: value }).catch(() => {
+      setPrefs((current) => ({ ...current, [key]: prev }))
+    })
   }
 
   return (
@@ -127,7 +123,7 @@ export default function StudentNotificationSettingsPage({ onClose }: Props) {
                 description="Play sound for notifications"
                 value={prefs.notif_sound_enabled}
                 onValueChange={(v) => void update('notif_sound_enabled', v)}
-                disabled={saving}
+
               />
             </View>
 
@@ -142,7 +138,7 @@ export default function StudentNotificationSettingsPage({ onClose }: Props) {
                 description="When your ride request is submitted"
                 value={prefs.notif_ride_requested}
                 onValueChange={(v) => void update('notif_ride_requested', v)}
-                disabled={saving}
+
               />
               <View style={styles.divider} />
               <ToggleRow
@@ -153,7 +149,7 @@ export default function StudentNotificationSettingsPage({ onClose }: Props) {
                 description="When a driver accepts your ride"
                 value={prefs.notif_driver_assigned}
                 onValueChange={(v) => void update('notif_driver_assigned', v)}
-                disabled={saving}
+
               />
               <View style={styles.divider} />
               <ToggleRow
@@ -164,7 +160,7 @@ export default function StudentNotificationSettingsPage({ onClose }: Props) {
                 description="When your driver is heading to you"
                 value={prefs.notif_driver_en_route}
                 onValueChange={(v) => void update('notif_driver_en_route', v)}
-                disabled={saving}
+
               />
               <View style={styles.divider} />
               <ToggleRow
@@ -175,7 +171,7 @@ export default function StudentNotificationSettingsPage({ onClose }: Props) {
                 description="When driver arrives at pickup point"
                 value={prefs.notif_driver_arrived}
                 onValueChange={(v) => void update('notif_driver_arrived', v)}
-                disabled={saving}
+
               />
               <View style={styles.divider} />
               <ToggleRow
@@ -186,7 +182,7 @@ export default function StudentNotificationSettingsPage({ onClose }: Props) {
                 description="When your trip begins"
                 value={prefs.notif_trip_started}
                 onValueChange={(v) => void update('notif_trip_started', v)}
-                disabled={saving}
+
               />
               <View style={styles.divider} />
               <ToggleRow
@@ -197,7 +193,7 @@ export default function StudentNotificationSettingsPage({ onClose }: Props) {
                 description="When your ride is finished"
                 value={prefs.notif_trip_completed}
                 onValueChange={(v) => void update('notif_trip_completed', v)}
-                disabled={saving}
+
               />
               <View style={styles.divider} />
               <ToggleRow
@@ -208,7 +204,7 @@ export default function StudentNotificationSettingsPage({ onClose }: Props) {
                 description="When a ride is cancelled"
                 value={prefs.notif_ride_cancelled}
                 onValueChange={(v) => void update('notif_ride_cancelled', v)}
-                disabled={saving}
+
               />
             </View>
 
@@ -223,7 +219,7 @@ export default function StudentNotificationSettingsPage({ onClose }: Props) {
                 description="Top-up, refunds, and incoming transfers"
                 value={prefs.notif_wallet_credit}
                 onValueChange={(v) => void update('notif_wallet_credit', v)}
-                disabled={saving}
+
               />
               <View style={styles.divider} />
               <ToggleRow
@@ -234,15 +230,12 @@ export default function StudentNotificationSettingsPage({ onClose }: Props) {
                 description="Ride payments and deductions"
                 value={prefs.notif_wallet_debit}
                 onValueChange={(v) => void update('notif_wallet_debit', v)}
-                disabled={saving}
+
               />
             </View>
 
             {/* ── Email Notifications ─────────────── */}
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionLabel}>Email Notifications</Text>
-              {saving && <ActivityIndicator size="small" color="#6A1B9A" style={{ marginLeft: 8, marginBottom: 6 }} />}
-            </View>
+            <Text style={styles.sectionLabel}>Email Notifications</Text>
             <View style={styles.card}>
               <ToggleRow
                 icon="campaign"
@@ -252,7 +245,7 @@ export default function StudentNotificationSettingsPage({ onClose }: Props) {
                 description="Receive emails for platform announcements"
                 value={prefs.email_announcements}
                 onValueChange={(v) => void update('email_announcements', v)}
-                disabled={saving}
+
               />
               <View style={styles.divider} />
               <ToggleRow
@@ -263,7 +256,7 @@ export default function StudentNotificationSettingsPage({ onClose }: Props) {
                 description="Email receipts for wallet top-ups and payments"
                 value={prefs.email_transactions}
                 onValueChange={(v) => void update('email_transactions', v)}
-                disabled={saving}
+
               />
               <View style={styles.divider} />
               <ToggleRow
@@ -274,7 +267,7 @@ export default function StudentNotificationSettingsPage({ onClose }: Props) {
                 description="Email summaries for completed rides"
                 value={prefs.email_rides}
                 onValueChange={(v) => void update('email_rides', v)}
-                disabled={saving}
+
               />
             </View>
 
@@ -289,7 +282,7 @@ export default function StudentNotificationSettingsPage({ onClose }: Props) {
                 description="Special offers and platform updates"
                 value={prefs.notif_promotions}
                 onValueChange={(v) => void update('notif_promotions', v)}
-                disabled={saving}
+
               />
             </View>
 
