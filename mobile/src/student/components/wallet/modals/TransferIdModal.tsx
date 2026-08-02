@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import PremiumBottomSheet from '../../premium/PremiumBottomSheet';
 import LoadingOverlay from '../../../components/LoadingOverlay';
 
@@ -10,9 +11,10 @@ interface TransferIdModalProps {
   onContinue: (studentId: string) => void;
   loading: boolean;
   clearError?: () => void;
+  error?: string | null;
 }
 
-export const TransferIdModal = React.memo(({ visible, onClose, onContinue, loading, clearError }: TransferIdModalProps) => {
+export const TransferIdModal = React.memo(({ visible, onClose, onContinue, loading, clearError, error }: TransferIdModalProps) => {
   const [studentId, setStudentId] = useState('');
 
   useEffect(() => {
@@ -27,14 +29,29 @@ export const TransferIdModal = React.memo(({ visible, onClose, onContinue, loadi
       <Text style={styles.modalSubtitle}>Enter the recipient student ID to continue.</Text>
       
       <TextInput
-        style={styles.modalInput}
+        style={[styles.modalInput, error ? styles.modalInputError : null]}
         placeholder="Student ID"
         value={studentId}
-        onChangeText={setStudentId}
+        onChangeText={(txt) => {
+          setStudentId(txt);
+          if (error) clearError?.();
+        }}
         autoCapitalize="characters"
         editable={!loading}
       />
       
+      {error ? (
+        <Animated.View 
+          entering={FadeInDown.duration(300).springify()} 
+          exiting={FadeOutUp.duration(200)}
+          style={styles.errorContainer}
+        >
+          <MaterialIcons name="error-outline" size={16} color="#ef4444" />
+          <Text style={styles.errorText}>{error}</Text>
+        </Animated.View>
+      ) : null}
+      
+
       <View style={styles.modalButtonRow}>
         <TouchableOpacity
           style={styles.modalCancelInline}
@@ -87,6 +104,26 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Medium',
     color: '#1a1c1c',
     marginBottom: 24,
+  },
+  modalInputError: {
+    borderColor: '#ef4444',
+    backgroundColor: '#fef2f2',
+  },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef2f2',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 24,
+    marginTop: -12,
+    gap: 8,
+  },
+  errorText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 13,
+    color: '#ef4444',
+    flex: 1,
   },
   modalButtonRow: {
     flexDirection: 'row',

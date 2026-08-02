@@ -797,3 +797,53 @@ def get_available_drivers_nearby(
 
     candidates.sort(key=lambda item: item[0])
     return candidates[:limit]
+
+def finalize_ride_completion(ride):
+    """
+    Finalizes ride completion: handles driver earnings, profile stats, and status updates.
+    Must be called after transition_to(COMPLETED).
+    """
+    from decimal import Decimal
+    from django.db import transaction
+    from apps.payments.models import WalletTransaction
+    from apps.payments.services import WalletService
+    from apps.accounts.models import DriverProfile
+
+    try:
+        profile = ride.driver.driver_profile
+        profile.is_on_trip = False
+        profile.total_trips += 1
+        profile.total_earnings += ride.driver_earnings or 0
+        profile.save(update_fields=['is_on_trip', 'total_trips', 'total_earnings'])
+    except DriverProfile.DoesNotExist:
+        pass
+    try:
+        sp = ride.student.student_profile
+        sp.total_trips += 1
+        sp.save(update_fields=['total_trips'])
+    except Exception:
+        pass
+    if ride.payment_method == 'wallet' and ride.is_paid and ride.driver_earnings:
+        try:
+            with transaction.atomic():
+                existing = WalletTransaction.objects.filter(
+                    ride=ride,
+                    source=WalletTransaction.Source.DRIVER_EARNING,
+                    transaction_type=WalletTransaction.TransactionType.CREDIT,
+                ).first()
+                if existing:
+                    logger.info('ride_driver_already_paid ref=%s tx=%s', ride.reference, existing.reference)
+                else:
+                    WalletService.credit(
+                        user=ride.driver,
+                        amount=Decimal(str(ride.driver_earnings)),
+                        source=WalletTransaction.Source.DRIVER_EARNING,
+                        narration=f'Earnings from ride {ride.reference}',
+                        ride=ride,
+                        metadata={
+                            'platform_commission': str(ride.platform_commission or 0),
+                        },
+                    )
+                    logger.info('ride_driver_credited ref=%s amount=%s', ride.reference, ride.driver_earnings)
+        except Exception as e:
+            logger.error('ride_driver_credit_error ref=%s error=%s', ride.reference, str(e))

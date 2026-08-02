@@ -1437,15 +1437,15 @@ export default function DriverRidesPage() {
                   </View>
                   
                   <TouchableOpacity
-                    style={{ backgroundColor: COLORS.primary, paddingVertical: 12, alignItems: 'center' }}
+                    style={{ backgroundColor: activeOnDemandRide.status === 'pending_completion' ? COLORS.surfaceVariant : COLORS.primary, paddingVertical: 12, alignItems: 'center' }}
                     onPress={() => handleAdvanceRide(activeOnDemandRide.id)}
-                    disabled={advancingRideId === activeOnDemandRide.id}
+                    disabled={advancingRideId === activeOnDemandRide.id || activeOnDemandRide.status === 'pending_completion'}
                   >
                     {advancingRideId === activeOnDemandRide.id ? (
                       <LoadingOverlay visible={true} inline size={24} />
                     ) : (
-                      <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>
-                        {activeOnDemandRide.status === 'accepted' ? 'Confirm Arrival' : activeOnDemandRide.status === 'arrived' ? 'Start Trip' : activeOnDemandRide.status === 'in_progress' ? 'Complete Trip' : 'Advance Status'}
+                      <Text style={[FONTS.labelLg, { color: activeOnDemandRide.status === 'pending_completion' ? COLORS.onSurfaceVariant : COLORS.onPrimary }]}>
+                        {activeOnDemandRide.status === 'accepted' ? 'Confirm Arrival' : activeOnDemandRide.status === 'arrived' ? 'Start Trip' : activeOnDemandRide.status === 'in_progress' ? 'Complete Trip' : activeOnDemandRide.status === 'pending_completion' ? 'Awaiting Student Confirmation...' : 'Advance Status'}
                       </Text>
                     )}
                   </TouchableOpacity>

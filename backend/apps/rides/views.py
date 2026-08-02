@@ -321,7 +321,7 @@ class DriverRideStatusUpdateView(APIView):
         RideStatus.DRIVER_ASSIGNED: RideStatus.DRIVER_EN_ROUTE,
         RideStatus.DRIVER_EN_ROUTE: RideStatus.DRIVER_ARRIVED,
         RideStatus.DRIVER_ARRIVED: RideStatus.IN_PROGRESS,
-        RideStatus.IN_PROGRESS: RideStatus.COMPLETED,
+        RideStatus.IN_PROGRESS: RideStatus.PENDING_COMPLETION,
     }
 
     def post(self, request, ride_id):
@@ -345,45 +345,9 @@ class DriverRideStatusUpdateView(APIView):
             ride.save()
         except ValueError as e:
             return Response({'error': {'code': 'INVALID_TRANSITION', 'message': str(e)}}, status=status.HTTP_400_BAD_REQUEST)
-        if next_status == RideStatus.COMPLETED:
-            try:
-                profile = request.user.driver_profile
-                profile.is_on_trip = False
-                profile.total_trips += 1
-                profile.total_earnings += ride.driver_earnings or 0
-                profile.save(update_fields=['is_on_trip', 'total_trips', 'total_earnings'])
-            except DriverProfile.DoesNotExist:
-                pass
-            try:
-                sp = ride.student.student_profile
-                sp.total_trips += 1
-                sp.save(update_fields=['total_trips'])
-            except Exception:
-                pass
-            if ride.payment_method == 'wallet' and ride.is_paid and ride.driver_earnings:
-                try:
-                    with transaction.atomic():
-                        existing = WalletTransaction.objects.filter(
-                            ride=ride,
-                            source=WalletTransaction.Source.DRIVER_EARNING,
-                            transaction_type=WalletTransaction.TransactionType.CREDIT,
-                        ).first()
-                        if existing:
-                            logger.info('ride_driver_already_paid ref=%s tx=%s', ride.reference, existing.reference)
-                        else:
-                            WalletService.credit(
-                                user=ride.driver,
-                                amount=Decimal(str(ride.driver_earnings)),
-                                source=WalletTransaction.Source.DRIVER_EARNING,
-                                narration=f'Earnings from ride {ride.reference}',
-                                ride=ride,
-                                metadata={
-                                    'platform_commission': str(ride.platform_commission or 0),
-                                },
-                            )
-                            logger.info('ride_driver_credited ref=%s amount=%s', ride.reference, ride.driver_earnings)
-                except Exception as e:
-                    logger.error('ride_driver_credit_error ref=%s error=%s', ride.reference, str(e))
+        if next_status == RideStatus.PENDING_COMPLETION:
+            from apps.rides.tasks import auto_confirm_pending_ride
+            auto_confirm_pending_ride.apply_async(args=[str(ride.id)], countdown=300)
         notify_student_ride_status(ride)
         logger.info('ride_advanced ref=%s to=%s driver=%s', ride.reference, next_status, str(request.user.id))
         return Response(RideDetailSerializer(ride, context={'request': request}).data)
@@ -663,3 +627,81 @@ class AdminRideListView(generics.ListAPIView):
 
     def get_queryset(self):
         return Ride.objects.all().select_related('student', 'driver', 'driver__driver_profile')
+
+
+class StudentConfirmRideCompletionView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, ride_id):
+        if request.user.role != UserRole.STUDENT:
+            return Response(
+                {'error': {'code': 'FORBIDDEN', 'message': 'Only students can confirm completion.'}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            ride = Ride.objects.get(id=ride_id, student=request.user, status=RideStatus.PENDING_COMPLETION)
+        except Ride.DoesNotExist:
+            raise NotFound('Pending ride not found.')
+
+        try:
+            ride.transition_to(RideStatus.COMPLETED)
+            ride.save()
+            from apps.rides.services import finalize_ride_completion
+            finalize_ride_completion(ride)
+            from apps.rides.notifications import notify_student_ride_status
+            notify_student_ride_status(ride)
+            return Response(RideDetailSerializer(ride, context={'request': request}).data)
+        except Exception as e:
+            logger.error('confirm_completion_error ride=%s err=%s', ride.id, str(e))
+            return Response({'error': {'code': 'SYSTEM_ERROR', 'message': 'Could not confirm ride.'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class StudentDisputeRideCompletionView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, ride_id):
+        if request.user.role != UserRole.STUDENT:
+            return Response(
+                {'error': {'code': 'FORBIDDEN', 'message': 'Only students can dispute completion.'}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            ride = Ride.objects.get(id=ride_id, student=request.user, status=RideStatus.PENDING_COMPLETION)
+        except Ride.DoesNotExist:
+            raise NotFound('Pending ride not found.')
+
+        reason = request.data.get('reason', 'Student disputed completion.')
+        try:
+            ride.transition_to(RideStatus.DISPUTED)
+            ride.save()
+            
+            # Create a support ticket for admin review
+            from apps.support.models import Ticket
+            Ticket.objects.create(
+                creator=request.user,
+                category='ride_dispute',
+                priority='urgent',
+                subject=f'Disputed Completion: Ride {ride.reference}',
+                description=f'Student disputed ride completion. Reason: {reason}',
+                status='open'
+            )
+            
+            from apps.rides.notifications import notify_student_ride_status
+            notify_student_ride_status(ride)
+            
+            # Optionally notify driver
+            from apps.notifications.services import NotificationService
+            from apps.notifications.models import Notification
+            if ride.driver:
+                NotificationService.notify(
+                    user=ride.driver,
+                    notification_type=Notification.NotificationType.SYSTEM_ALERT,
+                    title='Ride Disputed',
+                    body=f'Student disputed the completion of ride {ride.reference}. Admin will review.',
+                    data={'ride_id': str(ride.id)},
+                )
+                
+            return Response(RideDetailSerializer(ride, context={'request': request}).data)
+        except Exception as e:
+            logger.error('dispute_completion_error ride=%s err=%s', ride.id, str(e))
+            return Response({'error': {'code': 'SYSTEM_ERROR', 'message': 'Could not dispute ride.'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

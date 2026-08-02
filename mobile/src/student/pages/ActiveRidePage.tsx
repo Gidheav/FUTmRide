@@ -68,6 +68,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: keyof 
   driver_en_route: { label: 'Driver En Route', color: '#1565C0', icon: 'directions-car' },
   driver_arrived: { label: 'Driver Arrived', color: '#2e7d32', icon: 'place' },
   in_progress: { label: 'Trip In Progress', color: '#E65100', icon: 'navigation' },
+  pending_completion: { label: 'Awaiting Your Confirmation', color: '#E65100', icon: 'hourglass-top' },
   completed: { label: 'Trip Completed', color: '#2e7d32', icon: 'check-circle' },
   cancelled_by_student: { label: 'Cancelled', color: '#b91c1c', icon: 'cancel' },
   cancelled_by_driver: { label: 'Driver Cancelled', color: '#b91c1c', icon: 'cancel' },
@@ -96,6 +97,11 @@ export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRi
   const [pinError, setPinError] = useState('')
   const [pinLoading, setPinLoading] = useState(false)
   const PIN_ROWS = [['1','2','3'],['4','5','6'],['7','8','9'],['','0','back']]
+
+  const [confirmingCompletion, setConfirmingCompletion] = useState(false)
+  const [disputeReason, setDisputeReason] = useState('')
+  const [disputingCompletion, setDisputingCompletion] = useState(false)
+  const [showDisputeInput, setShowDisputeInput] = useState(false)
 
   useEffect(() => {
     let isMounted = true
@@ -249,6 +255,40 @@ export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRi
     }
   }
 
+  const handleConfirmCompletion = async () => {
+    if (!rideId) return
+    setConfirmingCompletion(true)
+    try {
+      await api.post(`rides/${rideId}/confirm-completion/`)
+      // Ride will update on next poll or via websocket
+    } catch (err: any) {
+      const message = err?.response?.data?.error?.message || 'Unable to confirm completion.'
+      Alert.alert('Error', String(message))
+    } finally {
+      setConfirmingCompletion(false)
+    }
+  }
+
+  const handleDisputeCompletion = async () => {
+    if (!rideId) return
+    if (!disputeReason.trim()) {
+      Alert.alert('Required', 'Please provide a reason for disputing.')
+      return
+    }
+    setDisputingCompletion(true)
+    try {
+      await api.post(`rides/${rideId}/dispute-completion/`, { reason: disputeReason })
+      setShowDisputeInput(false)
+      setDisputeReason('')
+      Alert.alert('Dispute Submitted', 'An admin will review your dispute.')
+    } catch (err: any) {
+      const message = err?.response?.data?.error?.message || 'Unable to submit dispute.'
+      Alert.alert('Error', String(message))
+    } finally {
+      setDisputingCompletion(false)
+    }
+  }
+
   const handleCallDriver = () => {
     const phone = ride?.driver?.phone_number
     if (phone) {
@@ -344,8 +384,9 @@ export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRi
   const statusCfg = STATUS_CONFIG[rideStatus] || STATUS_CONFIG.driver_assigned
   const isCancelled = CANCELLED_STATUSES.includes(rideStatus)
   const isCompleted = rideStatus === 'completed'
+  const isPendingCompletion = rideStatus === 'pending_completion'
   const isTerminal = isCancelled || isCompleted
-  const canCancel = ride?.status && !isTerminal && rideStatus !== 'in_progress'
+  const canCancel = ride?.status && !isTerminal && rideStatus !== 'in_progress' && rideStatus !== 'pending_completion'
 
   const driver = ride?.driver
   const driverName = driver?.full_name || 'Awaiting driver…'
@@ -663,6 +704,76 @@ export default function ActiveRidePage({ rideId, onBack, onRideEnded }: ActiveRi
             <TouchableOpacity style={pinStyles.cancelBtn} onPress={() => { setPinModalVisible(false); setPinInput(''); setPinError('') }} disabled={pinLoading}>
               <Text style={pinStyles.cancelText}>Cancel</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Pending Completion Modal */}
+      <Modal visible={isPendingCompletion} animationType="slide" transparent>
+        <View style={styles.ratingBackdrop}>
+          <View style={styles.ratingCard}>
+            <View style={styles.ratingHeader}>
+              <Text style={styles.ratingTitle}>Trip Complete?</Text>
+            </View>
+            <Text style={styles.ratingSubtitle}>
+              Your driver has marked this trip as completed. Please confirm you have arrived at your destination.
+            </Text>
+            
+            {showDisputeInput ? (
+              <>
+                <TextInput
+                  value={disputeReason}
+                  onChangeText={setDisputeReason}
+                  placeholder="Why are you disputing?"
+                  placeholderTextColor="#9ca3af"
+                  multiline
+                  textAlignVertical="top"
+                  maxLength={500}
+                  style={styles.ratingInput}
+                />
+                <View style={styles.actionsRow}>
+                  <TouchableOpacity
+                    style={[styles.cancelButton, disputingCompletion && { opacity: 0.6 }]}
+                    onPress={() => setShowDisputeInput(false)}
+                    disabled={disputingCompletion}
+                  >
+                    <Text style={styles.cancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.ratingSubmit, { flex: 1, marginLeft: 12 }, disputingCompletion && { opacity: 0.7 }]}
+                    onPress={handleDisputeCompletion}
+                    disabled={disputingCompletion}
+                  >
+                    <Text style={styles.ratingSubmitText}>{disputingCompletion ? 'Submitting...' : 'Submit Dispute'}</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <View style={{ marginTop: 16 }}>
+                <TouchableOpacity
+                  style={[styles.ratingSubmit, confirmingCompletion && { opacity: 0.7 }]}
+                  onPress={handleConfirmCompletion}
+                  disabled={confirmingCompletion}
+                  activeOpacity={0.9}
+                >
+                  <Text style={styles.ratingSubmitText}>{confirmingCompletion ? 'Confirming...' : 'Yes, Confirm Arrival'}</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={{ padding: 16, alignItems: 'center', marginTop: 8 }}
+                  onPress={() => setShowDisputeInput(true)}
+                  disabled={confirmingCompletion}
+                >
+                  <Text style={{ color: '#b91c1c', fontWeight: '600', fontSize: 14 }}>No, I have an issue</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            
+            {!showDisputeInput && (
+              <Text style={[styles.ratingHelper, { textAlign: 'center', marginTop: 16 }]}>
+                This trip will automatically complete in a few minutes if no action is taken.
+              </Text>
+            )}
           </View>
         </View>
       </Modal>

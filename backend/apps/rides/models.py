@@ -11,6 +11,7 @@ class RideStatus(models.TextChoices):
     DRIVER_EN_ROUTE = 'driver_en_route', 'Driver En Route'
     DRIVER_ARRIVED = 'driver_arrived', 'Driver Arrived'
     IN_PROGRESS = 'in_progress', 'Trip In Progress'
+    PENDING_COMPLETION = 'pending_completion', 'Pending Completion'
     COMPLETED = 'completed', 'Completed'
     CANCELLED_BY_STUDENT = 'cancelled_by_student', 'Cancelled by Student'
     CANCELLED_BY_DRIVER = 'cancelled_by_driver', 'Cancelled by Driver'
@@ -92,6 +93,7 @@ class Ride(models.Model):
     driver_assigned_at = models.DateTimeField(null=True, blank=True)
     driver_arrived_at = models.DateTimeField(null=True, blank=True)
     trip_started_at = models.DateTimeField(null=True, blank=True)
+    pending_completion_at = models.DateTimeField(null=True, blank=True)
     trip_completed_at = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -141,7 +143,8 @@ class Ride(models.Model):
                 RideStatus.CANCELLED_BY_STUDENT,
                 RideStatus.CANCELLED_NO_SHOW,
             ],
-            RideStatus.IN_PROGRESS: [RideStatus.COMPLETED, RideStatus.DISPUTED],
+            RideStatus.IN_PROGRESS: [RideStatus.PENDING_COMPLETION, RideStatus.COMPLETED, RideStatus.DISPUTED],
+            RideStatus.PENDING_COMPLETION: [RideStatus.COMPLETED, RideStatus.DISPUTED],
             RideStatus.COMPLETED: [RideStatus.DISPUTED],
         }
         allowed = valid_transitions.get(self.status, [])
@@ -154,6 +157,7 @@ class Ride(models.Model):
             RideStatus.DRIVER_ASSIGNED: 'driver_assigned_at',
             RideStatus.DRIVER_ARRIVED: 'driver_arrived_at',
             RideStatus.IN_PROGRESS: 'trip_started_at',
+            RideStatus.PENDING_COMPLETION: 'pending_completion_at',
             RideStatus.COMPLETED: 'trip_completed_at',
         }
         if new_status in timestamp_map:

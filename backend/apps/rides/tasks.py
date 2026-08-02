@@ -204,3 +204,26 @@ def auto_close_expired_scheduled_rides(self):
     if processed:
         logger.info('auto_close_expired_scheduled_rides count=%d', processed)
     return processed
+
+@shared_task(bind=True, name='rides.auto_confirm_pending_ride')
+def auto_confirm_pending_ride(self, ride_id: str):
+    import logging
+    from apps.rides.models import Ride, RideStatus
+    from apps.rides.services import finalize_ride_completion
+    from apps.rides.notifications import notify_student_ride_status
+
+    logger = logging.getLogger('apps.rides')
+    try:
+        ride = Ride.objects.get(id=ride_id)
+    except Ride.DoesNotExist:
+        return
+
+    if ride.status == RideStatus.PENDING_COMPLETION:
+        logger.info('auto_confirming_ride ref=%s', ride.reference)
+        try:
+            ride.transition_to(RideStatus.COMPLETED)
+            ride.save()
+            finalize_ride_completion(ride)
+            notify_student_ride_status(ride)
+        except Exception as e:
+            logger.error('auto_confirm_error ride=%s err=%s', ride.id, str(e))

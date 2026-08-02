@@ -58,8 +58,8 @@ const SUPPORT_OPTIONS: SupportOption[] = [
     title: 'Report a Problem',
     subtitle: 'Ride, payment, wallet, or account issue that needs help.',
     icon: 'report-problem',
-    color: '#1a1c1c',
-    bg: '#f3f4f6',
+    color: '#D97706', // amber-600
+    bg: '#FFFBEB', // amber-50
     category: 'ride_issue',
     priority: 'medium',
   },
@@ -68,8 +68,8 @@ const SUPPORT_OPTIONS: SupportOption[] = [
     title: 'Send Feedback',
     subtitle: 'Share ideas about the app experience or what we can improve.',
     icon: 'tips-and-updates',
-    color: '#1a1c1c',
-    bg: '#f3f4f6',
+    color: '#059669', // emerald-600
+    bg: '#ECFDF5', // emerald-50
     category: 'other',
     priority: 'low',
   },
@@ -78,8 +78,8 @@ const SUPPORT_OPTIONS: SupportOption[] = [
     title: 'Make a Complaint',
     subtitle: 'Formal complaint about a driver, ride, payment, or safety concern.',
     icon: 'gavel',
-    color: '#1a1c1c',
-    bg: '#f3f4f6',
+    color: '#DC2626', // red-600
+    bg: '#FEF2F2', // red-50
     category: 'driver_complaint',
     priority: 'high',
   },
@@ -112,17 +112,17 @@ const FAQ_ITEMS = [
 ]
 
 const STATUS_STYLE: Record<Ticket['status'], { label: string; color: string; bg: string }> = {
-  open: { label: 'Open', color: '#ca8a04', bg: '#fefce8' },
-  in_progress: { label: 'In Progress', color: '#2563eb', bg: '#eff6ff' },
-  resolved: { label: 'Resolved', color: '#16a34a', bg: '#f0fdf4' },
-  closed: { label: 'Closed', color: '#6b7280', bg: '#f3f4f6' },
+  open: { label: 'Open', color: '#B45309', bg: '#FEF3C7' },
+  in_progress: { label: 'In Progress', color: '#1D4ED8', bg: '#DBEAFE' },
+  resolved: { label: 'Resolved', color: '#15803D', bg: '#DCFCE7' },
+  closed: { label: 'Closed', color: '#4B5563', bg: '#F3F4F6' },
 }
 
 const PRIORITY_STYLE: Record<TicketPriority, { label: string; color: string; bg: string }> = {
-  low: { label: 'Low', color: '#6b7280', bg: '#f3f4f6' },
-  medium: { label: 'Medium', color: '#ca8a04', bg: '#fefce8' },
-  high: { label: 'High', color: '#ea580c', bg: '#fff7ed' },
-  urgent: { label: 'Urgent', color: '#dc2626', bg: '#fef2f2' },
+  low: { label: 'Low', color: '#4B5563', bg: '#F3F4F6' },
+  medium: { label: 'Medium', color: '#B45309', bg: '#FEF3C7' },
+  high: { label: 'High', color: '#C2410C', bg: '#FFEDD5' },
+  urgent: { label: 'Urgent', color: '#B91C1C', bg: '#FEE2E2' },
 }
 
 const categoryLabel = (category: string) =>
@@ -326,7 +326,7 @@ export default function SupportPage({
   return (
     <View style={styles.page}>
       <View style={styles.header}>
-        <View>
+        <View style={styles.headerTextWrap}>
           <Text style={styles.title}>Help & Support</Text>
           <Text style={styles.subtitle}>Feedback, complaints, and support requests in one place.</Text>
         </View>
@@ -363,13 +363,15 @@ export default function SupportPage({
                 onPress={() => openForm(option)}
               >
                 <View style={[styles.optionIconWrap, { backgroundColor: option.bg }]}>
-                  <MaterialIcons name={option.icon} size={24} color={option.color} />
+                  <MaterialIcons name={option.icon} size={28} color={option.color} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.optionTitle}>{option.title}</Text>
                   <Text style={styles.optionSubtitle}>{option.subtitle}</Text>
                 </View>
-                <MaterialIcons name="chevron-right" size={22} color="#9ca3af" />
+                <View style={styles.optionChevron}>
+                  <MaterialIcons name="chevron-right" size={22} color="#9ca3af" />
+                </View>
               </TouchableOpacity>
             ))}
           </View>
@@ -378,7 +380,7 @@ export default function SupportPage({
           {FAQ_ITEMS.map((item) => (
             <View style={styles.faqCard} key={item.title}>
               <View style={styles.faqIconWrap}>
-                <MaterialIcons name={item.icon} size={20} color="#6A1B9A" />
+                <MaterialIcons name={item.icon} size={22} color="#6A1B9A" />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.faqTitle}>{item.title}</Text>
@@ -399,10 +401,12 @@ export default function SupportPage({
               keyExtractor={(item) => item.id}
               renderItem={renderTicket}
               contentContainerStyle={tickets.length ? styles.ticketList : styles.emptyContent}
-              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={['#6A1B9A']} />}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={['#6A1B9A']} tintColor="#6A1B9A" />}
               ListEmptyComponent={
                 <View style={styles.emptyWrap}>
-                  <MaterialIcons name="support-agent" size={46} color="#d1d5db" />
+                  <View style={styles.emptyIconBg}>
+                    <MaterialIcons name="support-agent" size={46} color="#9ca3af" />
+                  </View>
                   <Text style={styles.emptyTitle}>No requests yet</Text>
                   <Text style={styles.emptyText}>Submitted feedback, complaints, and support tickets will appear here.</Text>
                 </View>
@@ -425,15 +429,17 @@ export default function SupportPage({
               }}
               disabled={submitting}
             >
-              <MaterialIcons name="close" size={24} color="#6b7280" />
+              <MaterialIcons name="close" size={24} color="#4b5563" />
             </TouchableOpacity>
             <Text style={styles.modalTitle}>{selectedOption.title}</Text>
             <View style={styles.closePlaceholder} />
           </View>
 
           <ScrollView contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled">
-            <View style={[styles.formIntro, { borderColor: selectedOption.color + '33', backgroundColor: selectedOption.bg }]}>
-              <MaterialIcons name={selectedOption.icon} size={24} color={selectedOption.color} />
+            <View style={[styles.formIntro, { borderColor: selectedOption.color + '22', backgroundColor: selectedOption.bg }]}>
+              <View style={styles.formIntroIcon}>
+                <MaterialIcons name={selectedOption.icon} size={24} color={selectedOption.color} />
+              </View>
               <Text style={[styles.formIntroText, { color: selectedOption.color }]}>{selectedOption.subtitle}</Text>
             </View>
 
@@ -448,7 +454,7 @@ export default function SupportPage({
                     onPress={() => setCategory(item.value)}
                     activeOpacity={0.85}
                   >
-                    <MaterialIcons name={item.icon} size={18} color={active ? '#6A1B9A' : '#6b7280'} />
+                    <MaterialIcons name={item.icon} size={20} color={active ? '#6A1B9A' : '#6b7280'} />
                     <Text style={active ? styles.categoryTextActive : styles.categoryText}>{item.label}</Text>
                   </TouchableOpacity>
                 )
@@ -464,6 +470,7 @@ export default function SupportPage({
                 placeholderTextColor="#9ca3af"
                 style={styles.input}
                 maxLength={120}
+                selectionColor="#6A1B9A"
               />
             </View>
 
@@ -478,6 +485,7 @@ export default function SupportPage({
                 multiline
                 textAlignVertical="top"
                 maxLength={1000}
+                selectionColor="#6A1B9A"
               />
               <Text style={styles.counterText}>{description.length}/1000</Text>
             </View>
@@ -519,12 +527,12 @@ export default function SupportPage({
             </Text>
 
             <TouchableOpacity style={styles.actionRow} activeOpacity={0.85} onPress={() => handleTicketAction('close')}>
-              <MaterialIcons name="close" size={20} color="#6b7280" />
+              <MaterialIcons name="close" size={20} color="#4b5563" />
               <Text style={styles.actionText}>Close Ticket</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.actionRow} activeOpacity={0.85} onPress={() => handleTicketAction('archive')}>
-              <MaterialIcons name="archive" size={20} color="#6b7280" />
+              <MaterialIcons name="archive" size={20} color="#4b5563" />
               <Text style={styles.actionText}>Archive</Text>
             </TouchableOpacity>
 
@@ -542,141 +550,151 @@ export default function SupportPage({
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: '#f9f9f9',
+    backgroundColor: '#f8f9fa',
   },
   header: {
     paddingHorizontal: 20,
     paddingTop: 16,
-    paddingBottom: 12,
+    paddingBottom: 20,
     backgroundColor: '#ffffff',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#f0f0f0',
+  },
+  headerTextWrap: {
+    gap: 4,
   },
   title: {
+    fontFamily: 'Inter-Bold',
     fontSize: 24,
-    fontWeight: '800',
-    color: '#1a1c1c',
+    color: '#0f172a',
+    letterSpacing: -0.5,
   },
   subtitle: {
-    marginTop: 4,
-    fontSize: 13,
-    color: '#6b7280',
-    lineHeight: 18,
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: '#64748b',
+    lineHeight: 20,
   },
   segmentWrap: {
     flexDirection: 'row',
     marginHorizontal: 20,
-    marginBottom: 12,
+    marginTop: 20,
+    marginBottom: 16,
     padding: 4,
     borderRadius: 12,
-    backgroundColor: '#eceff1',
+    backgroundColor: '#f1f5f9',
   },
   segment: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 9,
+    paddingVertical: 10,
     borderRadius: 8,
   },
   segmentActive: {
     backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
   segmentText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#6b7280',
+    fontFamily: 'Inter-Medium',
+    fontSize: 14,
+    color: '#64748b',
   },
   segmentTextActive: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#1a1c1c',
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    color: '#0f172a',
   },
   content: {
     paddingHorizontal: 20,
-    paddingBottom: 28,
-    gap: 14,
+    paddingBottom: 40,
+    gap: 24,
   },
   optionsGrid: {
-    gap: 10,
+    gap: 12,
   },
   optionCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 16,
     backgroundColor: '#ffffff',
-    borderRadius: 8,
+    borderRadius: 16,
+    padding: 16,
     borderWidth: 1,
-    borderColor: '#eeeeee',
-    padding: 14,
+    borderColor: '#f0f0f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.02,
+    shadowRadius: 8,
+    elevation: 1,
   },
   optionIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
+    width: 48,
+    height: 48,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   optionTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1a1c1c',
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 16,
+    color: '#0f172a',
+    letterSpacing: -0.2,
   },
   optionSubtitle: {
-    marginTop: 3,
-    fontSize: 12,
-    color: '#6b7280',
-    lineHeight: 17,
+    marginTop: 4,
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    color: '#64748b',
+    lineHeight: 18,
   },
-  infoCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#eeeeee',
-    padding: 14,
-    gap: 12,
+  optionChevron: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f8f9fa',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#1a1c1c',
-  },
-  infoRow: {
-    gap: 3,
-  },
-  infoLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#6A1B9A',
-  },
-  infoText: {
-    fontSize: 12,
-    color: '#6b7280',
-    lineHeight: 17,
+    fontFamily: 'Inter-Bold',
+    fontSize: 18,
+    color: '#0f172a',
+    letterSpacing: -0.3,
+    marginTop: 8,
   },
   faqCard: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 16,
     backgroundColor: '#ffffff',
-    borderRadius: 8,
+    borderRadius: 16,
+    padding: 16,
     borderWidth: 1,
-    borderColor: '#eeeeee',
-    padding: 14,
+    borderColor: '#f0f0f0',
+    marginBottom: 12,
   },
   faqIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: '#f3e5f5',
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#f3e8ff',
     alignItems: 'center',
     justifyContent: 'center',
   },
   faqTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1a1c1c',
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 15,
+    color: '#0f172a',
   },
   faqBody: {
-    marginTop: 3,
-    fontSize: 12,
-    color: '#6b7280',
-    lineHeight: 17,
+    marginTop: 4,
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    color: '#64748b',
+    lineHeight: 18,
   },
   requestsWrap: {
     flex: 1,
@@ -688,50 +706,59 @@ const styles = StyleSheet.create({
   },
   ticketList: {
     paddingHorizontal: 20,
-    paddingBottom: 30,
-    gap: 10,
+    paddingBottom: 40,
+    gap: 16,
   },
   ticketCard: {
     backgroundColor: '#ffffff',
-    borderRadius: 8,
+    borderRadius: 16,
+    padding: 16,
     borderWidth: 1,
-    borderColor: '#eeeeee',
-    padding: 14,
-    gap: 10,
+    borderColor: '#f0f0f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.02,
+    shadowRadius: 8,
+    elevation: 1,
   },
   ticketHeader: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 12,
+    marginBottom: 12,
   },
   ticketIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 8,
-    backgroundColor: '#f3e5f5',
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#f3e8ff',
     alignItems: 'center',
     justifyContent: 'center',
   },
   ticketRef: {
+    fontFamily: 'Inter-SemiBold',
     fontSize: 11,
-    fontWeight: '700',
     color: '#9ca3af',
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   ticketSubject: {
     marginTop: 2,
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1a1c1c',
+    fontFamily: 'Inter-Bold',
+    fontSize: 15,
+    color: '#0f172a',
   },
   ticketDate: {
-    marginTop: 2,
-    fontSize: 11,
-    color: '#6b7280',
+    marginTop: 4,
+    fontFamily: 'Inter-Medium',
+    fontSize: 12,
+    color: '#64748b',
   },
   ticketDescription: {
-    fontSize: 12,
-    color: '#6b7280',
-    lineHeight: 18,
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: '#4b5563',
+    lineHeight: 20,
+    marginBottom: 16,
   },
   ticketMetaRow: {
     flexDirection: 'row',
@@ -740,30 +767,35 @@ const styles = StyleSheet.create({
   pill: {
     alignSelf: 'flex-start',
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
   pillText: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
     textTransform: 'capitalize',
   },
   resolutionBox: {
-    borderRadius: 8,
+    marginTop: 16,
+    borderRadius: 12,
     backgroundColor: '#f0fdf4',
-    padding: 10,
-    gap: 3,
+    padding: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#16a34a',
+    gap: 4,
   },
   resolutionLabel: {
+    fontFamily: 'Inter-Bold',
     fontSize: 11,
-    fontWeight: '800',
     color: '#16a34a',
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   resolutionText: {
-    fontSize: 12,
+    fontFamily: 'Inter-Medium',
+    fontSize: 13,
     color: '#14532d',
-    lineHeight: 17,
+    lineHeight: 18,
   },
   emptyContent: {
     flexGrow: 1,
@@ -773,211 +805,243 @@ const styles = StyleSheet.create({
   },
   emptyWrap: {
     alignItems: 'center',
-    gap: 10,
+    gap: 16,
+  },
+  emptyIconBg: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#1a1c1c',
+    fontFamily: 'Inter-Bold',
+    fontSize: 20,
+    color: '#0f172a',
+    letterSpacing: -0.5,
   },
   emptyText: {
-    fontSize: 13,
-    color: '#6b7280',
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: '#64748b',
     textAlign: 'center',
-    lineHeight: 18,
+    lineHeight: 20,
   },
   actionSheetOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(17, 24, 39, 0.45)',
+    backgroundColor: 'rgba(15, 23, 42, 0.4)',
   },
   actionSheetBackdrop: {
     flex: 1,
   },
   actionSheet: {
     backgroundColor: '#ffffff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingTop: 10,
-    paddingHorizontal: 16,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 12,
+    paddingHorizontal: 20,
   },
   actionSheetHandle: {
     alignSelf: 'center',
-    width: 42,
-    height: 4,
+    width: 48,
+    height: 5,
     borderRadius: 999,
-    backgroundColor: '#d1d5db',
-    marginBottom: 12,
+    backgroundColor: '#e2e8f0',
+    marginBottom: 16,
   },
   actionSheetTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#1a1c1c',
+    fontFamily: 'Inter-Bold',
+    fontSize: 18,
+    color: '#0f172a',
     textAlign: 'center',
   },
   actionSheetSubtitle: {
     marginTop: 4,
-    marginBottom: 14,
-    fontSize: 12,
-    color: '#6b7280',
+    marginBottom: 20,
+    fontFamily: 'Inter-Medium',
+    fontSize: 13,
+    color: '#64748b',
     textAlign: 'center',
   },
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingVertical: 14,
-    borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
+    gap: 16,
+    paddingVertical: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#f1f5f9',
   },
   actionRowDanger: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingVertical: 14,
-    borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
+    gap: 16,
+    paddingVertical: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#f1f5f9',
   },
   actionText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1f2937',
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 16,
+    color: '#1e293b',
   },
   actionTextDanger: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 16,
     color: '#dc2626',
   },
   modalPage: {
     flex: 1,
-    backgroundColor: '#f9f9f9',
+    backgroundColor: '#f8f9fa',
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingBottom: 16,
     backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eeeeee',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#f0f0f0',
   },
   closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#f1f1f1',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f1f5f9',
     alignItems: 'center',
     justifyContent: 'center',
   },
   closePlaceholder: {
-    width: 36,
+    width: 40,
   },
   modalTitle: {
     flex: 1,
     textAlign: 'center',
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#1a1c1c',
+    fontFamily: 'Inter-Bold',
+    fontSize: 18,
+    color: '#0f172a',
+    letterSpacing: -0.3,
   },
   formContent: {
     padding: 20,
-    paddingBottom: 36,
-    gap: 16,
+    paddingBottom: 40,
+    gap: 24,
   },
   formIntro: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    borderRadius: 8,
+    gap: 16,
+    borderRadius: 16,
     borderWidth: 1,
-    padding: 12,
+    padding: 16,
+  },
+  formIntroIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   formIntroText: {
     flex: 1,
-    fontSize: 12,
-    fontWeight: '700',
-    lineHeight: 17,
+    fontFamily: 'Inter-Medium',
+    fontSize: 14,
+    lineHeight: 20,
   },
   formLabel: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#6d7b6d',
+    fontFamily: 'Inter-Bold',
+    fontSize: 13,
+    color: '#475569',
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: -4,
   },
   categoryGrid: {
-    gap: 8,
+    gap: 10,
   },
   categoryButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 9,
+    gap: 12,
     backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: '#e5e5e5',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
   categoryButtonActive: {
-    backgroundColor: '#faf5ff',
+    backgroundColor: '#f3e8ff',
     borderColor: '#6A1B9A',
   },
   categoryText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#6b7280',
+    fontFamily: 'Inter-Medium',
+    fontSize: 15,
+    color: '#64748b',
   },
   categoryTextActive: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 15,
     color: '#6A1B9A',
   },
   fieldGroup: {
-    gap: 8,
+    gap: 10,
   },
   input: {
     backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: '#e5e5e5',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    fontSize: 14,
-    color: '#1a1c1c',
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontFamily: 'Inter-Regular',
+    fontSize: 15,
+    color: '#0f172a',
   },
   textArea: {
-    minHeight: 130,
-    lineHeight: 20,
+    minHeight: 140,
+    lineHeight: 22,
   },
   counterText: {
     textAlign: 'right',
-    fontSize: 11,
-    color: '#9ca3af',
+    fontFamily: 'Inter-Medium',
+    fontSize: 12,
+    color: '#94a3b8',
+    marginTop: -4,
   },
   priorityPreview: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#ffffff',
-    borderRadius: 8,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#eeeeee',
-    padding: 12,
+    borderColor: '#e2e8f0',
+    padding: 16,
   },
   priorityLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#1a1c1c',
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 15,
+    color: '#0f172a',
   },
   submitButton: {
     backgroundColor: '#6A1B9A',
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: 14,
+    paddingVertical: 16,
     alignItems: 'center',
+    shadowColor: '#6A1B9A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+    marginTop: 8,
   },
   submitText: {
-    fontSize: 15,
-    fontWeight: '800',
+    fontFamily: 'Inter-Bold',
+    fontSize: 16,
     color: '#ffffff',
+    letterSpacing: -0.3,
   },
 })

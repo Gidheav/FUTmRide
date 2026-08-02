@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import PremiumBottomSheet from '../../premium/PremiumBottomSheet';
 import LoadingOverlay from '../../../components/LoadingOverlay';
 
@@ -9,6 +10,8 @@ interface TransferConfirmModalProps {
   onClose: () => void;
   onConfirm: (pin: string) => void;
   loading: boolean;
+  error?: string | null;
+  clearError?: () => void;
 }
 
 const transferPinRows = [
@@ -18,7 +21,7 @@ const transferPinRows = [
   [null, 0, 'back'],
 ];
 
-export const TransferConfirmModal = React.memo(({ visible, onClose, onConfirm, loading }: TransferConfirmModalProps) => {
+export const TransferConfirmModal = React.memo(({ visible, onClose, onConfirm, loading, error, clearError }: TransferConfirmModalProps) => {
   const [pinInput, setPinInput] = useState('');
 
   // Reset when opened
@@ -33,6 +36,7 @@ export const TransferConfirmModal = React.memo(({ visible, onClose, onConfirm, l
     
     if (digit === 'back') {
       setPinInput((prev) => prev.slice(0, -1));
+      if (error) clearError?.();
       return;
     }
     
@@ -59,6 +63,17 @@ export const TransferConfirmModal = React.memo(({ visible, onClose, onConfirm, l
           />
         ))}
       </View>
+      
+      {error ? (
+        <Animated.View 
+          entering={FadeInDown.duration(300).springify()} 
+          exiting={FadeOutUp.duration(200)}
+          style={styles.errorContainer}
+        >
+          <MaterialIcons name="error-outline" size={16} color="#ef4444" />
+          <Text style={styles.errorText}>{error}</Text>
+        </Animated.View>
+      ) : null}
       
       <View style={styles.pinPad}>
         {transferPinRows.map((row, rowIndex) => (
@@ -161,6 +176,21 @@ const styles = StyleSheet.create({
   modalCancelText: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 15,
-    color: '#4b5563',
+    color: '#374151',
+  },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef2f2',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 24,
+    gap: 8,
+  },
+  errorText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 13,
+    color: '#ef4444',
+    flex: 1,
   },
 });

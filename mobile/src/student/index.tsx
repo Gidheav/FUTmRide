@@ -31,6 +31,8 @@ import EventsPage from './pages/EventsPage'
 import NewsPage from './pages/NewsPage'
 import SafetyGuidePage from './pages/SafetyGuidePage'
 import SupportPage from './pages/SupportPage'
+import AllTransactionsPage from './pages/AllTransactionsPage'
+import { TransactionReceiptModal } from './components/wallet/modals/TransactionReceiptModal'
 import StudentLayout from './layout/StudentLayout'
 import InAppAnnouncementModal from './components/InAppAnnouncementModal'
 import StudentSidebar from './components/StudentSidebar'
@@ -98,6 +100,8 @@ function StudentAppInner() {
   const [accountMode, setAccountMode] = useState<'view' | 'edit' | 'notifications' | 'security' | 'settings'>('view')
   const [accountRefreshKey, setAccountRefreshKey] = useState(0)
   const [disputeTx, setDisputeTx] = useState<any>(null)
+  const [walletMode, setWalletMode] = useState<'main' | 'transactions'>('main')
+  const [selectedWalletTx, setSelectedWalletTx] = useState<any>(null)
   const [openPinOnLoad, setOpenPinOnLoad] = useState(false)
   const [skipPinVerify, setSkipPinVerify] = useState(false)
   const [notifHistoryOpen, setNotifHistoryOpen] = useState(false)
@@ -602,10 +606,10 @@ function StudentAppInner() {
   }, [pinRecoveryRequired, locked, setLocked])
 
   // Store latest state in refs for BackHandler to avoid re-attaching and stealing the top of the stack
-  const backStateRef = useRef({ activeTab, accountMode, rideScreen, isSidebarOpen })
+  const backStateRef = useRef({ activeTab, accountMode, rideScreen, isSidebarOpen, walletMode })
   useEffect(() => {
-    backStateRef.current = { activeTab, accountMode, rideScreen, isSidebarOpen }
-  }, [activeTab, accountMode, rideScreen, isSidebarOpen])
+    backStateRef.current = { activeTab, accountMode, rideScreen, isSidebarOpen, walletMode }
+  }, [activeTab, accountMode, rideScreen, isSidebarOpen, walletMode])
 
   // ─── Hardware back button ────────────────────────────────────────────────
   useEffect(() => {
@@ -614,6 +618,10 @@ function StudentAppInner() {
       // Close ride overlay screens on back press
       if (state.rideScreen !== 'none') {
         setRideScreen('none')
+        return true
+      }
+      if (state.activeTab === 'wallet' && state.walletMode === 'transactions') {
+        setWalletMode('main')
         return true
       }
       if (state.isSidebarOpen) { setIsSidebarOpen(false); return true }
@@ -829,13 +837,20 @@ function StudentAppInner() {
       </View>
 
       <View style={{ display: activeTab === 'wallet' ? 'flex' : 'none', flex: 1 }}>
-        <StudentWalletPage 
-          onNavigateToMap={() => setActiveTab('home')} 
-          onDisputeTransaction={(tx) => {
-            setDisputeTx(tx)
-            setActiveTab('support')
-          }}
-        />
+        {walletMode === 'transactions' ? (
+          <AllTransactionsPage
+            onSelectTransaction={(tx) => setSelectedWalletTx(tx)}
+          />
+        ) : (
+          <StudentWalletPage 
+            onNavigateToMap={() => setActiveTab('home')} 
+            onDisputeTransaction={(tx) => {
+              setDisputeTx(tx)
+              setActiveTab('support')
+            }}
+            onViewAllTransactions={() => setWalletMode('transactions')}
+          />
+        )}
       </View>
 
       {activeTab === 'account' && accountMode === 'edit' && (
@@ -921,10 +936,12 @@ function StudentAppInner() {
         }}
         onMenuPress={() => setIsSidebarOpen(true)}
         onBackPress={
+          activeTab === 'wallet' && walletMode === 'transactions' ? () => setWalletMode('main') :
           activeTab === 'account' && accountMode !== 'view' ? () => setAccountMode('view') :
           ['about', 'activities', 'updates', 'events', 'news', 'safety', 'support'].includes(activeTab) ? () => setActiveTab('home') : undefined
         }
         title={
+          activeTab === 'wallet' && walletMode === 'transactions' ? 'All Transactions' :
           activeTab === 'account' && accountMode === 'edit' ? 'Edit Profile' :
           activeTab === 'account' && accountMode === 'settings' ? 'Settings' :
           activeTab === 'account' && accountMode === 'notifications' ? 'Notification Settings' :
@@ -935,6 +952,15 @@ function StudentAppInner() {
       >
         {renderTabPage()}
       </StudentLayout>
+
+      <TransactionReceiptModal
+        transaction={selectedWalletTx}
+        onClose={() => setSelectedWalletTx(null)}
+        onDispute={(tx) => {
+          setDisputeTx(tx)
+          setActiveTab('support')
+        }}
+      />
 
       <Modal
         visible={notifHistoryOpen}

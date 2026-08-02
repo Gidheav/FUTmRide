@@ -23,6 +23,7 @@ import LoadingOverlay from '../components/LoadingOverlay'
 import api from '../../core/api'
 import { PAYMENT_CALLBACK_URL } from '../../../config/apiConfig'
 import useWalletStore from '../../core/walletStore'
+import { useToastStore } from '../../core/toastStore'
 import { useAuthStore } from '../../core/authStore'
 import { useSecurityStore } from '../../core/securityStore'
 import { useUIPreferencesStore } from '../../core/uiPreferencesStore'
@@ -46,10 +47,12 @@ const ReanimatedPressable = Reanimated.createAnimatedComponent(Pressable)
 
 export default function StudentWalletPage({ 
   onNavigateToMap,
-  onDisputeTransaction 
+  onDisputeTransaction,
+  onViewAllTransactions,
 }: { 
   onNavigateToMap?: () => void
   onDisputeTransaction?: (tx: any) => void
+  onViewAllTransactions?: () => void
 }) {
   const [profile, setProfile] = useState<any>(null)
   const [transactions, setTransactions] = useState<any[]>([])
@@ -63,8 +66,6 @@ export default function StudentWalletPage({
   const [webviewUrl, setWebviewUrl] = useState<string | null>(null)
   const [gatewayModalVisible, setGatewayModalVisible] = useState(false)
   const [fundModalVisible, setFundModalVisible] = useState(false)
-  const [transactionsModalVisible, setTransactionsModalVisible] = useState(false)
-  const [transactionFilter, setTransactionFilter] = useState<'all' | 'credit' | 'debit' | 'transfer'>('all')
   const [transferScanModalVisible, setTransferScanModalVisible] = useState(false)
   const [receiveModalVisible, setReceiveModalVisible] = useState(false)
   const [transferIdModalVisible, setTransferIdModalVisible] = useState(false)
@@ -81,16 +82,13 @@ export default function StudentWalletPage({
   const [transferConfirmVisible, setTransferConfirmVisible] = useState(false)
   const [transferPinInput, setTransferPinInput] = useState('')
   const [transferPinError, setTransferPinError] = useState('')
-  // Toast state for short-lived messages
-  const [toastMessage, setToastMessage] = useState<string | null>(null)
-  const [toastVisible, setToastVisible] = useState(false)
-  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const toastOpacity = useRef(new Animated.Value(0)).current
+
   // Store reference during WebView session without triggering polls
   const [webviewReference, setWebviewReference] = useState<string | null>(null)
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null)
   const [cameraPermission, requestCameraPermission] = useCameraPermissions()
   const authUser = useAuthStore((state) => state.user)
+  const showToast = useToastStore((state) => state.showToast)
   const { walletBalance, setWalletBalance } = useWalletStore()
   const walletActivityRefreshKey = useWalletStore((state) => state.walletActivityRefreshKey)
   const walletFlashAt = useWalletStore((state) => state.walletFlashAt)
@@ -151,7 +149,7 @@ export default function StudentWalletPage({
       const list = Array.isArray(txRes.data?.results) ? txRes.data.results : txRes.data || []
       setTransactions(Array.isArray(list) ? list : [])
     } catch (err) {
-      setTopupError('Unable to load wallet data.')
+      showToast('Unable to load wallet data.', 'error')
     } finally {
       setLoading(false)
     }
@@ -186,11 +184,11 @@ export default function StudentWalletPage({
         await loadWallet()
       } else if (status === 'failed') {
         setPendingReference(null)
-        setTopupError('Top-up failed. Please try again.')
+        showToast('Top-up failed. Please try again.', 'error')
       }
       // 'pending' / 'abandoned' — keep polling, payment may still be processing
     } catch (err) {
-      setTopupError('Unable to verify top-up status.')
+      showToast('Unable to verify top-up status.', 'error')
     }
   }, [loadWallet])
 
@@ -225,7 +223,7 @@ export default function StudentWalletPage({
   const startTopUp = useCallback(async (selectedGateway: 'paystack' | 'flutterwave') => {
     const amountValue = Number(topupAmount)
     if (!amountValue || amountValue < 100) {
-      setTopupError('Minimum top-up amount is NGN 100.')
+      showToast('Minimum top-up amount is NGN 100.', 'error')
       return
     }
     setTopupLoading(true)
@@ -250,11 +248,12 @@ export default function StudentWalletPage({
         setWebviewVisible(true)
       }
     } catch (err: any) {
-      const message =
+      const message = String(
         err?.response?.data?.error?.message ||
         err?.response?.data?.message ||
         'Failed to initiate top-up. Please try again.'
-      setTopupError(String(message))
+      )
+      showToast(message, 'error')
     } finally {
       setTopupLoading(false)
     }
@@ -267,6 +266,7 @@ export default function StudentWalletPage({
       return
     }
     setTopupAmount(amount)
+    setFundModalVisible(false)
     setGatewayModalVisible(true)
   }, [])
 
@@ -297,11 +297,7 @@ export default function StudentWalletPage({
     return transactions.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
   }, [transactions])
 
-  const filteredTransactions = useMemo(() => {
-    if (transactionFilter === 'all') return activityItems
-    if (transactionFilter === 'transfer') return activityItems.filter(tx => String(tx?.source || '').startsWith('student_transfer'))
-    return activityItems.filter(tx => tx.transaction_type === transactionFilter)
-  }, [activityItems, transactionFilter])
+
 
   const formatNarration = useCallback((narration: string) => {
     if (!narration) return 'Wallet transaction'
@@ -370,11 +366,12 @@ export default function StudentWalletPage({
       setRecipient(nextRecipient)
       return true
     } catch (err: any) {
-      const message =
+      const message = String(
         err?.response?.data?.error?.message ||
         err?.response?.data?.message ||
         'Unable to fetch recipient details.'
-      setTransferError(String(message))
+      )
+      setTransferError(message)
       return false
     } finally {
       setRecipientLookupLoading(false)
@@ -397,7 +394,7 @@ export default function StudentWalletPage({
     if (!cameraPermission?.granted) {
       const permission = await requestCameraPermission()
       if (!permission.granted) {
-        setTransferError('Camera permission is required to scan recipient barcode.')
+        showToast('Camera permission is required to scan recipient barcode.', 'error')
         return
       }
     }
@@ -493,46 +490,6 @@ export default function StudentWalletPage({
     }
   }, [sendTransferRequest, transferPinLoading])
 
-  // Show toast helper — fades in then auto-hides after 3s
-  const showToast = useCallback((message: string) => {
-    if (toastTimeoutRef.current) {
-      clearTimeout(toastTimeoutRef.current)
-      toastTimeoutRef.current = null
-    }
-    setToastMessage(message)
-    setToastVisible(true)
-    Animated.timing(toastOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start()
-    toastTimeoutRef.current = setTimeout(() => {
-      Animated.timing(toastOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
-        setToastVisible(false)
-        setToastMessage(null)
-      })
-      toastTimeoutRef.current = null
-    }, 3000)
-  }, [toastOpacity])
-
-  // Auto show toasts for various error states and clear them
-  useEffect(() => {
-    if (topupError) {
-      showToast(topupError)
-      setTopupError(null)
-    }
-  }, [topupError, showToast])
-
-  useEffect(() => {
-    if (transferError) {
-      showToast(transferError)
-      setTransferError(null)
-    }
-  }, [transferError, showToast])
-
-  useEffect(() => {
-    if (transferPinError) {
-      showToast(transferPinError)
-      setTransferPinError('')
-    }
-  }, [transferPinError, showToast])
-
   const handleTransferSubmit = useCallback((amount: string) => {
     if (transferLoading) return
     const amountValue = Number(amount)
@@ -566,6 +523,7 @@ export default function StudentWalletPage({
         onClose={() => setFundModalVisible(false)}
         onTopUp={handleTopUpSubmit}
         loading={topupLoading}
+        error={topupError}
         clearError={() => setTopupError(null)}
       />
       <TransferIdModal
@@ -573,6 +531,7 @@ export default function StudentWalletPage({
         onClose={() => setTransferIdModalVisible(false)}
         onContinue={handleLookupSubmit}
         loading={recipientLookupLoading}
+        error={transferError}
         clearError={() => setTransferError(null)}
       />
       <CompleteTransferModal
@@ -581,11 +540,14 @@ export default function StudentWalletPage({
         onSend={handleTransferSubmit}
         loading={transferLoading}
         recipient={recipient}
+        error={transferError}
+        clearError={() => setTransferError(null)}
       />
       <Modal
         visible={scannerVisible}
         animationType="fade"
         onRequestClose={() => setScannerVisible(false)}
+        statusBarTranslucent
       >
         <View style={styles.scannerFull}>
           <CameraView
@@ -594,28 +556,43 @@ export default function StudentWalletPage({
             style={StyleSheet.absoluteFillObject}
           />
           <View style={styles.scannerOverlay}>
-            <View style={styles.scannerFrameBox} />
+            <View style={styles.scannerFrameBox}>
+              <View style={styles.scannerCornerTL} />
+              <View style={styles.scannerCornerTR} />
+              <View style={styles.scannerCornerBL} />
+              <View style={styles.scannerCornerBR} />
+            </View>
           </View>
-          <View style={styles.scannerTopBar}>
-            <TouchableOpacity style={styles.scannerClose} onPress={() => setScannerVisible(false)}>
-              <MaterialIcons name="close" size={20} color="#ffffff" />
-            </TouchableOpacity>
-            <Text style={styles.scannerTitle}>Scan Recipient</Text>
-            <View style={styles.scannerSpacer} />
-          </View>
-          <View style={styles.scannerHintWrap}>
-            <Text style={styles.scannerHint}>Align recipient barcode inside the frame</Text>
-          </View>
+          <SafeAreaView style={styles.scannerSafeTop}>
+            <View style={styles.scannerTopBar}>
+              <TouchableOpacity style={styles.scannerClose} onPress={() => setScannerVisible(false)}>
+                <MaterialIcons name="close" size={22} color="#ffffff" />
+              </TouchableOpacity>
+              <Text style={styles.scannerTitle}>Scan Recipient</Text>
+              <View style={styles.scannerSpacer} />
+            </View>
+          </SafeAreaView>
+          <SafeAreaView style={styles.scannerSafeBottom}>
+            <View style={styles.scannerHintWrap}>
+              <View style={styles.scannerHintPill}>
+                <MaterialIcons name="qr-code-scanner" size={18} color="#ffffff" />
+                <Text style={styles.scannerHint}>Align QR code inside the frame</Text>
+              </View>
+            </View>
+          </SafeAreaView>
         </View>
       </Modal>
       <TransferConfirmModal
         visible={transferConfirmVisible}
         onClose={() => {
           setTransferConfirmVisible(false)
+          setTransferPinInput('')
           setTransferPinError('')
         }}
-        onConfirm={handleTransferPinConfirm}
+        onConfirm={sendTransferRequest}
         loading={transferPinLoading}
+        error={transferPinError}
+        clearError={() => setTransferPinError('')}
       />
       <Modal
         visible={webviewVisible}
@@ -754,7 +731,7 @@ export default function StudentWalletPage({
           <TouchableOpacity activeOpacity={0.7} onPress={loadWallet} style={styles.iconButtonWrap}>
             <MaterialIcons name="refresh" size={20} color="#6A1B9A" />
           </TouchableOpacity>
-          <TouchableOpacity activeOpacity={0.7} onPress={() => setTransactionsModalVisible(true)} style={styles.iconButtonWrap}>
+          <TouchableOpacity activeOpacity={0.7} onPress={onViewAllTransactions} style={styles.iconButtonWrap}>
             <MaterialIcons name="receipt-long" size={20} color="#6A1B9A" />
           </TouchableOpacity>
         </View>
@@ -804,79 +781,7 @@ export default function StudentWalletPage({
         )}
       </View>
     </ScrollView>
-    <PremiumBottomSheet visible={transactionsModalVisible} onClose={() => setTransactionsModalVisible(false)} snapPoints={["90%"]} useScrollView>
-          <View style={styles.transactionsModalHeader}>
-          <Text style={styles.transactionsModalTitle}>All Transactions</Text>
-          <TouchableOpacity onPress={() => setTransactionsModalVisible(false)}>
-            <MaterialIcons name="close" size={24} color="#1a1c1c" />
-          </TouchableOpacity>
-        </View>
-        <View style={styles.filterRow}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
-            <TouchableOpacity style={[styles.filterChip, transactionFilter === 'all' && styles.filterChipActive]} onPress={() => setTransactionFilter('all')}>
-              <Text style={[styles.filterChipText, transactionFilter === 'all' && styles.filterChipTextActive]}>All</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.filterChip, transactionFilter === 'credit' && styles.filterChipActive]} onPress={() => setTransactionFilter('credit')}>
-              <Text style={[styles.filterChipText, transactionFilter === 'credit' && styles.filterChipTextActive]}>Credits</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.filterChip, transactionFilter === 'debit' && styles.filterChipActive]} onPress={() => setTransactionFilter('debit')}>
-              <Text style={[styles.filterChipText, transactionFilter === 'debit' && styles.filterChipTextActive]}>Debits</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.filterChip, transactionFilter === 'transfer' && styles.filterChipActive]} onPress={() => setTransactionFilter('transfer')}>
-              <Text style={[styles.filterChipText, transactionFilter === 'transfer' && styles.filterChipTextActive]}>Transfers</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
-        <ScrollView contentContainerStyle={{ padding: 16 }}>
-          <View style={styles.activityList}>
-            {filteredTransactions.length === 0 ? (
-              <View style={styles.emptyFilterState}>
-                <MaterialIcons name="receipt-long" size={48} color="#e5e7eb" />
-                <Text style={styles.emptyFilterTitle}>No transactions found</Text>
-                <Text style={styles.emptyFilterSubtitle}>There are no {transactionFilter === 'all' ? '' : transactionFilter + ' '}transactions to display.</Text>
-              </View>
-            ) : (
-              filteredTransactions.map((tx) => (
-                <TouchableOpacity 
-                style={styles.activityItem} 
-                key={tx.id}
-                activeOpacity={0.7}
-                onPress={() => setSelectedTransaction(tx)}
-              >
-                <View style={[styles.activityLeft, { flex: 1 }]}>
-                  <View style={tx.transaction_type === 'credit' ? styles.activityIconAccent : styles.activityIconMuted}>
-                    <MaterialIcons
-                      name={getTransactionIcon(tx)}
-                      size={20}
-                      color={tx.transaction_type === 'credit' ? '#6A1B9A' : '#3d4a3e'}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.activityTitle} numberOfLines={1} ellipsizeMode="tail">
-                      {formatNarration(tx.narration)}
-                    </Text>
-                    <Text style={styles.activityTime}>{formatDate(tx.created_at)}</Text>
-                  </View>
-                </View>
-                <Text style={tx.transaction_type === 'credit' ? styles.activityAmountPositive : styles.activityAmount}>
-                  {tx.transaction_type === 'credit' ? '+ NGN ' : '- NGN '}{formatAmount(tx.amount)}
-                </Text>
-              </TouchableOpacity>
-              ))
-            )}
-          </View>
-        </ScrollView>
-      </PremiumBottomSheet>
-    {toastVisible ? (
-      <Modal transparent visible={toastVisible} animationType="none" onRequestClose={() => {}}>
-        <Animated.View style={[styles.toastWrap, { opacity: toastOpacity }]} pointerEvents="box-none">
-          <View style={styles.toast}>
-            <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '600' }}>{toastMessage}</Text>
-          </View>
-        </Animated.View>
-      </Modal>
-    ) : null}
-    <LoadingOverlay visible={topupLoading || transferLoading || recipientLookupLoading} />
+
         </View>
   )
 }
@@ -1327,21 +1232,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-  toastWrap: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    bottom: 36,
-    alignItems: 'center',
-    zIndex: 20000,
-  },
-  toast: {
-    backgroundColor: '#111827',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 10,
-    maxWidth: '92%',
-  },
+
   primaryAction: {
     flex: 1,
     backgroundColor: '#6A1B9A',
@@ -1428,34 +1319,44 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000000',
   },
-  scannerTopBar: {
+  scannerSafeTop: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: 64,
-    paddingHorizontal: 16,
-    paddingTop: 10,
+    zIndex: 10,
+  },
+  scannerSafeBottom: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+  },
+  scannerTopBar: {
+    paddingHorizontal: 20,
+    paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: 'rgba(255, 255, 255, 0)',
   },
   scannerTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 17,
     color: '#ffffff',
+    letterSpacing: -0.2,
   },
   scannerClose: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   scannerSpacer: {
-    width: 36,
+    width: 40,
   },
   scannerOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -1463,74 +1364,50 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   scannerFrameBox: {
-    width: 320,
-    height: 320,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.65)',
-    borderRadius: 20,
+    width: 280,
+    height: 280,
+    borderRadius: 24,
+    position: 'relative',
+  },
+  scannerCornerTL: {
+    position: 'absolute', top: -2, left: -2, width: 40, height: 40,
+    borderTopWidth: 3, borderLeftWidth: 3, borderColor: '#ffffff',
+    borderTopLeftRadius: 24,
+  },
+  scannerCornerTR: {
+    position: 'absolute', top: -2, right: -2, width: 40, height: 40,
+    borderTopWidth: 3, borderRightWidth: 3, borderColor: '#ffffff',
+    borderTopRightRadius: 24,
+  },
+  scannerCornerBL: {
+    position: 'absolute', bottom: -2, left: -2, width: 40, height: 40,
+    borderBottomWidth: 3, borderLeftWidth: 3, borderColor: '#ffffff',
+    borderBottomLeftRadius: 24,
+  },
+  scannerCornerBR: {
+    position: 'absolute', bottom: -2, right: -2, width: 40, height: 40,
+    borderBottomWidth: 3, borderRightWidth: 3, borderColor: '#ffffff',
+    borderBottomRightRadius: 24,
   },
   scannerHintWrap: {
-    position: 'absolute',
-    bottom: 40,
-    left: 20,
-    right: 20,
+    paddingBottom: 24,
     alignItems: 'center',
+  },
+  scannerHintPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 24,
   },
   scannerHint: {
-    textAlign: 'center',
-    fontSize: 13,
+    fontFamily: 'Inter-Medium',
+    fontSize: 14,
     color: '#ffffff',
   },
-  bonusBanner: {
-    backgroundColor: '#6A1B9A',
-    borderRadius: 16,
-    padding: 16,
-    overflow: 'hidden',
-  },
-  bonusPattern: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.2,
-    backgroundColor: 'transparent',
-  },
-  bonusContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  bonusLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  bonusIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bonusTitle: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  bonusSubtitle: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  bonusButton: {
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-  bonusButtonText: {
-    color: '#6A1B9A',
-    fontSize: 12,
-    fontWeight: '600',
-  },
+
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1565,7 +1442,7 @@ const styles = StyleSheet.create({
   },
   activityItem: {
     backgroundColor: '#ffffff',
-    paddingVertical: 14,
+    paddingVertical: 13,
     paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',

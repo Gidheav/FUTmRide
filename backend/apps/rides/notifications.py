@@ -34,6 +34,10 @@ def notify_student_ride_status(ride: Ride):
         notification_type = Notification.NotificationType.TRIP_STARTED
         title = 'Ride in progress'
         body = 'Your trip has started. Have a safe ride.'
+    elif status == RideStatus.PENDING_COMPLETION:
+        notification_type = Notification.NotificationType.GENERAL
+        title = 'Trip Completion'
+        body = 'Driver marked trip complete. Please confirm.'
     elif status == RideStatus.COMPLETED:
         notification_type = Notification.NotificationType.TRIP_COMPLETED
         title = 'Ride completed'

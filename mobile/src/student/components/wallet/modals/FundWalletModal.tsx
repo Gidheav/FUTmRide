@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import PremiumBottomSheet from '../../premium/PremiumBottomSheet';
 
 interface FundWalletModalProps {
@@ -8,10 +9,11 @@ interface FundWalletModalProps {
   onClose: () => void;
   onTopUp: (amount: string) => void;
   loading: boolean;
+  error?: string | null;
   clearError?: () => void;
 }
 
-export const FundWalletModal = React.memo(({ visible, onClose, onTopUp, loading, clearError }: FundWalletModalProps) => {
+export const FundWalletModal = React.memo(({ visible, onClose, onTopUp, loading, error, clearError }: FundWalletModalProps) => {
   const [amount, setAmount] = useState('');
 
   // Reset state when opened
@@ -27,12 +29,26 @@ export const FundWalletModal = React.memo(({ visible, onClose, onTopUp, loading,
       <Text style={styles.modalSubtitle}>Enter the amount you want to add to your wallet.</Text>
       
       <TextInput
-        style={styles.modalInput}
+        style={[styles.modalInput, error ? styles.modalInputError : null]}
         placeholder="Amount (NGN)"
         keyboardType="numeric"
         value={amount}
-        onChangeText={setAmount}
+        onChangeText={(txt) => {
+          setAmount(txt);
+          if (error) clearError?.();
+        }}
       />
+      
+      {error ? (
+        <Animated.View 
+          entering={FadeInDown.duration(300).springify()} 
+          exiting={FadeOutUp.duration(200)}
+          style={styles.errorContainer}
+        >
+          <MaterialIcons name="error-outline" size={16} color="#ef4444" />
+          <Text style={styles.errorText}>{error}</Text>
+        </Animated.View>
+      ) : null}
       
       <View style={styles.modalButtonRow}>
         <TouchableOpacity
@@ -49,7 +65,6 @@ export const FundWalletModal = React.memo(({ visible, onClose, onTopUp, loading,
           style={[styles.primaryActionCompact, (loading || Number(amount) < 100) && styles.primaryActionDisabled]}
           activeOpacity={0.9}
           onPress={() => {
-            onClose();
             onTopUp(amount);
           }}
           disabled={loading || Number(amount) < 100}
@@ -87,6 +102,26 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Medium',
     color: '#1a1c1c',
     marginBottom: 24,
+  },
+  modalInputError: {
+    borderColor: '#ef4444',
+    backgroundColor: '#fef2f2',
+  },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef2f2',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 24,
+    marginTop: -12,
+    gap: 8,
+  },
+  errorText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 13,
+    color: '#ef4444',
+    flex: 1,
   },
   modalButtonRow: {
     flexDirection: 'row',
