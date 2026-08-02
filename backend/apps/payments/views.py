@@ -8,7 +8,7 @@ from uuid import UUID
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
-from django.db.models import Sum
+from django.db.models import Sum, Q
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -117,7 +117,7 @@ def _resolve_student_recipient(raw_code: str):
         ).first()
     else:
         profile = StudentProfile.objects.select_related('user', 'campus').filter(
-            matric_number__iexact=value,
+            Q(matric_number__iexact=value) | Q(user__email__icontains=value),
             user__role=UserRole.STUDENT,
             user__is_active=True,
         ).first()

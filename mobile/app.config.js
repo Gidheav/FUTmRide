@@ -14,7 +14,13 @@ const resolveConfigFilePath = (envVarName, fallbackRelativePath) => {
 
 const config = {
   ...appJson,
-  expo: { ...appJson.expo },
+  expo: {
+    ...appJson.expo,
+    plugins: [
+      ...(appJson.expo.plugins || []),
+      'expo-font',
+    ],
+  },
 }
 
 const androidGoogleServicesFile = resolveConfigFilePath(

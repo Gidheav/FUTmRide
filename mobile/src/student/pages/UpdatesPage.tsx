@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
 import {
   ActivityIndicator,
+  Animated,
   Modal,
+  Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -19,6 +21,56 @@ type VersionInfo = {
 }
 
 type ModalState = 'idle' | 'running' | 'success' | 'error'
+
+// ── Premium Animated Pressable ──
+const AnimatedPressable = ({
+  children,
+  onPress,
+  style,
+  disabled,
+  activeOpacity = 0.85,
+}: {
+  children: React.ReactNode
+  onPress?: () => void
+  style?: any
+  disabled?: boolean
+  activeOpacity?: number
+}) => {
+  const scale = useRef(new Animated.Value(1)).current
+  const handlePressIn = () => {
+    Animated.spring(scale, {
+      toValue: 0.96,
+      useNativeDriver: true,
+      speed: 40,
+      bounciness: 0,
+    }).start()
+  }
+  const handlePressOut = () => {
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 40,
+      bounciness: 0,
+    }).start()
+  }
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      style={({ pressed }) => [
+        style,
+        {
+          opacity: pressed ? activeOpacity : 1,
+          transform: [{ scale: pressed ? 0.96 : 1 }],
+        },
+      ]}
+    >
+      {children}
+    </Pressable>
+  )
+}
 
 export default function UpdatesPage() {
   const insets = useSafeAreaInsets()
@@ -42,6 +94,12 @@ export default function UpdatesPage() {
       }
     })()
   }, [])
+
+  // Derived status: is the local version matching the server version?
+  const isUpToDate = useMemo(() => {
+    if (!versionInfo || versionInfo.localVersion === 0) return null
+    return versionInfo.localVersion >= versionInfo.serverVersion
+  }, [versionInfo])
 
   const handleRun = async () => {
     setIsModalVisible(true)
@@ -112,50 +170,75 @@ export default function UpdatesPage() {
       
       {/* ── Main Screen ────────────────────────────────────────────────── */}
       <View style={styles.container}>
-        <View style={styles.heroSection}>
-          <View style={styles.heroIconWrapper}>
-            <MaterialIcons name="map" size={64} color="#6A1B9A" />
+        
+        {/* Decorative background accent */}
+        <View style={styles.bgAccent} />
+
+        <View style={styles.contentBlock}>
+          {/* Hero */}
+          <View style={styles.heroSection}>
+            <View style={styles.heroIconWrapper}>
+              <MaterialIcons name="map" size={40} color="#6A1B9A" />
+            </View>
+            <Text style={styles.heroTitle}>Campus Map</Text>
+            <Text style={styles.heroSubtitle}>
+              Keep your location data fresh for accurate routing.
+            </Text>
           </View>
-          <Text style={styles.heroTitle}>Campus Map</Text>
-          <Text style={styles.heroSubtitle}>
-            Ensure you have the latest location data for accurate routing and quick access.
+
+          {/* Stats Grid */}
+          <View style={styles.statsRow}>
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>
+                {versionInfo?.localVersion && versionInfo.localVersion > 0 
+                  ? `v${versionInfo.localVersion}` 
+                  : '—'}
+              </Text>
+              <Text style={styles.statLabel}>Current Version</Text>
+              {isUpToDate === true && (
+                <View style={styles.statusBadge}>
+                  <MaterialIcons name="check-circle" size={12} color="#2E7D32" />
+                  <Text style={styles.statusBadgeText}>Up to date</Text>
+                </View>
+              )}
+              {isUpToDate === false && (
+                <View style={[styles.statusBadge, styles.statusBadgeWarning]}>
+                  <MaterialIcons name="warning" size={12} color="#B45309" />
+                  <Text style={[styles.statusBadgeText, styles.statusBadgeTextWarning]}>
+                    Update available
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>
+                {versionInfo?.locationCount && versionInfo.locationCount > 0 
+                  ? versionInfo.locationCount 
+                  : '—'}
+              </Text>
+              <Text style={styles.statLabel}>Locations</Text>
+              <View style={styles.statusBadgeSpacer} />
+            </View>
+          </View>
+
+          {/* Premium Pill Button (not full width) */}
+          <AnimatedPressable 
+            style={[styles.actionButton, isModalVisible && styles.actionButtonDisabled]} 
+            onPress={handleRun} 
+            disabled={isModalVisible}
+          >
+            <MaterialIcons name="system-update-alt" size={18} color="#ffffff" />
+            <Text style={styles.actionButtonText}>Check for Updates</Text>
+          </AnimatedPressable>
+
+          <Text style={styles.footnote}>
+            Last checked {versionInfo?.publishedAt ? new Date(versionInfo.publishedAt).toLocaleDateString() : 'just now'}
           </Text>
         </View>
-
-        <View style={styles.infoSection}>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Current Version</Text>
-            <Text style={styles.infoValue}>
-              {versionInfo?.localVersion && versionInfo.localVersion > 0 
-                ? `v${versionInfo.localVersion}` 
-                : 'Not Installed'}
-            </Text>
-          </View>
-          <View style={styles.divider} />
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Locations</Text>
-            <Text style={styles.infoValue}>
-              {versionInfo?.locationCount && versionInfo.locationCount > 0 
-                ? versionInfo.locationCount 
-                : '—'}
-            </Text>
-          </View>
-        </View>
-
-        <View style={{ flex: 1 }} />
-
-        <TouchableOpacity 
-          style={[styles.actionButton, isModalVisible && { backgroundColor: '#e2e2e2' }]} 
-          onPress={handleRun} 
-          activeOpacity={0.85}
-          disabled={isModalVisible}
-        >
-          <MaterialIcons name="system-update-alt" size={20} color={isModalVisible ? '#9ca3af' : '#ffffff'} />
-          <Text style={[styles.actionButtonText, isModalVisible && { color: '#9ca3af' }]}>Check for Updates</Text>
-        </TouchableOpacity>
       </View>
 
-      {/* ── Update Modal ───────────────────────────────────────────────── */}
+      {/* ── Update Modal (Premium) ───────────────────────────────────── */}
       <Modal visible={isModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -163,33 +246,38 @@ export default function UpdatesPage() {
             {modalState === 'running' && (
               <View style={styles.modalStateContainer}>
                 <ActivityIndicator size="large" color="#6A1B9A" />
+                <Text style={styles.modalStateTitle}>Updating…</Text>
                 <Text style={styles.modalStateText}>{modalMessage}</Text>
               </View>
             )}
 
             {modalState === 'success' && (
               <View style={styles.modalStateContainer}>
-                <MaterialIcons name="check-circle" size={56} color="#1a7340" />
-                <Text style={styles.modalStateTitle}>Up to Date</Text>
+                <View style={styles.modalIconSuccess}>
+                  <MaterialIcons name="check-circle" size={56} color="#ffffff" />
+                </View>
+                <Text style={styles.modalStateTitle}>All Set</Text>
                 <Text style={styles.modalStateText}>{modalMessage}</Text>
-                <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#6A1B9A', width: '100%' }]} onPress={closeModal}>
+                <AnimatedPressable style={[styles.modalButton, styles.modalButtonPrimary]} onPress={closeModal}>
                   <Text style={styles.modalButtonText}>Done</Text>
-                </TouchableOpacity>
+                </AnimatedPressable>
               </View>
             )}
 
             {modalState === 'error' && (
               <View style={styles.modalStateContainer}>
-                <MaterialIcons name="error" size={56} color="#ba1a1a" />
+                <View style={styles.modalIconError}>
+                  <MaterialIcons name="error" size={56} color="#ffffff" />
+                </View>
                 <Text style={styles.modalStateTitle}>Update Failed</Text>
                 <Text style={styles.modalStateTextError}>{modalMessage}</Text>
                 <View style={styles.modalButtonRow}>
-                  <TouchableOpacity style={[styles.modalButton, styles.modalButtonOutline, { flex: 1 }]} onPress={closeModal}>
+                  <AnimatedPressable style={[styles.modalButton, styles.modalButtonOutline]} onPress={closeModal}>
                     <Text style={[styles.modalButtonText, { color: '#6A1B9A' }]}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#6A1B9A', flex: 1 }]} onPress={handleRun}>
+                  </AnimatedPressable>
+                  <AnimatedPressable style={[styles.modalButton, styles.modalButtonPrimary]} onPress={handleRun}>
                     <Text style={styles.modalButtonText}>Retry</Text>
-                  </TouchableOpacity>
+                  </AnimatedPressable>
                 </View>
               </View>
             )}
@@ -205,92 +293,165 @@ export default function UpdatesPage() {
 const styles = StyleSheet.create({
   page: { 
     flex: 1, 
-    backgroundColor: '#ffffff' 
+    backgroundColor: '#F8F7F4',
   },
   container: {
     flex: 1,
     paddingHorizontal: 24,
-    paddingTop: 40,
-    paddingBottom: 40,
+    justifyContent: 'center', // Vertical center – premium balance
+    position: 'relative',
   },
   
+  // Decorative background
+  bgAccent: {
+    position: 'absolute',
+    top: -60,
+    right: -60,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: 'rgba(106, 27, 154, 0.04)',
+  },
+  contentBlock: {
+    alignItems: 'center',
+    width: '100%',
+    gap: 32,
+  },
+
   // Hero Section
   heroSection: {
     alignItems: 'center',
-    marginBottom: 40,
+    gap: 12,
   },
   heroIconWrapper: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#f3e5f5',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#F3E8FF',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24,
+    shadowColor: '#6A1B9A',
+    shadowOpacity: 0.10,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+    marginBottom: 8,
   },
   heroTitle: {
     fontSize: 28,
-    fontWeight: '800',
-    color: '#1a1c1c',
-    marginBottom: 12,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    letterSpacing: -0.5,
   },
   heroSubtitle: {
     fontSize: 15,
-    color: '#6d7b6d',
+    color: '#6B7280',
     textAlign: 'center',
     lineHeight: 22,
+    letterSpacing: 0.2,
     paddingHorizontal: 16,
   },
 
-  // Info Section
-  infoSection: {
-    backgroundColor: '#fafafa',
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#f2f2f7',
-  },
-  infoRow: {
+  // Stats Row (side by side cards)
+  statsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: 16,
+    width: '100%',
+    marginTop: 4,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    paddingVertical: 20,
+    paddingHorizontal: 12,
     alignItems: 'center',
+    shadowColor: '#6A1B9A',
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(106, 27, 154, 0.05)',
+    minHeight: 96,
   },
-  divider: {
-    height: 1,
-    backgroundColor: '#f2f2f7',
-    marginVertical: 16,
-  },
-  infoLabel: {
-    fontSize: 16,
-    color: '#5e5e5e',
-    fontWeight: '500',
-  },
-  infoValue: {
-    fontSize: 16,
-    color: '#1a1c1c',
+  statValue: {
+    fontSize: 28,
     fontWeight: '700',
+    color: '#1A1A1A',
+    letterSpacing: -0.5,
+    marginBottom: 2,
+  },
+  statLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#6B7280',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 6,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#E8F5E9',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  statusBadgeWarning: {
+    backgroundColor: '#FFFBEB',
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#2E7D32',
+    letterSpacing: 0.3,
+  },
+  statusBadgeTextWarning: {
+    color: '#B45309',
+  },
+  statusBadgeSpacer: {
+    height: 18, // placeholder to keep card height consistent
   },
 
-  // Action Button
+  // Pill Action Button (not full width)
   actionButton: {
-    backgroundColor: '#6A1B9A',
-    borderRadius: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 18,
-    gap: 12,
+    gap: 10,
+    backgroundColor: '#6A1B9A',
+    paddingHorizontal: 40,
+    paddingVertical: 16,
+    borderRadius: 999, // pill shape
+    shadowColor: '#6A1B9A',
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+    marginTop: 4,
+  },
+  actionButtonDisabled: {
+    opacity: 0.6,
   },
   actionButtonText: {
     color: '#ffffff',
-    fontSize: 17,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  footnote: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    letterSpacing: 0.2,
+    marginTop: -8,
   },
 
   // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(26, 26, 26, 0.55)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
@@ -300,59 +461,94 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     padding: 32,
     width: '100%',
-    maxWidth: 340,
+    maxWidth: 360,
     alignItems: 'center',
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
+    shadowColor: '#6A1B9A',
+    shadowOpacity: 0.08,
+    shadowRadius: 32,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 12,
   },
   modalStateContainer: {
     alignItems: 'center',
     width: '100%',
+    gap: 8,
   },
   modalStateTitle: {
     fontSize: 22,
     fontWeight: '700',
-    color: '#1a1c1c',
-    marginTop: 16,
-    marginBottom: 8,
+    color: '#1A1A1A',
+    marginTop: 12,
+    marginBottom: 4,
+    letterSpacing: -0.3,
   },
   modalStateText: {
     fontSize: 15,
-    color: '#5e5e5e',
+    color: '#6B7280',
     textAlign: 'center',
-    marginTop: 16,
     lineHeight: 22,
+    letterSpacing: 0.2,
+    paddingHorizontal: 8,
   },
   modalStateTextError: {
     fontSize: 15,
-    color: '#ba1a1a',
+    color: '#B91C1C',
     textAlign: 'center',
-    marginTop: 8,
+    marginTop: 4,
     lineHeight: 22,
+    letterSpacing: 0.2,
+    paddingHorizontal: 8,
+  },
+  modalIconSuccess: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#2E7D32',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  modalIconError: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#B91C1C',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
   },
   modalButton: {
     marginTop: 24,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingVertical: 14,
     paddingHorizontal: 24,
     alignItems: 'center',
     justifyContent: 'center',
+    minWidth: 120,
+  },
+  modalButtonPrimary: {
+    backgroundColor: '#6A1B9A',
+    shadowColor: '#6A1B9A',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
   modalButtonOutline: {
     backgroundColor: 'transparent',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#6A1B9A',
   },
   modalButtonRow: {
     flexDirection: 'row',
     gap: 12,
     width: '100%',
+    marginTop: 4,
   },
   modalButtonText: {
     color: '#ffffff',
     fontSize: 15,
     fontWeight: '600',
+    letterSpacing: 0.3,
   },
 })

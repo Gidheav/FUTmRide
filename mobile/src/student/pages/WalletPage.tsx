@@ -1,6 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Animated } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+
+
+import Reanimated, { FadeInUp, useAnimatedSensor, SensorType, useAnimatedStyle, withTiming, interpolate } from 'react-native-reanimated'
+// MeshGradient removed — clean premium background
+import GlassCard from '../components/premium/GlassCard'
+import PremiumBottomSheet from '../components/premium/PremiumBottomSheet'
+import AnimatedCounter from '../components/premium/AnimatedCounter'
+import { ReceiveModal } from '../components/wallet/modals/ReceiveModal'
+import { FundWalletModal } from '../components/wallet/modals/FundWalletModal'
+import { TransferIdModal } from '../components/wallet/modals/TransferIdModal'
+import { CompleteTransferModal } from '../components/wallet/modals/CompleteTransferModal'
+import { TransferConfirmModal } from '../components/wallet/modals/TransferConfirmModal'
+import { GatewayModal } from '../components/wallet/modals/GatewayModal'
+import { TransactionReceiptModal } from '../components/wallet/modals/TransactionReceiptModal'
+
 import { MaterialIcons } from '@expo/vector-icons'
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import { WebView } from 'react-native-webview'
@@ -26,6 +41,8 @@ type TransferRecipient = {
 
 const TRANSFER_QR_PREFIX = 'lrride://wallet/student/'
 const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+
+const ReanimatedPressable = Reanimated.createAnimatedComponent(Pressable)
 
 export default function StudentWalletPage({ 
   onNavigateToMap,
@@ -243,14 +260,15 @@ export default function StudentWalletPage({
     }
   }, [callbackUrl, topupAmount])
 
-  const handleTopUp = useCallback(() => {
-    const amountValue = Number(topupAmount)
+  const handleTopUpSubmit = useCallback((amount: string) => {
+    const amountValue = Number(amount)
     if (!amountValue || amountValue < 100) {
       setTopupError('Minimum top-up amount is NGN 100.')
       return
     }
+    setTopupAmount(amount)
     setGatewayModalVisible(true)
-  }, [topupAmount])
+  }, [])
 
   // Called when user closes WebView manually (X button)
   const handleWebViewClose = useCallback(() => {
@@ -332,11 +350,11 @@ export default function StudentWalletPage({
     return data
   }, [])
 
-  const lookupRecipient = useCallback(async (recipientCode: string) => {
+  const lookupRecipient = useCallback(async (recipientCode: string): Promise<boolean> => {
     const code = recipientCode.trim()
     if (!code) {
       setTransferError('Recipient code is required.')
-      return
+      return false
     }
 
     setRecipientLookupLoading(true)
@@ -347,29 +365,33 @@ export default function StudentWalletPage({
       const nextRecipient = res.data?.recipient as TransferRecipient | undefined
       if (!nextRecipient) {
         setTransferError('Recipient was not found.')
-        return
+        return false
       }
       setRecipient(nextRecipient)
+      return true
     } catch (err: any) {
       const message =
         err?.response?.data?.error?.message ||
         err?.response?.data?.message ||
         'Unable to fetch recipient details.'
       setTransferError(String(message))
+      return false
     } finally {
       setRecipientLookupLoading(false)
     }
   }, [])
 
-  const handleLookupFromStudentId = useCallback(async () => {
-    const candidate = transferStudentId.trim()
-    if (!candidate) {
+  const handleLookupSubmit = useCallback(async (candidate: string) => {
+    const trimmed = candidate.trim()
+    if (!trimmed) {
       setTransferError('Enter a valid student ID.')
       return
     }
-    await lookupRecipient(candidate)
-    setTransferIdModalVisible(false)
-  }, [lookupRecipient, transferStudentId])
+    const success = await lookupRecipient(trimmed)
+    if (success) {
+      setTransferIdModalVisible(false)
+    }
+  }, [lookupRecipient])
 
   const openRecipientScanner = useCallback(async () => {
     if (!cameraPermission?.granted) {
@@ -454,34 +476,22 @@ export default function StudentWalletPage({
 
   const [transferPinLoading, setTransferPinLoading] = useState(false)
 
-  const handleTransferPinDigit = useCallback(async (digit: string) => {
+  const handleTransferPinConfirm = useCallback(async (pin: string) => {
     if (transferPinLoading) return
-    if (!digit) return
-    if (digit === 'back') {
-      setTransferPinInput((prev) => prev.slice(0, -1))
-      return
-    }
     setTransferPinError('')
-    if (transferPinInput.length >= 4) return
-    const next = `${transferPinInput}${digit}`
-    setTransferPinInput(next)
-    if (next.length === 4) {
-      setTransferPinLoading(true)
-      try {
-        await api.post('auth/settings/pin/verify/', { pin: next })
-        setTransferConfirmVisible(false)
-        setTransferPinInput('')
-        setTransferPinError('')
-        await sendTransferRequest()
-      } catch (err: any) {
-        const msg = err?.response?.data?.message || err?.response?.data?.error?.message || 'Incorrect Transaction PIN.'
-        setTransferPinError(String(msg))
-        setTransferPinInput('')
-      } finally {
-        setTransferPinLoading(false)
-      }
+    setTransferPinLoading(true)
+    try {
+      await api.post('auth/settings/pin/verify/', { pin })
+      setTransferConfirmVisible(false)
+      setTransferPinError('')
+      await sendTransferRequest()
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.response?.data?.error?.message || 'Incorrect Transaction PIN.'
+      setTransferPinError(String(msg))
+    } finally {
+      setTransferPinLoading(false)
     }
-  }, [sendTransferRequest, transferPinInput, transferPinLoading])
+  }, [sendTransferRequest, transferPinLoading])
 
   // Show toast helper — fades in then auto-hides after 3s
   const showToast = useCallback((message: string) => {
@@ -523,181 +533,55 @@ export default function StudentWalletPage({
     }
   }, [transferPinError, showToast])
 
-  const handleTransferConfirm = useCallback(() => {
+  const handleTransferSubmit = useCallback((amount: string) => {
     if (transferLoading) return
+    const amountValue = Number(amount)
+    if (!amountValue || amountValue < 50) {
+      setTransferError('Minimum transfer amount is NGN 50.')
+      return
+    }
+    if (walletBalance !== null && Number(walletBalance) < amountValue) {
+      setTransferError(`Insufficient wallet balance. You have ${formatAmount(walletBalance)}.`)
+      return
+    }
+    setTransferAmount(amount)
     if (!hasTransactionPin) {
       setTransferError('Set up a Transaction PIN in Security settings before making transfers.')
       return
     }
-    setTransferPinInput('')
-    setTransferPinError('')
     setTransferConfirmVisible(true)
-  }, [hasTransactionPin, transferLoading])
+  }, [transferLoading, walletBalance, formatAmount, hasTransactionPin])
 
   return (
-    <View style={styles.page}>
+        <View style={styles.page}>
     <ScrollView contentContainerStyle={styles.pageContent} showsVerticalScrollIndicator={false}>
-      <Modal
-        visible={receiveModalVisible}
-        animationType="fade"
-        transparent
-        onRequestClose={() => setReceiveModalVisible(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Receive via barcode</Text>
-            <Text style={styles.modalSubtitle}>Show this barcode to the sender.</Text>
-            <View style={styles.barcodeWrap}>
-              {transferQrUrl ? (
-                <Image source={{ uri: transferQrUrl }} style={styles.qrImage} />
-              ) : (
-                <View style={styles.barcodeFallback}>
-                  <Text style={styles.barcodeFallbackText}>Unable to load barcode.</Text>
-                </View>
-              )}
-              <Text style={styles.barcodeValue}>{profile?.matric_number || 'Student barcode'}</Text>
-            </View>
-            <TouchableOpacity
-              style={styles.modalCancel}
-              onPress={() => setReceiveModalVisible(false)}
-            >
-              <Text style={styles.modalCancelText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-      <Modal
+      <ReceiveModal 
+        visible={receiveModalVisible} 
+        onClose={() => setReceiveModalVisible(false)} 
+        matricNumber={profile?.matric_number || null}
+        qrUrl={transferQrUrl}
+      />
+      <FundWalletModal
         visible={fundModalVisible}
-        animationType="fade"
-        transparent
-        onRequestClose={() => setFundModalVisible(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Fund Wallet</Text>
-            <Text style={styles.modalSubtitle}>Enter the amount you want to add to your wallet.</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Amount (NGN)"
-              keyboardType="numeric"
-              value={topupAmount}
-              onChangeText={setTopupAmount}
-            />
-            {/* Errors are shown as toasts */}
-            <View style={styles.modalButtonRow}>
-              <TouchableOpacity
-                style={[styles.primaryActionCompact, (topupLoading || Number(topupAmount) < 100) && styles.primaryActionDisabled]}
-                activeOpacity={0.9}
-                onPress={() => {
-                  setFundModalVisible(false)
-                  handleTopUp()
-                }}
-                disabled={topupLoading || Number(topupAmount) < 100}
-              >
-                <MaterialIcons name="add-circle" size={18} color="#ffffff" />
-                <Text style={styles.primaryActionText}>Top Up</Text>
-              </TouchableOpacity>
-            </View>
-            <TouchableOpacity
-              style={styles.modalCancel}
-              onPress={() => {
-                setFundModalVisible(false)
-                setTopupError(null)
-                setTopupAmount('')
-              }}
-            >
-              <Text style={styles.modalCancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
+        onClose={() => setFundModalVisible(false)}
+        onTopUp={handleTopUpSubmit}
+        loading={topupLoading}
+        clearError={() => setTopupError(null)}
+      />
+      <TransferIdModal
         visible={transferIdModalVisible}
-        animationType="fade"
-        transparent
-        onRequestClose={() => setTransferIdModalVisible(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Send to Student</Text>
-            <Text style={styles.modalSubtitle}>Enter the recipient student ID to continue.</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Student ID"
-              value={transferStudentId}
-              onChangeText={setTransferStudentId}
-              autoCapitalize="characters"
-              editable={!recipientLookupLoading}
-            />
-            {/* Errors are shown as toasts */}
-            <View style={styles.modalButtonRow}>
-              <TouchableOpacity
-                style={[styles.primaryActionCompact, (!transferStudentId.trim() || recipientLookupLoading) && styles.primaryActionDisabled]}
-                activeOpacity={0.9}
-                onPress={handleLookupFromStudentId}
-                disabled={!transferStudentId.trim() || recipientLookupLoading}
-              >
-                <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
-                <Text style={styles.primaryActionText}>Continue</Text>
-              </TouchableOpacity>
-            </View>
-            <TouchableOpacity
-              style={styles.modalCancel}
-              onPress={() => {
-                setTransferIdModalVisible(false)
-                setTransferError(null)
-              }}
-            >
-              <Text style={styles.modalCancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-        <LoadingOverlay visible={recipientLookupLoading} />
-      </Modal>
-
-      <Modal
+        onClose={() => setTransferIdModalVisible(false)}
+        onContinue={handleLookupSubmit}
+        loading={recipientLookupLoading}
+        clearError={() => setTransferError(null)}
+      />
+      <CompleteTransferModal
         visible={!!recipient}
-        animationType="fade"
-        transparent
-        onRequestClose={resetTransferState}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Complete Transfer</Text>
-            <Text style={styles.modalSubtitle}>Sending to:</Text>
-            {recipient && (
-              <View style={styles.recipientCardCompact}>
-                <Text style={styles.recipientName}>{recipient.full_name}</Text>
-                <Text style={styles.recipientMeta}>{recipient.matric_number || 'No matric'} {recipient.campus ? `• ${recipient.campus.name}` : ''}</Text>
-              </View>
-            )}
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Amount (NGN)"
-              keyboardType="numeric"
-              value={transferAmount}
-              onChangeText={setTransferAmount}
-            />
-            <View style={styles.modalButtonRow}>
-              <TouchableOpacity
-                style={[
-                  styles.primaryActionCompact,
-                  (transferLoading || Number(transferAmount) < 50) && styles.primaryActionDisabled,
-                ]}
-                onPress={handleTransferConfirm}
-                disabled={transferLoading || Number(transferAmount) < 50}
-              >
-                <MaterialIcons name="send" size={18} color="#ffffff" />
-                <Text style={styles.primaryActionText}>Send</Text>
-              </TouchableOpacity>
-            </View>
-            <TouchableOpacity style={styles.modalCancel} onPress={resetTransferState}>
-              <Text style={styles.modalCancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+        onClose={resetTransferState}
+        onSend={handleTransferSubmit}
+        loading={transferLoading}
+        recipient={recipient}
+      />
       <Modal
         visible={scannerVisible}
         animationType="fade"
@@ -724,61 +608,15 @@ export default function StudentWalletPage({
           </View>
         </View>
       </Modal>
-      <Modal
+      <TransferConfirmModal
         visible={transferConfirmVisible}
-        animationType="fade"
-        transparent
-        onRequestClose={() => setTransferConfirmVisible(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Confirm transfer</Text>
-            <Text style={styles.modalSubtitle}>Enter your 4-digit Transaction PIN to continue.</Text>
-            <View style={styles.pinDotsRow}>
-              {[0, 1, 2, 3].map((idx) => (
-                <View
-                  key={`pin-dot-${idx}`}
-                  style={[styles.pinDot, transferPinInput.length > idx && styles.pinDotFilled]}
-                />
-              ))}
-            </View>
-            {/* Errors are shown as toasts */}
-            <View style={styles.pinPad}>
-              {transferPinRows.map((row, rowIndex) => (
-                <View key={`pin-row-${rowIndex}`} style={styles.pinRow}>
-                  {row.map((digit, colIndex) => (
-                    <TouchableOpacity
-                      key={`pin-${rowIndex}-${colIndex}`}
-                      style={[styles.pinKey, (!digit || transferPinLoading) && styles.pinKeyDisabled]}
-                      activeOpacity={0.85}
-                      onPress={() => handleTransferPinDigit(digit)}
-                      disabled={!digit || transferPinLoading}
-                    >
-                      {digit === 'back' ? (
-                        <MaterialIcons name="backspace" size={20} color="#1a1c1c" />
-                      ) : (
-                        <Text style={styles.pinKeyText}>{digit}</Text>
-                      )}
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              ))}
-            </View>
-            <TouchableOpacity
-              style={styles.modalCancel}
-              onPress={() => {
-                setTransferConfirmVisible(false)
-                setTransferPinInput('')
-                setTransferPinError('')
-              }}
-              disabled={transferPinLoading}
-            >
-              <Text style={styles.modalCancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-        <LoadingOverlay visible={transferLoading || transferPinLoading} />
-      </Modal>
+        onClose={() => {
+          setTransferConfirmVisible(false)
+          setTransferPinError('')
+        }}
+        onConfirm={handleTransferPinConfirm}
+        loading={transferPinLoading}
+      />
       <Modal
         visible={webviewVisible}
         animationType="slide"
@@ -838,152 +676,33 @@ export default function StudentWalletPage({
           )}
         </SafeAreaView>
       </Modal>
-      <Modal visible={gatewayModalVisible} animationType="slide" transparent onRequestClose={() => setGatewayModalVisible(false)}>
-        <View style={pinStyles.backdrop}>
-          <View style={pinStyles.card}>
-            <Text style={styles.modalTitle}>Choose payment gateway</Text>
-            <Text style={styles.modalSubtitle}>Select Paystack or Flutterwave to continue.</Text>
-            <TouchableOpacity
-              style={styles.radioRow}
-              onPress={() => {
-                setGatewayModalVisible(false)
-                startTopUp('paystack')
-              }}
-              disabled={topupLoading}
-            >
-              <View style={styles.radioOuter}>
-                <View style={styles.radioInner} />
-              </View>
-              <Text style={styles.radioLabel}>Paystack</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.radioRow}
-              onPress={() => {
-                setGatewayModalVisible(false)
-                startTopUp('flutterwave')
-              }}
-              disabled={topupLoading}
-            >
-              <View style={styles.radioOuter}>
-                <View style={styles.radioInnerMuted} />
-              </View>
-              <Text style={styles.radioLabel}>Flutterwave</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.modalCancel}
-              onPress={() => setGatewayModalVisible(false)}
-              disabled={topupLoading}
-            >
-              <Text style={styles.modalCancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <GatewayModal
+        visible={gatewayModalVisible}
+        onClose={() => setGatewayModalVisible(false)}
+        onSelectGateway={(gw: 'paystack' | 'flutterwave') => {
+          setGatewayModalVisible(false)
+          startTopUp(gw)
+        }}
+        loading={topupLoading}
+      />
 
-      <Modal
-        visible={!!selectedTransaction}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setSelectedTransaction(null)}
-      >
-        <TouchableOpacity style={styles.modalBackdropReceipt} activeOpacity={1} onPress={() => setSelectedTransaction(null)}>
-          <TouchableOpacity style={styles.receiptCard} activeOpacity={1}>
-            <View style={styles.receiptHeader}>
-              <MaterialIcons 
-                name={selectedTransaction?.transaction_type === 'credit' ? 'check-circle' : 'receipt'} 
-                size={40} 
-                color={selectedTransaction?.transaction_type === 'credit' ? '#2e7d32' : '#6A1B9A'} 
-              />
-              <Text style={styles.receiptTitle}>Transaction Receipt</Text>
-              <Text style={styles.receiptDate}>{selectedTransaction ? formatDate(selectedTransaction.created_at) : ''}</Text>
-            </View>
-
-            <View style={styles.receiptDivider} />
-
-            <View style={styles.receiptBody}>
-              <View style={styles.receiptRow}>
-                <Text style={styles.receiptLabel}>Amount</Text>
-                <Text style={[styles.receiptValue, selectedTransaction?.transaction_type === 'credit' ? styles.receiptAmountPositive : undefined]}>
-                  {selectedTransaction?.transaction_type === 'credit' ? '+ NGN ' : '- NGN '}
-                  {selectedTransaction ? formatAmount(selectedTransaction.amount) : ''}
-                </Text>
-              </View>
-              <View style={styles.receiptRow}>
-                <Text style={styles.receiptLabel}>Type</Text>
-                <Text style={styles.receiptValue}>
-                  {selectedTransaction?.transaction_type === 'credit' ? 'Credit' : 'Debit'}
-                  {selectedTransaction?.source ? ` • ${selectedTransaction.source.replace(/_/g, ' ')}` : ''}
-                </Text>
-              </View>
-              <View style={styles.receiptRow}>
-                <Text style={styles.receiptLabel}>Description</Text>
-                <Text style={styles.receiptValue}>{selectedTransaction?.narration}</Text>
-              </View>
-              <View style={styles.receiptRow}>
-                <Text style={styles.receiptLabel}>Reference</Text>
-                <Text style={styles.receiptValue}>{selectedTransaction?.reference || 'N/A'}</Text>
-              </View>
-              <View style={styles.receiptRow}>
-                <Text style={styles.receiptLabel}>Status</Text>
-                <Text style={[styles.receiptValue, { color: '#2e7d32' }]}>Successful</Text>
-              </View>
-              
-              {selectedTransaction?.has_dispute && (
-                <View style={[styles.receiptRow, { marginTop: 8 }]}>
-                  <Text style={styles.receiptLabel}>Dispute Status</Text>
-                  <Text style={[styles.receiptValue, { color: '#b91c1c' }]}>
-                    {selectedTransaction.dispute_status ? selectedTransaction.dispute_status.replace('_', ' ').toUpperCase() : 'IN PROGRESS'}
-                  </Text>
-                </View>
-              )}
-            </View>
-
-            <View style={styles.receiptDivider} />
-            
-            {/* Dispute Button */}
-            {selectedTransaction?.transaction_type === 'debit' && !selectedTransaction?.has_dispute && (
-              (() => {
-                const txDate = new Date(selectedTransaction.created_at)
-                const hoursDiff = (Date.now() - txDate.getTime()) / (1000 * 60 * 60)
-                if (hoursDiff <= 72) {
-                  return (
-                    <TouchableOpacity 
-                      style={styles.receiptDisputeButton}
-                      onPress={() => {
-                        setSelectedTransaction(null)
-                        onDisputeTransaction?.(selectedTransaction)
-                      }}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={styles.receiptDisputeText}>Dispute Transaction</Text>
-                    </TouchableOpacity>
-                  )
-                }
-                return null
-              })()
-            )}
-            
-            <TouchableOpacity 
-              style={styles.receiptCloseButton}
-              onPress={() => setSelectedTransaction(null)}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.receiptCloseText}>Close Receipt</Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+      <TransactionReceiptModal
+        transaction={selectedTransaction}
+        onClose={() => setSelectedTransaction(null)}
+        onDispute={onDisputeTransaction}
+      />
 
       <View style={styles.walletCard}>
         <View style={styles.walletGlow} />
+        <View style={styles.walletGlowBottom} />
         <View style={styles.walletBody}>
           <View style={styles.walletHeader}>
             <View>
-              <Text style={styles.balanceLabel}>Current Balance</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44 }}>
-                <Text style={styles.balanceCurrency}>NGN</Text>
+              <Text style={styles.balanceLabel}>Available Balance</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4, marginTop: 6 }}>
+                <Text style={styles.balanceCurrency}>₦</Text>
                 <Text style={styles.balanceValue}>
-                  {hideBalance ? '●●●●●●' : (walletBalance !== null ? formatAmount(walletBalance) : '--')}
+                  {hideBalance ? '••••••' : (walletBalance !== null ? formatAmount(walletBalance) : '—')}
                 </Text>
               </View>
             </View>
@@ -992,7 +711,7 @@ export default function StudentWalletPage({
               onPress={() => setUIHideBalance(!hideBalance)}
               activeOpacity={0.7}
             >
-              <MaterialIcons name="account-balance-wallet" size={22} color={hideBalance ? '#9ca3af' : '#ffffff'} />
+              <MaterialIcons name={hideBalance ? 'visibility-off' : 'visibility'} size={20} color="rgba(255,255,255,0.8)" />
               {walletFlashVisible ? <View style={styles.walletFlashBadge} /> : null}
             </TouchableOpacity>
           </View>
@@ -1000,30 +719,30 @@ export default function StudentWalletPage({
       </View>
 
       <View style={styles.quickActionRow}>
-        <TouchableOpacity style={styles.quickActionBtn} activeOpacity={0.8} onPress={() => setFundModalVisible(true)}>
-          <View style={styles.quickActionIcon}>
-            <MaterialIcons name="add" size={28} color="#6A1B9A" />
+        <TouchableOpacity style={styles.quickActionBtn} activeOpacity={0.7} onPress={() => setFundModalVisible(true)}>
+          <View style={[styles.quickActionIcon, { backgroundColor: '#EDE7F6' }]}>
+            <MaterialIcons name="add" size={22} color="#6A1B9A" />
           </View>
           <Text style={styles.quickActionText}>Fund</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.quickActionBtn} activeOpacity={0.8} onPress={() => setTransferIdModalVisible(true)}>
-          <View style={styles.quickActionIcon}>
-            <MaterialIcons name="send" size={24} color="#6A1B9A" />
+        <TouchableOpacity style={styles.quickActionBtn} activeOpacity={0.7} onPress={() => setTransferIdModalVisible(true)}>
+          <View style={[styles.quickActionIcon, { backgroundColor: '#E8F5E9' }]}>
+            <MaterialIcons name="arrow-upward" size={22} color="#2E7D32" />
           </View>
           <Text style={styles.quickActionText}>Send</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.quickActionBtn} activeOpacity={0.8} onPress={() => setReceiveModalVisible(true)}>
-          <View style={styles.quickActionIcon}>
-            <MaterialIcons name="qr-code" size={24} color="#6A1B9A" />
+        <TouchableOpacity style={styles.quickActionBtn} activeOpacity={0.7} onPress={() => setReceiveModalVisible(true)}>
+          <View style={[styles.quickActionIcon, { backgroundColor: '#E3F2FD' }]}>
+            <MaterialIcons name="qr-code" size={22} color="#1565C0" />
           </View>
           <Text style={styles.quickActionText}>Receive</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.quickActionBtn} activeOpacity={0.8} onPress={openRecipientScanner}>
-          <View style={styles.quickActionIcon}>
-            <MaterialIcons name="qr-code-scanner" size={24} color="#6A1B9A" />
+        <TouchableOpacity style={styles.quickActionBtn} activeOpacity={0.7} onPress={openRecipientScanner}>
+          <View style={[styles.quickActionIcon, { backgroundColor: '#FFF3E0' }]}>
+            <MaterialIcons name="qr-code-scanner" size={22} color="#E65100" />
           </View>
           <Text style={styles.quickActionText}>Scan</Text>
         </TouchableOpacity>
@@ -1031,12 +750,12 @@ export default function StudentWalletPage({
 
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Recent Transactions</Text>
-        <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-          <TouchableOpacity activeOpacity={0.8} onPress={loadWallet} style={styles.iconButtonWrap}>
-            <MaterialIcons name="refresh" size={22} color="#6A1B9A" />
+        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+          <TouchableOpacity activeOpacity={0.7} onPress={loadWallet} style={styles.iconButtonWrap}>
+            <MaterialIcons name="refresh" size={20} color="#6A1B9A" />
           </TouchableOpacity>
-          <TouchableOpacity activeOpacity={0.8} onPress={() => setTransactionsModalVisible(true)} style={styles.iconButtonWrap}>
-            <MaterialIcons name="receipt-long" size={22} color="#6A1B9A" />
+          <TouchableOpacity activeOpacity={0.7} onPress={() => setTransactionsModalVisible(true)} style={styles.iconButtonWrap}>
+            <MaterialIcons name="receipt-long" size={20} color="#6A1B9A" />
           </TouchableOpacity>
         </View>
       </View>
@@ -1047,23 +766,27 @@ export default function StudentWalletPage({
             <LoadingOverlay visible={true} inline size={32} message="Loading transactions..." />
           </View>
         ) : activityItems.length === 0 ? (
-          <View style={styles.activityItem}>
-            <Text style={styles.activityTime}>No transactions yet.</Text>
+          <View style={styles.emptyState}>
+            <View style={styles.emptyStateIcon}>
+              <MaterialIcons name="receipt-long" size={32} color="#d1d5db" />
+            </View>
+            <Text style={styles.emptyStateTitle}>No transactions yet</Text>
+            <Text style={styles.emptyStateSubtitle}>Your activity will appear here once you start using your wallet</Text>
           </View>
         ) : (
-          activityItems.slice(0, 10).map((tx) => (
+          activityItems.slice(0, 10).map((tx, index) => (
             <TouchableOpacity 
-              style={styles.activityItem} 
+              style={[styles.activityItem, index === 0 && styles.activityItemFirst, index === Math.min(activityItems.length - 1, 9) && styles.activityItemLast]} 
               key={tx.id}
-              activeOpacity={0.7}
+              activeOpacity={0.6}
               onPress={() => setSelectedTransaction(tx)}
             >
               <View style={[styles.activityLeft, { flex: 1 }]}>
                 <View style={tx.transaction_type === 'credit' ? styles.activityIconAccent : styles.activityIconMuted}>
                   <MaterialIcons
                     name={getTransactionIcon(tx)}
-                    size={20}
-                    color={tx.transaction_type === 'credit' ? '#6A1B9A' : '#3d4a3e'}
+                    size={18}
+                    color={tx.transaction_type === 'credit' ? '#6A1B9A' : '#6b7280'}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -1074,20 +797,15 @@ export default function StudentWalletPage({
                 </View>
               </View>
               <Text style={tx.transaction_type === 'credit' ? styles.activityAmountPositive : styles.activityAmount}>
-                {tx.transaction_type === 'credit' ? '+ NGN ' : '- NGN '}{formatAmount(tx.amount)}
+                {tx.transaction_type === 'credit' ? '+₦' : '-₦'}{formatAmount(tx.amount)}
               </Text>
             </TouchableOpacity>
           ))
         )}
       </View>
     </ScrollView>
-    <Modal
-      visible={transactionsModalVisible}
-      animationType="slide"
-      onRequestClose={() => setTransactionsModalVisible(false)}
-    >
-      <SafeAreaView style={styles.page}>
-        <View style={styles.transactionsModalHeader}>
+    <PremiumBottomSheet visible={transactionsModalVisible} onClose={() => setTransactionsModalVisible(false)} snapPoints={["90%"]} useScrollView>
+          <View style={styles.transactionsModalHeader}>
           <Text style={styles.transactionsModalTitle}>All Transactions</Text>
           <TouchableOpacity onPress={() => setTransactionsModalVisible(false)}>
             <MaterialIcons name="close" size={24} color="#1a1c1c" />
@@ -1148,17 +866,18 @@ export default function StudentWalletPage({
             )}
           </View>
         </ScrollView>
-      </SafeAreaView>
-    </Modal>
+      </PremiumBottomSheet>
     {toastVisible ? (
-      <Animated.View style={[styles.toastWrap, { opacity: toastOpacity }]} pointerEvents="box-none">
-        <View style={styles.toast}>
-          <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '600' }}>{toastMessage}</Text>
-        </View>
-      </Animated.View>
+      <Modal transparent visible={toastVisible} animationType="none" onRequestClose={() => {}}>
+        <Animated.View style={[styles.toastWrap, { opacity: toastOpacity }]} pointerEvents="box-none">
+          <View style={styles.toast}>
+            <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '600' }}>{toastMessage}</Text>
+          </View>
+        </Animated.View>
+      </Modal>
     ) : null}
     <LoadingOverlay visible={topupLoading || transferLoading || recipientLookupLoading} />
-    </View>
+        </View>
   )
 }
 
@@ -1183,63 +902,79 @@ const pinStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: '#f9f9f9',
+    backgroundColor: '#F5F5F7',
   },
   pageContent: {
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 22,
-    gap: 24,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 32,
+    gap: 20,
   },
 
   walletCard: {
     backgroundColor: '#6A1B9A',
-    borderRadius: 20,
+    borderRadius: 22,
     padding: 24,
     shadowColor: '#6A1B9A',
     shadowOpacity: 0.25,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 8,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
     overflow: 'hidden',
-    marginBottom: 20,
   },
   walletGlow: {
     position: 'absolute',
-    width: 200,
-    height: 200,
-    borderRadius: 100,
+    width: 260,
+    height: 260,
+    borderRadius: 130,
     backgroundColor: '#ffffff',
-    opacity: 0.1,
-    top: -80,
-    right: -60,
+    opacity: 0.12,
+    top: -100,
+    right: -80,
+  },
+  walletGlowBottom: {
+    position: 'absolute',
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: '#ffffff',
+    opacity: 0.08,
+    bottom: -60,
+    left: -40,
   },
   walletBody: {
     gap: 16,
   },
   quickActionRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 32,
+    justifyContent: 'space-around',
     paddingHorizontal: 8,
-    marginBottom: 24,
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    paddingVertical: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+    zIndex: 10,
   },
   quickActionBtn: {
     alignItems: 'center',
     gap: 8,
   },
   quickActionIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#f3e5f5',
+    width: 48,
+    height: 48,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
   quickActionText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
-    color: '#1a1c1c',
+    color: '#374151',
+    letterSpacing: 0.2,
   },
   requirementsCard: {
     backgroundColor: '#f7f2fb',
@@ -1489,38 +1224,38 @@ const styles = StyleSheet.create({
   },
   balanceLabel: {
     fontSize: 13,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.8)',
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.55)',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
   balanceCurrency: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.7)',
-    lineHeight: 44,
+    fontSize: 20,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.6)',
   },
   balanceValue: {
-    fontSize: 36,
-    fontWeight: '800',
+    fontSize: 34,
+    fontWeight: '700',
     color: '#ffffff',
-    marginTop: 0,
-    lineHeight: 44,
+    letterSpacing: -0.5,
   },
   walletIconWrap: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    padding: 8,
-    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    padding: 10,
+    borderRadius: 14,
     position: 'relative',
   },
   walletFlashBadge: {
     position: 'absolute',
-    top: -3,
-    right: -3,
+    top: -2,
+    right: -2,
     width: 10,
     height: 10,
     borderRadius: 5,
     backgroundColor: '#ef4444',
     borderWidth: 2,
-    borderColor: '#6A1B9A',
+    borderColor: '#1C1C1E',
   },
   recipientCardCompact: {
     backgroundColor: '#f3f3f3',
@@ -1800,11 +1535,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: 2,
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: '700',
-    color: '#1a1c1c',
+    color: '#1C1C1E',
+    letterSpacing: -0.2,
   },
   sectionAction: {
     fontSize: 12,
@@ -1812,27 +1549,38 @@ const styles = StyleSheet.create({
     color: '#6A1B9A',
   },
   activityList: {
-    gap: 2,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   activityLoadingWrap: {
-    minHeight: 96,
+    minHeight: 120,
     alignItems: 'center',
     justifyContent: 'center',
   },
   activityItem: {
     backgroundColor: '#ffffff',
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#f3f3f3',
-    padding: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    shadowColor: '#00000079',
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#F0F0F0',
+  },
+  activityItemFirst: {
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+  },
+  activityItemLast: {
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+    borderBottomWidth: 0,
   },
   activityLeft: {
     flexDirection: 'row',
@@ -1840,48 +1588,76 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   activityIconMuted: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#f3f3f3',
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
   },
   activityIconAccent: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#f3e5f5',
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#F3E8FF',
     alignItems: 'center',
     justifyContent: 'center',
   },
   activityIconGift: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#f8e8ff',
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#FDF4FF',
     alignItems: 'center',
     justifyContent: 'center',
   },
   activityTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#1a1c1c',
+    color: '#1C1C1E',
+    letterSpacing: -0.1,
   },
   activityTime: {
     fontSize: 12,
-    color: '#5e5e5e',
+    color: '#9CA3AF',
     marginTop: 2,
   },
   activityAmount: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#1a1c1c',
+    color: '#1C1C1E',
   },
   activityAmountPositive: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
-    color: '#6A1B9A',
+    color: '#2E7D32',
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 24,
+  },
+  emptyStateIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  emptyStateTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 4,
+  },
+  emptyStateSubtitle: {
+    fontSize: 13,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    lineHeight: 18,
   },
   modalBackdropReceipt: {
     flex: 1,
@@ -1956,9 +1732,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   iconButtonWrap: {
-    padding: 4,
-    backgroundColor: 'rgba(106, 27, 154, 0.1)',
-    borderRadius: 8,
+    padding: 6,
+    backgroundColor: 'rgba(106, 27, 154, 0.08)',
+    borderRadius: 10,
   },
   filterRow: {
     paddingVertical: 12,

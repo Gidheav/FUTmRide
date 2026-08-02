@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { ActivityIndicator, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native'
+import { useEffect, useState, useRef } from 'react'
+import { ActivityIndicator, Animated, Pressable, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import api from '../../core/api'
@@ -53,11 +53,66 @@ type ToggleRowProps = {
   disabled?: boolean
 }
 
+// ── Premium Animated Pressable (consistent with Wallet) ──
+const AnimatedPressable = ({
+  children,
+  onPress,
+  style,
+  disabled,
+  activeOpacity = 0.85,
+}: {
+  children: React.ReactNode
+  onPress?: () => void
+  style?: any
+  disabled?: boolean
+  activeOpacity?: number
+}) => {
+  const scale = useRef(new Animated.Value(1)).current
+  const handlePressIn = () => {
+    Animated.spring(scale, {
+      toValue: 0.96,
+      useNativeDriver: true,
+      speed: 40,
+      bounciness: 0,
+    }).start()
+  }
+  const handlePressOut = () => {
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 40,
+      bounciness: 0,
+    }).start()
+  }
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      style={({ pressed }) => [
+        style,
+        {
+          opacity: pressed ? activeOpacity : 1,
+          transform: [{ scale: pressed ? 0.96 : 1 }],
+        },
+      ]}
+    >
+      {children}
+    </Pressable>
+  )
+}
+
+// ── Premium Toggle Row ──
 function ToggleRow({ icon, iconColor, iconBg, label, description, value, onValueChange, disabled }: ToggleRowProps) {
   return (
-    <View style={styles.toggleRow}>
+    <AnimatedPressable
+      style={styles.toggleRow}
+      onPress={() => onValueChange(!value)}
+      disabled={disabled}
+    >
       <View style={[styles.toggleIconWrap, { backgroundColor: iconBg }]}>
-        <MaterialIcons name={icon} size={18} color={iconColor} />
+        <MaterialIcons name={icon} size={20} color={iconColor} />
       </View>
       <View style={styles.toggleContent}>
         <Text style={styles.toggleLabel}>{label}</Text>
@@ -66,10 +121,21 @@ function ToggleRow({ icon, iconColor, iconBg, label, description, value, onValue
       <Switch
         value={value}
         onValueChange={onValueChange}
-        trackColor={{ false: '#e0e0e0', true: '#ce93d8' }}
-        thumbColor={value ? '#6A1B9A' : '#f4f4f4'}
+        trackColor={{ false: '#E5E7EB', true: '#C084FC' }}
+        thumbColor={value ? '#6A1B9A' : '#ffffff'}
+        ios_backgroundColor="#E5E7EB"
         disabled={disabled}
       />
+    </AnimatedPressable>
+  )
+}
+
+// ── Section Header with accent ──
+function SectionHeader({ title }: { title: string }) {
+  return (
+    <View style={styles.sectionHeader}>
+      <View style={styles.sectionAccent} />
+      <Text style={styles.sectionLabel}>{title}</Text>
     </View>
   )
 }
@@ -101,10 +167,14 @@ export default function StudentNotificationSettingsPage({ onClose }: Props) {
   }
 
   return (
-    <View style={styles.page}>
-      {/* Removed header since StudentLayout handles it */}
+    <View style={[styles.page, { paddingTop: insets.top }]}>
+      {/* Decorative background accent */}
+      <View style={styles.bgAccent} />
 
-      <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.body}
+        showsVerticalScrollIndicator={false}
+      >
         {loading ? (
           <View style={styles.centerLoading}>
             <ActivityIndicator size="large" color="#6A1B9A" />
@@ -113,176 +183,162 @@ export default function StudentNotificationSettingsPage({ onClose }: Props) {
         ) : (
           <>
             {/* ── General ─────────────────────────── */}
-            <Text style={styles.sectionLabel}>General</Text>
+            <SectionHeader title="General" />
             <View style={styles.card}>
               <ToggleRow
                 icon="volume-up"
-                iconColor="#1565C0"
-                iconBg="#e3f2fd"
+                iconColor="#7C3AED"
+                iconBg="#EDE9FE"
                 label="Notification Sound"
                 description="Play sound for notifications"
                 value={prefs.notif_sound_enabled}
                 onValueChange={(v) => void update('notif_sound_enabled', v)}
-
               />
             </View>
 
             {/* ── Ride Notifications ──────────────── */}
-            <Text style={styles.sectionLabel}>Ride Updates</Text>
+            <SectionHeader title="Ride Updates" />
             <View style={styles.card}>
               <ToggleRow
                 icon="local-taxi"
                 iconColor="#6A1B9A"
-                iconBg="#f3e5f5"
+                iconBg="#F3E8FF"
                 label="Ride Requested"
                 description="When your ride request is submitted"
                 value={prefs.notif_ride_requested}
                 onValueChange={(v) => void update('notif_ride_requested', v)}
-
               />
               <View style={styles.divider} />
               <ToggleRow
                 icon="person"
-                iconColor="#1565C0"
-                iconBg="#e3f2fd"
+                iconColor="#2563EB"
+                iconBg="#DBEAFE"
                 label="Driver Assigned"
                 description="When a driver accepts your ride"
                 value={prefs.notif_driver_assigned}
                 onValueChange={(v) => void update('notif_driver_assigned', v)}
-
               />
               <View style={styles.divider} />
               <ToggleRow
                 icon="directions-car"
-                iconColor="#E65100"
-                iconBg="#fff3e0"
+                iconColor="#EA580C"
+                iconBg="#FFF7ED"
                 label="Driver En Route"
                 description="When your driver is heading to you"
                 value={prefs.notif_driver_en_route}
                 onValueChange={(v) => void update('notif_driver_en_route', v)}
-
               />
               <View style={styles.divider} />
               <ToggleRow
                 icon="place"
-                iconColor="#2e7d32"
-                iconBg="#e8f5e9"
+                iconColor="#16A34A"
+                iconBg="#DCFCE7"
                 label="Driver Arrived"
                 description="When driver arrives at pickup point"
                 value={prefs.notif_driver_arrived}
                 onValueChange={(v) => void update('notif_driver_arrived', v)}
-
               />
               <View style={styles.divider} />
               <ToggleRow
                 icon="navigation"
-                iconColor="#E65100"
-                iconBg="#fff3e0"
+                iconColor="#EA580C"
+                iconBg="#FFF7ED"
                 label="Trip Started"
                 description="When your trip begins"
                 value={prefs.notif_trip_started}
                 onValueChange={(v) => void update('notif_trip_started', v)}
-
               />
               <View style={styles.divider} />
               <ToggleRow
                 icon="check-circle"
-                iconColor="#2e7d32"
-                iconBg="#e8f5e9"
+                iconColor="#16A34A"
+                iconBg="#DCFCE7"
                 label="Trip Completed"
                 description="When your ride is finished"
                 value={prefs.notif_trip_completed}
                 onValueChange={(v) => void update('notif_trip_completed', v)}
-
               />
               <View style={styles.divider} />
               <ToggleRow
                 icon="cancel"
-                iconColor="#b91c1c"
-                iconBg="#fef2f2"
+                iconColor="#DC2626"
+                iconBg="#FEE2E2"
                 label="Ride Cancelled"
                 description="When a ride is cancelled"
                 value={prefs.notif_ride_cancelled}
                 onValueChange={(v) => void update('notif_ride_cancelled', v)}
-
               />
             </View>
 
             {/* ── Wallet Notifications ────────────── */}
-            <Text style={styles.sectionLabel}>Wallet & Payments</Text>
+            <SectionHeader title="Wallet & Payments" />
             <View style={styles.card}>
               <ToggleRow
                 icon="arrow-downward"
-                iconColor="#2e7d32"
-                iconBg="#e8f5e9"
+                iconColor="#16A34A"
+                iconBg="#DCFCE7"
                 label="Wallet Credit"
                 description="Top-up, refunds, and incoming transfers"
                 value={prefs.notif_wallet_credit}
                 onValueChange={(v) => void update('notif_wallet_credit', v)}
-
               />
               <View style={styles.divider} />
               <ToggleRow
                 icon="arrow-upward"
-                iconColor="#b91c1c"
-                iconBg="#fef2f2"
+                iconColor="#DC2626"
+                iconBg="#FEE2E2"
                 label="Wallet Debit"
                 description="Ride payments and deductions"
                 value={prefs.notif_wallet_debit}
                 onValueChange={(v) => void update('notif_wallet_debit', v)}
-
               />
             </View>
 
             {/* ── Email Notifications ─────────────── */}
-            <Text style={styles.sectionLabel}>Email Notifications</Text>
+            <SectionHeader title="Email Notifications" />
             <View style={styles.card}>
               <ToggleRow
                 icon="campaign"
                 iconColor="#6A1B9A"
-                iconBg="#f3e5f5"
+                iconBg="#F3E8FF"
                 label="Announcements"
                 description="Receive emails for platform announcements"
                 value={prefs.email_announcements}
                 onValueChange={(v) => void update('email_announcements', v)}
-
               />
               <View style={styles.divider} />
               <ToggleRow
                 icon="account-balance-wallet"
-                iconColor="#2e7d32"
-                iconBg="#e8f5e9"
+                iconColor="#16A34A"
+                iconBg="#DCFCE7"
                 label="Transactions"
                 description="Email receipts for wallet top-ups and payments"
                 value={prefs.email_transactions}
                 onValueChange={(v) => void update('email_transactions', v)}
-
               />
               <View style={styles.divider} />
               <ToggleRow
                 icon="directions-car"
-                iconColor="#1565C0"
-                iconBg="#e3f2fd"
+                iconColor="#2563EB"
+                iconBg="#DBEAFE"
                 label="Ride Updates"
                 description="Email summaries for completed rides"
                 value={prefs.email_rides}
                 onValueChange={(v) => void update('email_rides', v)}
-
               />
             </View>
 
             {/* ── Other ───────────────────────────── */}
-            <Text style={styles.sectionLabel}>Other</Text>
+            <SectionHeader title="Other" />
             <View style={styles.card}>
               <ToggleRow
                 icon="local-offer"
-                iconColor="#6b7280"
-                iconBg="#f3f4f6"
+                iconColor="#6B7280"
+                iconBg="#F3F4F6"
                 label="Promotions & News"
                 description="Special offers and platform updates"
                 value={prefs.notif_promotions}
                 onValueChange={(v) => void update('notif_promotions', v)}
-
               />
             </View>
 
@@ -300,110 +356,119 @@ export default function StudentNotificationSettingsPage({ onClose }: Props) {
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: '#f9f9f9',
+    backgroundColor: '#F8F7F4', // warm off-white
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 8,
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eeeeee',
-  },
-  backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#f1f1f1',
-  },
-  title: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1a1c1c',
-  },
-  headerSpacer: {
-    width: 36,
+  bgAccent: {
+    position: 'absolute',
+    top: -80,
+    right: -80,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(106, 27, 154, 0.05)',
   },
   body: {
-    padding: 14,
+    paddingHorizontal: 20,
     paddingBottom: 40,
+    paddingTop: 12,
+    gap: 24, // 8-point spacing: 24 between sections
   },
+  centerLoading: {
+    flex: 1,
+    padding: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+  },
+  loadingText: {
+    fontSize: 15,
+    color: '#6B7280',
+    fontWeight: '500',
+    letterSpacing: 0.2,
+  },
+
+  // ── Section Header ──
   sectionHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
+    paddingBottom: 6,
+    paddingLeft: 4,
+  },
+  sectionAccent: {
+    width: 4,
+    height: 18,
+    borderRadius: 2,
+    backgroundColor: '#6A1B9A',
+    marginRight: 10,
   },
   sectionLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#6b7280',
-    letterSpacing: 0.5,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6B7280',
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
-    marginTop: 14,
-    marginBottom: 8,
-    marginLeft: 4,
   },
+
+  // ── Card ──
   card: {
     backgroundColor: '#ffffff',
     borderRadius: 16,
+    shadowColor: '#6A1B9A',
+    shadowOpacity: 0.04,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
     borderWidth: 1,
-    borderColor: '#f0f0f0',
+    borderColor: 'rgba(106, 27, 154, 0.05)',
     overflow: 'hidden',
   },
+
+  // ── Toggle Row ──
   toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 14,
+    minHeight: 56,
   },
   toggleIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   toggleContent: {
     flex: 1,
+    gap: 1,
   },
   toggleLabel: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#1a1c1c',
+    color: '#1A1A1A',
+    letterSpacing: -0.2,
   },
   toggleDescription: {
-    fontSize: 12,
-    color: '#6b7280',
-    marginTop: 1,
+    fontSize: 13,
+    color: '#6B7280',
+    letterSpacing: 0.2,
+    lineHeight: 18,
   },
   divider: {
     height: 1,
-    backgroundColor: '#f5f5f5',
-    marginLeft: 62,
+    backgroundColor: '#F0F0F0',
+    marginLeft: 70, // aligns with label start
   },
-  centerLoading: {
-    padding: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  loadingText: {
-    fontSize: 14,
-    color: '#6b7280',
-    fontWeight: '500',
-  },
+
+  // ── Footer ──
   footerNote: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: '#9CA3AF',
     textAlign: 'center',
-    marginTop: 20,
+    marginTop: 8,
     lineHeight: 18,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
+    letterSpacing: 0.2,
   },
 })

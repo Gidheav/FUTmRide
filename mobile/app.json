@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "FUTMStd",
-    "slug": "testermode",
+    "slug": "lr-ride-mobile",
     "version": "1.0.0",
     "sdkVersion": "54.0.0",
     "runtimeVersion": "54.0.0",
@@ -74,7 +74,7 @@
     "scheme": "lrride",
     "extra": {
       "eas": {
-        "projectId": "9c583883-3a9d-4f4c-b8cf-c5778a44cb99"
+        "projectId": "f7d791f1-e8c4-4454-a701-5bbfc5c1e80b"
       }
     },
     "plugins": [
