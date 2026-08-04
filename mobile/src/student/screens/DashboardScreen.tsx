@@ -21,7 +21,9 @@ import MapView, { Marker, Callout, Circle, Region, PROVIDER_GOOGLE } from 'react
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import * as Location from 'expo-location'
 import {
-  getVerifiedLocation,
+  getCurrentLocation,
+  isWithinServiceArea,
+  requestLocationPermission,
   LocationError,
   MINNA_SERVICE_AREA,
 } from '../../core/locationService'
@@ -238,14 +240,8 @@ export default function StudentDashboardScreen({
   const handleMapReady = () => { setIsMapReady(true); setDidMapTimeout(false) }
 
   const handleRegionChangeComplete = (region: Region) => {
-    const lat = clamp(region.latitude, MINNA_BOUNDS.southWest.latitude, MINNA_BOUNDS.northEast.latitude)
-    const lng = clamp(region.longitude, MINNA_BOUNDS.southWest.longitude, MINNA_BOUNDS.northEast.longitude)
-    const constrainedRegion = { ...region, latitude: lat, longitude: lng }
-    savedMapRegionRef.current = constrainedRegion
-    setCurrentMapRegion(constrainedRegion)
-    if (lat !== region.latitude || lng !== region.longitude) {
-      mapRef.current?.animateToRegion(constrainedRegion, 250)
-    }
+    savedMapRegionRef.current = region
+    setCurrentMapRegion(region)
   }
 
   const flyToLocation = (loc: Location) => {
@@ -340,39 +336,31 @@ export default function StudentDashboardScreen({
     setLocationMessage(null)
 
     try {
-      const coords = await getVerifiedLocation()
-      setLocationStatus('granted')
-      setUserLocation(coords)
-      
-      // Set activePin so the map marks it like the icons in the dashscreen
-      setActivePin({
-        id: 'user-current-location',
-        name: 'Your Location',
-        description: 'Verified GPS location',
-        latitude: coords.latitude,
-        longitude: coords.longitude,
-        category: 'user',
-        is_active: true
-      } as any)
+      const granted = await requestLocationPermission()
+      if (!granted) {
+        setLocationStatus('denied')
+        setLocationMessage('Location permission is required to use this feature.')
+        return
+      }
 
+      const coords = await getCurrentLocation()
+      
+      if (isWithinServiceArea(coords)) {
+        setLocationStatus('granted')
+      } else {
+        setLocationStatus('outOfAxis')
+        setLocationMessage('You appear to be outside the service area.')
+      }
+
+      setUserLocation(coords)
       mapRef.current?.animateToRegion(
         { latitude: coords.latitude, longitude: coords.longitude, latitudeDelta: 0.004, longitudeDelta: 0.004 },
         500,
       )
     } catch (err: any) {
-      if (err instanceof LocationError) {
-        if (err.code === 'PERMISSION_DENIED') setLocationStatus('denied')
-        else if (err.code === 'OUTSIDE_SERVICE_AREA') setLocationStatus('outOfAxis')
-        else setLocationStatus('error')
-        
-        setUserLocation(null)
-        setActivePin(null)
-        setLocationMessage(err.message)
-      } else {
-        setLocationStatus('error')
-        setUserLocation(null)
-        setLocationMessage('An unexpected error occurred while fetching your location.')
-      }
+      setLocationStatus('error')
+      setUserLocation(null)
+      setLocationMessage('An unexpected error occurred while fetching your location.')
     }
   }
 
