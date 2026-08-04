@@ -343,6 +343,18 @@ export default function StudentDashboardScreen({
       const coords = await getVerifiedLocation()
       setLocationStatus('granted')
       setUserLocation(coords)
+      
+      // Set activePin so the map marks it like the icons in the dashscreen
+      setActivePin({
+        id: 'user-current-location',
+        name: 'Your Location',
+        description: 'Verified GPS location',
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        category: 'user',
+        is_active: true
+      } as any)
+
       mapRef.current?.animateToRegion(
         { latitude: coords.latitude, longitude: coords.longitude, latitudeDelta: 0.004, longitudeDelta: 0.004 },
         500,
@@ -354,6 +366,7 @@ export default function StudentDashboardScreen({
         else setLocationStatus('error')
         
         setUserLocation(null)
+        setActivePin(null)
         setLocationMessage(err.message)
       } else {
         setLocationStatus('error')
