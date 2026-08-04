@@ -453,7 +453,6 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
             </View>
           </View>
 
-          </View>
         </View>
 
         <View style={styles.card}>
