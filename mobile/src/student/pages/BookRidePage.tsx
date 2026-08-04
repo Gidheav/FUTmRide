@@ -183,21 +183,33 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
 
   const handleSelectLocation = useCallback((item: LocationOption) => {
     if (activePicker === 'pickup') {
+      if (dropoff && dropoff.latitude === item.latitude && dropoff.longitude === item.longitude) {
+        Alert.alert('Invalid Location', 'Pickup and dropoff locations cannot be the same.')
+        return
+      }
       setPickup(item)
       setSelectedRoute(null)
     }
     if (activePicker === 'dropoff') {
+      if (pickup && pickup.latitude === item.latitude && pickup.longitude === item.longitude) {
+        Alert.alert('Invalid Location', 'Pickup and dropoff locations cannot be the same.')
+        return
+      }
       setDropoff(item)
       setMapDropoff(null)
       setSelectedRoute(null)
     }
     setActivePicker(null)
-  }, [activePicker])
+  }, [activePicker, pickup, dropoff])
 
   const handleMapSelect = useCallback((selection: RouteSelection) => {
     const rounded = {
       latitude: roundCoord(selection.dropoff.latitude),
       longitude: roundCoord(selection.dropoff.longitude),
+    }
+    if (pickup && Math.abs(pickup.latitude - rounded.latitude) < 0.0001 && Math.abs(pickup.longitude - rounded.longitude) < 0.0001) {
+       Alert.alert('Invalid Location', 'Pickup and dropoff locations cannot be the same.')
+       return
     }
     setMapDropoff(rounded)
     setSelectedRoute(selection.route)
@@ -441,31 +453,6 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
             </View>
           </View>
 
-          <View style={styles.mapButtonContainer}>
-            <TouchableOpacity
-              style={[
-                styles.mapButton,
-                (!pickup || !dropoff) && styles.mapButtonDisabled,
-              ]}
-              activeOpacity={0.8}
-              disabled={!pickup || !dropoff}
-              onPress={() => {
-                if (!pickup) {
-                  Alert.alert('Pickup required', 'Select pickup before viewing the route.')
-                  return
-                }
-                if (!dropoff) {
-                  Alert.alert('Dropoff required', 'Select or pin a dropoff before viewing the route.')
-                  return
-                }
-                setShowMapPicker(true)
-              }}
-            >
-              <MaterialIcons name="map" size={18} color={pickup && dropoff ? '#6A1B9A' : '#9ca3af'} />
-              <Text style={[styles.mapButtonText, (!pickup || !dropoff) && styles.mapButtonTextDisabled]}>
-                View Route on Map
-              </Text>
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -516,7 +503,34 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
           </View>
         </View>
 
-
+        <View style={styles.card}>
+          <View style={styles.mapButtonContainer}>
+            <TouchableOpacity
+              style={[
+                styles.mapButton,
+                (!pickup || !dropoff) && styles.mapButtonDisabled,
+              ]}
+              activeOpacity={0.8}
+              disabled={!pickup || !dropoff}
+              onPress={() => {
+                if (!pickup) {
+                  Alert.alert('Pickup required', 'Select pickup before viewing the route.')
+                  return
+                }
+                if (!dropoff) {
+                  Alert.alert('Dropoff required', 'Select or pin a dropoff before viewing the route.')
+                  return
+                }
+                setShowMapPicker(true)
+              }}
+            >
+              <MaterialIcons name="map" size={18} color={pickup && dropoff ? '#6A1B9A' : '#9ca3af'} />
+              <Text style={[styles.mapButtonText, (!pickup || !dropoff) && styles.mapButtonTextDisabled]}>
+                View Route on Map
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
         {/* Share This Ride Toggle */}
         <View style={styles.card}>

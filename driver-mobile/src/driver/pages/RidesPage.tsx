@@ -906,7 +906,27 @@ export default function DriverRidesPage() {
     if (advancingRideId) return;
     setAdvancingRideId(rideId);
     try {
-      const res = await driverApi.advanceRide(rideId);
+      let payload = undefined;
+      // If we are completing the trip, attempt GPS verification
+      if (activeOnDemandRide?.status === 'in_progress') {
+        let attempts = 0;
+        const maxAttempts = 3;
+        while (attempts < maxAttempts) {
+          try {
+            const { getCurrentPositionAsync, Accuracy } = await import('expo-location');
+            const loc = await getCurrentPositionAsync({ accuracy: Accuracy.Balanced, timeout: 5000 });
+            payload = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+            break;
+          } catch (e) {
+            attempts++;
+            if (attempts >= maxAttempts) {
+              console.warn('GPS verification failed after 3 attempts', e);
+            }
+          }
+        }
+      }
+
+      const res = await driverApi.advanceRide(rideId, payload);
       setActiveOnDemandRide(res.data);
       if (['completed', 'cancelled'].includes(res.data.status)) {
         setDriverHasActiveRide(false);

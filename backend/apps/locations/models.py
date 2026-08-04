@@ -3,6 +3,7 @@ from django.db import models
 
 
 class LocationCategory(models.TextChoices):
+    # ── On-campus (institution) categories — appear in dashboard quick-icons ──
     LECTURE = 'lecture', 'Lecture Theatre'
     HOSTEL = 'hostel', 'Hostel'
     GATE = 'gate', 'Gate'
@@ -12,8 +13,38 @@ class LocationCategory(models.TextChoices):
     SPORTS = 'sports', 'Sports Facility'
     ICT = 'ict', 'ICT Centre'
     CANTEEN = 'canteen', 'Canteen / Cafeteria'
-    MOSQUE = 'mosque', 'Mosque'
+    WORSHIP = 'worship', 'Place of Worship'       # neutral — covers mosque, church, chapel
     LABORATORY = 'laboratory', 'Laboratory'
+    WORKSHOP = 'workshop', 'Workshop / Tech Lab'  # engineering & fabrication workshops
+    AUDITORIUM = 'auditorium', 'Auditorium / Hall' # convocation & event halls
+    PARKING = 'parking', 'Parking Area'
+    FACULTY = 'faculty', 'Faculty / Department Office'
+    SENATE = 'senate', 'Senate / Admin Directorate'
+
+    # ── Off-campus Minna regions — searchable, no dashboard icons ────────────
+    BOSSO = 'bosso', 'Bosso'
+    TALBA = 'talba', 'Talba'
+    KPAKUNGU = 'kpakungu', 'Kpakungu'
+    MAITUMBI = 'maitumbi', 'Maitumbi'
+    TUNGA = 'tunga', 'Tunga'
+    CHANCHAGA = 'chanchaga', 'Chanchaga'
+    MINNA_CENTRAL = 'minna_central', 'Minna Central'
+    KWAMBA = 'kwamba', 'Kwamba'
+    SANGO = 'sango', 'Sango'
+    DUTSEN_KURA = 'dutsen_kura', 'Dutsen Kura'
+    BARKIN_SALE = 'barkin_sale', 'Barkin Sale'
+    MOBILE = 'mobile', 'Mobile Layout'
+    GBANGBAN = 'gbangban', 'Gbangban'
+    SAUKA_KAHUTA = 'sauka_kahuta', 'Sauka Kahuta'
+    SHANGO = 'shango', 'Shango'
+    ALIYU_MAKAMA = 'aliyu_makama', 'Aliyu Makama Road'
+    PAIKON_KORE = 'paikon_kore', 'Paikon Kore'
+    MAIKUNKELE = 'maikunkele', 'Maikunkele'
+    IBB_WAY = 'ibb_way', 'IBB Way'
+    AIRPORT_ROAD = 'airport_road', 'Airport Road'
+    WUSHISHI = 'wushishi', 'Wushishi'
+    FAITH_GATE = 'faith_gate', 'Faith Gate Area'
+    OTHERS = 'others', 'Others'
 
 
 class Location(models.Model):

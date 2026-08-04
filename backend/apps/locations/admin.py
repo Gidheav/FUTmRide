@@ -19,7 +19,15 @@ class BulkImportForm(forms.Form):
         label='Paste JSON array of locations',
         help_text=(
             'Each object must have: id, name, description, latitude, longitude, category. '
-            'Valid categories: lecture, hostel, gate, library, blocks, medical, sports, ict, canteen, mosque, laboratory'
+            '<br><br>'
+            '<strong>On-campus categories (with dashboard icons):</strong> '
+            'lecture, hostel, gate, library, blocks, medical, sports, ict, canteen, '
+            'worship, laboratory, workshop, auditorium, parking, faculty, senate'
+            '<br>'
+            '<strong>Off-campus Minna region categories (searchable only, no dashboard icons):</strong> '
+            'bosso, talba, kpakungu, maitumbi, tunga, chanchaga, minna_central, kwamba, sango, '
+            'dutsen_kura, barkin_sale, mobile, gbangban, sauka_kahuta, shango, aliyu_makama, '
+            'paikon_kore, maikunkele, ibb_way, airport_road, wushishi, faith_gate, others'
         ),
     )
 

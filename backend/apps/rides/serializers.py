@@ -101,6 +101,23 @@ class RideRequestSerializer(serializers.ModelSerializer):
                         f'{policy["max_seats"]} seats.'
                     )
                 })
+
+        pickup_lat = attrs.get('pickup_latitude')
+        pickup_lng = attrs.get('pickup_longitude')
+        dropoff_lat = attrs.get('dropoff_latitude')
+        dropoff_lng = attrs.get('dropoff_longitude')
+        
+        if pickup_lat is not None and pickup_lng is not None and dropoff_lat is not None and dropoff_lng is not None:
+            from apps.rides.engine import _haversine_distance
+            dist_km = _haversine_distance(
+                float(pickup_lat), float(pickup_lng),
+                float(dropoff_lat), float(dropoff_lng)
+            )
+            if dist_km < 0.1:  # 100 meters
+                raise serializers.ValidationError(
+                    "Pickup and dropoff locations are too close. Minimum distance is 100 meters."
+                )
+
         return attrs
 
     def create(self, validated_data):

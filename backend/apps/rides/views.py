@@ -340,14 +340,37 @@ class DriverRideStatusUpdateView(APIView):
                 {'error': {'code': 'INVALID_STATUS', 'message': f'No next step from: {ride.status}'}},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        
+        # GPS Auto Location Verification for Complete Trip
+        if ride.status == RideStatus.IN_PROGRESS:
+            lat = request.data.get('latitude')
+            lng = request.data.get('longitude')
+            if lat and lng and ride.dropoff_latitude and ride.dropoff_longitude:
+                try:
+                    from apps.rides.engine import _haversine_distance
+                    dist_km = _haversine_distance(
+                        float(lat), float(lng), 
+                        float(ride.dropoff_latitude), float(ride.dropoff_longitude)
+                    )
+                    # If within 200 meters, bypass pending_completion
+                    if dist_km <= 0.2:
+                        next_status = RideStatus.COMPLETED
+                except (ValueError, TypeError):
+                    pass
+        
         try:
             ride.transition_to(next_status)
             ride.save()
         except ValueError as e:
             return Response({'error': {'code': 'INVALID_TRANSITION', 'message': str(e)}}, status=status.HTTP_400_BAD_REQUEST)
+        
         if next_status == RideStatus.PENDING_COMPLETION:
             from apps.rides.tasks import auto_confirm_pending_ride
             auto_confirm_pending_ride.apply_async(args=[str(ride.id)], countdown=300)
+        elif next_status == RideStatus.COMPLETED:
+            from apps.rides.services import finalize_ride_completion
+            finalize_ride_completion(ride)
+            
         notify_student_ride_status(ride)
         logger.info('ride_advanced ref=%s to=%s driver=%s', ride.reference, next_status, str(request.user.id))
         return Response(RideDetailSerializer(ride, context={'request': request}).data)

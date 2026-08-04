@@ -94,12 +94,17 @@ const MODAL_CATEGORIES: Record<string, string> = {
   gate: 'Campus Gates',
   laboratory: 'Laboratories',
   blocks: 'Admin Blocks',
-  mosque: 'Mosques',
+  worship: 'Places of Worship',
   library: 'Libraries',
   medical: 'Medical Centers',
   sports: 'Sports Facilities',
   ict: 'ICT Centers',
   canteen: 'Canteens',
+  workshop: 'Workshops & Tech Labs',
+  auditorium: 'Auditoriums & Halls',
+  parking: 'Parking Areas',
+  faculty: 'Faculty & Department Offices',
+  senate: 'Senate & Admin Directorates',
 }
 
 type QuickItem = {
@@ -111,17 +116,22 @@ type QuickItem = {
 }
 
 export const QUICK_ITEMS: QuickItem[] = [
-  { id: 'lecture', label: 'Lecture', icon: 'school', category: 'lecture', hasModal: true },
-  { id: 'laboratory', label: 'Lab', icon: 'science', category: 'laboratory', hasModal: true },
-  { id: 'hostel', label: 'Hostel', icon: 'apartment', category: 'hostel', hasModal: true },
-  { id: 'library', label: 'Library', icon: 'local-library', category: 'library', hasModal: true },
-  { id: 'gate', label: 'Gate', icon: 'meeting-room', category: 'gate', hasModal: true },
-  { id: 'blocks', label: 'Blocks', icon: 'business', category: 'blocks', hasModal: true },
-  { id: 'medical', label: 'Medical', icon: 'local-hospital', category: 'medical', hasModal: true },
-  { id: 'sports', label: 'Sports', icon: 'sports-soccer', category: 'sports', hasModal: true },
-  { id: 'ict', label: 'ICT', icon: 'computer', category: 'ict', hasModal: true },
-  { id: 'canteen', label: 'Canteen', icon: 'restaurant', category: 'canteen', hasModal: true },
-  { id: 'mosque', label: 'Mosque', icon: 'account-balance', category: 'mosque', hasModal: true },
+  { id: 'lecture',    label: 'Lecture',   icon: 'school',             category: 'lecture',    hasModal: true },
+  { id: 'laboratory', label: 'Lab',       icon: 'science',            category: 'laboratory', hasModal: true },
+  { id: 'hostel',     label: 'Hostel',    icon: 'apartment',          category: 'hostel',     hasModal: true },
+  { id: 'library',    label: 'Library',   icon: 'local-library',      category: 'library',    hasModal: true },
+  { id: 'gate',       label: 'Gate',      icon: 'meeting-room',       category: 'gate',       hasModal: true },
+  { id: 'blocks',     label: 'Blocks',    icon: 'business',           category: 'blocks',     hasModal: true },
+  { id: 'medical',    label: 'Medical',   icon: 'local-hospital',     category: 'medical',    hasModal: true },
+  { id: 'sports',     label: 'Sports',    icon: 'sports-soccer',      category: 'sports',     hasModal: true },
+  { id: 'ict',        label: 'ICT',       icon: 'computer',           category: 'ict',        hasModal: true },
+  { id: 'canteen',    label: 'Canteen',   icon: 'restaurant',         category: 'canteen',    hasModal: true },
+  { id: 'worship',    label: 'Worship',   icon: 'account-balance',    category: 'worship',    hasModal: true },
+  { id: 'workshop',   label: 'Workshop',  icon: 'build',              category: 'workshop',   hasModal: true },
+  { id: 'auditorium', label: 'Hall',      icon: 'event-seat',         category: 'auditorium', hasModal: true },
+  { id: 'parking',    label: 'Parking',   icon: 'local-parking',      category: 'parking',    hasModal: true },
+  { id: 'faculty',    label: 'Faculty',   icon: 'domain',             category: 'faculty',    hasModal: true },
+  { id: 'senate',     label: 'Senate',    icon: 'account-circle',     category: 'senate',     hasModal: true },
 ]
 
 type StudentDashboardScreenProps = {

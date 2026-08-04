@@ -32,18 +32,17 @@ export const TransactionReceiptModal = React.memo(({ transaction, onClose, onDis
     if (!viewShotRef.current?.capture || !transaction) return;
     try {
       const uri = await viewShotRef.current.capture();
-      const filename = `Transaction-Receipt-${transaction.reference || 'FUTMRIDE'}.png`;
-      const customUri = `${FileSystem.cacheDirectory}${filename}`;
-      
-      await FileSystem.copyAsync({ from: uri, to: customUri });
-
+      // On some versions of expo-file-system/legacy, copyAsync fails silently or throws.
+      // We will just share the original URI which already has a valid path.
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(customUri, {
+        await Sharing.shareAsync(uri, {
           mimeType: 'image/png',
-          dialogTitle: 'Share Receipt',
+          dialogTitle: `Transaction-Receipt-${transaction.reference || 'FUTMRIDE'}`,
         });
       }
-    } catch {}
+    } catch (e) {
+      console.warn('Share image error:', e);
+    }
   }, [transaction]);
 
   const shareAsPdf = useCallback(async () => {
@@ -216,18 +215,15 @@ export const TransactionReceiptModal = React.memo(({ transaction, onClose, onDis
     try {
       const { uri } = await Print.printToFileAsync({ html, base64: false });
       
-      const filename = `Transaction-Receipt-${ref}.pdf`;
-      const customUri = `${FileSystem.cacheDirectory}${filename}`;
-      
-      await FileSystem.copyAsync({ from: uri, to: customUri });
-      
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(customUri, {
+        await Sharing.shareAsync(uri, {
           mimeType: 'application/pdf',
-          dialogTitle: 'Share Receipt PDF',
+          dialogTitle: `Transaction-Receipt-${ref}`,
         });
       }
-    } catch {}
+    } catch (e) {
+      console.warn('Share PDF error:', e);
+    }
   }, [transaction]);
 
   if (!transaction) return null;
