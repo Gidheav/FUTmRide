@@ -13,7 +13,7 @@ class LocationCategory(models.TextChoices):
     SPORTS = 'sports', 'Sports Facility'
     ICT = 'ict', 'ICT Centre'
     CANTEEN = 'canteen', 'Canteen / Cafeteria'
-    WORSHIP = 'worship', 'Place of Worship'       # neutral — covers mosque, church, chapel
+    WORSHIP = 'worship', 'Place of Worship'       
     LABORATORY = 'laboratory', 'Laboratory'
     WORKSHOP = 'workshop', 'Workshop / Tech Lab'  # engineering & fabrication workshops
     AUDITORIUM = 'auditorium', 'Auditorium / Hall' # convocation & event halls

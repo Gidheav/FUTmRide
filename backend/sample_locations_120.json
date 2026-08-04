@@ -1,0 +1,1302 @@
+[
+  {
+    "id": "lt1",
+    "name": "Lecture Theatre 1 (LT1)",
+    "description": "Main 500-seat lecture hall near School of Science",
+    "latitude": 9.5255,
+    "longitude": 6.4498,
+    "category": "lecture",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "lt2",
+    "name": "Lecture Theatre 2 (LT2)",
+    "description": "School of Engineering lecture theatre",
+    "latitude": 9.5262,
+    "longitude": 6.451,
+    "category": "lecture",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "lt3",
+    "name": "Lecture Theatre 3 (LT3)",
+    "description": "School of Environmental Technology lecture hall",
+    "latitude": 9.527,
+    "longitude": 6.452,
+    "category": "lecture",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "lt4",
+    "name": "Lecture Theatre 4 (LT4)",
+    "description": "School of Information & Comm Tech hall",
+    "latitude": 9.5248,
+    "longitude": 6.4485,
+    "category": "lecture",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "nlt1",
+    "name": "New Lecture Theatre 1",
+    "description": "Newly built 1000-seater capacity hall",
+    "latitude": 9.528,
+    "longitude": 6.4535,
+    "category": "lecture",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "nlt2",
+    "name": "New Lecture Theatre 2",
+    "description": "Modern air-conditioned lecture complex",
+    "latitude": 9.5285,
+    "longitude": 6.4542,
+    "category": "lecture",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "clt",
+    "name": "Central Lecture Theatre",
+    "description": "University central lecture auditorium",
+    "latitude": 9.525,
+    "longitude": 6.4505,
+    "category": "lecture",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "agric-lt",
+    "name": "SAAT Lecture Theatre",
+    "description": "School of Agriculture & Agricultural Tech hall",
+    "latitude": 9.5235,
+    "longitude": 6.447,
+    "category": "lecture",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "step-lt",
+    "name": "SSTE Lecture Hall",
+    "description": "School of Science & Tech Education hall",
+    "latitude": 9.529,
+    "longitude": 6.455,
+    "category": "lecture",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "sls-lt",
+    "name": "SLS Lecture Theatre",
+    "description": "School of Life Sciences lecture hall",
+    "latitude": 9.524,
+    "longitude": 6.449,
+    "category": "lecture",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "h-male-a",
+    "name": "Block A Male Hostel",
+    "description": "Undergraduate male residence block A",
+    "latitude": 9.521,
+    "longitude": 6.445,
+    "category": "hostel",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "h-male-b",
+    "name": "Block B Male Hostel",
+    "description": "Undergraduate male residence block B",
+    "latitude": 9.5215,
+    "longitude": 6.4458,
+    "category": "hostel",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "h-male-c",
+    "name": "Block C Male Hostel",
+    "description": "Undergraduate male residence block C",
+    "latitude": 9.522,
+    "longitude": 6.4465,
+    "category": "hostel",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "h-male-d",
+    "name": "Block D Male Hostel",
+    "description": "New male hostel block D",
+    "latitude": 9.5225,
+    "longitude": 6.4472,
+    "category": "hostel",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "h-fem-a",
+    "name": "Block A Female Hostel",
+    "description": "Undergraduate female residence block A",
+    "latitude": 9.531,
+    "longitude": 6.457,
+    "category": "hostel",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "h-fem-b",
+    "name": "Block B Female Hostel",
+    "description": "Undergraduate female residence block B",
+    "latitude": 9.5315,
+    "longitude": 6.4578,
+    "category": "hostel",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "h-fem-c",
+    "name": "Block C Female Hostel",
+    "description": "Undergraduate female residence block C",
+    "latitude": 9.532,
+    "longitude": 6.4585,
+    "category": "hostel",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "h-pg-male",
+    "name": "PG Male Hostel",
+    "description": "Postgraduate male residential quarters",
+    "latitude": 9.533,
+    "longitude": 6.459,
+    "category": "hostel",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "h-pg-fem",
+    "name": "PG Female Hostel",
+    "description": "Postgraduate female residential quarters",
+    "latitude": 9.5335,
+    "longitude": 6.4595,
+    "category": "hostel",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "h-conv-male",
+    "name": "Convocation Male Hostel",
+    "description": "Convocation village hostel A",
+    "latitude": 9.5205,
+    "longitude": 6.444,
+    "category": "hostel",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "gk-main-gate",
+    "name": "Gidan Kwano Main Gate",
+    "description": "Primary campus entrance gate off Minna-Zungeru Rd",
+    "latitude": 9.52,
+    "longitude": 6.442,
+    "category": "gate",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "gk-back-gate",
+    "name": "GK Back Gate",
+    "description": "Secondary gate towards Western bypass",
+    "latitude": 9.534,
+    "longitude": 6.461,
+    "category": "gate",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "gk-north-gate",
+    "name": "GK North Gate",
+    "description": "North exit towards Maikunkele axis",
+    "latitude": 9.535,
+    "longitude": 6.462,
+    "category": "gate",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "bosso-main-gate",
+    "name": "Bosso Campus Main Gate",
+    "description": "Main gate of Bosso campus",
+    "latitude": 9.6135,
+    "longitude": 6.546,
+    "category": "gate",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "bosso-sec-gate",
+    "name": "Bosso Secondary Gate",
+    "description": "Bosso campus back exit gate",
+    "latitude": 9.6145,
+    "longitude": 6.5475,
+    "category": "gate",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "main-lib",
+    "name": "University Main Library",
+    "description": "Central university library building & e-library",
+    "latitude": 9.5265,
+    "longitude": 6.45,
+    "category": "library",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "seet-lib",
+    "name": "SEET School Library",
+    "description": "School of Engineering specialized library",
+    "latitude": 9.5268,
+    "longitude": 6.4512,
+    "category": "library",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "ict-lib",
+    "name": "SICT E-Library",
+    "description": "Digital library & research centre",
+    "latitude": 9.5245,
+    "longitude": 6.448,
+    "category": "library",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "bosso-lib",
+    "name": "Bosso Campus Library",
+    "description": "Library branch at Bosso campus",
+    "latitude": 9.614,
+    "longitude": 6.5465,
+    "category": "library",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "admin-block-a",
+    "name": "Admin Block A",
+    "description": "Registry & Student Affairs offices",
+    "latitude": 9.5258,
+    "longitude": 6.4492,
+    "category": "blocks",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "admin-block-b",
+    "name": "Admin Block B",
+    "description": "Bursary & Financial Services block",
+    "latitude": 9.526,
+    "longitude": 6.4495,
+    "category": "blocks",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "seet-block",
+    "name": "SEET Admin Block",
+    "description": "Dean's office - Engineering",
+    "latitude": 9.5264,
+    "longitude": 6.4508,
+    "category": "blocks",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "sict-block",
+    "name": "SICT Admin Block",
+    "description": "Dean's office - Information Tech",
+    "latitude": 9.5246,
+    "longitude": 6.4482,
+    "category": "blocks",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "saat-block",
+    "name": "SAAT Admin Block",
+    "description": "Dean's office - Agriculture",
+    "latitude": 9.5233,
+    "longitude": 6.4468,
+    "category": "blocks",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "set-block",
+    "name": "SET Admin Block",
+    "description": "Dean's office - Environmental Tech",
+    "latitude": 9.5272,
+    "longitude": 6.4522,
+    "category": "blocks",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "gk-clinic",
+    "name": "Gidan Kwano Health Centre",
+    "description": "University clinic & emergency ward",
+    "latitude": 9.523,
+    "longitude": 6.446,
+    "category": "medical",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "bosso-clinic",
+    "name": "Bosso Campus Clinic",
+    "description": "Medical outpost at Bosso campus",
+    "latitude": 9.613,
+    "longitude": 6.545,
+    "category": "medical",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "pharmacy",
+    "name": "University Pharmacy",
+    "description": "Dispensary and medical store",
+    "latitude": 9.5232,
+    "longitude": 6.4462,
+    "category": "medical",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "sports-complex",
+    "name": "Main Sports Complex",
+    "description": "Football pitch & athletics track",
+    "latitude": 9.5295,
+    "longitude": 6.456,
+    "category": "sports",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "indoor-sports",
+    "name": "Indoor Sports Hall",
+    "description": "Basketball, badminton, and table tennis court",
+    "latitude": 9.5298,
+    "longitude": 6.4565,
+    "category": "sports",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "volleyball-court",
+    "name": "Volleyball Court",
+    "description": "Outdoor volleyball arena near hostel A",
+    "latitude": 9.5212,
+    "longitude": 6.4452,
+    "category": "sports",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "tennis-court",
+    "name": "Lawn Tennis Court",
+    "description": "University tennis facility",
+    "latitude": 9.5292,
+    "longitude": 6.4558,
+    "category": "sports",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "ict-centre-main",
+    "name": "Main ICT Centre",
+    "description": "CBT exam centre & university server room",
+    "latitude": 9.5242,
+    "longitude": 6.4478,
+    "category": "ict",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "cbt-hall-a",
+    "name": "CBT Hall A",
+    "description": "Digital testing centre 500-workstation hall",
+    "latitude": 9.5244,
+    "longitude": 6.4481,
+    "category": "ict",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "cbt-hall-b",
+    "name": "CBT Hall B",
+    "description": "Digital testing centre 300-workstation hall",
+    "latitude": 9.5246,
+    "longitude": 6.4484,
+    "category": "ict",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "ict-helpdesk",
+    "name": "ICT Support Desk",
+    "description": "Student portal & email support office",
+    "latitude": 9.524,
+    "longitude": 6.4475,
+    "category": "ict",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "central-cafeteria",
+    "name": "Central Student Cafeteria",
+    "description": "Main student food court & dining area",
+    "latitude": 9.5252,
+    "longitude": 6.4488,
+    "category": "canteen",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "hostel-buttery",
+    "name": "Hostel Buttery Market",
+    "description": "Snack shops & provisions center near hostel B",
+    "latitude": 9.5218,
+    "longitude": 6.446,
+    "category": "canteen",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "staff-club-canteen",
+    "name": "Staff Club Restaurant",
+    "description": "University staff cafeteria & lounge",
+    "latitude": 9.5275,
+    "longitude": 6.4528,
+    "category": "canteen",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "seet-canteen",
+    "name": "SEET Food Kiosk",
+    "description": "Refreshment spot near Engineering block",
+    "latitude": 9.5266,
+    "longitude": 6.4514,
+    "category": "canteen",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "central-mosque",
+    "name": "University Central Mosque",
+    "description": "Gidan Kwano main campus mosque complex",
+    "latitude": 9.5248,
+    "longitude": 6.4496,
+    "category": "worship",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "rcf-chapel",
+    "name": "RCF Fellowship Centre",
+    "description": "Redeemed Campus Fellowship auditorium",
+    "latitude": 9.5302,
+    "longitude": 6.4572,
+    "category": "worship",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "chapel-grace",
+    "name": "Chapel of Grace",
+    "description": "Interdenominational campus worship center",
+    "latitude": 9.5305,
+    "longitude": 6.4575,
+    "category": "worship",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "nifs-mosque",
+    "name": "MSSN Islamic Centre",
+    "description": "Muslim Students Society worship hall",
+    "latitude": 9.525,
+    "longitude": 6.4498,
+    "category": "worship",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "fcs-auditorium",
+    "name": "FCS Campus Auditorium",
+    "description": "Fellowship of Christian Students hall",
+    "latitude": 9.5308,
+    "longitude": 6.4578,
+    "category": "worship",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "chem-lab",
+    "name": "Central Chemistry Lab",
+    "description": "Advanced chemical analysis lab",
+    "latitude": 9.5257,
+    "longitude": 6.4494,
+    "category": "laboratory",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "physics-lab",
+    "name": "Physics Research Lab",
+    "description": "Experimental physics laboratory",
+    "latitude": 9.5259,
+    "longitude": 6.4497,
+    "category": "laboratory",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "bio-lab",
+    "name": "Biological Sciences Lab",
+    "description": "Microbiology & genetics lab",
+    "latitude": 9.5241,
+    "longitude": 6.4491,
+    "category": "laboratory",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "civil-eng-lab",
+    "name": "Civil Engineering Lab",
+    "description": "Concrete & hydraulics testing facility",
+    "latitude": 9.5263,
+    "longitude": 6.4511,
+    "category": "laboratory",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "elect-lab",
+    "name": "Electrical Eng Hardware Lab",
+    "description": "Circuits & robotics lab",
+    "latitude": 9.5265,
+    "longitude": 6.4513,
+    "category": "laboratory",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "mech-lab",
+    "name": "Mechanical Thermo Lab",
+    "description": "Thermodynamics & IC engines lab",
+    "latitude": 9.5267,
+    "longitude": 6.4515,
+    "category": "laboratory",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "eng-workshop-main",
+    "name": "Central Engineering Workshop",
+    "description": "Machining, welding & fabrication workshop",
+    "latitude": 9.5269,
+    "longitude": 6.4518,
+    "category": "workshop",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "woodwork-shop",
+    "name": "Carpentry & Wood Workshop",
+    "description": "Environmental Tech wood model workshop",
+    "latitude": 9.5273,
+    "longitude": 6.4524,
+    "category": "workshop",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "foundry-shop",
+    "name": "Foundry & Casting Shop",
+    "description": "Metallurgical engineering casting lab",
+    "latitude": 9.5271,
+    "longitude": 6.452,
+    "category": "workshop",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "auto-workshop",
+    "name": "Automobile Mechanics Shop",
+    "description": "Vehicle diagnostic & repair workshop",
+    "latitude": 9.5268,
+    "longitude": 6.4516,
+    "category": "workshop",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "convocation-square",
+    "name": "Convocation Square",
+    "description": "Grand open-air convocation ceremony arena",
+    "latitude": 9.5288,
+    "longitude": 6.4545,
+    "category": "auditorium",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "multipurpose-hall",
+    "name": "Multipurpose Hall",
+    "description": "University indoor events & orientation hall",
+    "latitude": 9.5282,
+    "longitude": 6.4538,
+    "category": "auditorium",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "senate-chamber-hall",
+    "name": "Senate Chamber Hall",
+    "description": "Official university conference auditorium",
+    "latitude": 9.5278,
+    "longitude": 6.4532,
+    "category": "auditorium",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "main-gate-parking",
+    "name": "Main Gate Bus Terminal & Park",
+    "description": "Campus shuttle bus stop and car park",
+    "latitude": 9.5202,
+    "longitude": 6.4425,
+    "category": "parking",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "admin-parking",
+    "name": "Senate Admin Car Park",
+    "description": "Staff & official visitors parking lot",
+    "latitude": 9.5277,
+    "longitude": 6.453,
+    "category": "parking",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "library-parking",
+    "name": "Library Visitors Park",
+    "description": "Student & researcher vehicle parking",
+    "latitude": 9.5263,
+    "longitude": 6.4498,
+    "category": "parking",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "hostel-car-park",
+    "name": "Student Hostel Car Park",
+    "description": "Overnight vehicle park near Hostels",
+    "latitude": 9.5213,
+    "longitude": 6.4455,
+    "category": "parking",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "cs-dept",
+    "name": "Computer Science Dept Office",
+    "description": "Department of Computer Science HOD office",
+    "latitude": 9.5247,
+    "longitude": 6.4483,
+    "category": "faculty",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "cyber-dept",
+    "name": "Cyber Security Dept",
+    "description": "Cyber Security Science offices & lab",
+    "latitude": 9.5249,
+    "longitude": 6.4486,
+    "category": "faculty",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "mech-dept",
+    "name": "Mechanical Eng Dept",
+    "description": "Mechanical Engineering offices",
+    "latitude": 9.5266,
+    "longitude": 6.4512,
+    "category": "faculty",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "civil-dept",
+    "name": "Civil Eng Dept",
+    "description": "Civil Engineering HOD office",
+    "latitude": 9.5261,
+    "longitude": 6.4507,
+    "category": "faculty",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "arch-dept",
+    "name": "Architecture Dept",
+    "description": "Architecture studios & offices",
+    "latitude": 9.5274,
+    "longitude": 6.4523,
+    "category": "faculty",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "stat-dept",
+    "name": "Statistics Dept",
+    "description": "Mathematics & Statistics offices",
+    "latitude": 9.5256,
+    "longitude": 6.4493,
+    "category": "faculty",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "senate-building",
+    "name": "Senate Building",
+    "description": "Vice-Chancellor's office & central administration",
+    "latitude": 9.5276,
+    "longitude": 6.4531,
+    "category": "senate",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "academic-planning",
+    "name": "Academic Planning Directorate",
+    "description": "Curriculum & accreditation offices",
+    "latitude": 9.5279,
+    "longitude": 6.4534,
+    "category": "senate",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "research-directorate",
+    "name": "Directorate of Research & Innovation",
+    "description": "Grant management & research hub",
+    "latitude": 9.5281,
+    "longitude": 6.4536,
+    "category": "senate",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "bosso-market",
+    "name": "Bosso Market",
+    "description": "Popular local market in Bosso town",
+    "latitude": 9.615,
+    "longitude": 6.548,
+    "category": "bosso",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "bosso-estate",
+    "name": "Bosso Lowcost Estate",
+    "description": "Residential housing estate in Bosso",
+    "latitude": 9.617,
+    "longitude": 6.549,
+    "category": "bosso",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "bosso-waterboard",
+    "name": "Bosso Water Works",
+    "description": "Water treatment station landmark",
+    "latitude": 9.612,
+    "longitude": 6.544,
+    "category": "bosso",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "bosso-express-junction",
+    "name": "Bosso Express Junction",
+    "description": "Major road junction along Bosso road",
+    "latitude": 9.616,
+    "longitude": 6.547,
+    "category": "bosso",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "talba-estate-gate",
+    "name": "Talba Housing Estate Main Gate",
+    "description": "Gated residential estate gate along GK road",
+    "latitude": 9.542,
+    "longitude": 6.481,
+    "category": "talba",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "talba-commercial",
+    "name": "Talba Commercial Center",
+    "description": "Shops and pharmacy complex in Talba",
+    "latitude": 9.543,
+    "longitude": 6.4825,
+    "category": "talba",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "talba-phase2",
+    "name": "Talba Estate Phase 2",
+    "description": "Secondary residential section",
+    "latitude": 9.5445,
+    "longitude": 6.484,
+    "category": "talba",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "kpakungu-roundabout",
+    "name": "Kpakungu Roundabout",
+    "description": "Major transit roundabout connecting GK to Minna city",
+    "latitude": 9.589,
+    "longitude": 6.534,
+    "category": "kpakungu",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "kpakungu-filling-station",
+    "name": "Total Filling Station Kpakungu",
+    "description": "Prominent landmark at Kpakungu junction",
+    "latitude": 9.5895,
+    "longitude": 6.5348,
+    "category": "kpakungu",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "kpakungu-express",
+    "name": "Kpakungu Western Bypass Join",
+    "description": "Expressway turnoff point",
+    "latitude": 9.588,
+    "longitude": 6.533,
+    "category": "kpakungu",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "kpakungu-market",
+    "name": "Kpakungu Local Market",
+    "description": "Neighborhood food market",
+    "latitude": 9.5905,
+    "longitude": 6.5355,
+    "category": "kpakungu",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "maitumbi-junction",
+    "name": "Maitumbi Main Junction",
+    "description": "Busy intersection leading to Shiroro road",
+    "latitude": 9.635,
+    "longitude": 6.57,
+    "category": "maitumbi",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "maitumbi-day-sec",
+    "name": "Maitumbi Day Secondary School",
+    "description": "Public school landmark",
+    "latitude": 9.637,
+    "longitude": 6.572,
+    "category": "maitumbi",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "maitumbi-market",
+    "name": "Maitumbi Central Market",
+    "description": "Community trade center",
+    "latitude": 9.633,
+    "longitude": 6.568,
+    "category": "maitumbi",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "tunga-roundabout",
+    "name": "Tunga Roundabout",
+    "description": "Central Minna roundabout near Mobil station",
+    "latitude": 9.605,
+    "longitude": 6.56,
+    "category": "tunga",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "tunga-lowcost",
+    "name": "Tunga Lowcost Estate",
+    "description": "Popular residential layout in Tunga",
+    "latitude": 9.608,
+    "longitude": 6.563,
+    "category": "tunga",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "mko-park-tunga",
+    "name": "MKO Abiola Park Tunga",
+    "description": "Public recreational park",
+    "latitude": 9.604,
+    "longitude": 6.559,
+    "category": "tunga",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "chanchaga-bridge",
+    "name": "Chanchaga Bridge",
+    "description": "Historic river bridge on Minna-Suleja highway",
+    "latitude": 9.56,
+    "longitude": 6.58,
+    "category": "chanchaga",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "chanchaga-water-board",
+    "name": "State Water Board Chanchaga",
+    "description": "Water treatment plant landmark",
+    "latitude": 9.562,
+    "longitude": 6.582,
+    "category": "chanchaga",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "minna-central-market",
+    "name": "Minna Central Market (Obasanjo Complex)",
+    "description": "Main commercial hub of Minna",
+    "latitude": 9.6158,
+    "longitude": 6.5569,
+    "category": "minna_central",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "post-office-minna",
+    "name": "Minna General Post Office",
+    "description": "Federal post office building",
+    "latitude": 9.614,
+    "longitude": 6.555,
+    "category": "minna_central",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "emir-palace-minna",
+    "name": "Emir of Minna Palace",
+    "description": "Royal palace complex in Minna city center",
+    "latitude": 9.618,
+    "longitude": 6.559,
+    "category": "minna_central",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "city-plaza-minna",
+    "name": "City Plaza Shopping Mall",
+    "description": "Retail and supermarket center",
+    "latitude": 9.615,
+    "longitude": 6.556,
+    "category": "minna_central",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "kwamba-junction",
+    "name": "Kwamba Junction",
+    "description": "Residential suburb turnoff",
+    "latitude": 9.595,
+    "longitude": 6.545,
+    "category": "kwamba",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "kwamba-layout",
+    "name": "Kwamba New Extension",
+    "description": "Housing layout near Kpakungu axis",
+    "latitude": 9.597,
+    "longitude": 6.547,
+    "category": "kwamba",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "sango-roundabout",
+    "name": "Sango Roundabout",
+    "description": "Transit hub near Bosso",
+    "latitude": 9.622,
+    "longitude": 6.552,
+    "category": "sango",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "sango-commercial",
+    "name": "Sango Shopping Strip",
+    "description": "Electronics and phone accessories market",
+    "latitude": 9.6235,
+    "longitude": 6.5535,
+    "category": "sango",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "dutsen-kura-hausawa",
+    "name": "Dutsen Kura Hausawa",
+    "description": "Popular residential community",
+    "latitude": 9.61,
+    "longitude": 6.542,
+    "category": "dutsen_kura",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "dutsen-kura-gwari",
+    "name": "Dutsen Kura Gwari",
+    "description": "Neighborhood near Bosso road",
+    "latitude": 9.6115,
+    "longitude": 6.5435,
+    "category": "dutsen_kura",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "barkin-sale-junction",
+    "name": "Barkin Sale Junction",
+    "description": "Turnoff into Barkin Sale residential zone",
+    "latitude": 9.628,
+    "longitude": 6.562,
+    "category": "barkin_sale",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "mobile-layout-gate",
+    "name": "Mobile Layout Entrance",
+    "description": "Gated residential layout near Tunga",
+    "latitude": 9.602,
+    "longitude": 6.554,
+    "category": "mobile",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "mobile-park",
+    "name": "Mobile Park Bus Stop",
+    "description": "Intra-city bus and taxi park",
+    "latitude": 9.601,
+    "longitude": 6.553,
+    "category": "mobile",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "gbangban-village",
+    "name": "Gbangban Settlement",
+    "description": "Community area along GK corridor",
+    "latitude": 9.535,
+    "longitude": 6.47,
+    "category": "gbangban",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "sauka-kahuta-express",
+    "name": "Sauka Kahuta Junction",
+    "description": "Expressway junction near Police HQ",
+    "latitude": 9.598,
+    "longitude": 6.549,
+    "category": "sauka_kahuta",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "shango-market",
+    "name": "Shango Junction Market",
+    "description": "Suburban market along Suleja road",
+    "latitude": 9.57,
+    "longitude": 6.575,
+    "category": "shango",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "aliyu-makama-junction",
+    "name": "Aliyu Makama Road Junction",
+    "description": "Major commercial street in Tunga",
+    "latitude": 9.6065,
+    "longitude": 6.5615,
+    "category": "aliyu_makama",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "paikon-kore-center",
+    "name": "Paikon Kore Center",
+    "description": "Suburban township near Minna perimeter",
+    "latitude": 9.55,
+    "longitude": 6.5,
+    "category": "paikon_kore",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "maikunkele-airport-junction",
+    "name": "Maikunkele Airport Junction",
+    "description": "Turnoff to Minna International Airport",
+    "latitude": 9.65,
+    "longitude": 6.51,
+    "category": "maikunkele",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "maikunkele-market",
+    "name": "Maikunkele Town Market",
+    "description": "Township market square",
+    "latitude": 9.652,
+    "longitude": 6.512,
+    "category": "maikunkele",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "ibb-way-bank-strip",
+    "name": "IBB Way Banking Boulevard",
+    "description": "Commercial strip with FirstBank, GTBank, Zenith",
+    "latitude": 9.613,
+    "longitude": 6.553,
+    "category": "ibb_way",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "nysc-secretariat",
+    "name": "NYSC State Secretariat IBB Way",
+    "description": "State NYSC headquarters",
+    "latitude": 9.611,
+    "longitude": 6.551,
+    "category": "ibb_way",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "minna-airport-gate",
+    "name": "Minna Airport Main Gate",
+    "description": "Minna International Airport entrance",
+    "latitude": 9.66,
+    "longitude": 6.5,
+    "category": "airport_road",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "wushishi-housing",
+    "name": "Wushishi Housing Estate",
+    "description": "State government residential estate",
+    "latitude": 9.625,
+    "longitude": 6.565,
+    "category": "wushishi",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "faith-gate-junction",
+    "name": "Faith Gate Junction",
+    "description": "Student residential area right outside GK campus",
+    "latitude": 9.518,
+    "longitude": 6.44,
+    "category": "faith_gate",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "faith-gate-plaza",
+    "name": "Faith Gate Student Plaza",
+    "description": "Laundry, print shops, and provisions store",
+    "latitude": 9.5175,
+    "longitude": 6.4395,
+    "category": "faith_gate",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "customs-office-minna",
+    "name": "Customs Area Command Minna",
+    "description": "Federal customs office",
+    "latitude": 9.609,
+    "longitude": 6.55,
+    "category": "others",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "police-hq-minna",
+    "name": "State Police Headquarters",
+    "description": "Niger State police Command HQ",
+    "latitude": 9.599,
+    "longitude": 6.551,
+    "category": "others",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "nTA-minna",
+    "name": "NTA Minna Station",
+    "description": "National Television Authority station",
+    "latitude": 9.607,
+    "longitude": 6.558,
+    "category": "others",
+    "is_active": true,
+    "allow_overlap": true
+  },
+  {
+    "id": "radio-niger",
+    "name": "Radio Niger House",
+    "description": "State broadcasting service office",
+    "latitude": 9.608,
+    "longitude": 6.5585,
+    "category": "others",
+    "is_active": true,
+    "allow_overlap": true
+  }
+]
