@@ -368,13 +368,15 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
       </View>
 
       {/* Tabs */}
-      <View style={styles.tabBar}>
-        {(['All', 'Unread', 'Rides', 'Payments', 'Announcements'] as FilterTab[]).map((tab) => (
-          <TouchableOpacity key={tab} style={[styles.tab, activeTab === tab && styles.tabActive]} onPress={() => setActiveTab(tab)}>
-            <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>{tab}</Text>
-            {activeTab === tab && <View style={styles.tabIndicator} />}
-          </TouchableOpacity>
-        ))}
+      <View style={styles.tabBarWrapper}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabBar}>
+          {(['All', 'Unread', 'Rides', 'Payments', 'Announcements'] as FilterTab[]).map((tab) => (
+            <TouchableOpacity key={tab} style={[styles.tab, activeTab === tab && styles.tabActive]} onPress={() => setActiveTab(tab)}>
+              <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>{tab}</Text>
+              {activeTab === tab && <View style={styles.tabIndicator} />}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
       {/* Unread banner */}
@@ -415,7 +417,8 @@ const styles = StyleSheet.create({
   markAllText: { fontSize: 13, fontWeight: '600', color: '#6A1B9A' },
 
   // Tabs
-  tabBar: { flexDirection: 'row', backgroundColor: '#ffffff', paddingHorizontal: 16, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
+  tabBarWrapper: { backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
+  tabBar: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 8 },
   tab: { paddingHorizontal: 14, paddingVertical: 8, marginRight: 4, position: 'relative' },
   tabActive: {},
   tabText: { fontSize: 14, fontWeight: '500', color: '#6B7280', letterSpacing: 0.2 },

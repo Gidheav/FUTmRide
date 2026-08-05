@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -224,27 +225,29 @@ export default function AllTransactionsPage({ onSelectTransaction }: AllTransact
 
 
       {/* Sticky Filter Bar */}
-      <View style={styles.filterBar}>
-        {FILTERS.map((f) => {
-          const active = filter === f.key
-          return (
-            <TouchableOpacity
-              key={f.key}
-              style={[styles.filterChip, active && styles.filterChipActive]}
-              onPress={() => setFilter(f.key)}
-              activeOpacity={0.8}
-            >
-              <MaterialIcons
-                name={f.icon}
-                size={16}
-                color={active ? '#ffffff' : '#6b7280'}
-              />
-              <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
-                {f.label}
-              </Text>
-            </TouchableOpacity>
-          )
-        })}
+      <View style={styles.filterBarWrapper}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterBar}>
+          {FILTERS.map((f) => {
+            const active = filter === f.key
+            return (
+              <TouchableOpacity
+                key={f.key}
+                style={[styles.filterChip, active && styles.filterChipActive]}
+                onPress={() => setFilter(f.key)}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons
+                  name={f.icon}
+                  size={16}
+                  color={active ? '#ffffff' : '#6b7280'}
+                />
+                <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+                  {f.label}
+                </Text>
+              </TouchableOpacity>
+            )
+          })}
+        </ScrollView>
       </View>
 
       {/* Transaction count */}
@@ -294,14 +297,16 @@ const styles = StyleSheet.create({
   },
 
   // Sticky Filter Bar
+  filterBarWrapper: {
+    backgroundColor: '#ffffff',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#f0f0f0',
+  },
   filterBar: {
     flexDirection: 'row',
     gap: 8,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#ffffff',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#f0f0f0',
   },
   filterChip: {
     flexDirection: 'row',
