@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { MaterialIcons } from '@expo/vector-icons'
 import LocationDataService from '../../../services/locationDataService'
+import { useToastStore } from '../../core/toastStore'
 
 type VersionInfo = {
   localVersion: number
@@ -152,8 +153,9 @@ export default function UpdatesPage() {
       }
     } catch (err: any) {
       const msg = err?.response?.data?.detail || err?.message || 'Could not connect. Please check your internet connection and try again.'
-      setModalState('error')
-      setModalMessage(`Check failed: ${msg}`)
+      setIsModalVisible(false)
+      setModalState('idle')
+      useToastStore.getState().showToast(msg, 'error')
     }
   }
 

@@ -201,20 +201,17 @@ export default function StudentNotificationsPage({ onClose }: NotificationsPageP
           }}
           onLongPress={() => setActionItemId(showActions ? null : item.id)}
         >
-          <View style={[styles.notifIconWrap, { backgroundColor: cfg.bg }]}>
-            <MaterialIcons name={cfg.icon} size={22} color={cfg.color} />
-          </View>
-          <View style={styles.notifContent}>
-            <View style={styles.notifTitleRow}>
-              <Text style={styles.notifTitle} numberOfLines={1}>{item.title}</Text>
-              <View style={styles.notifBadge}>
-                <Text style={styles.notifBadgeText}>{categoryLabel}</Text>
-              </View>
+          <View style={styles.notifCardLeft}>
+            <View style={[styles.notifIconWrap, { backgroundColor: cfg.bg }]}>
+              <MaterialIcons name={cfg.icon} size={20} color={cfg.color} />
             </View>
-            <Text style={styles.notifBody} numberOfLines={2}>{item.body}</Text>
-            <View style={styles.notifFooter}>
+            <View style={styles.notifContent}>
+              <View style={styles.notifTitleRow}>
+                <Text style={styles.notifTitle} numberOfLines={1}>{item.title}</Text>
+                {!item.is_read && <View style={styles.unreadDot} />}
+              </View>
+              <Text style={styles.notifBody} numberOfLines={1}>{item.body}</Text>
               <Text style={styles.notifTime}>{timeAgo(item.created_at)}</Text>
-              {!item.is_read && <View style={styles.unreadDot} />}
             </View>
           </View>
         </AnimatedPressable>
@@ -432,18 +429,16 @@ const styles = StyleSheet.create({
   listContent: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 },
   listSeparator: { height: 0 },
 
-  // Card
-  notifCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 14, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 14, backgroundColor: '#ffffff', marginBottom: 8, shadowColor: '#6A1B9A', shadowOpacity: 0.03, shadowRadius: 10, shadowOffset: { width: 0, height: 2 }, elevation: 1, borderWidth: 1, borderColor: 'rgba(106, 27, 154, 0.04)' },
-  notifCardUnread: { backgroundColor: '#FAF5FF', borderColor: '#EDE5F5', borderLeftWidth: 4, borderLeftColor: '#6A1B9A' },
-  notifIconWrap: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', shadowColor: '#6A1B9A', shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
-  notifContent: { flex: 1, gap: 4 },
-  notifTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  notifTitle: { flex: 1, fontSize: 15, fontWeight: '700', color: '#1A1A1A', letterSpacing: -0.2 },
-  notifBadge: { backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12 },
-  notifBadgeText: { fontSize: 9, fontWeight: '700', color: '#6B7280', letterSpacing: 0.5 },
-  notifBody: { fontSize: 14, color: '#6B7280', lineHeight: 20 },
-  notifFooter: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
-  notifTime: { fontSize: 12, color: '#9CA3AF' },
+  // Card (Redesigned like Wallet Transactions)
+  notifCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, paddingHorizontal: 4, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#f0f0f0', backgroundColor: '#F8F7F4' },
+  notifCardUnread: { backgroundColor: '#F3E8FF', borderRadius: 12, paddingHorizontal: 12, marginHorizontal: -8 },
+  notifCardLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12, marginRight: 12 },
+  notifIconWrap: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  notifContent: { flex: 1 },
+  notifTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
+  notifTitle: { flex: 1, fontFamily: 'Inter-SemiBold', fontSize: 15, color: '#1a1c1c', letterSpacing: -0.1 },
+  notifBody: { fontFamily: 'Inter-Regular', fontSize: 14, color: '#6B7280', marginBottom: 4 },
+  notifTime: { fontFamily: 'Inter-Regular', fontSize: 12, color: '#9CA3AF' },
   unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#6A1B9A' },
 
   // Long-press action row

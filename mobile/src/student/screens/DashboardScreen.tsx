@@ -247,6 +247,7 @@ export default function StudentDashboardScreen({
   const flyToLocation = (loc: Location) => {
     setActiveModal(null)
     setActivePin(loc)
+    setLocationStatus('unknown') // Reset outOfAxis block when picking a predefined valid location
     setTimeout(() => {
       mapRef.current?.animateToRegion(
         {
@@ -353,6 +354,16 @@ export default function StudentDashboardScreen({
       }
 
       setUserLocation(coords)
+      setActivePin({
+        id: 'current-gps-location',
+        name: 'My Location',
+        description: 'Your exact GPS coordinates',
+        category: 'others',
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        is_active: true,
+      } as Location)
+      
       mapRef.current?.animateToRegion(
         { latitude: coords.latitude, longitude: coords.longitude, latitudeDelta: 0.004, longitudeDelta: 0.004 },
         500,
