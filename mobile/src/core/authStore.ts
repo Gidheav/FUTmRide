@@ -23,7 +23,12 @@ export interface AuthUser {
 }
 
 /** Maximum number of days a session stays valid for PIN-only unlock. */
-const SESSION_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000 // 14 days
+export const SESSION_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000 // 14 days
+
+export const isStudentSessionExpiredAt = (loginAt: number | null | undefined) => {
+  if (!loginAt) return true
+  return (Date.now() - loginAt) > SESSION_MAX_AGE_MS
+}
 
 interface AuthStore {
   user: AuthUser | null
@@ -32,9 +37,12 @@ interface AuthStore {
   isAuthenticated: boolean
   /** Timestamp (ms) of the last successful email+password login. Used for 14-day session window. */
   loginAt: number | null
+  /** Runtime-only timestamp used to distinguish a fresh login from cold-start rehydration. */
+  loginCompletedAt: number | null
   /** True once Zustand has rehydrated from AsyncStorage AND SecureStore tokens are loaded */
   hasHydrated: boolean
   setAuth: (user: AuthUser, accessToken: string, refreshToken: string) => void
+  restoreAuthSession: (user: AuthUser, accessToken: string | null, refreshToken: string, loginAt: number) => void
   setUser: (user: AuthUser) => void
   setTokens: (accessToken: string, refreshToken: string) => void
   /**
@@ -61,18 +69,30 @@ export const useAuthStore = create<AuthStore>()(
       refreshToken: null,
       isAuthenticated: false,
       loginAt: null,
+      loginCompletedAt: null,
       hasHydrated: false,
 
       setAuth: (user, accessToken, refreshToken) => {
+        const now = Date.now()
         void setAuthTokens({ accessToken, refreshToken })
         return set({
           user,
           accessToken,
           refreshToken,
           isAuthenticated: true,
-          loginAt: Date.now(),
+          loginAt: now,
+          loginCompletedAt: now,
         })
       },
+
+      restoreAuthSession: (user, accessToken, refreshToken, loginAt) => set({
+        user,
+        accessToken,
+        refreshToken,
+        isAuthenticated: true,
+        loginAt,
+        loginCompletedAt: null,
+      }),
 
       setUser: (user) => set({ user }),
 
@@ -100,9 +120,7 @@ export const useAuthStore = create<AuthStore>()(
       setHasHydrated: (value) => set({ hasHydrated: value }),
 
       isSessionExpired: () => {
-        const { loginAt } = get()
-        if (!loginAt) return true
-        return (Date.now() - loginAt) > SESSION_MAX_AGE_MS
+        return isStudentSessionExpiredAt(get().loginAt)
       },
 
       logout: () => {
@@ -146,6 +164,7 @@ export const useAuthStore = create<AuthStore>()(
           refreshToken: null,
           isAuthenticated: false,
           loginAt: null,
+          loginCompletedAt: null,
         })
       },
     }),

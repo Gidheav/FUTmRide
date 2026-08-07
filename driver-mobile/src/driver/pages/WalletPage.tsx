@@ -8,7 +8,9 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Pressable,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import LoadingOverlay from '../components/LoadingOverlay';
@@ -46,8 +48,7 @@ const formatDate = (value?: string | null) => {
   });
 };
 
-export default function DriverWalletPage() {
-  const [activeFilter, setActiveFilter] = useState('All');
+export default function DriverWalletPage({ onNavigateToAllTransactions }: { onNavigateToAllTransactions?: () => void }) {
   const [loading, setLoading] = useState(true);
   const [showPayoutModal, setShowPayoutModal] = useState(false);
   const [savingPayout, setSavingPayout] = useState(false);
@@ -57,6 +58,19 @@ export default function DriverWalletPage() {
   const [accountNumber, setAccountNumber] = useState('');
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [savingGoal, setSavingGoal] = useState(false);
+  const [isBalanceHidden, setIsBalanceHidden] = useState(true);
+
+  useEffect(() => {
+    AsyncStorage.getItem('hideDriverBalance').then((val) => {
+      if (val !== null) setIsBalanceHidden(val === 'true');
+    });
+  }, []);
+
+  const toggleBalance = () => {
+    const nextVal = !isBalanceHidden;
+    setIsBalanceHidden(nextVal);
+    AsyncStorage.setItem('hideDriverBalance', String(nextVal));
+  };
   const [goalInput, setGoalInput] = useState('');
   const [selectedTransaction, setSelectedTransaction] = useState<any | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -249,19 +263,10 @@ export default function DriverWalletPage() {
     return [...documents].sort((a, b) => (b.uploaded_at || '').localeCompare(a.uploaded_at || ''))[0];
   }, [documents]);
 
-  const filteredTransactions = useMemo(() => {
+  const recentTransactions = useMemo(() => {
     if (!transactions?.length) return [];
-    switch (activeFilter) {
-      case 'Earned':
-        return transactions.filter((tx) => tx.source === 'driver_earning');
-      case 'Payouts':
-        return transactions.filter((tx) => tx.source === 'driver_withdrawal');
-      case 'Bonuses':
-        return transactions.filter((tx) => ['promotion', 'admin_adjustment'].includes(tx.source));
-      default:
-        return transactions;
-    }
-  }, [activeFilter, transactions]);
+    return transactions.slice(0, 5);
+  }, [transactions]);
 
   return (
     <>
@@ -272,454 +277,256 @@ export default function DriverWalletPage() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-      {/* ── Premium Balance Header Card ── */}
-      <LinearGradient
-        colors={[COLORS.primaryContainer, COLORS.primary]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[styles.balanceCard, AMBIENT_SHADOW]}
-      >
-        {/* Decorative blobs */}
-        <View style={styles.blob1} />
-        <View style={styles.blob2} />
-
-        <Text style={styles.balanceLabel}>Total Wallet Balance</Text>
-        <Text style={styles.balanceAmount}>
-          {formatCurrency(summary?.wallet_balance ?? user?.wallet_balance ?? 0)}
-        </Text>
-
-        <TouchableOpacity style={styles.cashOutBtn} activeOpacity={0.9} onPress={handleCashOut}>
-          <MaterialIcons name="account-balance" size={18} color={COLORS.primary} />
-          <Text style={[FONTS.labelLg, { color: COLORS.primary }]}>Cash Out to Bank</Text>
-        </TouchableOpacity>
-      </LinearGradient>
-
-      {/* ── Financial Goals Card ── */}
-      <View style={[styles.card, AMBIENT_SHADOW]}>
-        <View style={styles.goalHeader}>
-          <View style={styles.goalTitleRow}>
-            <MaterialIcons name="track-changes" size={18} color={COLORS.primaryContainer} />
-            <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}>Daily Goal</Text>
-          </View>
-          <View style={styles.goalActionRow}>
-            <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}
-            >{formatShortCurrency(summary?.daily_goal?.target ?? 0)}</Text>
-            <TouchableOpacity style={styles.goalEditBtn} onPress={openGoalModal} activeOpacity={0.8}>
-              <MaterialIcons name="edit" size={14} color={COLORS.primary} />
-              <Text style={styles.goalEditText}>Edit</Text>
+        {/* ── Premium Header ── */}
+        <View style={styles.headerCard}>
+          <View style={styles.headerCardGlow} />
+          
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <View>
+              <Text style={styles.headerCardLabel}>Available Balance</Text>
+              <Text style={styles.headerCardBalance}>
+                {isBalanceHidden ? '₦****' : formatCurrency(summary?.wallet_balance ?? user?.wallet_balance ?? 0)}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={toggleBalance} style={{ padding: 4, marginTop: -4 }}>
+              <MaterialIcons name={isBalanceHidden ? 'visibility-off' : 'visibility'} size={24} color="rgba(255,255,255,0.8)" />
             </TouchableOpacity>
           </View>
-        </View>
-        <View style={styles.goalValues}>
-          <Text style={[FONTS.headlineMd, { color: COLORS.primaryContainer }]}
-          >{formatShortCurrency(summary?.daily_goal?.earned ?? 0)}</Text>
-          <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}
-          >{Math.round(summary?.daily_goal?.progress_percent ?? 0)}%</Text>
-        </View>
-        <View style={styles.progressTrack}>
-          <View
-            style={[
-              styles.progressFill,
-              { width: `${Math.min(100, Math.max(0, summary?.daily_goal?.progress_percent ?? 0))}%` },
-            ]}
-          />
-        </View>
-        <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, fontSize: 12 }]}>
-          {summary?.daily_goal?.remaining
-            ? `Just ${formatShortCurrency(summary.daily_goal.remaining)} to reach today's target!`
-            : 'Set a goal to track your earnings.'}
-        </Text>
-      </View>
 
-      {/* ── Earnings Analytics ── */}
-      <View style={styles.sectionWrap}>
-        <Text style={styles.sectionLabel}>Earnings Analytics (This Week)</Text>
-        <View style={[styles.card, AMBIENT_SHADOW]}>
-          <View style={styles.analyticsTop}>
-            <View>
-              <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Total Earned</Text>
-              <Text style={[FONTS.headlineMd, { color: COLORS.onSurface }]}>
-                {formatShortCurrency(summary?.weekly_analytics?.total_earned ?? 0)}
-              </Text>
-            </View>
-            <View style={styles.trendBadge}>
-              <MaterialIcons
-                name={(summary?.weekly_analytics?.change_percent ?? 0) >= 0 ? 'arrow-upward' : 'arrow-downward'}
-                size={14}
-                color={COLORS.surfaceTint}
-              />
-              <Text style={[FONTS.labelMd, { color: COLORS.surfaceTint }]}>
-                {Math.abs(Math.round(summary?.weekly_analytics?.change_percent ?? 0))}%
-              </Text>
-            </View>
+          <TouchableOpacity style={styles.cashOutBtn} activeOpacity={0.8} onPress={handleCashOut}>
+              <Text style={styles.cashOutBtnText}>Cash Out</Text>
+              <MaterialIcons name="arrow-forward" size={16} color="#0f0a1a" />
+            </TouchableOpacity>
+        </View>
+
+
+        {/* ── Daily Goal Inline ── */}
+        <View style={styles.inlineGoal}>
+          <View style={styles.inlineGoalTop}>
+            <Text style={styles.inlineGoalTitle}>Daily Goal Progress</Text>
+            <TouchableOpacity onPress={openGoalModal} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Text style={styles.inlineGoalEdit}>Edit</Text>
+            </TouchableOpacity>
           </View>
+          <View style={styles.progressTrack}>
+            <View
+              style={[
+                styles.progressFill,
+                { width: `${Math.min(100, Math.max(0, summary?.daily_goal?.progress_percent ?? 0))}%` },
+              ]}
+            />
+          </View>
+          <View style={styles.inlineGoalBottom}>
+            <Text style={styles.inlineGoalText}>
+              {summary?.daily_goal?.remaining
+                ? `Need ${formatShortCurrency(summary.daily_goal.remaining)} to hit your goal`
+                : 'Goal reached! Incredible job.'}
+            </Text>
+            <Text style={styles.inlineGoalTarget}>
+              {formatShortCurrency(summary?.daily_goal?.target ?? 0)}
+            </Text>
+          </View>
+        </View>
 
-          {/* Mini Bar Chart */}
-          <View style={styles.chartRow}>
-            {(chartSeries.length ? chartSeries : [
-              { day: 'M', height: 12 },
-              { day: 'T', height: 12 },
-              { day: 'W', height: 12 },
-              { day: 'T', height: 12 },
-              { day: 'F', height: 12 },
-              { day: 'S', height: 12 },
-              { day: 'S', height: 12 },
-            ]).map((bar, idx) => (
-              <View key={idx} style={styles.chartCol}>
-                <View style={styles.chartBarWrap}>
-                  <View
-                    style={[
-                      styles.chartBar,
-                      { height: `${bar.height}%` },
-                      bar.height >= 80 && styles.chartBarActive,
-                    ]}
-                  />
-                </View>
-                <Text
-                  style={[
-                    styles.chartLabel,
-                    bar.height >= 80 && { color: COLORS.primary, fontWeight: '700' },
-                  ]}
-                >
-                  {bar.day}
+        {/* ── Analytics & Rewards Row ── */}
+        <View style={styles.dualCardRow}>
+          <View style={styles.halfCard}>
+            <View style={styles.halfCardHeader}>
+              <Text style={styles.halfCardTitle}>This Week</Text>
+              <View style={styles.trendBadge}>
+                <MaterialIcons
+                  name={(summary?.weekly_analytics?.change_percent ?? 0) >= 0 ? 'arrow-upward' : 'arrow-downward'}
+                  size={12}
+                  color="#16a34a"
+                />
+                <Text style={styles.trendText}>
+                  {Math.abs(Math.round(summary?.weekly_analytics?.change_percent ?? 0))}%
                 </Text>
               </View>
-            ))}
-          </View>
-        </View>
-      </View>
-
-      {/* ── Rewards & Status ── */}
-      <View style={styles.sectionWrap}>
-        <Text style={styles.sectionLabel}>Rewards & Status</Text>
-        <View style={[styles.rewardsCard, AMBIENT_SHADOW]}>
-          <View style={styles.rewardsTop}>
-            <View style={styles.rewardsLeft}>
-              <View style={styles.rewardsIcon}>
-                <MaterialIcons name="military-tech" size={28} color="#d97706" />
-              </View>
-              <View>
-                <Text style={[FONTS.headlineMd, { color: COLORS.onSurface }]}
-                >{summary?.rewards?.tier ?? 'Driver'}</Text>
-                <Text style={[FONTS.labelMd, { color: '#d97706' }]}>Active Tier</Text>
-              </View>
             </View>
-            <Text style={styles.rewardsPoints}>
-              {(summary?.rewards?.points ?? 0).toLocaleString()}
-              <Text style={styles.rewardsPtsSuffix}>pts</Text>
+            <Text style={styles.analyticsAmount}>
+              {formatShortCurrency(summary?.weekly_analytics?.total_earned ?? 0)}
             </Text>
+            <View style={styles.miniChart}>
+              {(chartSeries.length ? chartSeries : [
+                { day: 'M', height: 12 }, { day: 'T', height: 12 }, { day: 'W', height: 12 },
+                { day: 'T', height: 12 }, { day: 'F', height: 12 }, { day: 'S', height: 12 }, { day: 'S', height: 12 },
+              ]).map((bar, idx) => (
+                <View key={idx} style={styles.miniChartCol}>
+                  <View style={styles.miniChartBarWrap}>
+                    <View
+                      style={[
+                        styles.miniChartBar,
+                        { height: `${bar.height}%` },
+                        bar.height >= 80 && styles.miniChartBarActive,
+                      ]}
+                    />
+                  </View>
+                </View>
+              ))}
+            </View>
           </View>
-          <View style={styles.rewardsFooter}>
-            <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant, fontSize: 12 }]}>
-              Next tier: {summary?.rewards?.next_tier ?? 'Gold'} ({(summary?.rewards?.next_tier_points ?? 0).toLocaleString()} pts)
-            </Text>
+
+          <View style={styles.halfCard}>
+            <View style={styles.halfCardHeader}>
+              <Text style={styles.halfCardTitle}>Driver Tier</Text>
+              <MaterialIcons name="military-tech" size={16} color="#d97706" />
+            </View>
+            <Text style={styles.tierName}>{summary?.rewards?.tier ?? 'Driver'}</Text>
+            <Text style={styles.tierPoints}>{(summary?.rewards?.points ?? 0).toLocaleString()} pts</Text>
+            <View style={{ flex: 1 }} />
             <TouchableOpacity style={styles.viewPerksBtn} activeOpacity={0.7}>
-              <Text style={[FONTS.labelMd, { color: COLORS.primaryContainer, fontSize: 12 }]}>
-                View Perks
-              </Text>
-              <MaterialIcons name="chevron-right" size={14} color={COLORS.primaryContainer} />
+              <Text style={styles.viewPerksText}>View Perks</Text>
+              <MaterialIcons name="chevron-right" size={14} color="#6A1B9A" />
             </TouchableOpacity>
           </View>
         </View>
-      </View>
 
-      {/* ── Payout Method & Tax Docs Grid ── */}
-      <View style={styles.gridRow}>
-        {/* Bank Account */}
-        <View style={[styles.gridCell, AMBIENT_SHADOW]}>
-          <View style={styles.gridCellHeader}>
-            <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Bank Account</Text>
-            <TouchableOpacity onPress={openPayoutModal} activeOpacity={0.7}>
-              <MaterialIcons name="edit" size={18} color={COLORS.primaryContainer} />
+        {/* ── Settings Stack ── */}
+        <View style={styles.settingsStack}>
+          <TouchableOpacity style={styles.settingRow} onPress={openPayoutModal} activeOpacity={0.7}>
+            <View style={styles.settingIconWrap}>
+              <MaterialIcons name="account-balance" size={18} color="#4b5563" />
+            </View>
+            <View style={styles.settingTextWrap}>
+              <Text style={styles.settingTitle}>Bank Account</Text>
+              <Text style={styles.settingSub} numberOfLines={1}>
+                {effectivePayoutMethod?.bank_name
+                  ? `${effectivePayoutMethod.bank_name} •••• ${effectivePayoutMethod.account_last4 || ''}`
+                  : 'Add your bank details to cash out'}
+              </Text>
+            </View>
+            <MaterialIcons name="chevron-right" size={20} color="#9ca3af" />
+          </TouchableOpacity>
+
+          <View style={styles.settingDivider} />
+
+          <TouchableOpacity style={styles.settingRow} activeOpacity={0.7}>
+            <View style={styles.settingIconWrap}>
+              <MaterialIcons name="receipt-long" size={18} color="#4b5563" />
+            </View>
+            <View style={styles.settingTextWrap}>
+              <Text style={styles.settingTitle}>Tax & Documents</Text>
+              <Text style={styles.settingSub} numberOfLines={1}>
+                {latestDocument ? `Latest: ${new Date(latestDocument.uploaded_at).toLocaleDateString()}` : 'No statements available'}
+              </Text>
+            </View>
+            <MaterialIcons name="chevron-right" size={20} color="#9ca3af" />
+          </TouchableOpacity>
+        </View>
+
+        {/* ── Transactions ── */}
+        <View style={styles.transactionsHeader}>
+          <Text style={styles.transactionsTitle}>Recent Transactions</Text>
+          {onNavigateToAllTransactions && (
+            <TouchableOpacity onPress={onNavigateToAllTransactions} style={{ padding: 4 }}>
+              <MaterialIcons name="receipt-long" size={22} color="#6A1B9A" />
             </TouchableOpacity>
-          </View>
-          <View style={styles.gridCellBody}>
-            <View style={styles.gridCellIcon}>
-              <MaterialIcons name="account-balance" size={16} color={COLORS.onSurfaceVariant} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[FONTS.labelMd, { color: COLORS.onSurface }]} numberOfLines={1}>
-                {effectivePayoutMethod?.bank_name || 'Add bank account'}
-              </Text>
-              <Text style={{ fontSize: 12, color: COLORS.onSurfaceVariant }}>
-                {effectivePayoutMethod?.account_number_masked || (effectivePayoutMethod?.account_last4 ? `**** ${effectivePayoutMethod.account_last4}` : 'No account on file')}
-              </Text>
-            </View>
-          </View>
+          )}
         </View>
 
-        {/* Tax & Docs */}
-        <View style={[styles.gridCell, AMBIENT_SHADOW]}>
-          <View style={styles.gridCellHeader}>
-            <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Tax & Docs</Text>
-            <MaterialIcons name="download" size={18} color={COLORS.onSurfaceVariant} />
-          </View>
-          <View style={styles.gridCellBody}>
-            <View style={styles.gridCellIcon}>
-              <MaterialIcons name="description" size={16} color={COLORS.onSurfaceVariant} />
+
+        <View style={styles.transactionList}>
+          {loading ? (
+            <View style={styles.loadingRow}>
+              <LoadingOverlay visible={true} inline size={40} />
             </View>
-            <View>
-              <Text style={[FONTS.labelMd, { color: COLORS.onSurface }]}>
-                {latestDocument ? latestDocument.document_type.replace(/_/g, ' ') : 'Statements'}
-              </Text>
-              <Text style={{ fontSize: 12, color: COLORS.onSurfaceVariant }}>
-                {latestDocument ? new Date(latestDocument.uploaded_at).toLocaleDateString() : 'No statements yet'}
-              </Text>
+          ) : recentTransactions.length === 0 ? (
+            <View style={styles.emptyState}>
+              <MaterialIcons name="receipt" size={32} color="#e5e7eb" />
+              <Text style={styles.emptyStateText}>No recent activity.</Text>
             </View>
-          </View>
-        </View>
-      </View>
-
-      {/* ── Recent Transactions ── */}
-      <View style={styles.sectionWrap}>
-        <View style={styles.txnHeader}>
-          <Text style={[FONTS.labelLg, { color: COLORS.onSurfaceVariant }]}>
-            Recent Transactions
-          </Text>
-          <MaterialIcons name="search" size={20} color={COLORS.onSurfaceVariant} />
-        </View>
-
-        {/* Filter Pills */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterRow}
-        >
-          {FILTER_TABS.map((tab) => (
-            <TouchableOpacity
-              key={tab}
-              style={[styles.filterPill, activeFilter === tab && styles.filterPillActive]}
-              onPress={() => setActiveFilter(tab)}
-              activeOpacity={0.8}
-            >
-              <Text
-                style={[
-                  FONTS.labelMd,
-                  {
-                    color:
-                      activeFilter === tab
-                        ? COLORS.onPrimaryContainer
-                        : COLORS.onSurfaceVariant,
-                  },
-                ]}
-              >
-                {tab}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {loading ? (
-          <View style={styles.loadingRow}>
-            <LoadingOverlay visible={true} inline size={40} />
-            <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant }]}>Loading wallet activity...</Text>
-          </View>
-        ) : filteredTransactions.length === 0 ? (
-          <View style={styles.emptyState}>
-            <MaterialIcons name="inbox" size={32} color={COLORS.outline} />
-            <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginTop: 8 }]}>No transactions yet.</Text>
-          </View>
-        ) : (
-          <View style={{ gap: 2 }}>
-            {filteredTransactions.map((tx) => {
+          ) : (
+            recentTransactions.map((tx, index) => {
               const isCredit = tx.transaction_type === 'credit';
-            const amountLabel = `${isCredit ? '+' : '-'}${formatShortCurrency(tx.amount)}`;
-            const statusLabel = tx.status ? tx.status[0].toUpperCase() + tx.status.slice(1) : 'Completed';
-            const statusStyle =
-              tx.status === 'pending'
-                ? styles.statusBadgePending
-                : tx.status === 'failed'
-                ? styles.statusBadgeFailed
-                : isCredit
-                ? styles.statusBadgeGreen
-                : styles.statusBadgeGrey;
-            const statusTextStyle =
-              tx.status === 'pending'
-                ? styles.statusBadgePendingText
-                : tx.status === 'failed'
-                ? styles.statusBadgeFailedText
-                : isCredit
-                ? styles.statusBadgeGreenText
-                : styles.statusBadgeGreyText;
-
-            const title =
-              tx.source === 'driver_earning' && tx.ride_reference
+              const amountLabel = `${isCredit ? '+' : '-'}${formatShortCurrency(tx.amount)}`;
+              const statusLabel = tx.status ? tx.status[0].toUpperCase() + tx.status.slice(1) : 'Completed';
+              
+              const title = tx.source === 'driver_earning' && tx.ride_reference
                 ? `Ride ${tx.ride_reference}`
                 : tx.source === 'driver_withdrawal'
-                ? 'Bank Transfer'
+                ? 'Cash Out'
                 : tx.source === 'promotion'
                 ? 'Bonus'
                 : tx.narration || 'Wallet activity';
 
-            const metaItems: Array<{ icon: keyof typeof MaterialIcons.glyphMap; label: string; highlight?: boolean }>
-              = [];
-            if (tx.ride_distance_km) {
-              metaItems.push({ icon: 'route', label: `${tx.ride_distance_km} km` });
-            }
-            if (tx.ride_duration_minutes) {
-              metaItems.push({ icon: 'schedule', label: `${tx.ride_duration_minutes} min` });
-            }
-            if (tx.metadata?.bank_name || tx.metadata?.account_last4) {
-              const bankLabel = tx.metadata?.bank_name
-                ? `${tx.metadata.bank_name}${tx.metadata?.account_last4 ? ` ending ${tx.metadata.account_last4}` : ''}`
-                : `Account ending ${tx.metadata.account_last4}`;
-              metaItems.push({ icon: 'account-balance', label: bankLabel });
-            }
-
-            const iconName =
-              tx.source === 'driver_earning'
-                ? 'directions-car'
+              const iconName = tx.source === 'driver_earning'
+                ? 'local-taxi'
                 : tx.source === 'driver_withdrawal'
-                ? 'account-balance-wallet'
+                ? 'account-balance'
                 : tx.source === 'promotion'
-                ? 'stars'
+                ? 'redeem'
                 : 'payments';
 
-            const iconBg =
-              tx.source === 'driver_earning'
-                ? COLORS.primaryContainer + '1A'
-                : tx.source === 'promotion'
-                ? '#fef3c7'
-                : COLORS.surfaceContainerHighest;
-
-            const iconColor =
-              tx.source === 'driver_earning'
-                ? COLORS.primaryContainer
-                : tx.source === 'promotion'
-                ? '#d97706'
-                : COLORS.onSurfaceVariant;
-
-            return (
-              <TouchableOpacity
-                key={tx.id}
-                style={[styles.txnCard, AMBIENT_SHADOW]}
-                activeOpacity={0.8}
-                onPress={() => setSelectedTransaction({
-                  ...tx,
-                  title,
-                  isCredit,
-                  amountLabel,
-                  statusLabel,
-                  iconName,
-                  iconColor,
-                  iconBg,
-                })}
-              >
-                <View style={styles.txnRow}>
-                  <View style={styles.txnLeft}>
-                    <View style={[styles.txnIcon, { backgroundColor: iconBg }]}>
-                      <MaterialIcons name={iconName as any} size={20} color={iconColor} />
+              return (
+                <View key={tx.id}>
+                  {index > 0 && <View style={styles.txnDivider} />}
+                  <TouchableOpacity
+                    style={styles.txnRow}
+                    activeOpacity={0.7}
+                    onPress={() => setSelectedTransaction({
+                      ...tx, title, isCredit, amountLabel, statusLabel, iconName
+                    })}
+                  >
+                    <View style={[styles.txnIconCircle, !isCredit && styles.txnIconCircleDebit]}>
+                      <MaterialIcons name={iconName as any} size={18} color={isCredit ? '#6A1B9A' : '#4b5563'} />
                     </View>
-                    <View>
-                      <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}>{title}</Text>
+                    <View style={styles.txnDetails}>
+                      <Text style={styles.txnTitle} numberOfLines={1}>{title}</Text>
                       <Text style={styles.txnDate}>{formatDate(tx.created_at)}</Text>
                     </View>
-                  </View>
-                  <View style={{ alignItems: 'flex-end', gap: 4 }}>
-                    <Text style={[FONTS.labelLg, { color: isCredit ? COLORS.primaryContainer : COLORS.onSurface }]}>
-                      {amountLabel}
-                    </Text>
-                    <View style={statusStyle}>
-                      <Text style={statusTextStyle}>{statusLabel}</Text>
+                    <View style={styles.txnAmounts}>
+                      <Text style={[styles.txnAmount, !isCredit && styles.txnAmountDebit]}>
+                        {amountLabel}
+                      </Text>
+                      {tx.status !== 'completed' && (
+                        <Text style={[styles.txnStatus, tx.status === 'failed' && { color: '#ef4444' }]}>
+                          {statusLabel}
+                        </Text>
+                      )}
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 </View>
-                {metaItems.length ? (
-                  <View style={styles.txnMeta}>
-                    {metaItems.map((item, idx) => (
-                      <View key={`${tx.id}-meta-${idx}`} style={styles.txnMetaItem}>
-                        <MaterialIcons name={item.icon} size={14} color={item.highlight ? COLORS.primary : COLORS.onSurfaceVariant} />
-                        <Text style={[styles.txnMetaText, item.highlight && { color: COLORS.primary }]}> {item.label}</Text>
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
-              </TouchableOpacity>
-            );
-            })}
-          </View>
-        )}
+              );
+            })
+          )}
+        </View>
 
-        {/* View All */}
         <TouchableOpacity style={styles.viewAllBtn} activeOpacity={0.8}>
-          <Text style={[FONTS.labelMd, { color: COLORS.primaryContainer }]}>
-            View All Transactions
-          </Text>
+          <Text style={styles.viewAllBtnText}>See All Transactions</Text>
         </TouchableOpacity>
-      </View>
       </CustomRefreshScrollView>
 
-      <Modal
-        visible={showPayoutModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowPayoutModal(false)}
-      >
+      {/* ── Modals ── */}
+      <Modal visible={showPayoutModal} transparent animationType="fade" onRequestClose={() => setShowPayoutModal(false)}>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, AMBIENT_SHADOW]}>
-            <Text style={[FONTS.headlineMd, { color: COLORS.onSurface }]}>Payout Method</Text>
-            <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginTop: 4 }]}
-            >Add or update your bank account.</Text>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Payout Method</Text>
+            <Text style={styles.modalSubtitle}>Link your bank account to cash out.</Text>
 
             <View style={styles.modalField}>
               <Text style={styles.modalLabel}>Bank name</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={bankName}
-                onChangeText={setBankName}
-                placeholder="Access Bank"
-                placeholderTextColor={COLORS.outline}
-              />
+              <TextInput style={styles.modalInput} value={bankName} onChangeText={setBankName} placeholder="Access Bank" placeholderTextColor="#9ca3af" />
             </View>
-
-            <View style={styles.modalField}>
-              <Text style={styles.modalLabel}>Bank code (optional)</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={bankCode}
-                onChangeText={setBankCode}
-                placeholder="044"
-                placeholderTextColor={COLORS.outline}
-                keyboardType="numeric"
-              />
-            </View>
-
             <View style={styles.modalField}>
               <Text style={styles.modalLabel}>Account name</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={accountName}
-                onChangeText={setAccountName}
-                placeholder="Account holder"
-                placeholderTextColor={COLORS.outline}
-              />
+              <TextInput style={styles.modalInput} value={accountName} onChangeText={setAccountName} placeholder="John Doe" placeholderTextColor="#9ca3af" />
             </View>
-
             <View style={styles.modalField}>
               <Text style={styles.modalLabel}>Account number</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={accountNumber}
-                onChangeText={setAccountNumber}
-                placeholder="0123456789"
-                placeholderTextColor={COLORS.outline}
-                keyboardType="numeric"
-              />
+              <TextInput style={styles.modalInput} value={accountNumber} onChangeText={setAccountNumber} placeholder="0123456789" placeholderTextColor="#9ca3af" keyboardType="numeric" />
+            </View>
+            <View style={styles.modalField}>
+              <Text style={styles.modalLabel}>Bank code (optional)</Text>
+              <TextInput style={styles.modalInput} value={bankCode} onChangeText={setBankCode} placeholder="044" placeholderTextColor="#9ca3af" keyboardType="numeric" />
             </View>
 
             <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.modalCancel}
-                onPress={() => setShowPayoutModal(false)}
-              >
-                <Text style={[FONTS.labelLg, { color: COLORS.onSurfaceVariant }]}>Cancel</Text>
+              <TouchableOpacity style={styles.modalCancel} onPress={() => setShowPayoutModal(false)}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalSave}
-                onPress={savePayoutMethod}
-                disabled={savingPayout}
-              >
-                <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>Save</Text>
+              <TouchableOpacity style={styles.modalSave} onPress={savePayoutMethod} disabled={savingPayout}>
+                <Text style={styles.modalSaveText}>Save Bank</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -727,43 +534,21 @@ export default function DriverWalletPage() {
         </View>
       </Modal>
 
-      <Modal
-        visible={showGoalModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowGoalModal(false)}
-      >
+      <Modal visible={showGoalModal} transparent animationType="fade" onRequestClose={() => setShowGoalModal(false)}>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, AMBIENT_SHADOW]}>
-            <Text style={[FONTS.headlineMd, { color: COLORS.onSurface }]}>Daily Goal</Text>
-            <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginTop: 4 }]}
-            >Set your daily earnings target.</Text>
-
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Daily Goal</Text>
+            <Text style={styles.modalSubtitle}>Set a target to keep yourself motivated.</Text>
             <View style={styles.modalField}>
               <Text style={styles.modalLabel}>Target amount (NGN)</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={goalInput}
-                onChangeText={setGoalInput}
-                placeholder="15000"
-                placeholderTextColor={COLORS.outline}
-                keyboardType="numeric"
-              />
+              <TextInput style={styles.modalInput} value={goalInput} onChangeText={setGoalInput} placeholder="15000" placeholderTextColor="#9ca3af" keyboardType="numeric" />
             </View>
-
             <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.modalCancel}
-                onPress={() => setShowGoalModal(false)}
-              >
-                <Text style={[FONTS.labelLg, { color: COLORS.onSurfaceVariant }]}>Cancel</Text>
+              <TouchableOpacity style={styles.modalCancel} onPress={() => setShowGoalModal(false)}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalSave}
-                onPress={saveDailyGoal}
-                disabled={savingGoal}
-              >
-                <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>Save</Text>
+              <TouchableOpacity style={styles.modalSave} onPress={saveDailyGoal} disabled={savingGoal}>
+                <Text style={styles.modalSaveText}>Set Goal</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -771,562 +556,489 @@ export default function DriverWalletPage() {
         </View>
       </Modal>
 
-      {/* ── Transaction Details Modal ── */}
-      <Modal
-        visible={!!selectedTransaction}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setSelectedTransaction(null)}
-      >
-        <View style={styles.modalOverlay}>
+      <Modal visible={!!selectedTransaction} transparent animationType="slide" onRequestClose={() => setSelectedTransaction(null)}>
+        <Pressable style={styles.modalOverlayBottom} onPress={() => setSelectedTransaction(null)}>
+          <Pressable onPress={(e) => e.stopPropagation()}>
           {selectedTransaction && (
-            <View style={[styles.receiptCard, AMBIENT_SHADOW]}>
-              <View style={styles.receiptHeader}>
-                <MaterialIcons
-                  name={
-                    selectedTransaction.source === 'driver_earning' ? 'check-circle' :
-                    selectedTransaction.source === 'driver_withdrawal' ? 'account-balance' :
-                    selectedTransaction.iconName as any
-                  }
-                  size={48}
-                  color={selectedTransaction.isCredit ? '#2e7d32' : (selectedTransaction.source === 'driver_withdrawal' ? '#b91c1c' : selectedTransaction.iconColor)}
-                />
-                <Text style={[styles.receiptAmount, { color: selectedTransaction.isCredit ? '#2e7d32' : '#b91c1c' }]}>
-                  {selectedTransaction.amountLabel}
-                </Text>
-                <Text style={styles.receiptTitle}>{selectedTransaction.title}</Text>
-                <Text style={styles.receiptDate}>{formatDate(selectedTransaction.created_at)}</Text>
+            <View style={styles.receiptSheet}>
+              <View style={styles.receiptHandle} />
+              <View style={styles.receiptIconWrap}>
+                <MaterialIcons name={selectedTransaction.iconName} size={28} color={selectedTransaction.isCredit ? '#6A1B9A' : '#4b5563'} />
               </View>
+              <Text style={[styles.receiptAmount, !selectedTransaction.isCredit && { color: '#111827' }]}>
+                {selectedTransaction.amountLabel}
+              </Text>
+              <Text style={styles.receiptTitle}>{selectedTransaction.title}</Text>
+              <Text style={styles.receiptDate}>{formatDate(selectedTransaction.created_at)}</Text>
 
               <View style={styles.receiptDivider} />
 
-              <ScrollView style={styles.receiptBody} showsVerticalScrollIndicator={false}>
-                {selectedTransaction.source === 'driver_earning' && (
-                  <View style={styles.receiptRow}>
-                    <Text style={styles.receiptLabel}>Passenger / Sender</Text>
-                    <Text style={styles.receiptValue}>{selectedTransaction.ride_passenger_name || 'Student'}</Text>
-                  </View>
-                )}
-
-                <View style={styles.receiptRow}>
-                  <Text style={styles.receiptLabel}>Details</Text>
-                  <Text style={styles.receiptValue}>{selectedTransaction.narration || 'Wallet activity'}</Text>
-                </View>
-
-                <View style={styles.receiptRow}>
+              <View style={styles.receiptDetails}>
+                <View style={styles.receiptRowItem}>
                   <Text style={styles.receiptLabel}>Status</Text>
                   <Text style={styles.receiptValue}>{selectedTransaction.statusLabel}</Text>
                 </View>
-
+                <View style={styles.receiptRowItem}>
+                  <Text style={styles.receiptLabel}>Reference</Text>
+                  <Text style={styles.receiptValue}>{selectedTransaction.reference}</Text>
+                </View>
+                
                 {selectedTransaction.source === 'driver_earning' && (
                   <>
-                    <View style={styles.receiptRow}>
-                      <Text style={styles.receiptLabel}>Ride Reference</Text>
-                      <Text style={styles.receiptValue}>{selectedTransaction.ride_reference}</Text>
-                    </View>
-                    <View style={styles.receiptRow}>
+                    <View style={styles.receiptRowItem}>
                       <Text style={styles.receiptLabel}>Distance</Text>
                       <Text style={styles.receiptValue}>{selectedTransaction.ride_distance_km ? `${selectedTransaction.ride_distance_km} km` : 'N/A'}</Text>
                     </View>
-                    <View style={styles.receiptRow}>
+                    <View style={styles.receiptRowItem}>
                       <Text style={styles.receiptLabel}>Duration</Text>
                       <Text style={styles.receiptValue}>{selectedTransaction.ride_duration_minutes ? `${selectedTransaction.ride_duration_minutes} min` : 'N/A'}</Text>
                     </View>
-                    <View style={styles.receiptRow}>
-                      <Text style={styles.receiptLabel}>Pickup</Text>
-                      <Text style={styles.receiptValue}>{selectedTransaction.ride_pickup_address || 'N/A'}</Text>
-                    </View>
-                    <View style={styles.receiptRow}>
-                      <Text style={styles.receiptLabel}>Dropoff</Text>
-                      <Text style={styles.receiptValue}>{selectedTransaction.ride_dropoff_address || 'N/A'}</Text>
-                    </View>
                   </>
                 )}
+              </View>
 
-                {selectedTransaction.source === 'driver_withdrawal' && selectedTransaction.metadata && (
-                  <>
-                    <View style={styles.receiptRow}>
-                      <Text style={styles.receiptLabel}>Destination Bank</Text>
-                      <Text style={styles.receiptValue}>{selectedTransaction.metadata.bank_name || 'N/A'}</Text>
-                    </View>
-                    <View style={styles.receiptRow}>
-                      <Text style={styles.receiptLabel}>Account Details</Text>
-                      <Text style={styles.receiptValue}>
-                        {selectedTransaction.metadata.account_name || 'N/A'} 
-                        {selectedTransaction.metadata.account_last4 ? ` (**** ${selectedTransaction.metadata.account_last4})` : ''}
-                      </Text>
-                    </View>
-                  </>
-                )}
-                
-                <View style={styles.receiptRow}>
-                  <Text style={styles.receiptLabel}>Transaction Reference</Text>
-                  <Text style={[styles.receiptValue, { fontSize: 12, color: COLORS.onSurfaceVariant }]}>{selectedTransaction.reference}</Text>
-                </View>
-              </ScrollView>
-
-              <View style={styles.receiptDivider} />
-
-              <TouchableOpacity
-                style={styles.receiptCloseButton}
-                onPress={() => setSelectedTransaction(null)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.receiptCloseText}>Close</Text>
+              <TouchableOpacity style={styles.receiptCloseBtn} onPress={() => setSelectedTransaction(null)}>
+                <Text style={styles.receiptCloseText}>Close Receipt</Text>
               </TouchableOpacity>
             </View>
           )}
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.surface },
+  container: { flex: 1, backgroundColor: '#f9fafb' },
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 24,
-    paddingBottom: 112,
-    gap: 24,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 40,
+    gap: 16,
   },
-  loadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    justifyContent: 'center',
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 16,
-  },
-
-  /* ── Balance Card ── */
-  balanceCard: {
-    borderRadius: 20,
+  headerCard: {
+    backgroundColor: '#4A148C',
+    borderRadius: 24,
     padding: 24,
-    alignItems: 'center',
-    position: 'relative',
     overflow: 'hidden',
+    shadowColor: '#6A1B9A',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
   },
-  blob1: {
+  headerCardGlow: {
     position: 'absolute',
-    top: -40,
-    right: -40,
-    width: 128,
-    height: 128,
-    borderRadius: 64,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    top: -50,
+    right: -50,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: '#6A1B9A',
+    opacity: 0.2,
   },
-  blob2: {
-    position: 'absolute',
-    bottom: -30,
-    left: -30,
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-  balanceLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.24,
-    color: 'rgba(255,255,255,0.9)',
-    marginBottom: 8,
+  headerCardInner: {
     zIndex: 1,
   },
-  balanceAmount: {
-    fontSize: 40,
-    lineHeight: 48,
-    fontWeight: '900',
+  headerCardLabel: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 13,
+    color: '#a78bfa',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  headerCardBalance: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 36,
     color: '#ffffff',
-    letterSpacing: -0.8,
-    marginBottom: 24,
-    zIndex: 1,
+    letterSpacing: -1,
+    marginBottom: 20,
   },
   cashOutBtn: {
-    width: '100%',
     backgroundColor: '#ffffff',
     paddingVertical: 12,
-    borderRadius: 16,
+    paddingHorizontal: 20,
+    borderRadius: 100,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    zIndex: 1,
-    ...AMBIENT_SHADOW,
+    alignSelf: 'flex-start',
+    gap: 6,
   },
-
-  /* ── Card base ── */
-  card: {
-    backgroundColor: COLORS.surfaceContainerLowest,
+  cashOutBtnText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    color: '#0f0a1a',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  statChip: {
+    flex: 1,
+    backgroundColor: '#ffffff',
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: COLORS.surfaceContainerLow,
+    borderColor: '#f3f4f6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    elevation: 2,
   },
-
-  /* ── Daily Goal ── */
-  goalHeader: {
+  statIcon: {
+    marginBottom: 12,
+  },
+  statChipLabel: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: '#6b7280',
+    marginBottom: 2,
+  },
+  statChipValue: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 15,
+    color: '#111827',
+  },
+  inlineGoal: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#f3f4f6',
+  },
+  inlineGoalTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
-  goalActionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+  inlineGoalTitle: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    color: '#111827',
   },
-  goalEditBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(99, 102, 241, 0.12)',
-  },
-  goalEditText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.primary,
-  },
-  goalTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  goalValues: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    marginBottom: 8,
+  inlineGoalEdit: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 13,
+    color: '#6A1B9A',
   },
   progressTrack: {
-    width: '100%',
-    height: 10,
-    backgroundColor: COLORS.surfaceContainer,
-    borderRadius: 5,
+    height: 6,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 3,
     overflow: 'hidden',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   progressFill: {
     height: '100%',
-    backgroundColor: COLORS.primaryContainer,
-    borderRadius: 5,
+    backgroundColor: '#6A1B9A',
+    borderRadius: 3,
   },
-
-  /* ── Sections ── */
-  sectionWrap: { gap: 12 },
-  sectionLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    letterSpacing: 0.14,
-    color: COLORS.onSurfaceVariant,
-    paddingHorizontal: 4,
-  },
-
-  /* ── Earnings Analytics ── */
-  analyticsTop: {
+  inlineGoalBottom: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 16,
+    alignItems: 'center',
+  },
+  inlineGoalText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  inlineGoalTarget: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 12,
+    color: '#374151',
+  },
+  dualCardRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  halfCard: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#f3f4f6',
+  },
+  halfCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  halfCardTitle: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 13,
+    color: '#6b7280',
   },
   trendBadge: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#dcfce7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 100,
     gap: 2,
-    backgroundColor: COLORS.primaryFixedDim + '33',
-    borderWidth: 1,
-    borderColor: COLORS.primaryFixed,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 9999,
   },
-  chartRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    height: 96,
-    gap: 4,
-    marginTop: 8,
-  },
-  chartCol: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 4,
-    height: '100%',
-  },
-  chartBarWrap: {
-    flex: 1,
-    width: '100%',
-    justifyContent: 'flex-end',
-  },
-  chartBar: {
-    width: '100%',
-    backgroundColor: COLORS.surfaceContainer,
-    borderTopLeftRadius: 2,
-    borderTopRightRadius: 2,
-  },
-  chartBarActive: {
-    backgroundColor: COLORS.primaryContainer,
-  },
-  chartLabel: {
+  trendText: {
+    fontFamily: 'Inter-Medium',
     fontSize: 10,
-    fontWeight: '600',
-    color: COLORS.onSurfaceVariant,
+    color: '#16a34a',
   },
-
-  /* ── Rewards ── */
-  rewardsCard: {
-    backgroundColor: COLORS.surfaceContainerLowest,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(217,119,6,0.3)',
-  },
-  rewardsTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  analyticsAmount: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 18,
+    color: '#111827',
     marginBottom: 12,
   },
-  rewardsLeft: {
+  miniChart: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    alignItems: 'flex-end',
+    height: 40,
+    gap: 4,
   },
-  rewardsIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#fef3c7',
-    alignItems: 'center',
-    justifyContent: 'center',
+  miniChartCol: {
+    flex: 1,
+    height: '100%',
   },
-  rewardsPoints: {
-    fontSize: 24,
-    lineHeight: 32,
-    fontWeight: '700',
-    letterSpacing: -0.24,
-    color: '#d97706',
+  miniChartBarWrap: {
+    flex: 1,
+    justifyContent: 'flex-end',
   },
-  rewardsPtsSuffix: {
-    fontSize: 14,
-    fontWeight: '400',
+  miniChartBar: {
+    backgroundColor: '#f3f4f6',
+    borderRadius: 2,
+    width: '100%',
   },
-  rewardsFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: COLORS.surfaceContainer,
-    paddingTop: 12,
-    marginTop: 4,
+  miniChartBarActive: {
+    backgroundColor: '#c084fc',
+  },
+  tierName: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 18,
+    color: '#111827',
+  },
+  tierPoints: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    color: '#6b7280',
+    marginTop: 2,
   },
   viewPerksBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
+    marginTop: 12,
   },
-
-  /* ── Grid ── */
-  gridRow: {
-    flexDirection: 'row',
-    gap: 16,
+  viewPerksText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 12,
+    color: '#6A1B9A',
   },
-  gridCell: {
-    flex: 1,
-    backgroundColor: COLORS.surfaceContainerLowest,
+  settingsStack: {
+    backgroundColor: '#ffffff',
     borderRadius: 16,
-    padding: 16,
     borderWidth: 1,
-    borderColor: COLORS.surfaceContainerLow,
-    gap: 12,
+    borderColor: '#f3f4f6',
+    overflow: 'hidden',
   },
-  gridCellHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  gridCellBody: {
+  settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    padding: 16,
     gap: 12,
-    marginTop: 8,
   },
-  gridCellIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: COLORS.surfaceContainer,
+  settingIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#f9fafb',
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  /* ── Transactions ── */
-  txnHeader: {
+  settingTextWrap: {
+    flex: 1,
+  },
+  settingTitle: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    color: '#111827',
+  },
+  settingSub: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  settingDivider: {
+    height: 1,
+    backgroundColor: '#f3f4f6',
+    marginLeft: 60,
+  },
+  transactionsHeader: {
+    marginTop: 8,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 4,
+  },
+  transactionsTitle: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 16,
+    color: '#111827',
   },
   filterRow: {
-    flexDirection: 'row',
     gap: 8,
     paddingBottom: 4,
   },
   filterPill: {
     paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 9999,
-    backgroundColor: COLORS.surfaceContainer,
+    paddingVertical: 8,
+    borderRadius: 100,
+    backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: COLORS.surfaceContainerHighest,
+    borderColor: '#e5e7eb',
   },
   filterPillActive: {
-    backgroundColor: COLORS.primaryContainer,
-    borderColor: COLORS.primaryContainer,
+    backgroundColor: '#6A1B9A',
+    borderColor: '#6A1B9A',
   },
-  txnCard: {
-    backgroundColor: COLORS.surfaceContainerLowest,
+  filterPillText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 13,
+    color: '#4b5563',
+  },
+  filterPillTextActive: {
+    color: '#ffffff',
+  },
+  transactionList: {
+    backgroundColor: '#ffffff',
     borderRadius: 16,
-    padding: 12,
     borderWidth: 1,
-    borderColor: COLORS.surfaceContainerLow,
-    gap: 12,
+    borderColor: '#f3f4f6',
+    overflow: 'hidden',
+  },
+  txnDivider: {
+    height: 1,
+    backgroundColor: '#f9fafb',
   },
   txnRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  txnLeft: {
-    flexDirection: 'row',
     alignItems: 'center',
+    padding: 16,
     gap: 12,
-    flex: 1,
   },
-  txnIcon: {
+  txnIconCircle: {
     width: 40,
     height: 40,
     borderRadius: 20,
+    backgroundColor: '#f5effb',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  txnIconCircleDebit: {
+    backgroundColor: '#f3f4f6',
+  },
+  txnDetails: {
+    flex: 1,
+  },
+  txnTitle: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    color: '#111827',
+    marginBottom: 2,
+  },
   txnDate: {
+    fontFamily: 'Inter-Regular',
     fontSize: 12,
-    color: COLORS.onSurfaceVariant,
+    color: '#9ca3af',
   },
-  txnMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.surfaceContainerLow,
-    paddingTop: 8,
+  txnAmounts: {
+    alignItems: 'flex-end',
   },
-  txnMetaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+  txnAmount: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    color: '#6A1B9A',
   },
-  txnMetaText: {
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.24,
-    color: COLORS.onSurfaceVariant,
+  txnAmountDebit: {
+    color: '#111827',
   },
-  statusBadgeGreen: {
-    backgroundColor: COLORS.primaryFixedDim + '33',
-    borderWidth: 1,
-    borderColor: COLORS.primaryFixed,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 9999,
-  },
-  statusBadgeGreenText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: COLORS.surfaceTint,
-  },
-  statusBadgeGrey: {
-    backgroundColor: COLORS.surfaceContainerHighest,
-    borderWidth: 1,
-    borderColor: COLORS.surfaceDim,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 9999,
-  },
-  statusBadgeGreyText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: COLORS.onSurfaceVariant,
-  },
-  statusBadgePending: {
-    backgroundColor: COLORS.surfaceContainer,
-    borderWidth: 1,
-    borderColor: COLORS.outlineVariant,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 9999,
-  },
-  statusBadgePendingText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: COLORS.onSurfaceVariant,
-  },
-  statusBadgeFailed: {
-    backgroundColor: COLORS.errorContainer,
-    borderWidth: 1,
-    borderColor: COLORS.error,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 9999,
-  },
-  statusBadgeFailedText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: COLORS.error,
+  txnStatus: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 11,
+    color: '#6b7280',
+    marginTop: 2,
   },
   viewAllBtn: {
-    borderWidth: 1,
-    borderColor: COLORS.surfaceContainerHigh,
-    borderRadius: 16,
-    paddingVertical: 12,
     alignItems: 'center',
-    marginTop: 4,
+    paddingVertical: 16,
+  },
+  viewAllBtnText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 14,
+    color: '#6A1B9A',
+  },
+  loadingRow: {
+    padding: 32,
+    alignItems: 'center',
+  },
+  emptyState: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  emptyStateText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 14,
+    color: '#9ca3af',
+    marginTop: 8,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     padding: 20,
   },
   modalCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 16,
-    padding: 20,
-    gap: 12,
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 24,
+  },
+  modalTitle: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 20,
+    color: '#111827',
+    marginBottom: 4,
+  },
+  modalSubtitle: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 24,
   },
   modalField: {
-    gap: 6,
+    marginBottom: 16,
   },
   modalLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.onSurfaceVariant,
+    fontFamily: 'Inter-Medium',
+    fontSize: 13,
+    color: '#374151',
+    marginBottom: 6,
   },
   modalInput: {
     borderWidth: 1,
-    borderColor: COLORS.surfaceContainerHigh,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: COLORS.onSurface,
-    backgroundColor: COLORS.surfaceContainerLowest,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontFamily: 'Inter-Regular',
+    fontSize: 15,
+    color: '#111827',
+    backgroundColor: '#f9fafb',
   },
   modalActions: {
     flexDirection: 'row',
@@ -1335,86 +1047,111 @@ const styles = StyleSheet.create({
   },
   modalCancel: {
     flex: 1,
+    paddingVertical: 14,
     alignItems: 'center',
-    paddingVertical: 12,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.surfaceContainerHigh,
-    backgroundColor: COLORS.surfaceContainerLowest,
+    backgroundColor: '#f3f4f6',
+  },
+  modalCancelText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 15,
+    color: '#4b5563',
   },
   modalSave: {
     flex: 1,
+    paddingVertical: 14,
     alignItems: 'center',
-    paddingVertical: 12,
     borderRadius: 12,
-    backgroundColor: COLORS.primary,
+    backgroundColor: '#0f0a1a',
   },
-  receiptCard: {
-    width: '100%',
+  modalSaveText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 15,
+    color: '#ffffff',
+  },
+  modalOverlayBottom: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  receiptSheet: {
     backgroundColor: '#ffffff',
-    borderRadius: 20,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     padding: 24,
-    elevation: 4,
-    maxHeight: '90%',
-  },
-  receiptHeader: {
+    paddingBottom: 40,
     alignItems: 'center',
-    gap: 4,
-    marginBottom: 8,
   },
-  receiptAmount: {
-    fontSize: 32,
-    fontWeight: '800',
-    marginTop: 4,
-    letterSpacing: -0.5,
+  receiptHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#e5e7eb',
+    marginBottom: 24,
   },
-  receiptTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1a1c1c',
-    textAlign: 'center',
-    marginTop: 4,
-  },
-  receiptDate: {
-    fontSize: 12,
-    color: '#6b7280',
-  },
-  receiptDivider: {
-    height: 0,
-    borderTopWidth: 1,
-    borderColor: '#e2e2e2',
-    borderStyle: 'dashed',
-    marginVertical: 16,
-  },
-  receiptBody: {
-    paddingRight: 4,
-  },
-  receiptRow: {
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-    gap: 4,
+  receiptIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 16,
   },
-  receiptLabel: {
+  receiptAmount: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 32,
+    color: '#6A1B9A',
+    marginBottom: 4,
+  },
+  receiptTitle: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 16,
+    color: '#374151',
+  },
+  receiptDate: {
+    fontFamily: 'Inter-Regular',
     fontSize: 13,
+    color: '#9ca3af',
+    marginTop: 4,
+  },
+  receiptDivider: {
+    width: '100%',
+    height: 1,
+    backgroundColor: '#e5e7eb',
+    borderStyle: 'dashed',
+    marginVertical: 24,
+  },
+  receiptDetails: {
+    width: '100%',
+    gap: 16,
+    marginBottom: 32,
+  },
+  receiptRowItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  receiptLabel: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
     color: '#6b7280',
   },
   receiptValue: {
+    fontFamily: 'Inter-SemiBold',
     fontSize: 14,
-    fontWeight: '600',
-    color: '#1a1c1c',
-    lineHeight: 20,
+    color: '#111827',
   },
-  receiptCloseButton: {
-    backgroundColor: '#f5effb',
-    paddingVertical: 14,
-    borderRadius: 12,
+  receiptCloseBtn: {
+    width: '100%',
+    backgroundColor: '#f3f4f6',
+    paddingVertical: 16,
+    borderRadius: 100,
     alignItems: 'center',
-    marginTop: 8,
   },
   receiptCloseText: {
-    color: COLORS.primary,
-    fontWeight: '700',
+    fontFamily: 'Inter-SemiBold',
     fontSize: 15,
+    color: '#111827',
   },
 });

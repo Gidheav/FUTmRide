@@ -11,6 +11,7 @@ interface SecurityStore {
   lockTimeoutMinutes: LockTimeout
   lastUnlockAt: number | null
   locked: boolean
+  hasHydrated: boolean
   hasPin: boolean
   pinRecoveryRequired: boolean
   setAppLockEnabled: (value: boolean) => void
@@ -18,6 +19,7 @@ interface SecurityStore {
   setLockTimeoutMinutes: (value: LockTimeout) => void
   setLastUnlockAt: (value: number | null) => void
   setLocked: (value: boolean) => void
+  setHasHydrated: (value: boolean) => void
   setHasPin: (value: boolean) => void
   hasTransactionPin: boolean
   transactionPinStatus: TransactionPinStatus
@@ -40,6 +42,7 @@ export const useSecurityStore = create<SecurityStore>()(
       // StudentAppInner reads appLockEnabled + lastUnlockAt and calls
       // setLocked(true) when the app should be locked on cold start.
       locked: false,
+      hasHydrated: false,
       hasPin: false,
       hasTransactionPin: false,
       transactionPinStatus: 'unknown',
@@ -49,6 +52,7 @@ export const useSecurityStore = create<SecurityStore>()(
       setLockTimeoutMinutes: (value) => set({ lockTimeoutMinutes: value }),
       setLastUnlockAt: (value) => set({ lastUnlockAt: value }),
       setLocked: (value) => set({ locked: value }),
+      setHasHydrated: (value) => set({ hasHydrated: value }),
       setHasPin: (value) => set({ hasPin: value }),
       setHasTransactionPin: (value) => set({ hasTransactionPin: value }),
       setTransactionPinStatus: (value) => set({ transactionPinStatus: value }),
@@ -59,6 +63,7 @@ export const useSecurityStore = create<SecurityStore>()(
         lockTimeoutMinutes: -1,
         lastUnlockAt: null,
         locked: false,
+        hasHydrated: true,
         hasPin: false,
         hasTransactionPin: false,
         transactionPinStatus: 'unknown',
@@ -83,6 +88,9 @@ export const useSecurityStore = create<SecurityStore>()(
         hasTransactionPin: state.hasTransactionPin,
         pinRecoveryRequired: state.pinRecoveryRequired,
       }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true)
+      },
     }
   )
 )

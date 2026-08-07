@@ -850,6 +850,23 @@ export default function DriverRidesPage() {
         (data ? JSON.stringify(data) : null) ||
         'Unable to accept request.';
       const status = error?.response?.status;
+
+      // If server reports active trip conflict, attempt fetching active ride to sync UI
+      if (status === 400 || status === 409) {
+        try {
+          const activeRes = await driverApi.getActiveRide();
+          if (activeRes?.data) {
+            setActiveOnDemandRide(activeRes.data);
+            setDriverHasActiveRide(true);
+            setCachedHasActiveRide(true);
+            setAcceptingRideId(null);
+            return;
+          }
+        } catch (_) {
+          // No active ride in DB (backend self-healing handles stale flag)
+        }
+      }
+
       const statusLabel = status ? `(${status}) ` : '';
       setRequestsError(`${statusLabel}${message}`.trim());
       errorHoldUntil.current = Date.now() + 12000;

@@ -78,12 +78,21 @@ export const saveStudentSessionSnapshotFromStores = async (options?: {
   const user = options?.user || auth.user
 
   if (!user?.id || user.role !== 'student') return
+  const previous = await readStudentSessionSnapshot()
+  const previousLoginClockStartedAt =
+    previous && String(previous.userId) === String(user.id)
+      ? previous.loginClockStartedAt
+      : null
 
   const snapshot: StudentSessionSnapshot = {
     version: 1,
     userId: String(user.id),
     savedAt: Date.now(),
-    loginClockStartedAt: options?.loginClockStartedAt ?? auth.loginAt,
+    loginClockStartedAt:
+      options?.loginClockStartedAt ??
+      auth.loginAt ??
+      previousLoginClockStartedAt ??
+      Date.now(),
     user,
     security: {
       appLockEnabled: security.appLockEnabled,

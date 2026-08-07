@@ -17,6 +17,8 @@ import {
 import { MaterialIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as Location from 'expo-location'
+import LoadingOverlay from '../components/LoadingOverlay'
+import PremiumBottomSheet from '../components/premium/PremiumBottomSheet'
 import api from '../../core/api'
 import useWalletStore from '../../core/walletStore'
 import { getVerifiedLocation, LocationError, roundCoord } from '../../core/locationService'
@@ -456,7 +458,6 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Vehicle, Seats & Time</Text>
           <View style={styles.vehicleSeatContainer}>
             <View style={styles.configColVehicle}>
               <Text style={styles.dropdownLabel}>Vehicle</Text>
@@ -538,9 +539,11 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
               <MaterialIcons name="group" size={22} color="#6A1B9A" />
               <View style={{ marginLeft: 12 }}>
                 <Text style={styles.shareToggleTitle}>Share this ride</Text>
-                <Text style={styles.shareToggleSub}>
-                  {isSharedRide ? 'Fare split with friends who join' : 'Solo ride — full fare applies'}
-                </Text>
+                {isSharedRide && (
+                  <Text style={styles.shareToggleSub}>
+                    Fare split with friends who join
+                  </Text>
+                )}
               </View>
             </View>
             <Switch
@@ -580,14 +583,6 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
               </Text>
             </View>
           )}
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Payment</Text>
-          <View style={styles.paymentRow}>
-            <MaterialIcons name="account-balance-wallet" size={20} color="#6A1B9A" />
-            <Text style={styles.paymentText}>Wallet only for now</Text>
-          </View>
         </View>
 
         <View style={styles.submitContainer}>
@@ -736,45 +731,55 @@ export default function BookRidePage({ onClose, onRideCreated }: BookRidePagePro
         </View>
       )}
 
-      <Modal visible={pinModalVisible} animationType="fade" transparent onRequestClose={() => setPinModalVisible(false)}>
-        <View style={styles.pinModalBackdrop}>
-          <View style={styles.pinModalCard}>
-            <Text style={styles.pinModalTitle}>Confirm Booking</Text>
-            <Text style={styles.pinModalSubtitle}>Enter your 4-digit Transaction PIN to book this ride.</Text>
-            {pinError ? <Text style={styles.pinModalError}>{pinError}</Text> : null}
-            <View style={styles.pinDotsRow}>
-              {[0, 1, 2, 3].map((i) => (
-                <View key={i} style={[styles.pinDot, pinInput.length > i && styles.pinDotFilled]} />
-              ))}
-            </View>
-            <View style={styles.pinPad}>
-              {pinRows.map((row, ri) => (
-                <View key={ri} style={styles.pinRow}>
-                  {row.map((digit, ci) => (
-                    <Pressable
-                      key={`${ri}-${ci}`}
-                      style={({ pressed }) => [styles.pinKey, (!digit || pinLoading) && styles.pinKeyDisabled, pressed && styles.pinKeyPressed]}
-                      onPress={() => handlePinDigit(digit)}
-                      disabled={!digit || pinLoading}
-                    >
-                      {digit === 'back'
-                        ? <Text style={styles.pinKeyText}>⌫</Text>
-                        : <Text style={styles.pinKeyText}>{digit}</Text>}
-                    </Pressable>
-                  ))}
-                </View>
-              ))}
-            </View>
-            <TouchableOpacity
-              style={styles.pinCancelBtn}
-              onPress={() => { setPinModalVisible(false); setPinInput(''); setPinError('') }}
-              disabled={pinLoading}
-            >
-              <Text style={styles.pinCancelText}>Cancel</Text>
-            </TouchableOpacity>
+      <PremiumBottomSheet
+        visible={pinModalVisible}
+        onClose={() => { setPinModalVisible(false); setPinInput(''); setPinError('') }}
+      >
+        <Text style={styles.bsTitle}>{isSharedRide ? 'Create Shared Ride' : 'Confirm Booking'}</Text>
+        <Text style={styles.bsSubtitle}>Enter your 4-digit Transaction PIN to continue.</Text>
+
+        {pinError ? (
+          <View style={styles.bsErrorRow}>
+            <MaterialIcons name="error-outline" size={15} color="#ef4444" />
+            <Text style={styles.bsErrorText}>{pinError}</Text>
           </View>
+        ) : null}
+
+        <View style={styles.pinDotsRow}>
+          {[0, 1, 2, 3].map((i) => (
+            <View key={i} style={[styles.pinDot, pinInput.length > i && styles.pinDotFilled]} />
+          ))}
         </View>
-      </Modal>
+
+        <View style={styles.pinPad}>
+          {pinRows.map((row: string[], ri: number) => (
+            <View key={ri} style={styles.pinRow}>
+              {row.map((digit: string, ci: number) => (
+                <TouchableOpacity
+                  key={`${ri}-${ci}`}
+                  style={[styles.pinKey, (!digit || pinLoading) && styles.pinKeyDisabled]}
+                  onPress={() => handlePinDigit(digit)}
+                  disabled={!digit || pinLoading}
+                  activeOpacity={0.8}
+                >
+                  {digit === 'back'
+                    ? <MaterialIcons name="backspace" size={20} color="#1a1c1c" />
+                    : <Text style={styles.pinKeyText}>{digit}</Text>}
+                </TouchableOpacity>
+              ))}
+            </View>
+          ))}
+        </View>
+
+        <TouchableOpacity
+          style={styles.pinCancelBtn}
+          onPress={() => { setPinModalVisible(false); setPinInput(''); setPinError('') }}
+          disabled={pinLoading}
+        >
+          <Text style={styles.pinCancelText}>Cancel</Text>
+        </TouchableOpacity>
+        <LoadingOverlay visible={pinLoading} />
+      </PremiumBottomSheet>
     </View>
   )
 }
@@ -1092,95 +1097,85 @@ const styles = StyleSheet.create({
     color: '#6A1B9A',
     fontWeight: '600',
   },
-  pinModalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  pinModalCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    padding: 24,
-    width: '100%',
-    maxWidth: 360,
-    alignItems: 'center',
-  },
-  pinModalTitle: {
-    fontSize: 17,
-    fontWeight: '700',
+  bsTitle: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 22,
     color: '#1a1c1c',
     marginBottom: 6,
   },
-  pinModalSubtitle: {
-    fontSize: 13,
+  bsSubtitle: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
     color: '#6b7280',
-    marginBottom: 8,
-    textAlign: 'center',
+    marginBottom: 28,
+    lineHeight: 20,
   },
-  pinModalError: {
-    color: '#ba1a1a',
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 6,
-    textAlign: 'center',
+  bsErrorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef2f2',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 20,
+    gap: 8,
+  },
+  bsErrorText: {
+    flex: 1,
+    fontFamily: 'Inter-Medium',
+    fontSize: 13,
+    color: '#ef4444',
   },
   pinDotsRow: {
     flexDirection: 'row',
-    gap: 14,
-    marginVertical: 16,
+    justifyContent: 'center',
+    gap: 24,
+    marginBottom: 36,
   },
   pinDot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 2,
-    borderColor: '#6A1B9A',
-    backgroundColor: 'transparent',
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#e5e7eb',
   },
   pinDotFilled: {
     backgroundColor: '#6A1B9A',
   },
   pinPad: {
-    width: '100%',
-    gap: 8,
+    gap: 16,
+    marginBottom: 28,
   },
   pinRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 12,
+    justifyContent: 'space-between',
+    paddingHorizontal: 32,
   },
   pinKey: {
-    width: 72,
-    height: 52,
-    borderRadius: 12,
-    backgroundColor: '#f5f5f5',
-    alignItems: 'center',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#f9fafb',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#e2e2e2',
+    alignItems: 'center',
   },
   pinKeyDisabled: {
-    opacity: 0,
-  },
-  pinKeyPressed: {
-    backgroundColor: '#ede5f5',
+    backgroundColor: 'transparent',
   },
   pinKeyText: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontFamily: 'Inter-Medium',
+    fontSize: 24,
     color: '#1a1c1c',
   },
   pinCancelBtn: {
-    marginTop: 16,
-    paddingVertical: 10,
-    paddingHorizontal: 24,
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderRadius: 14,
+    backgroundColor: '#f3f4f6',
+    width: '100%',
   },
   pinCancelText: {
-    color: '#6A1B9A',
-    fontWeight: '600',
-    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 15,
+    color: '#374151',
   },
   // ── Shared ride toggle ──────────────────────────────────────────────────────
   shareToggleRow: {

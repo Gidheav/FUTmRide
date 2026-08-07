@@ -31,6 +31,13 @@ export const TransferConfirmModal = React.memo(({ visible, onClose, onConfirm, l
     }
   }, [visible]);
 
+  // Clear pin if error occurs
+  useEffect(() => {
+    if (error) {
+      setPinInput('');
+    }
+  }, [error]);
+
   const handleDigit = (digit: string | number | null) => {
     if (!digit || loading) return;
     

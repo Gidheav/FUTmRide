@@ -388,6 +388,23 @@ class DriverActiveRideView(generics.RetrieveAPIView):
             status__in=[RideStatus.DRIVER_ASSIGNED, RideStatus.DRIVER_EN_ROUTE, RideStatus.DRIVER_ARRIVED, RideStatus.IN_PROGRESS],
         ).select_related('student', 'driver', 'driver__driver_profile').first()
         if not ride:
+            # Self-heal stale profile.is_on_trip flag if set
+            try:
+                profile = getattr(self.request.user, 'driver_profile', None)
+                if profile and profile.is_on_trip:
+                    has_garage = GarageRide.objects.filter(
+                        driver=self.request.user,
+                        status__in=[
+                            GarageRideStatus.OPEN,
+                            GarageRideStatus.FULL,
+                            GarageRideStatus.DEPARTED,
+                        ],
+                    ).exists()
+                    if not has_garage:
+                        profile.is_on_trip = False
+                        profile.save(update_fields=['is_on_trip'])
+            except Exception:
+                pass
             raise NotFound('No active ride found.')
         return ride
 
@@ -535,15 +552,38 @@ class DriverAcceptRideView(APIView):
                     status=status.HTTP_409_CONFLICT,
                 )
             if profile.is_on_trip:
-                return Response(
-                    {
-                        'error': {
-                            'code': 'ON_TRIP',
-                            'message': 'You are already on a trip.',
-                        }
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+                # Self-heal check: Verify if the driver actually has an active ride or active garage ride in DB
+                has_active = Ride.objects.filter(
+                    driver=request.user,
+                    status__in=[
+                        RideStatus.DRIVER_ASSIGNED,
+                        RideStatus.DRIVER_EN_ROUTE,
+                        RideStatus.DRIVER_ARRIVED,
+                        RideStatus.IN_PROGRESS,
+                    ],
+                ).exists()
+                has_garage = GarageRide.objects.filter(
+                    driver=request.user,
+                    status__in=[
+                        GarageRideStatus.OPEN,
+                        GarageRideStatus.FULL,
+                        GarageRideStatus.DEPARTED,
+                    ],
+                ).exists()
+                if has_active or has_garage:
+                    return Response(
+                        {
+                            'error': {
+                                'code': 'ON_TRIP',
+                                'message': 'You are already on an active trip.',
+                            }
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                else:
+                    # Stale flag detected — auto-heal to False
+                    profile.is_on_trip = False
+                    profile.save(update_fields=['is_on_trip'])
             try:
                 ride = Ride.objects.select_for_update().get(id=ride_id)
             except Ride.DoesNotExist:

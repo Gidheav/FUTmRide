@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Alert, AppState, BackHandler, Linking, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import { useAuthStore } from '../core/authStore'
+import { isStudentSessionExpiredAt, useAuthStore } from '../core/authStore'
 import { useSecurityStore } from '../core/securityStore'
 import {
   fetchCurrentUser,
@@ -75,8 +75,19 @@ export default function StudentApp() {
 }
 
 function StudentAppInner() {
-  const { isAuthenticated, user, setTokens, setUser, hasHydrated, hydrateTokens, isSessionExpired } = useAuthStore()
+  const {
+    isAuthenticated,
+    user,
+    setTokens,
+    setUser,
+    hasHydrated,
+    hydrateTokens,
+    isSessionExpired,
+    loginCompletedAt,
+    restoreAuthSession,
+  } = useAuthStore()
   const [tokensLoaded, setTokensLoaded] = useState(false)
+  const [sessionBooting, setSessionBooting] = useState(true)
   const {
     appLockEnabled,
     biometricEnabled,
@@ -84,6 +95,7 @@ function StudentAppInner() {
     hasTransactionPin,
     transactionPinStatus,
     locked,
+    hasHydrated: securityHasHydrated,
     lockTimeoutMinutes,
     lastUnlockAt,
     pinRecoveryRequired,
@@ -124,12 +136,14 @@ function StudentAppInner() {
   const transactionPinStatusUserRef = useRef<string | null>(null)
   // True only on the very first mount (cold start). Cleared after the first lock check.
   const isColdStartRef = useRef(true)
+  const bootAttemptedRef = useRef(false)
   // Track previous auth state so we can detect a fresh email/password login
   const prevIsAuthenticatedRef = useRef(isAuthenticated)
   const setWalletBalance = useWalletStore((state) => state.setWalletBalance)
   const syncWalletBalance = useWalletStore((state) => state.syncBalance)
   const bumpWalletActivityRefresh = useWalletStore((state) => state.bumpWalletActivityRefresh)
   const triggerWalletFlash = useWalletStore((state) => state.triggerWalletFlash)
+  const sessionReady = hasHydrated && securityHasHydrated && tokensLoaded && !sessionBooting
 
   // ─── Ride flow state (single source of truth) ───────────────────────────────
   // Which ride-related screen is currently shown
@@ -190,49 +204,102 @@ function StudentAppInner() {
 
   // Check for active ride once after login / unlock
   useEffect(() => {
-    if (!isAuthenticated || locked || rideCheckedRef.current) return
+    if (!sessionReady || !isAuthenticated || locked || rideCheckedRef.current) return
     rideCheckedRef.current = true
     void checkActiveRide()
-  }, [isAuthenticated, locked, checkActiveRide])
+  }, [sessionReady, isAuthenticated, locked, checkActiveRide])
 
   // Initialize OTA location data once after auth (non-blocking, silent)
   useEffect(() => {
-    if (!isAuthenticated || locked) return
+    if (!sessionReady || !isAuthenticated || locked) return
     void LocationDataService.initialize()
-  }, [isAuthenticated, locked])
+  }, [sessionReady, isAuthenticated, locked])
 
   // Re-check whenever we return to the dashboard (ride screen becomes 'none')
   useEffect(() => {
-    if (rideScreen === 'none' && isAuthenticated && !locked) {
+    if (sessionReady && rideScreen === 'none' && isAuthenticated && !locked) {
       void checkActiveRide()
     }
-  }, [rideScreen, isAuthenticated, locked, checkActiveRide])
+  }, [sessionReady, rideScreen, isAuthenticated, locked, checkActiveRide])
 
   // ─── Boot: hydrate tokens from SecureStore into Zustand ──────────────────
-  // Tokens are NOT persisted to AsyncStorage (only user + isAuthenticated are).
-  // On cold start, accessToken/refreshToken in Zustand are null until we load
-  // them here. This must complete before any authenticated API calls fire.
+  // Wait for both persisted stores, SecureStore tokens, and the secure
+  // student snapshot before choosing login, app lock, or app content.
   useEffect(() => {
-    hydrateTokens().finally(() => {
-      setTokensLoaded(true)
-    })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []) // run once on mount only
-
-  useEffect(() => {
-    if (!hasHydrated || !tokensLoaded || !isAuthenticated || !user?.id) return
+    if (!hasHydrated || !securityHasHydrated || bootAttemptedRef.current) return
+    bootAttemptedRef.current = true
     let cancelled = false
-    hydrateStudentSessionSnapshot(user.id)
-      .then(() => {
-        if (!cancelled) {
-          void syncStudentSessionInBackground()
+
+    const bootStudentSession = async () => {
+      setSessionBooting(true)
+      try {
+        const tokens = await hydrateTokens()
+        if (cancelled) return
+
+        const expectedUserId = useAuthStore.getState().user?.id || null
+        const snapshot = await hydrateStudentSessionSnapshot(expectedUserId)
+        if (cancelled) return
+
+        const authState = useAuthStore.getState()
+        const authUser = authState.user?.role === 'student' ? authState.user : null
+        const snapshotUser = snapshot?.user?.role === 'student' ? snapshot.user : null
+        const sessionUser = authUser || snapshotUser
+        const snapshotLoginAt = snapshot?.loginClockStartedAt ?? snapshot?.savedAt ?? null
+        const loginStartedAt = authState.loginAt ?? snapshotLoginAt
+
+        if (tokens.refreshToken && sessionUser && loginStartedAt) {
+          restoreAuthSession(sessionUser, tokens.accessToken, tokens.refreshToken, loginStartedAt)
         }
-      })
-      .catch(() => undefined)
+
+        const currentAuth = useAuthStore.getState()
+        const hasStudentSession =
+          Boolean(tokens.refreshToken) &&
+          currentAuth.isAuthenticated &&
+          currentAuth.user?.role === 'student'
+
+        if (!hasStudentSession) {
+          setLocked(false)
+          isColdStartRef.current = false
+          return
+        }
+
+        const effectiveLoginAt = currentAuth.loginAt ?? loginStartedAt
+        if (isStudentSessionExpiredAt(effectiveLoginAt)) {
+          isColdStartRef.current = false
+          await logoutStudentSession()
+          return
+        }
+
+        const securityState = useSecurityStore.getState()
+        const hasUnlockMethod = securityState.hasPin || securityState.biometricEnabled
+
+        if (securityState.pinRecoveryRequired) {
+          setLocked(false)
+        } else if (securityState.appLockEnabled && securityState.lockTimeoutMinutes !== -1) {
+          if (hasUnlockMethod) {
+            setLocked(true)
+          } else {
+            setAppLockEnabled(false)
+            setLocked(false)
+          }
+        } else {
+          setLocked(false)
+        }
+
+        isColdStartRef.current = false
+      } finally {
+        if (!cancelled) {
+          setTokensLoaded(true)
+          setSessionBooting(false)
+        }
+      }
+    }
+
+    void bootStudentSession()
     return () => {
       cancelled = true
     }
-  }, [hasHydrated, isAuthenticated, tokensLoaded, user?.id])
+  }, [hasHydrated, hydrateTokens, restoreAuthSession, securityHasHydrated, setAppLockEnabled, setLocked])
 
   // ─── Session sync (fresh email/password login only) ─────────────────────
   // Only fires when the user just completed a full login (not after PIN unlock).

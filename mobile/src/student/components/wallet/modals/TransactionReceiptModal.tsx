@@ -232,6 +232,26 @@ export const TransactionReceiptModal = React.memo(({ transaction, onClose, onDis
   const txDate = new Date(transaction.created_at);
   const hoursDiff = (Date.now() - txDate.getTime()) / (1000 * 60 * 60);
   const canDispute = !isCredit && !transaction.has_dispute && hoursDiff <= 72;
+  
+  const txStatus = transaction.status || 'successful';
+  const isPending = txStatus === 'processing' || txStatus === 'pending';
+  const isFailed = txStatus === 'failed';
+  
+  const getStatusColor = () => {
+    if (isPending) return '#f59e0b'; // amber
+    if (isFailed) return '#ef4444'; // red
+    return '#16a34a'; // green
+  };
+  const getStatusBg = () => {
+    if (isPending) return '#fef3c7';
+    if (isFailed) return '#fef2f2';
+    return '#dcfce7';
+  };
+  const getStatusText = () => {
+    if (isPending) return 'Processing...';
+    if (isFailed) return 'Failed';
+    return 'Successful';
+  };
 
   return (
     <PremiumBottomSheet
@@ -291,9 +311,9 @@ export const TransactionReceiptModal = React.memo(({ transaction, onClose, onDis
             <View style={styles.detailDivider} />
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Status</Text>
-              <View style={styles.statusBadge}>
-                <View style={styles.statusDot} />
-                <Text style={styles.statusText}>Successful</Text>
+              <View style={[styles.statusBadge, { backgroundColor: getStatusBg() }]}>
+                <View style={[styles.statusDot, { backgroundColor: getStatusColor() }]} />
+                <Text style={[styles.statusText, { color: getStatusColor() }]}>{getStatusText()}</Text>
               </View>
             </View>
 
@@ -321,11 +341,11 @@ export const TransactionReceiptModal = React.memo(({ transaction, onClose, onDis
 
       {/* Share Buttons */}
       <View style={styles.shareRow}>
-        <TouchableOpacity style={styles.shareBtn} onPress={shareAsImage} activeOpacity={0.8}>
+        <TouchableOpacity style={[styles.shareBtn, isPending && { opacity: 0.5 }]} onPress={shareAsImage} activeOpacity={0.8} disabled={isPending}>
           <MaterialIcons name="image" size={20} color="#6A1B9A" />
           <Text style={styles.shareBtnText}>Share as Image</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.shareBtn} onPress={shareAsPdf} activeOpacity={0.8}>
+        <TouchableOpacity style={[styles.shareBtn, isPending && { opacity: 0.5 }]} onPress={shareAsPdf} activeOpacity={0.8} disabled={isPending}>
           <MaterialIcons name="picture-as-pdf" size={20} color="#6A1B9A" />
           <Text style={styles.shareBtnText}>Share as PDF</Text>
         </TouchableOpacity>
@@ -334,12 +354,13 @@ export const TransactionReceiptModal = React.memo(({ transaction, onClose, onDis
       {/* Dispute Button */}
       {canDispute && (
         <TouchableOpacity 
-          style={styles.disputeButton}
+          style={[styles.disputeButton, isPending && { opacity: 0.5 }]}
           onPress={() => {
             onClose();
             onDispute?.(transaction);
           }}
           activeOpacity={0.8}
+          disabled={isPending}
         >
           <MaterialIcons name="flag" size={18} color="#b91c1c" />
           <Text style={styles.disputeButtonText}>Dispute Transaction</Text>

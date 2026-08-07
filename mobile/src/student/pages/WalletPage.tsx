@@ -435,6 +435,19 @@ export default function StudentWalletPage({
       return
     }
 
+    const pendingTx = {
+      id: 'pending',
+      transaction_type: 'debit',
+      amount: amountValue,
+      created_at: new Date().toISOString(),
+      reference: 'Processing...',
+      narration: `Transfer to ${recipient?.full_name || 'student'}`,
+      source: 'student_transfer',
+      status: 'processing'
+    }
+    setSelectedTransaction(pendingTx)
+    resetTransferState()
+    
     setTransferLoading(true)
     setTransferError(null)
     setTransferSuccess(null)
@@ -447,14 +460,19 @@ export default function StudentWalletPage({
       if (nextBalance !== undefined && nextBalance !== null) {
         setWalletBalance(nextBalance)
       }
-      const recipientName = recipient.full_name || 'student'
       const transferRef = res.data?.transfer_reference
-      setTransferSuccess(
-        transferRef
-          ? `Transfer successful to ${recipientName}. Ref: ${transferRef}`
-          : `Transfer successful to ${recipientName}.`,
-      )
-      setTransferAmount('')
+      setSelectedTransaction((prev: any) => prev ? {
+        ...prev,
+        status: 'successful',
+        reference: transferRef || 'Success',
+      } : null)
+      
+      const recipientName = recipient.full_name || 'student'
+      const msg = transferRef
+        ? `Transfer successful to ${recipientName}. Ref: ${transferRef}`
+        : `Transfer successful to ${recipientName}.`
+      
+      showToast(msg, 'success')
       try {
         await refreshTransactions()
       } catch {
@@ -465,26 +483,32 @@ export default function StudentWalletPage({
         err?.response?.data?.error?.message ||
         err?.response?.data?.message ||
         'Transfer failed. Please try again.'
-      setTransferError(String(message))
+      
+      setSelectedTransaction((prev: any) => prev ? {
+        ...prev,
+        status: 'failed',
+        error_message: String(message),
+      } : null)
     } finally {
       setTransferLoading(false)
     }
-  }, [formatAmount, recipient, refreshTransactions, transferAmount, walletBalance, setWalletBalance])
+  }, [formatAmount, recipient, refreshTransactions, transferAmount, walletBalance, setWalletBalance, showToast, resetTransferState])
 
   const [transferPinLoading, setTransferPinLoading] = useState(false)
 
   const handleTransferPinConfirm = useCallback(async (pin: string) => {
     if (transferPinLoading) return
     setTransferPinError('')
+    setTransferConfirmVisible(false)
     setTransferPinLoading(true)
     try {
       await api.post('auth/settings/pin/verify/', { pin })
-      setTransferConfirmVisible(false)
       setTransferPinError('')
       await sendTransferRequest()
     } catch (err: any) {
       const msg = err?.response?.data?.message || err?.response?.data?.error?.message || 'Incorrect Transaction PIN.'
       setTransferPinError(String(msg))
+      setTransferConfirmVisible(true)
     } finally {
       setTransferPinLoading(false)
     }
@@ -538,7 +562,7 @@ export default function StudentWalletPage({
         visible={!!recipient}
         onClose={resetTransferState}
         onSend={handleTransferSubmit}
-        loading={transferLoading}
+        loading={transferLoading || transferPinLoading}
         recipient={recipient}
         error={transferError}
         clearError={() => setTransferError(null)}
@@ -589,7 +613,7 @@ export default function StudentWalletPage({
           setTransferPinInput('')
           setTransferPinError('')
         }}
-        onConfirm={sendTransferRequest}
+        onConfirm={handleTransferPinConfirm}
         loading={transferPinLoading}
         error={transferPinError}
         clearError={() => setTransferPinError('')}

@@ -110,7 +110,7 @@ export default function AppLockScreen({
         </View>
         <Text style={styles.title}>App Locked</Text>
         <Text style={styles.subtitle}>
-          {statusMessage || 'Unlock online to continue'}
+          {statusMessage || 'Unlock to continue'}
         </Text>
 
         {hasPin ? (

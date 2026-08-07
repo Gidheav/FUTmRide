@@ -444,22 +444,31 @@ export default function SupportPage({
             </View>
 
             <Text style={styles.formLabel}>Category</Text>
-            <View style={styles.categoryGrid}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.categoryScrollContent}
+              style={styles.categoryScroll}
+            >
               {CATEGORY_OPTIONS.map((item) => {
                 const active = category === item.value
                 return (
                   <TouchableOpacity
                     key={item.value}
-                    style={[styles.categoryButton, active && styles.categoryButtonActive]}
+                    style={[styles.categoryChip, active && styles.categoryChipActive]}
                     onPress={() => setCategory(item.value)}
-                    activeOpacity={0.85}
+                    activeOpacity={0.8}
                   >
-                    <MaterialIcons name={item.icon} size={20} color={active ? '#6A1B9A' : '#6b7280'} />
-                    <Text style={active ? styles.categoryTextActive : styles.categoryText}>{item.label}</Text>
+                    <View style={[styles.categoryChipIcon, active && styles.categoryChipIconActive]}>
+                      <MaterialIcons name={item.icon} size={16} color={active ? '#ffffff' : '#6b7280'} />
+                    </View>
+                    <Text style={active ? styles.categoryChipTextActive : styles.categoryChipText}>
+                      {item.label}
+                    </Text>
                   </TouchableOpacity>
                 )
               })}
-            </View>
+            </ScrollView>
 
             <View style={styles.fieldGroup}>
               <Text style={styles.formLabel}>Subject</Text>
@@ -958,33 +967,49 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: -4,
   },
-  categoryGrid: {
-    gap: 10,
+  categoryScroll: {
+    marginHorizontal: -20,
   },
-  categoryButton: {
+  categoryScrollContent: {
+    paddingHorizontal: 20,
+    gap: 10,
+    flexDirection: 'row',
+  },
+  categoryChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
     backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
   },
-  categoryButtonActive: {
-    backgroundColor: '#f3e8ff',
+  categoryChipActive: {
+    backgroundColor: '#6A1B9A',
     borderColor: '#6A1B9A',
   },
-  categoryText: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 15,
-    color: '#64748b',
+  categoryChipIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  categoryTextActive: {
+  categoryChipIconActive: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  categoryChipText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 14,
+    color: '#374151',
+  },
+  categoryChipTextActive: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 15,
-    color: '#6A1B9A',
+    fontSize: 14,
+    color: '#ffffff',
   },
   fieldGroup: {
     gap: 10,

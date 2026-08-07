@@ -22,9 +22,11 @@ interface LayoutProps {
   onOpenWebLink?: (url: string, title: string) => void;
   onOpenNotifications?: () => void;
   hasUnreadNotifications?: boolean;
+  title?: string;
+  onBack?: () => void;
 }
 
-export default function DriverLayout({ activeTab, onTabChange, children, onLogout, onOpenWebLink, onOpenNotifications, hasUnreadNotifications }: LayoutProps) {
+export default function DriverLayout({ activeTab, onTabChange, children, onLogout, onOpenWebLink, onOpenNotifications, hasUnreadNotifications, title, onBack }: LayoutProps) {
   const insets = useSafeAreaInsets();
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const { user } = useAuthStore();
@@ -53,15 +55,23 @@ export default function DriverLayout({ activeTab, onTabChange, children, onLogou
       {/* Top App Bar with safe area padding */}
       <View style={[styles.header, { paddingTop: insets.top, height: 64 + insets.top }]}>
         <View style={styles.headerContent}>
-          <TouchableOpacity 
-            onPress={() => setIsSidebarVisible(true)} 
-            style={styles.menuButton}
-            activeOpacity={0.7}
-          >
-            <MaterialIcons name="menu" size={28} color={COLORS.primary} />
-          </TouchableOpacity>
+          {onBack ? (
+            <TouchableOpacity onPress={onBack} style={[styles.menuButton, { zIndex: 10 }]} activeOpacity={0.7}>
+              <MaterialIcons name="arrow-back" size={24} color={COLORS.primary} />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity onPress={() => setIsSidebarVisible(true)} style={[styles.menuButton, { zIndex: 10 }]} activeOpacity={0.7}>
+              <MaterialIcons name="menu" size={28} color={COLORS.primary} />
+            </TouchableOpacity>
+          )}
+
+          {title && (
+            <View style={{ position: 'absolute', left: 0, right: 0, alignItems: 'center', pointerEvents: 'none' }}>
+              <Text style={[FONTS.titleLg, { color: COLORS.onSurface }]}>{title}</Text>
+            </View>
+          )}
           
-          <View style={styles.headerIcons}>
+          <View style={[styles.headerIcons, { zIndex: 10 }]}>
             <TouchableOpacity style={styles.notificationWrapper} onPress={onOpenNotifications}>
               <MaterialIcons name="notifications" size={24} color={COLORS.onSurfaceVariant} />
               {hasUnreadNotifications && <View style={styles.notificationDot} />}

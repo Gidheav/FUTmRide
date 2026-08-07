@@ -51,6 +51,7 @@ import DriverWalletPage from './pages/WalletPage'
 import DriverProfilePage from './pages/ProfilePage'
 import EditProfilePage from './pages/EditProfilePage'
 import AccountSettingsPage from './pages/AccountSettingsPage'
+import DriverTransactionsPage from './pages/TransactionsPage'
 import CreateGarageRideScreen from './screens/CreateGarageRideScreen'
 import AppLockScreen from './screens/AppLockScreen'
 import PinSetupScreen from './screens/PinSetupScreen'
@@ -142,6 +143,11 @@ export default function DriverApp() {
     const onBackPress = () => {
       if (subPage) {
         setSubPage(null)
+        return true
+      }
+
+      if (activeTab === 'transactions') {
+        setActiveTab('wallet')
         return true
       }
 
@@ -649,7 +655,7 @@ export default function DriverApp() {
           biometricEnabled={settings.biometricEnabled}
           busy={lockBusy}
           errorMessage={lockError}
-          statusMessage={lockStatus || 'Unlock to continue. Cached dashboard data is ready.'}
+          statusMessage={lockStatus || 'Unlock to continue.'}
           onUnlockPin={handleUnlockPin}
           onUnlockBiometric={handleUnlockBiometric}
           onRetry={handleRetrySecureSession}
@@ -779,7 +785,8 @@ export default function DriverApp() {
     switch (activeTab) {
       case 'home':  return <DriverDashboardScreen onCreateGarageRide={handleCreateGarageRide} />
       case 'rides': return <DriverRidesPage />
-      case 'wallet': return <DriverWalletPage />
+      case 'wallet': return <DriverWalletPage onNavigateToAllTransactions={() => setActiveTab('transactions')} />
+      case 'transactions': return <DriverTransactionsPage />
       case 'profile':
         return (
           <DriverProfilePage
@@ -804,6 +811,8 @@ export default function DriverApp() {
         }}
         onOpenNotifications={() => setSubPage('notifications')}
         hasUnreadNotifications={hasUnreadNotifications}
+        title={activeTab === 'transactions' ? 'All Transactions' : undefined}
+        onBack={activeTab === 'transactions' ? () => setActiveTab('wallet') : undefined}
       >
         {sessionWarning ? (
           <View style={s.sessionWarning}>
@@ -811,7 +820,24 @@ export default function DriverApp() {
             <Text style={s.sessionWarningText}>{sessionWarning}</Text>
           </View>
         ) : null}
-        {renderPage()}
+        {/* All tab screens stay mounted to preserve state (esp. MapView).
+            Inactive tabs are hidden via display:'none' instead of unmounting. */}
+        <View style={activeTab === 'home' ? { flex: 1 } : { display: 'none' }}>
+          <DriverDashboardScreen onCreateGarageRide={handleCreateGarageRide} />
+        </View>
+        <View style={activeTab === 'rides' ? { flex: 1 } : { display: 'none' }}>
+          <DriverRidesPage />
+        </View>
+        <View style={activeTab === 'wallet' ? { flex: 1 } : { display: 'none' }}>
+          <DriverWalletPage onNavigateToAllTransactions={() => setActiveTab('transactions')} />
+        </View>
+        {activeTab === 'transactions' && <DriverTransactionsPage />}
+        <View style={activeTab === 'profile' ? { flex: 1 } : { display: 'none' }}>
+          <DriverProfilePage
+            onNavigateToSettings={() => setSubPage('settings')}
+            onEditProfile={() => setSubPage('edit-profile')}
+          />
+        </View>
         <InAppAnnouncementModal
           announcement={pendingAnnouncement}
           visible={announcementGateVisible}

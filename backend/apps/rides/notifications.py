@@ -15,8 +15,8 @@ def notify_student_ride_status(ride: Ride):
 
     if status == RideStatus.SEARCHING:
         notification_type = Notification.NotificationType.RIDE_REQUESTED
-        title = 'Ride request received'
-        body = 'We are searching for nearby drivers now.'
+        title = 'Ride request recieved'
+        body = 'Awaiting nearby driver to accept your Ride'
     elif status == RideStatus.DRIVER_ASSIGNED:
         notification_type = Notification.NotificationType.DRIVER_ASSIGNED
         driver_name = ride.driver.full_name if ride.driver else 'A driver'

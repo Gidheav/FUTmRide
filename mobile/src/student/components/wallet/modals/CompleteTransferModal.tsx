@@ -3,6 +3,7 @@ import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-nativ
 import { MaterialIcons } from '@expo/vector-icons';
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import PremiumBottomSheet from '../../premium/PremiumBottomSheet';
+import LoadingOverlay from '../../../components/LoadingOverlay';
 
 interface CompleteTransferModalProps {
   visible: boolean;
@@ -82,6 +83,7 @@ export const CompleteTransferModal = React.memo(({ visible, onClose, onSend, loa
           <Text style={styles.primaryActionText}>Send</Text>
         </TouchableOpacity>
       </View>
+      <LoadingOverlay visible={loading} message="Processing transfer..." />
     </PremiumBottomSheet>
   );
 });

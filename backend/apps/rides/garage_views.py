@@ -127,10 +127,23 @@ class GarageRideCreateView(generics.CreateAPIView):
             )
             
         if getattr(profile, 'is_on_trip', False):
-            return Response(
-                {'error': {'code': 'ON_DEMAND_ACTIVE', 'message': 'Complete your current ride first.'}},
-                status=status.HTTP_409_CONFLICT,
-            )
+            has_active_on_demand = Ride.objects.filter(
+                driver=request.user,
+                status__in=[
+                    RideStatus.DRIVER_ASSIGNED,
+                    RideStatus.DRIVER_EN_ROUTE,
+                    RideStatus.DRIVER_ARRIVED,
+                    RideStatus.IN_PROGRESS,
+                ],
+            ).exists()
+            if has_active_on_demand:
+                return Response(
+                    {'error': {'code': 'ON_DEMAND_ACTIVE', 'message': 'Complete your current ride first.'}},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            else:
+                profile.is_on_trip = False
+                profile.save(update_fields=['is_on_trip'])
 
         from django.utils import timezone
         import datetime
