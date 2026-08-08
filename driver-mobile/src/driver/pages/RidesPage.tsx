@@ -22,18 +22,22 @@ import { API_ROOT_URL, driverApi } from '../../core/api';
 import { startDriverLocationTracking, stopDriverLocationTracking } from '../../core/locationSocket';
 import { useGarageRideStore } from '../../core/garageRideStore';
 import { useDriverRidesStore } from '../../core/driverRidesStore';
+import { useToast } from '../context/ToastContext';
 import { 
   getDriverActivityState, 
   canGoOnline, 
   canCreateGarageRide,
   getUpcomingScheduledRide,
   formatTimeUntil,
-  isScheduledRideLocked
+  isScheduledRideLocked,
+  SCHEDULED_RIDE_AUTO_OFFLINE_MINUTES,
+  canAcceptOnDemandNearScheduled
 } from '../../core/driverActivity';
 import * as Location from 'expo-location';
 import QRCode from 'react-native-qrcode-svg';
 import { useLocations } from '../../core/locationDataService';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import ActiveRideScreen from '../screens/ActiveRideScreen';
 
 if (
   Platform.OS === 'android' &&
@@ -104,7 +108,7 @@ const DEFAULT_DRIVER_PROFILE = {
 };
 
 
-type DriverMode = 'garage' | 'ondemand';
+type DriverMode = 'garage' | 'scheduled' | 'ondemand';
 
 type RideStudent = {
   id: string;
@@ -323,155 +327,81 @@ const getVehicleIcon = (size: string): React.ComponentProps<typeof MaterialIcons
   return 'directions-car';
 };
 
-const ScheduledRideCard = React.memo(function ScheduledRideCard({ ride, onExpressInterest, onCancelInterest, isExpressing, isCancelling, disabled }: { 
-  ride: any, 
-  onExpressInterest: (id: string) => void, 
-  onCancelInterest: (id: string) => void,
-  isExpressing: boolean,
-  isCancelling: boolean,
-  disabled?: boolean,
+const ScheduledRideCard = React.memo(function ScheduledRideCard({ 
+  ride,
+  isSelected,
+  onCardPress,
+  onDetailsPress,
+}: { 
+  ride: any,
+  isSelected: boolean,
+  onCardPress: () => void,
+  onDetailsPress: () => void,
 }) {
-  const [expanded, setExpanded] = useState(false);
   const date = new Date(`${ride.departure_date}T${ride.window_start}`);
   const isInterested = ride.driver_interest_status === 'interested';
   
   return (
-    <TouchableOpacity activeOpacity={0.7} onPress={() => setExpanded(!expanded)} style={styles.premiumCard}>
-      {/* Header */}
-      <View style={styles.premiumCardHeader}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-          <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}>{ride.reference}</Text>
-          {isInterested && (
-            <View style={styles.premiumCardInterestedBadge}>
-              <MaterialIcons name="check" size={12} color={COLORS.primary} />
-            </View>
-          )}
-        </View>
+    <TouchableOpacity
+      activeOpacity={0.75}
+      onPress={onCardPress}
+      style={[
+        styles.scheduledCompactCard,
+        isSelected && styles.scheduledCompactCardActive,
+      ]}
+    >
+      {/* Interest dot indicator */}
+      {isInterested && <View style={styles.scheduledInterestDot} />}
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-            {Array.isArray(ride.allowed_vehicle_types) ? ride.allowed_vehicle_types.map((vt: string, idx: number) => (
-               <MaterialIcons key={idx} name={getVehicleIcon(vt)} size={16} color={COLORS.onSurfaceVariant} />
-            )) : <MaterialIcons name={getVehicleIcon(ride.vehicle_size)} size={16} color={COLORS.onSurfaceVariant} />}
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-            <MaterialIcons name="people" size={16} color={COLORS.onSurfaceVariant} />
-            <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>{ride.passenger_count || 0}</Text>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-            <MaterialIcons name="location-on" size={16} color={COLORS.onSurfaceVariant} />
-            <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>{ride.stops_count || 0}</Text>
-          </View>
+      {/* Time column */}
+      <View style={styles.scheduledCompactTime}>
+        <Text style={[FONTS.labelLg, { color: isSelected ? COLORS.primary : COLORS.onSurface, fontWeight: '700' }]} numberOfLines={1}>
+          {date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+        </Text>
+        <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginTop: 1 }]} numberOfLines={1}>
+          {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+        </Text>
+      </View>
+
+      {/* Divider */}
+      <View style={styles.scheduledCompactDivider} />
+
+      {/* Route column */}
+      <View style={styles.scheduledCompactRoute}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 3 }}>
+          <View style={styles.scheduledDotOrigin} />
+          <Text style={[FONTS.bodySm, { color: COLORS.onSurface, flex: 1, fontWeight: '500' }]} numberOfLines={1}>
+            {ride.origin_address || 'Pickup'}
+          </Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+          <View style={styles.scheduledDotDest} />
+          <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, flex: 1 }]} numberOfLines={1}>
+            {ride.destination_address || 'Dropoff'}
+          </Text>
         </View>
       </View>
 
-      {/* Main Info */}
-      <View style={styles.premiumCardBody}>
-        <View style={styles.premiumCardTimeCol}>
-          <MaterialIcons name="schedule" size={20} color={COLORS.primary} />
-          <Text style={[FONTS.bodyLg, { color: COLORS.onSurface, fontWeight: '500' }]} numberOfLines={1} adjustsFontSizeToFit>
-            {date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-          </Text>
-          <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant }]} numberOfLines={1}>
-            {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-          </Text>
-        </View>
-
-        <View style={styles.premiumCardRouteCol}>
-          {/* Vertical Timeline */}
-          <View style={styles.timelineRow}>
-            <View style={styles.timelineGraphic}>
-              <View style={styles.timelineDotTop} />
-              <View style={styles.timelineLine} />
-            </View>
-            <Text style={[FONTS.bodyMd, { color: COLORS.onSurface, flex: 1, paddingBottom: 4 }]} numberOfLines={2}>
-              {ride.origin_address}
-            </Text>
-          </View>
-          <View style={styles.timelineRow}>
-            <View style={styles.timelineGraphic}>
-              <View style={styles.timelineDotBottom} />
-            </View>
-            <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, flex: 1 }]} numberOfLines={2}>
-              {ride.destination_address}
-            </Text>
-          </View>
-        </View>
-
-        {/* Action Column */}
-        <View style={styles.premiumCardActionCol}>
-          {isInterested ? (
-            <TouchableOpacity 
-              style={[styles.actionColBtn, styles.actionColBtnCancel, disabled && { opacity: 0.5 }]} 
-              onPress={() => onCancelInterest(ride.id)} 
-              disabled={isCancelling || disabled}
-            >
-              {isCancelling ? (
-                <LoadingOverlay visible={true} inline size={24} />
-              ) : (
-                <MaterialIcons name="close" size={20} color={COLORS.error} />
-              )}
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity 
-              style={[styles.actionColBtn, styles.actionColBtnPrimary, disabled && { opacity: 0.5 }]} 
-              onPress={() => onExpressInterest(ride.id)} 
-              disabled={isExpressing || disabled}
-            >
-              {isExpressing ? (
-                <LoadingOverlay visible={true} inline size={24} />
-              ) : (
-                <MaterialIcons name="check" size={20} color={COLORS.onPrimary} />
-              )}
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-
-      {/* Expanded Info */}
-      {expanded && (
-        <View style={styles.premiumCardExpandedInfo}>
-          <View style={styles.premiumCardInfoGrid}>
-            <View style={styles.premiumCardInfoItem}>
-              <MaterialIcons name="directions-car" size={16} color={COLORS.outline} />
-              <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginLeft: 6 }]}>{String(ride.vehicle_size || '').replace(/_/g, ' ')}</Text>
-            </View>
-          </View>
-          
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-            {ride.freight_enabled && (
-              <View style={{ backgroundColor: COLORS.surfaceContainer, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 }}>
-                <Text style={[FONTS.bodySm, { color: COLORS.onSurface }]}>Freight: {formatCurrency(ride.freight_price)}</Text>
-              </View>
-            )}
-            {ride.premium_enabled && (
-              <View style={{ backgroundColor: COLORS.surfaceContainer, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 }}>
-                <Text style={[FONTS.bodySm, { color: COLORS.onSurface }]}>Premium: {formatCurrency(ride.premium_price)}</Text>
-              </View>
-            )}
-            {ride.standard_enabled && (
-              <View style={{ backgroundColor: COLORS.surfaceContainer, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 }}>
-                <Text style={[FONTS.bodySm, { color: COLORS.onSurface }]}>Standard: {formatCurrency(ride.standard_price)}</Text>
-              </View>
-            )}
-            {ride.standing_enabled && (
-              <View style={{ backgroundColor: COLORS.surfaceContainer, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 }}>
-                <Text style={[FONTS.bodySm, { color: COLORS.onSurface }]}>Standing: {formatCurrency(ride.standing_price)}</Text>
-              </View>
-            )}
-          </View>
-        </View>
-      )}
-
+      {/* Details Button */}
+      <TouchableOpacity 
+        style={styles.scheduledCompactDetailsBtn}
+        onPress={onDetailsPress}
+      >
+        <Text style={[FONTS.labelMd, { color: COLORS.primary }]}>Details</Text>
+        <MaterialIcons name="chevron-right" size={16} color={COLORS.primary} />
+      </TouchableOpacity>
     </TouchableOpacity>
   );
 });
 
+import CreateGarageRideScreen from '../screens/CreateGarageRideScreen';
+
 export default function DriverRidesPage() {
   const insets = useSafeAreaInsets();
-  const [driverMode, setDriverMode] = useState<DriverMode>('garage');
+  const { showToast } = useToast();
+  const [isCreateGarageModalVisible, setIsCreateGarageModalVisible] = useState(false);
   const {
-    isOnline: cachedIsOnline,
+    isOnline,
     marketplaceRequests: cachedRequests,
     driverHasActiveRide: cachedHasActiveRide,
     garageRide: cachedGarageRide,
@@ -481,9 +411,14 @@ export default function DriverRidesPage() {
     setDriverHasActiveRide: setCachedHasActiveRide,
     setGarageRide: setCachedGarageRide,
     setGaragePassengers: setCachedGaragePassengers,
+    offlineMode,
   } = useDriverRidesStore();
 
-  const [isOnline, setIsOnline] = useState<boolean | null>(cachedIsOnline);
+  // Effective tab derived from online/offline state:
+  // - Online → always on-demand
+  // - Offline → whichever offlineMode is set in the store (garage | scheduled)
+  const driverMode: DriverMode = isOnline ? 'ondemand' : offlineMode;
+
   const [isUpdatingOnline, setIsUpdatingOnline] = useState(false);
   const [marketplaceRequests, setMarketplaceRequests] = useState<RideListItem[]>(cachedRequests);
   const [loadingRequests, setLoadingRequests] = useState(cachedRequests.length === 0);
@@ -526,20 +461,92 @@ export default function DriverRidesPage() {
     setReadyRideMapId(null);
   }, [selectedRideForMap?.id]);
 
+  const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    let timer: NodeJS.Timeout;
+
+    const fetchLoc = async () => {
+      if (!isOnline) return;
+      try {
+        const { getCurrentPositionAsync, Accuracy } = await import('expo-location');
+        const loc = await getCurrentPositionAsync({ accuracy: Accuracy.Balanced });
+        if (isMounted) {
+          setDriverLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+
+    fetchLoc();
+    if (isOnline) {
+      timer = setInterval(fetchLoc, 15000);
+    }
+    
+    return () => {
+      isMounted = false;
+      if (timer) clearInterval(timer);
+    };
+  }, [isOnline]);
+
+  const sortedMarketplaceRequests = useMemo(() => {
+    let list = [...marketplaceRequests];
+    if (driverLocation) {
+      list = list.map((ride: any) => {
+        let dist = null;
+        if (ride.pickup_latitude && ride.pickup_longitude) {
+          dist = haversineKm(
+            driverLocation.latitude,
+            driverLocation.longitude,
+            Number(ride.pickup_latitude),
+            Number(ride.pickup_longitude)
+          );
+        }
+        return { ...ride, _distanceToPickup: dist };
+      }).sort((a: any, b: any) => {
+        const distA = a._distanceToPickup ?? Infinity;
+        const distB = b._distanceToPickup ?? Infinity;
+        return distA - distB;
+      });
+    }
+    return list;
+  }, [marketplaceRequests, driverLocation]);
+
   useEffect(() => {
     if (!isRideMapReady || !mapRef.current || selectedRideCoordinates.length === 0) {
       return;
     }
 
     const timer = setTimeout(() => {
-      mapRef.current?.fitToCoordinates(selectedRideCoordinates, {
-        edgePadding: { top: 80, right: 40, bottom: 260, left: 40 },
-        animated: true,
-      });
+      if (driverMode === 'ondemand') {
+        if (!isOnline) {
+          showToast('Go online to receive on-demand requests', 'info');
+        } else if (sortedMarketplaceRequests.length > 0 && !loadingRequests) {
+          mapRef.current?.fitToCoordinates(
+            sortedMarketplaceRequests
+              .filter(r => r.pickup_latitude && r.pickup_longitude)
+              .map((r: any) => ({
+                latitude: Number(r.pickup_latitude),
+                longitude: Number(r.pickup_longitude),
+              })),
+            {
+              edgePadding: { top: 80, right: 40, bottom: 260, left: 40 },
+              animated: true,
+            },
+          );
+        }
+      } else {
+        mapRef.current?.fitToCoordinates(selectedRideCoordinates, {
+          edgePadding: { top: 80, right: 40, bottom: 260, left: 40 },
+          animated: true,
+        });
+      }
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [isRideMapReady, selectedRideCoordinates]);
+  }, [isRideMapReady, selectedRideCoordinates, driverMode, isOnline, sortedMarketplaceRequests, loadingRequests]);
 
   const [driverHasActiveRide, setDriverHasActiveRide] = useState(cachedHasActiveRide);
   const [activeFilter, setActiveFilter] = useState('High Fare');
@@ -578,7 +585,8 @@ export default function DriverRidesPage() {
   const scheduledFetchedOnce = useRef(false);
   const [expressingInterestId, setExpressingInterestId] = useState<string | null>(null);
   const [scheduledError, setScheduledError] = useState<string | null>(null);
-
+  const [selectedScheduledRide, setSelectedScheduledRide] = useState<any>(null); // For map highlighting
+  const [detailedScheduledRide, setDetailedScheduledRide] = useState<any>(null); // For the modal
   const errorHoldUntil = useRef<number>(0);
   const initialFetchDone = useRef(cachedRequests.length > 0);
   const isFetchingRequests = useRef(false);
@@ -588,6 +596,12 @@ export default function DriverRidesPage() {
     return getUpcomingScheduledRide(availableScheduledRides);
   }, [availableScheduledRides]);
 
+  // True when a scheduled ride is within the 15-min lock window — blocks garage creation & on-demand
+  const hasImminentScheduledRide = useMemo(
+    () => Boolean(upcomingScheduledRide && isScheduledRideLocked(upcomingScheduledRide)),
+    [upcomingScheduledRide],
+  );
+
   // Active On-Demand Ride State
   const [activeOnDemandRide, setActiveOnDemandRide] = useState<any>(null);
   const [loadingActiveOnDemand, setLoadingActiveOnDemand] = useState(false);
@@ -595,6 +609,8 @@ export default function DriverRidesPage() {
 
   const garageIsActive = garageRide && ['open', 'full', 'departed'].includes(garageRide.status);
   const isOfflineBlocked = Boolean(driverHasActiveRide || garageIsActive);
+
+
 
   useEffect(() => {
     const shouldTrack = Boolean(isOnline) || Boolean(driverHasActiveRide) || Boolean(garageIsActive);
@@ -629,13 +645,11 @@ export default function DriverRidesPage() {
         const profile = await ensureDriverProfile();
         if (isMounted) {
           const nextStatus = Boolean(profile?.is_online);
-          setIsOnline(nextStatus);
           setCachedIsOnline(nextStatus);
         }
       } catch (error: any) {
         if (isMounted) {
           // Profile may not exist yet — default to offline so toggle works
-          setIsOnline(false);
           setCachedIsOnline(false);
         }
       }
@@ -652,7 +666,7 @@ export default function DriverRidesPage() {
     let isMounted = true;
 
     const fetchScheduled = async () => {
-      if (garageRide || isOnline === false) {
+      if (garageRide) {
         if (isMounted) setLoadingScheduled(false);
         return;
       }
@@ -667,18 +681,13 @@ export default function DriverRidesPage() {
           const nextUrl = data?.pagination?.next || data?.next || null;
           const totalCount = data?.pagination?.count ?? rawData.length;
           setScheduledTotalCount(totalCount);
-          // On first page poll, replace state (page 1 only). Preserve loaded pages by merging.
+          // Always replace with fresh server data so cancelled/taken rides vanish instantly
           setAvailableScheduledRides((prev) => {
-            if (prev.length <= rawData.length || prev.length === 0) {
-              setScheduledNextUrl(nextUrl);
+            if (rawData.length > prev.length) {
               LayoutAnimation.configureNext(customZoomAnimation);
-              return rawData;
             }
-            // Merge new page-1 data into existing multi-page data
-            const uniqueMap = new Map();
-            prev.forEach((item: any) => uniqueMap.set(item.id, item));
-            rawData.forEach((item: any) => uniqueMap.set(item.id, item));
-            return Array.from(uniqueMap.values());
+            setScheduledNextUrl(nextUrl);
+            return rawData;
           });
           setScheduledError(null);
           scheduledFetchedOnce.current = true;
@@ -787,17 +796,14 @@ export default function DriverRidesPage() {
             const nextUrl = data?.pagination?.next || data?.next || null;
             const totalCount = data?.pagination?.count ?? list.length;
             setMarketplaceTotalCount(totalCount);
+            // Always replace with the fresh server list so stale/cancelled rides disappear instantly
+            setMarketplaceNextUrl(nextUrl);
             setMarketplaceRequests((prev) => {
-              if (prev.length > list.length && prev.length > 0) {
-                const uniqueMap = new Map();
-                prev.forEach((item: any) => uniqueMap.set(item.id, item));
-                list.forEach((item: any) => uniqueMap.set(item.id, item));
-                return Array.from(uniqueMap.values());
-              } else {
-                setMarketplaceNextUrl(nextUrl);
+              // Animate only when rows are added
+              if (list.length > prev.length) {
                 LayoutAnimation.configureNext(customZoomAnimation);
-                return list as RideListItem[];
               }
+              return list as RideListItem[];
             });
             setRequestsError(null);
           }
@@ -828,8 +834,76 @@ export default function DriverRidesPage() {
   }, [requestsError, isOnline]);
 
 
+  // ── Auto-offline before scheduled ride ──
+  useEffect(() => {
+    if (!upcomingScheduledRide || !isOnline) return;
+
+    const departureMs = new Date(`${upcomingScheduledRide.departure_date}T${upcomingScheduledRide.window_start}`).getTime();
+    if (Number.isNaN(departureMs)) return;
+
+    const now = Date.now();
+    const lockMs = SCHEDULED_RIDE_AUTO_OFFLINE_MINUTES * 60000;
+    const timeUntilLock = departureMs - lockMs - now;
+
+    const executeAutoOffline = async () => {
+      try {
+        await driverApi.updateAvailability({ is_online: false });
+        setCachedIsOnline(false);
+        showToast(`You've been taken offline — your scheduled ride departs in ${SCHEDULED_RIDE_AUTO_OFFLINE_MINUTES} minutes.`, 'info');
+      } catch (err) {
+        console.warn('Failed to auto-offline', err);
+      }
+    };
+
+    if (timeUntilLock <= 0) {
+      // We are already inside the lock window
+      executeAutoOffline();
+      return;
+    }
+
+    const timerId = setTimeout(() => {
+      executeAutoOffline();
+    }, timeUntilLock);
+
+    return () => clearTimeout(timerId);
+  }, [upcomingScheduledRide, isOnline]);
+
   const handleAcceptRide = useCallback(async (rideId: string) => {
     if (acceptingRideId) return;
+
+    // Scheduled ride proximity guard
+    if (upcomingScheduledRide && driverLocation) {
+      const onDemandRide = marketplaceRequests.find(r => r.id === rideId);
+      if (onDemandRide) {
+        let distToScheduled = null;
+        if (upcomingScheduledRide.origin_latitude && upcomingScheduledRide.origin_longitude) {
+          distToScheduled = haversineKm(
+            driverLocation.latitude,
+            driverLocation.longitude,
+            Number(upcomingScheduledRide.origin_latitude),
+            Number(upcomingScheduledRide.origin_longitude)
+          );
+        }
+        
+        const guard = canAcceptOnDemandNearScheduled(onDemandRide.estimated_distance_km, distToScheduled);
+        if (!guard.allowed) {
+          Alert.alert(
+            'Distance Warning',
+            `${guard.reason}\n${guard.suggestion}`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Accept Anyway', style: 'destructive', onPress: () => performAcceptRide(rideId) }
+            ]
+          );
+          return;
+        }
+      }
+    }
+
+    performAcceptRide(rideId);
+  }, [acceptingRideId, upcomingScheduledRide, driverLocation, marketplaceRequests]);
+
+  const performAcceptRide = async (rideId: string) => {
     setAcceptingRideId(rideId);
     try {
       await driverApi.acceptRideRequest(rideId);
@@ -873,7 +947,7 @@ export default function DriverRidesPage() {
     } finally {
       setAcceptingRideId(null);
     }
-  }, [acceptingRideId]);
+  };
 
   const loadMoreScheduled = useCallback(async () => {
     if (!scheduledNextUrl || loadingMoreScheduled) return;
@@ -931,7 +1005,7 @@ export default function DriverRidesPage() {
         while (attempts < maxAttempts) {
           try {
             const { getCurrentPositionAsync, Accuracy } = await import('expo-location');
-            const loc = await getCurrentPositionAsync({ accuracy: Accuracy.Balanced, timeout: 5000 });
+            const loc = await getCurrentPositionAsync({ accuracy: Accuracy.Balanced });
             payload = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
             break;
           } catch (e) {
@@ -989,7 +1063,6 @@ export default function DriverRidesPage() {
     setIsUpdatingOnline(true);
     try {
       await driverApi.updateAvailability({ is_online: nextStatus });
-      setIsOnline(nextStatus);
       setCachedIsOnline(nextStatus);
       setRequestsError(null);
     } catch (error: any) {
@@ -997,7 +1070,6 @@ export default function DriverRidesPage() {
         try {
           await ensureDriverProfile();
           await driverApi.updateAvailability({ is_online: nextStatus });
-          setIsOnline(nextStatus);
           setCachedIsOnline(nextStatus);
           setRequestsError(null);
         } catch (retryError: any) {
@@ -1095,11 +1167,7 @@ export default function DriverRidesPage() {
 
   const modeLocked = garageIsActive;
 
-  useEffect(() => {
-    if (modeLocked && driverMode !== 'garage') {
-      setDriverMode('garage');
-    }
-  }, [modeLocked, driverMode]);
+  // NOTE: driverMode is fully derived (isOnline ? 'ondemand' : offlineMode) — no setter needed.
 
   const [cancellingInterestId, setCancellingInterestId] = useState<string | null>(null);
 
@@ -1160,31 +1228,52 @@ export default function DriverRidesPage() {
   const scheduledKeyExtractor = useCallback((item: any) => item.id, []);
   const requestKeyExtractor = useCallback((item: RideListItem) => item.id, []);
 
-  const renderScheduledItem = useCallback(({ item }: { item: any }) => (
-    <View style={{ paddingHorizontal: 16 }}>
-      <ScheduledRideCard
-        ride={item}
-        onExpressInterest={handleExpressInterest}
-        onCancelInterest={handleCancelInterest}
-        isExpressing={expressingInterestId === item.id}
-        isCancelling={cancellingInterestId === item.id}
-        disabled={false}
-      />
-    </View>
-  ), [expressingInterestId, cancellingInterestId, handleExpressInterest, handleCancelInterest]);
+  const scheduledMapRef = useRef<MapView>(null);
 
-  const renderRequestItem = useCallback(({ item: ride }: { item: RideListItem }) => {
+  const renderScheduledItem = useCallback(({ item }: { item: any }) => (
+    <ScheduledRideCard
+      ride={item}
+      isSelected={selectedScheduledRide?.id === item.id}
+      onCardPress={() => {
+        setSelectedScheduledRide(item);
+        // Zoom map to this ride's route
+        const oLat = Number(item.origin_latitude);
+        const oLng = Number(item.origin_longitude);
+        const dLat = Number(item.destination_latitude);
+        const dLng = Number(item.destination_longitude);
+        if (oLat && oLng && dLat && dLng) {
+          const coords = [{ latitude: oLat, longitude: oLng }];
+          if (Array.isArray(item.stops)) {
+            item.stops.forEach((s: any) => {
+              const sLat = Number(s.latitude);
+              const sLng = Number(s.longitude);
+              if (sLat && sLng) coords.push({ latitude: sLat, longitude: sLng });
+            });
+          }
+          coords.push({ latitude: dLat, longitude: dLng });
+          scheduledMapRef.current?.fitToCoordinates(
+            coords,
+            { edgePadding: { top: 40, right: 40, bottom: 40, left: 40 }, animated: true },
+          );
+        }
+      }}
+      onDetailsPress={() => setDetailedScheduledRide(item)}
+    />
+  ), [selectedScheduledRide?.id, setSelectedScheduledRide, setDetailedScheduledRide]);
+
+  const renderRequestItem = useCallback(({ item: ride }: { item: any }) => {
     const requestedSeats = ride.requested_seats || 0;
-    const passengersLabel = requestedSeats
-      ? `${requestedSeats} passenger${requestedSeats > 1 ? 's' : ''}`
-      : 'Passengers —';
+    const distToPickup = typeof ride._distanceToPickup === 'number' 
+      ? `${ride._distanceToPickup.toFixed(1)} km` 
+      : null;
     return (
-      <View style={{ paddingHorizontal: 16 }}>
+      <View style={{ paddingHorizontal: 16, opacity: isOnline ? 1 : 0.4 }} pointerEvents={isOnline ? 'auto' : 'none'}>
         <RequestCard
           name={getStudentName(ride.student)}
           rating="New"
           fare={formatCurrency(ride.total_fare)}
-          passengers={passengersLabel}
+          seats={requestedSeats}
+          distToPickup={distToPickup}
           from={ride.pickup_address || 'Pickup location'}
           to={ride.dropoff_address || 'Dropoff location'}
           distance={formatDistance(ride.estimated_distance_km)}
@@ -1200,6 +1289,22 @@ export default function DriverRidesPage() {
     );
   }, [acceptingRideId, driverHasActiveRide, modeLocked, handleAcceptRide, isOnline]);
 
+  if (activeOnDemandRide || garageRide) {
+    return (
+      <ActiveRideScreen 
+        activeOnDemandRide={activeOnDemandRide}
+        onAdvanceRide={handleAdvanceRide}
+        advancingRideId={advancingRideId}
+        garageRide={garageRide}
+        garagePassengers={garagePassengers}
+        onDepartGarage={handleDepartGarageRide}
+        onCompleteGarage={handleCompleteGarageRide}
+        onCancelGarage={handleCancelGarageRide}
+        errorMessage={garageError || requestsError}
+      />
+    );
+  }
+
   return (
     <View style={styles.container}>
       {/* Scheduled Ride Awareness Banner */}
@@ -1212,199 +1317,172 @@ export default function DriverRidesPage() {
         </View>
       )}
 
-      {/* Enterprise Status Board */}
-      <View style={[styles.enterpriseHeader, AMBIENT_SHADOW]}>
-        {/* Status Row */}
-        <View style={styles.enterpriseStatusRow}>
-          <View style={styles.enterpriseStatusLeft}>
-            <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 0.5 }]}>
-              System Status
-            </Text>
-            <View style={styles.enterpriseStatusValue}>
-              {isOnline === null ? (
-                <View style={{ marginRight: 8 }}><LoadingOverlay visible={true} inline size={24} /></View>
-              ) : (
-                <View style={[styles.pulseDot, { backgroundColor: isOnline ? COLORS.primaryContainer : COLORS.error }]} />
-              )}
-              <Text style={[FONTS.headlineMd, { color: COLORS.onSurface }]}>
-                {isOnline === null ? 'Connecting...' : isOnline ? 'Online & Active' : 'Offline'}
+      {/* ── Scheduled Tab: Map + List hybrid ── */}
+      {driverMode === 'scheduled' && (
+        <View style={{ flex: 1 }}>
+          {/* ── Map Panel ── */}
+          <View style={styles.scheduledMapPanel}>
+            <MapView
+              ref={scheduledMapRef}
+              style={[StyleSheet.absoluteFillObject, { height: '110%', marginBottom: -30 }]}
+              provider={PROVIDER_GOOGLE}
+              initialRegion={{
+                latitude: availableScheduledRides.length > 0
+                  ? Number(availableScheduledRides[0].origin_latitude) || 9.6171
+                  : 9.6171,
+                longitude: availableScheduledRides.length > 0
+                  ? Number(availableScheduledRides[0].origin_longitude) || 6.5492
+                  : 6.5492,
+                latitudeDelta: 0.06,
+                longitudeDelta: 0.06,
+              }}
+              showsUserLocation
+              showsMyLocationButton={false}
+            >
+              {availableScheduledRides.map((ride: any) => {
+                const oLat = Number(ride.origin_latitude);
+                const oLng = Number(ride.origin_longitude);
+                const dLat = Number(ride.destination_latitude);
+                const dLng = Number(ride.destination_longitude);
+                if (!oLat || !oLng) return null;
+                const isActive = selectedScheduledRide?.id === ride.id;
+                return (
+                  <React.Fragment key={ride.id}>
+                    {/* Origin pin */}
+                    <Marker
+                      coordinate={{ latitude: oLat, longitude: oLng }}
+                      onPress={() => {
+                        setSelectedScheduledRide(ride);
+                        if (dLat && dLng) {
+                          const coords = [{ latitude: oLat, longitude: oLng }];
+                          if (Array.isArray(ride.stops)) {
+                            ride.stops.forEach((s: any) => {
+                              const sLat = Number(s.latitude);
+                              const sLng = Number(s.longitude);
+                              if (sLat && sLng) coords.push({ latitude: sLat, longitude: sLng });
+                            });
+                          }
+                          coords.push({ latitude: dLat, longitude: dLng });
+                          scheduledMapRef.current?.fitToCoordinates(
+                            coords,
+                            { edgePadding: { top: 40, right: 40, bottom: 40, left: 40 }, animated: true },
+                          );
+                        }
+                      }}
+                    >
+                      <View style={[
+                        styles.scheduledMapPin,
+                        isActive && styles.scheduledMapPinActive,
+                      ]}>
+                        <MaterialIcons
+                          name="trip-origin"
+                          size={isActive ? 16 : 12}
+                          color="#fff"
+                        />
+                      </View>
+                    </Marker>
+
+                    {/* Destination pin — only shown for selected ride */}
+                    {isActive && dLat && dLng && (
+                      <>
+                        <Marker coordinate={{ latitude: dLat, longitude: dLng }}>
+                          <View style={styles.scheduledMapPinDest}>
+                            <MaterialIcons name="place" size={14} color="#fff" />
+                          </View>
+                        </Marker>
+                        
+                        {/* Render intermediate stops */}
+                        {Array.isArray(ride.stops) && ride.stops.map((stop: any, idx: number) => {
+                          const sLat = Number(stop.latitude);
+                          const sLng = Number(stop.longitude);
+                          if (!sLat || !sLng) return null;
+                          return (
+                            <Marker key={stop.id || idx} coordinate={{ latitude: sLat, longitude: sLng }}>
+                              <View style={styles.scheduledMapPinStop}>
+                                <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>{idx + 1}</Text>
+                              </View>
+                            </Marker>
+                          );
+                        })}
+
+                        {/* Route line */}
+                        <Polyline
+                          coordinates={[
+                            { latitude: oLat, longitude: oLng },
+                            ...(Array.isArray(ride.stops) 
+                              ? ride.stops
+                                  .map((s: any) => ({ latitude: Number(s.latitude), longitude: Number(s.longitude) }))
+                                  .filter((c: any) => c.latitude && c.longitude)
+                              : []),
+                            { latitude: dLat, longitude: dLng },
+                          ]}
+                          strokeColor={COLORS.primary}
+                          strokeWidth={3}
+                          lineDashPattern={[6, 4]}
+                        />
+                      </>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </MapView>
+
+            {/* Ride count badge */}
+            <View style={styles.scheduledMapBadge} pointerEvents="none">
+              <MaterialIcons name="event-note" size={14} color={COLORS.onPrimary} />
+              <Text style={[FONTS.labelMd, { color: COLORS.onPrimary, marginLeft: 4 }]}>
+                {availableScheduledRides.length} ride{availableScheduledRides.length !== 1 ? 's' : ''}
               </Text>
             </View>
-            <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginTop: 2 }]}>
-              {isOnline ? 'Receiving live matches' : 'Matching paused'}
-            </Text>
-            {isOnline && isOfflineBlocked && (
-              <Text style={[FONTS.labelMd, { color: COLORS.error, marginTop: 4 }]}>Offline locked during active ride</Text>
+
+            {loadingScheduled && (
+              <View style={styles.scheduledMapLoading}>
+                <LoadingOverlay visible={true} inline size={32} />
+              </View>
             )}
           </View>
-          <Switch
-            value={Boolean(isOnline)}
-            onValueChange={handleToggleOnline}
-            disabled={Boolean(isUpdatingOnline || isOnline === null || (isOnline && isOfflineBlocked))}
-            trackColor={{ false: COLORS.surfaceContainerHigh, true: COLORS.primaryContainer }}
-            thumbColor={COLORS.surface}
-          />
+
+          {/* ── List Panel ── */}
+          {scheduledError ? (
+            <View style={[styles.emptyStateContainer, { margin: 16 }]}>
+              <MaterialIcons name="error-outline" size={40} color={COLORS.error} />
+              <Text style={[FONTS.bodyMd, { color: COLORS.error, marginTop: 8, textAlign: 'center' }]}>{scheduledError}</Text>
+            </View>
+          ) : availableScheduledRides.length === 0 && !loadingScheduled ? (
+            <View style={[styles.emptyStateContainer, { margin: 16 }]}>
+              <MaterialIcons name="event-busy" size={40} color={COLORS.surfaceContainerHigh} />
+              <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, marginTop: 8, textAlign: 'center' }]}>No available schedules right now.</Text>
+            </View>
+          ) : (
+            <View style={styles.scheduledListPanel}>
+              <View style={styles.scheduledListHeader}>
+                <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>TAP A RIDE TO VIEW ROUTE & DETAILS</Text>
+              </View>
+              <CustomRefreshFlatList
+                data={availableScheduledRides}
+                keyExtractor={scheduledKeyExtractor}
+                renderItem={renderScheduledItem}
+                showsVerticalScrollIndicator={false}
+                initialNumToRender={8}
+                maxToRenderPerBatch={10}
+                windowSize={5}
+                removeClippedSubviews={Platform.OS === 'android'}
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                ItemSeparatorComponent={ListItemSeparator}
+                onEndReached={loadMoreScheduled}
+                onEndReachedThreshold={0.5}
+                ListFooterComponent={loadingMoreScheduled ? <LoadingOverlay visible={true} inline size={32} /> : null}
+              />
+            </View>
+          )}
         </View>
-        
-        {/* Mode Segmented Control */}
-        <View style={styles.segmentedControl}>
-          <TouchableOpacity
-            style={[styles.segmentBtn, driverMode === 'garage' && styles.segmentBtnActive]}
-            onPress={() => setDriverMode('garage')}
-          >
-            <MaterialIcons name="event-note" size={18} color={driverMode === 'garage' ? COLORS.onPrimary : COLORS.onSurfaceVariant} style={{ marginRight: 6 }} />
-            <Text style={driverMode === 'garage' ? styles.segmentTextActive : styles.segmentText}>Scheduled</Text>
-            {Boolean(scheduledTotalCount > 0 || availableScheduledRides.length > 0) && (
-              <View style={styles.tabBadge}>
-                <Text style={styles.tabBadgeText}>{scheduledTotalCount || availableScheduledRides.length}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.segmentBtn, driverMode === 'ondemand' && styles.segmentBtnActive, modeLocked && styles.segmentBtnDisabled]}
-            onPress={() => {
-              if (!modeLocked) setDriverMode('ondemand');
-            }}
-            disabled={Boolean(modeLocked)}
-          >
-            <MaterialIcons name="bolt" size={18} color={driverMode === 'ondemand' ? COLORS.onPrimary : COLORS.onSurfaceVariant} style={{ marginRight: 6 }} />
-            <Text style={driverMode === 'ondemand' ? styles.segmentTextActive : styles.segmentText}>On-Demand</Text>
-            {Boolean(marketplaceTotalCount > 0 || marketplaceRequests.length > 0) && (
-              <View style={styles.tabBadge}>
-                <Text style={styles.tabBadgeText}>{marketplaceTotalCount || marketplaceRequests.length}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        </View>
-        {modeLocked && (
-          <View style={styles.modeLockedAlert}>
-            <MaterialIcons name="lock" size={14} color={COLORS.onSurfaceVariant} />
-            <Text style={styles.modeLockedText}>Complete active garage session to switch modes.</Text>
-          </View>
-        )}
-      </View>
-
-      {/* ── Garage / Scheduled Tab ── */}
-      <CustomRefreshFlatList
-        style={driverMode !== 'garage' ? { display: 'none', position: 'absolute' } : { flex: 1 }}
-        data={garageRide || loadingGarage ? [] : availableScheduledRides}
-        keyExtractor={scheduledKeyExtractor}
-        renderItem={renderScheduledItem}
-        contentContainerStyle={[styles.scrollContent, { paddingTop: 8 }]}
-        showsVerticalScrollIndicator={false}
-        initialNumToRender={6}
-        maxToRenderPerBatch={8}
-        windowSize={5}
-        removeClippedSubviews={Platform.OS === 'android'}
-        refreshing={refreshing}
-        onRefresh={onRefresh}
-        ListHeaderComponent={
-          (loadingGarage || garageRide || loadingScheduled || scheduledError || availableScheduledRides.length === 0) ? (
-          <View style={styles.sectionWrap}>
-            {loadingGarage ? (
-              <View style={[styles.schedulesListContainer, AMBIENT_SHADOW]}>
-                <View style={styles.emptyStateContainer}>
-                  <LoadingOverlay visible={true} inline size={60} />
-                  <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, marginTop: 12 }]}>Loading garage ride…</Text>
-                </View>
-              </View>
-            ) : garageRide ? (
-              <View style={[styles.schedulesListContainer, AMBIENT_SHADOW]}>
-                <View style={styles.sectionHeaderEnterprise}>
-                  <View style={styles.sectionTitleRow}>
-                    <MaterialIcons name="directions-car" size={24} color={COLORS.primary} />
-                    <Text style={[FONTS.headlineMd, { color: COLORS.onSurface, marginLeft: 8 }]}>Active Garage Ride</Text>
-                  </View>
-                  <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginTop: 4 }]}>
-                    Ref: {garageRide.reference}
-                  </Text>
-                </View>
-
-                <View style={styles.premiumCard}>
-                  <View style={{ padding: 16 }}>
-                    <View style={styles.qrWrap}>
-                      <QRCode value={garageRide.qr_token} size={180} />
-                      <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginTop: 8 }]}>QR Token: {garageRide.qr_token}</Text>
-                    </View>
-
-                    <View style={styles.rideInfoRow}>
-                      <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Seats</Text>
-                      <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}> {garageRide.booked_seats}/{garageRide.total_seats} booked </Text>
-                    </View>
-                    <View style={styles.rideInfoRow}>
-                      <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Fare per seat</Text>
-                      <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}> {formatCurrency(garageRide.fare_per_seat)} </Text>
-                    </View>
-                    <View style={styles.rideInfoRow}>
-                      <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Route</Text>
-                      <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}> {garageRide.origin_address} → {garageRide.destination_address} </Text>
-                    </View>
-
-                    <Text style={[FONTS.labelLg, { color: COLORS.onSurfaceVariant, marginTop: 16 }]}>Passengers</Text>
-                    {garagePassengers.length === 0 ? (
-                      <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginTop: 6 }]}>No passengers yet.</Text>
-                    ) : (
-                      garagePassengers.map((p) => (
-                        <View key={p.id} style={styles.passengerRow}>
-                          <MaterialIcons name="person" size={16} color={COLORS.primaryContainer} />
-                          <Text style={[FONTS.bodyMd, { color: COLORS.onSurface }]}> {getStudentName(p.student as any)} </Text>
-                          <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant }]}> ({p.seats_booked} seats) </Text>
-                        </View>
-                      ))
-                    )}
-
-                    {garageError ? <Text style={styles.errorText}>{garageError}</Text> : null}
-
-                    <View style={styles.actionRow}>
-                      <TouchableOpacity style={styles.cancelBtn} onPress={handleCancelGarageRide}>
-                        <Text style={[FONTS.labelLg, { color: COLORS.error }]}>Cancel Ride</Text>
-                      </TouchableOpacity>
-                      {garageRide.status === 'departed' ? (
-                        <TouchableOpacity style={styles.primaryBtn} onPress={handleCompleteGarageRide}>
-                          <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>Complete</Text>
-                        </TouchableOpacity>
-                      ) : (
-                        <TouchableOpacity style={styles.primaryBtn} onPress={handleDepartGarageRide}>
-                          <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>Depart</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  </View>
-                </View>
-              </View>
-            ) : loadingScheduled || scheduledError || availableScheduledRides.length === 0 ? (
-              <View style={[styles.schedulesListContainer, AMBIENT_SHADOW]}>
-                {loadingScheduled ? (
-                  <View style={styles.emptyStateContainer}>
-                    <LoadingOverlay visible={true} inline size={60} />
-                    <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, marginTop: 12 }]}>Loading schedules...</Text>
-                  </View>
-                ) : scheduledError ? (
-                  <View style={styles.emptyStateContainer}>
-                    <MaterialIcons name="error-outline" size={48} color={COLORS.error} />
-                    <Text style={[FONTS.bodyMd, { color: COLORS.error, textAlign: 'center', marginTop: 12 }]}>{scheduledError}</Text>
-                  </View>
-                ) : (
-                  <View style={styles.emptyStateContainer}>
-                    <MaterialIcons name="event-busy" size={48} color={COLORS.surfaceContainerHigh} />
-                    <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, textAlign: 'center', marginTop: 12 }]}>No available schedules right now.</Text>
-                  </View>
-                )}
-              </View>
-            ) : null}
-          </View>
-          ) : null
-        }
-        ItemSeparatorComponent={ListItemSeparator}
-        onEndReached={loadMoreScheduled}
-        onEndReachedThreshold={0.5}
-        ListFooterComponent={loadingMoreScheduled ? <LoadingOverlay visible={true} inline size={40} /> : null}
-      />
+      )}
 
       {/* ── On-Demand Tab ── */}
       <CustomRefreshFlatList
         style={driverMode !== 'ondemand' ? { display: 'none', position: 'absolute' } : { flex: 1 }}
-        data={!loadingRequests && !requestsError ? marketplaceRequests : []}
+        data={!loadingRequests && !requestsError ? sortedMarketplaceRequests : []}
         keyExtractor={requestKeyExtractor}
         renderItem={renderRequestItem}
         contentContainerStyle={[styles.scrollContent, { paddingTop: 8 }]}
@@ -1417,78 +1495,7 @@ export default function DriverRidesPage() {
         onRefresh={onRefresh}
         ListHeaderComponent={
           <>
-            {activeOnDemandRide && (
-              <View style={[styles.schedulesListContainer, AMBIENT_SHADOW, { marginBottom: 16 }]}>
-                <View style={[styles.premiumCard, { borderColor: COLORS.primary, borderWidth: 1, borderRadius: 12 }]}>
-                  <View style={[styles.premiumCardHeader, { backgroundColor: 'rgba(0, 109, 54, 0.05)' }]}>
-                    <View style={styles.requestUser}>
-                      <View style={[styles.avatar, { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.primary }]}>
-                        <Text style={[FONTS.labelMd, { color: COLORS.onPrimary }]}>
-                          {(getStudentName(activeOnDemandRide?.student) || 'P').charAt(0).toUpperCase()}
-                        </Text>
-                      </View>
-                      <View>
-                        <Text style={[FONTS.labelMd, { color: COLORS.onSurface }]}>{getStudentName(activeOnDemandRide?.student) || 'Passenger'}</Text>
-                        <View style={styles.ratingRow}>
-                          <MaterialIcons name="trip-origin" size={12} color={COLORS.primary} />
-                          <Text style={[FONTS.labelMd, { color: COLORS.primary }]}>ACTIVE RIDE</Text>
-                        </View>
-                      </View>
-                    </View>
-                    <View style={[styles.premiumCardBadge, { backgroundColor: COLORS.primaryContainer }]}>
-                      <Text style={[styles.premiumCardBadgeText, { color: COLORS.onPrimaryContainer }]}>
-                        {activeOnDemandRide.status.toUpperCase()}
-                      </Text>
-                    </View>
-                  </View>
 
-                  <View style={styles.premiumCardBody}>
-                    <View style={styles.premiumCardTimeCol}>
-                      <Text style={[FONTS.titleLg, { color: COLORS.onSurface }]} numberOfLines={1} adjustsFontSizeToFit>
-                        {formatCurrency(activeOnDemandRide.total_fare)}
-                      </Text>
-                      <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginTop: 4 }]}>
-                        {formatDistance(activeOnDemandRide.estimated_distance_km)}
-                      </Text>
-                    </View>
-
-                    <View style={styles.premiumCardRouteCol}>
-                      <View style={styles.timelineRow}>
-                        <View style={styles.timelineGraphic}>
-                          <View style={styles.timelineDotTop} />
-                          <View style={styles.timelineLine} />
-                        </View>
-                        <Text style={[FONTS.bodyMd, { color: COLORS.onSurface, flex: 1, paddingBottom: 4 }]} numberOfLines={2}>
-                          {activeOnDemandRide.pickup_address || 'Pickup location'}
-                        </Text>
-                      </View>
-                      <View style={styles.timelineRow}>
-                        <View style={styles.timelineGraphic}>
-                          <View style={styles.timelineDotBottom} />
-                        </View>
-                        <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, flex: 1 }]} numberOfLines={2}>
-                          {activeOnDemandRide.dropoff_address || 'Dropoff location'}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                  
-                  <TouchableOpacity
-                    style={{ backgroundColor: activeOnDemandRide.status === 'pending_completion' ? COLORS.surfaceVariant : COLORS.primary, paddingVertical: 12, alignItems: 'center' }}
-                    onPress={() => handleAdvanceRide(activeOnDemandRide.id)}
-                    disabled={advancingRideId === activeOnDemandRide.id || activeOnDemandRide.status === 'pending_completion'}
-                  >
-                    {advancingRideId === activeOnDemandRide.id ? (
-                      <LoadingOverlay visible={true} inline size={24} />
-                    ) : (
-                      <Text style={[FONTS.labelLg, { color: activeOnDemandRide.status === 'pending_completion' ? COLORS.onSurfaceVariant : COLORS.onPrimary }]}>
-                        {activeOnDemandRide.status === 'accepted' ? 'Confirm Arrival' : activeOnDemandRide.status === 'arrived' ? 'Start Trip' : activeOnDemandRide.status === 'in_progress' ? 'Complete Trip' : activeOnDemandRide.status === 'pending_completion' ? 'Awaiting Student Confirmation...' : 'Advance Status'}
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
 
             {(loadingRequests || requestsError || marketplaceRequests.length === 0) && (
               <View style={[styles.schedulesListContainer, AMBIENT_SHADOW, { marginBottom: 16 }]}>
@@ -1516,6 +1523,30 @@ export default function DriverRidesPage() {
         onEndReachedThreshold={0.5}
         ListFooterComponent={loadingMoreMarketplace ? <LoadingOverlay visible={true} inline size={40} /> : null}
       />
+
+      {/* ── Garage Tab ── */}
+      {driverMode === 'garage' && (
+        <View style={styles.garageTabContainer}>
+          {garageRide ? null : (
+            <View style={styles.premiumEmptyGarage}>
+              <View style={styles.premiumEmptyGarageIcon}>
+                <MaterialIcons name="local-taxi" size={48} color={COLORS.primary} />
+              </View>
+              <Text style={styles.premiumEmptyGarageTitle}>No Active Session</Text>
+              <Text style={styles.premiumEmptyGarageSub}>Start a garage session to pick up passengers directly from bus stops or designated zones.</Text>
+              <TouchableOpacity style={styles.premiumGarageCta} onPress={() => setIsCreateGarageModalVisible(true)} activeOpacity={0.8}>
+                <MaterialIcons name="add" size={24} color="#FFF" />
+                <Text style={styles.premiumGarageCtaText}>Create Garage Session</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* ── Create Garage Ride Modal ── */}
+      <Modal visible={isCreateGarageModalVisible} animationType="slide" onRequestClose={() => setIsCreateGarageModalVisible(false)}>
+        <CreateGarageRideScreen onBack={() => setIsCreateGarageModalVisible(false)} />
+      </Modal>
 
       <Modal
         visible={!!selectedRideForMap}
@@ -1688,6 +1719,153 @@ export default function DriverRidesPage() {
           )}
         </View>
       </Modal>
+
+      {/* ── Scheduled Ride Modal ── */}
+      <Modal
+        visible={!!detailedScheduledRide}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setDetailedScheduledRide(null)}
+      >
+        <View style={styles.mapSheetOverlay}>
+          <TouchableOpacity
+            style={styles.mapSheetBackdrop}
+            activeOpacity={1}
+            onPress={() => setDetailedScheduledRide(null)}
+          />
+
+          {detailedScheduledRide && (() => {
+            const ride = detailedScheduledRide;
+            const date = new Date(`${ride.departure_date}T${ride.window_start}`);
+            const isInterested = ride.driver_interest_status === 'interested';
+            const isExp = expressingInterestId === ride.id;
+            const isCan = cancellingInterestId === ride.id;
+            return (
+              <View style={[styles.mapSheetContainer, { paddingBottom: insets.bottom + 8 }]}>
+                <View style={styles.mapSheetHandleWrap}>
+                  <View style={styles.mapSheetHandle} />
+                </View>
+
+                {/* Header */}
+                <View style={styles.mapSheetHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[FONTS.titleMd, { color: COLORS.onSurface }]}>Scheduled Ride</Text>
+                    <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginTop: 2 }]}>
+                      {date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })} · {date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                    </Text>
+                  </View>
+                  {isInterested && (
+                    <View style={styles.premiumCardInterestedBadge}>
+                      <MaterialIcons name="check" size={12} color={COLORS.primary} />
+                      <Text style={[FONTS.labelMd, { color: COLORS.primary, marginLeft: 4 }]}>Interested</Text>
+                    </View>
+                  )}
+                  <TouchableOpacity onPress={() => setDetailedScheduledRide(null)} style={{ padding: 4 }}>
+                    <MaterialIcons name="close" size={22} color={COLORS.onSurfaceVariant} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Route */}
+                <View style={styles.mapSheetRouteCard}>
+                  <View style={styles.timelineRow}>
+                    <View style={styles.timelineGraphic}>
+                      <View style={styles.timelineDotTop} />
+                      <View style={styles.timelineLine} />
+                    </View>
+                    <View style={styles.mapSheetRouteText}>
+                      <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Pickup</Text>
+                      <Text style={[FONTS.bodyMd, { color: COLORS.onSurface }]}>{ride.origin_address}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.timelineRow}>
+                    <View style={styles.timelineGraphic}>
+                      <View style={styles.timelineDotBottom} />
+                    </View>
+                    <View style={styles.mapSheetRouteText}>
+                      <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Dropoff</Text>
+                      <Text style={[FONTS.bodyMd, { color: COLORS.onSurface }]}>{ride.destination_address}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Chips row */}
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  <View style={styles.premiumCardInfoItem}>
+                    <MaterialIcons name="directions-car" size={14} color={COLORS.outline} />
+                    <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginLeft: 5 }]}>
+                      {Array.isArray(ride.allowed_vehicle_types) && ride.allowed_vehicle_types.length > 0
+                        ? ride.allowed_vehicle_types.map((v: string) => v.replace(/_/g, ' ')).join(', ')
+                        : String(ride.vehicle_size || '').replace(/_/g, ' ')}
+                    </Text>
+                  </View>
+                  <View style={styles.premiumCardInfoItem}>
+                    <MaterialIcons name="people" size={14} color={COLORS.outline} />
+                    <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginLeft: 5 }]}>{ride.passenger_count || 0} pax</Text>
+                  </View>
+                  {(ride.stops_count > 0) && (
+                    <View style={styles.premiumCardInfoItem}>
+                      <MaterialIcons name="alt-route" size={14} color={COLORS.outline} />
+                      <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginLeft: 5 }]}>{ride.stops_count} stop{ride.stops_count !== 1 ? 's' : ''}</Text>
+                    </View>
+                  )}
+                  {ride.standard_enabled && (
+                    <View style={[styles.premiumCardInfoItem, { backgroundColor: COLORS.primaryContainer }]}>
+                      <Text style={[FONTS.bodySm, { color: COLORS.onPrimaryContainer }]}>Std ₦{Number(ride.standard_price || 0).toLocaleString()}</Text>
+                    </View>
+                  )}
+                  {ride.premium_enabled && (
+                    <View style={[styles.premiumCardInfoItem, { backgroundColor: COLORS.surfaceContainerHigh }]}>
+                      <Text style={[FONTS.bodySm, { color: COLORS.onSurface }]}>Prem ₦{Number(ride.premium_price || 0).toLocaleString()}</Text>
+                    </View>
+                  )}
+                  {ride.freight_enabled && (
+                    <View style={[styles.premiumCardInfoItem, { backgroundColor: COLORS.surfaceContainerHigh }]}>
+                      <Text style={[FONTS.bodySm, { color: COLORS.onSurface }]}>Freight ₦{Number(ride.freight_price || 0).toLocaleString()}</Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Action buttons */}
+                <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
+                  {isInterested ? (
+                    <TouchableOpacity
+                      style={[styles.mapSheetAcceptButton, { flex: 1, backgroundColor: COLORS.errorContainer, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' }]}
+                      onPress={() => { handleCancelInterest(ride.id); setDetailedScheduledRide(null); }}
+                      disabled={isCan}
+                      activeOpacity={0.85}
+                    >
+                      {isCan
+                        ? <LoadingOverlay visible={true} inline size={22} />
+                        : <>
+                            <MaterialIcons name="close" size={20} color={COLORS.error} />
+                            <Text style={[FONTS.labelLg, { color: COLORS.error }]}>Withdraw Interest</Text>
+                          </>
+                      }
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={[styles.mapSheetAcceptButton, { flex: 1, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' }]}
+                      onPress={() => { handleExpressInterest(ride.id); setDetailedScheduledRide(null); }}
+                      disabled={isExp}
+                      activeOpacity={0.85}
+                    >
+                      {isExp
+                        ? <LoadingOverlay visible={true} inline size={22} />
+                        : <>
+                            <MaterialIcons name="check-circle" size={20} color={COLORS.onPrimary} />
+                            <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>Express Interest</Text>
+                          </>
+                      }
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+              </View>
+            );
+          })()}
+        </View>
+      </Modal>
+
     </View>
   );
 }
@@ -1697,7 +1875,8 @@ const RequestCard = React.memo(function RequestCard({
   name,
   rating,
   fare,
-  passengers,
+  seats,
+  distToPickup,
   from,
   to,
   distance,
@@ -1709,7 +1888,8 @@ const RequestCard = React.memo(function RequestCard({
   name: string;
   rating: string;
   fare: string;
-  passengers: string;
+  seats: number;
+  distToPickup: string | null;
   from: string;
   to: string;
   distance: string;
@@ -1740,9 +1920,17 @@ const RequestCard = React.memo(function RequestCard({
             </View>
           </View>
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-          <MaterialIcons name="people" size={16} color={COLORS.onSurfaceVariant} />
-          <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>{passengers}</Text>
+        <View style={{ alignItems: 'flex-end', gap: 4 }}>
+          {distToPickup && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <MaterialIcons name="near-me" size={14} color={COLORS.primary} />
+              <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>{distToPickup}</Text>
+            </View>
+          )}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <MaterialIcons name="people" size={14} color={COLORS.onSurfaceVariant} />
+            <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>{seats}</Text>
+          </View>
         </View>
       </View>
 
@@ -2556,5 +2744,250 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.primary,
+  },
+  premiumTabBar: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.surfaceContainerLow,
+    paddingHorizontal: 8,
+  },
+  premiumTabBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    position: 'relative',
+  },
+  premiumTabBtnActive: {
+    borderBottomWidth: 2,
+    borderBottomColor: COLORS.primary,
+  },
+  premiumTabLabel: {
+    ...FONTS.labelMd,
+    color: COLORS.onSurfaceVariant,
+    fontWeight: '600' as const,
+  },
+  premiumTabLabelActive: {
+    color: COLORS.onPrimaryContainer,
+    fontWeight: '800' as const,
+  },
+  premiumTabBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 28,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: COLORS.surfaceContainerLowest,
+  },
+  premiumTabBadgeText: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    color: '#FFF',
+  },
+  garageTabContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  premiumEmptyGarage: {
+    padding: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  premiumEmptyGarageIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: COLORS.primaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  premiumEmptyGarageTitle: {
+    ...FONTS.headlineMd,
+    color: COLORS.onSurface,
+    fontWeight: '800' as const,
+    marginBottom: 12,
+  },
+  premiumEmptyGarageSub: {
+    ...FONTS.bodyMd,
+    color: COLORS.onSurfaceVariant,
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 32,
+  },
+  premiumGarageCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderRadius: 100,
+    gap: 12,
+    ...AMBIENT_SHADOW,
+  },
+  premiumGarageCtaText: {
+    ...FONTS.labelLg,
+    color: '#FFF',
+    fontWeight: '800' as const,
+  },
+  mapSheetOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  mapSheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  mapSheetContainer: {
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    gap: 14,
+  },
+  mapSheetHandleWrap: {
+    alignItems: 'center',
+    paddingBottom: 4,
+  },
+  scheduledCompactDetailsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primaryContainer,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 2,
+  },
+  // ── Scheduled Map+List hybrid ──────────────────────
+  scheduledMapPanel: {
+    flex: 1,
+    backgroundColor: COLORS.surfaceContainerLow,
+    overflow: 'hidden', // Add hidden overflow if we want to clip map edges
+  },
+  scheduledMapBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    ...AMBIENT_SHADOW,
+  },
+  scheduledMapLoading: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.55)',
+  },
+  scheduledListPanel: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.surfaceContainerLow,
+  },
+  scheduledListHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.surfaceContainerLow,
+    backgroundColor: COLORS.surfaceContainerLowest,
+  },
+  // Compact card in the list panel
+  scheduledCompactCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: COLORS.surface,
+    position: 'relative',
+  },
+  scheduledCompactCardActive: {
+    backgroundColor: 'rgba(0, 109, 54, 0.05)',
+  },
+  scheduledInterestDot: {
+    position: 'absolute',
+    left: 6,
+    top: '50%',
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: COLORS.primary,
+  },
+  scheduledCompactTime: {
+    minWidth: 68,
+    alignItems: 'flex-start',
+  },
+  scheduledCompactDivider: {
+    width: 1,
+    height: 34,
+    backgroundColor: COLORS.surfaceContainerLow,
+    marginHorizontal: 12,
+  },
+  scheduledCompactRoute: {
+    flex: 1,
+  },
+  scheduledDotOrigin: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.primary,
+    flexShrink: 0,
+  },
+  scheduledDotDest: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.onSurfaceVariant,
+    flexShrink: 0,
+  },
+  // Map pins
+  scheduledMapPin: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0.75,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  scheduledMapPinActive: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    opacity: 1,
+    ...AMBIENT_SHADOW,
+  },
+  scheduledMapPinDest: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#C62828',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+    ...AMBIENT_SHADOW,
+  },
+  scheduledMapPinStop: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: COLORS.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#fff',
+    ...AMBIENT_SHADOW,
   },
 });

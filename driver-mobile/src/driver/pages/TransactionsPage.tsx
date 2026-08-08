@@ -46,7 +46,7 @@ export default function DriverTransactionsPage() {
   const fetchTransactionsData = async () => {
     try {
       const txData = await driverWalletApi.getTransactions();
-      const txList = Array.isArray(txData?.data) ? txData.data : txData?.data?.results || txData?.results || [];
+      const txList = Array.isArray(txData?.data) ? txData.data : txData?.data?.results || (txData as any)?.results || [];
       setTransactions(txList);
     } catch (err) {
       console.warn('Failed to fetch transactions:', err);
@@ -145,7 +145,7 @@ export default function DriverTransactionsPage() {
                     <MaterialIcons name={iconName} size={20} color={iconColor} />
                   </View>
                   <View style={styles.txInfoWrap}>
-                    <Text style={styles.txTitle} numberOfLines={1}>{tx.description || tx.source.replace('_', ' ')}</Text>
+                    <Text style={styles.txTitle} numberOfLines={1}>{tx.narration || tx.source.replace('_', ' ')}</Text>
                     <Text style={styles.txDate}>{formatDate(tx.created_at)}</Text>
                   </View>
                   <Text style={[styles.txAmount, { color: amountColor }]}>

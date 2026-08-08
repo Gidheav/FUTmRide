@@ -2,6 +2,7 @@ import { useDriverRidesStore } from './driverRidesStore'
 
 /** Minutes before departure that a scheduled ride is considered "upcoming" (Phase-2 lock window). */
 export const SCHEDULED_RIDE_LOCK_MINUTES = 15
+export const SCHEDULED_RIDE_AUTO_OFFLINE_MINUTES = 15
 /** Minutes before departure to show a non-blocking awareness banner. */
 export const SCHEDULED_RIDE_BANNER_MINUTES = 120
 
@@ -281,4 +282,30 @@ export function isScheduledRideLocked(ride: any): boolean {
   const departureMs = new Date(`${ride.departure_date}T${ride.window_start}`).getTime()
   const diffMs = departureMs - Date.now()
   return diffMs > 0 && diffMs <= SCHEDULED_RIDE_LOCK_MINUTES * 60 * 1000
+}
+
+/**
+ * Check if an on-demand ride can be safely accepted without stranding the driver too far
+ * from an upcoming scheduled ride.
+ */
+export function canAcceptOnDemandNearScheduled(
+  onDemandDistanceKm: number | string | null | undefined,
+  distanceToScheduledOriginKm: number | null
+): ModeGuardResult {
+  if (distanceToScheduledOriginKm === null) return { allowed: true, reason: null, suggestion: null }
+  
+  const distance = Number(onDemandDistanceKm)
+  if (Number.isNaN(distance) || distance <= 0) return { allowed: true, reason: null, suggestion: null }
+  
+  // If the on-demand ride takes the driver more than 1.5x the distance away from the scheduled origin,
+  // it might be too far to return in time. This is a heuristic.
+  if (distance > distanceToScheduledOriginKm * 1.5 && distance > 5) { // At least 5km to trigger warning
+    return {
+      allowed: false,
+      reason: 'This ride may take you too far away to return to your scheduled pickup in time.',
+      suggestion: 'Are you sure you want to accept?'
+    }
+  }
+
+  return { allowed: true, reason: null, suggestion: null }
 }

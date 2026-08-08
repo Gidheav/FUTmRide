@@ -783,7 +783,7 @@ export default function DriverApp() {
 
   const renderPage = () => {
     switch (activeTab) {
-      case 'home':  return <DriverDashboardScreen onCreateGarageRide={handleCreateGarageRide} />
+      case 'home':  return <DriverDashboardScreen onCreateGarageRide={handleCreateGarageRide} onNavigateToRide={() => setActiveTab('rides')} />
       case 'rides': return <DriverRidesPage />
       case 'wallet': return <DriverWalletPage onNavigateToAllTransactions={() => setActiveTab('transactions')} />
       case 'transactions': return <DriverTransactionsPage />
@@ -794,7 +794,7 @@ export default function DriverApp() {
             onEditProfile={() => setSubPage('edit-profile')}
           />
         )
-      default: return <DriverDashboardScreen />
+      default: return <DriverDashboardScreen onNavigateToRide={() => setActiveTab('rides')} />
     }
   }
 
@@ -821,9 +821,9 @@ export default function DriverApp() {
           </View>
         ) : null}
         {/* All tab screens stay mounted to preserve state (esp. MapView).
-            Inactive tabs are hidden via display:'none' instead of unmounting. */}
-        <View style={activeTab === 'home' ? { flex: 1 } : { display: 'none' }}>
-          <DriverDashboardScreen onCreateGarageRide={handleCreateGarageRide} />
+            Inactive tabs are hidden via opacity/pointerEvents for home to prevent MapView unmounting. */}
+        <View style={activeTab === 'home' ? { flex: 1 } : { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0, zIndex: -1 }} pointerEvents={activeTab === 'home' ? 'auto' : 'none'}>
+          <DriverDashboardScreen onCreateGarageRide={handleCreateGarageRide} onNavigateToRide={() => setActiveTab('rides')} />
         </View>
         <View style={activeTab === 'rides' ? { flex: 1 } : { display: 'none' }}>
           <DriverRidesPage />

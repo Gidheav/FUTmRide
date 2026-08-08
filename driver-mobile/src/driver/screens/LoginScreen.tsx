@@ -255,8 +255,8 @@ export default function DriverLoginScreen() {
             <ImageBackground source={{ uri: HERO_IMAGE }} style={styles.hero} resizeMode="cover">
               <View style={styles.heroOverlay} />
               <View style={styles.heroTextWrap}>
-                <Text style={styles.heroTitle}>Driver Portal</Text>
-                <Text style={styles.heroSubtitle}>LR Ride Campus Transit</Text>
+                <Text style={styles.heroTitle}>Campus Transit</Text>
+                <Text style={styles.heroSubtitle}>Secure, fast, and reliable rides across Minna.</Text>
               </View>
             </ImageBackground>
 

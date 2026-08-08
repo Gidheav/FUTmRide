@@ -524,6 +524,7 @@ class ScheduledRideListSerializer(serializers.ModelSerializer):
     passenger_count = serializers.IntegerField(read_only=True)
     is_joinable = serializers.BooleanField(read_only=True)
     enabled_tiers = serializers.ListField(read_only=True)
+    stops = ScheduledRideStopSerializer(many=True, read_only=True)
     stops_count = serializers.SerializerMethodField()
     origin_name = serializers.SerializerMethodField()
     destination_name = serializers.SerializerMethodField()
@@ -537,12 +538,13 @@ class ScheduledRideListSerializer(serializers.ModelSerializer):
         model = ScheduledRide
         fields = [
             'id', 'reference', 'departure_date', 'window_start', 'window_end', 'join_deadline',
-            'origin_address', 'origin_name', 'destination_address', 'destination_name',
+            'origin_address', 'origin_name', 'origin_latitude', 'origin_longitude',
+            'destination_address', 'destination_name', 'destination_latitude', 'destination_longitude',
             'allowed_vehicle_types', 'cargo_capacity_kg',
             'assigned_driver', 'assigned_driver_name', 'status',
             'standard_enabled', 'standard_price', 'standing_enabled', 'standing_price',
             'premium_enabled', 'premium_price', 'freight_enabled', 'freight_price',
-            'passenger_count', 'is_joinable', 'enabled_tiers', 'stops_count',
+            'passenger_count', 'is_joinable', 'enabled_tiers', 'stops', 'stops_count',
             'created_by_name', 'admin_notes', 'fare_summary', 'created_at',
             'is_joined_by_me', 'my_ticket',
         ]

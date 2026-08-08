@@ -85,6 +85,8 @@ export type DriverProfileCache = {
   vehicle_type?: string | null
 }
 
+export type OfflineMode = 'garage' | 'scheduled'
+
 interface DriverRidesStore {
   isOnline: boolean | null
   marketplaceRequests: RideListItem[]
@@ -95,6 +97,8 @@ interface DriverRidesStore {
   driverProfile: DriverProfileCache | null
   rideHistory: RideListItem[]
   lastUpdatedAt: number | null
+  /** The mode the driver wants to operate in when OFFLINE. Never touches on-demand. */
+  offlineMode: OfflineMode
   setIsOnline: (value: boolean | null) => void
   setMarketplaceRequests: (value: RideListItem[]) => void
   setDriverHasActiveRide: (value: boolean) => void
@@ -103,6 +107,7 @@ interface DriverRidesStore {
   setSavedRoutes: (value: SavedGarageRoute[]) => void
   setDriverProfile: (value: DriverProfileCache | null) => void
   setRideHistory: (value: RideListItem[]) => void
+  setOfflineMode: (value: OfflineMode) => void
   touchUpdatedAt: () => void
   reset: () => void
 }
@@ -119,6 +124,7 @@ export const useDriverRidesStore = create<DriverRidesStore>()(
       driverProfile: null,
       rideHistory: [],
       lastUpdatedAt: null,
+      offlineMode: 'garage',
       setIsOnline: (value) => set({ isOnline: value, lastUpdatedAt: Date.now() }),
       setMarketplaceRequests: (value) => set((state) => {
         const profileType = state.driverProfile?.vehicle_type || 'sedan'
@@ -134,6 +140,7 @@ export const useDriverRidesStore = create<DriverRidesStore>()(
       setSavedRoutes: (value) => set({ savedRoutes: value, lastUpdatedAt: Date.now() }),
       setDriverProfile: (value) => set({ driverProfile: value, lastUpdatedAt: Date.now() }),
       setRideHistory: (value) => set({ rideHistory: value.slice(0, 50), lastUpdatedAt: Date.now() }),
+      setOfflineMode: (value) => set({ offlineMode: value }),
       touchUpdatedAt: () => set({ lastUpdatedAt: Date.now() }),
       reset: () => set({
         isOnline: null,
@@ -145,6 +152,7 @@ export const useDriverRidesStore = create<DriverRidesStore>()(
         driverProfile: null,
         rideHistory: [],
         lastUpdatedAt: null,
+        offlineMode: 'garage',
       }),
     }),
     {
@@ -154,7 +162,9 @@ export const useDriverRidesStore = create<DriverRidesStore>()(
         savedRoutes: state.savedRoutes,
         driverProfile: state.driverProfile,
         rideHistory: state.rideHistory,
+        offlineMode: state.offlineMode,
       }),
     }
   )
 )
+

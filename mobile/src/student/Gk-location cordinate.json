@@ -270,5 +270,13 @@
     "latitude": 9.534871621207879,
     "longitude": 6.4487832265655305,
     "category": "laboratory"
+  },
+  {
+    "id": "lab2",
+    "name": "Central Engineering Laboratory 2",
+    "description": "Engineering complex · GK Campus",
+    "latitude": 9.534871621207889,
+    "longitude": 6.4487832265655315,
+    "category": "laboratory"
   }
 ]

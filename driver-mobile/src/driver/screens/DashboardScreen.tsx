@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   Alert,
   View,
@@ -6,6 +6,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
@@ -24,6 +25,7 @@ import {
   DriverActivityState,
 } from '../../core/driverActivity';
 import LoadingOverlay from '../components/LoadingOverlay';
+import { AMBIENT_SHADOW } from '../../core/theme';
 
 const ACTIVE_GARAGE_STATUSES = new Set(['open', 'full', 'departed']);
 
@@ -45,6 +47,9 @@ const toNumber = (value: any) => {
 };
 
 const getGoalProgress = (summary: any) => {
+  if (summary?.daily_goal?.progress_percent != null) {
+    return Math.min(100, Math.max(0, Number(summary.daily_goal.progress_percent)));
+  }
   const target = toNumber(summary?.daily_goal?.target ?? summary?.daily_goal_target);
   const earned = toNumber(
     summary?.daily_goal?.earned ??
@@ -60,30 +65,61 @@ const getGoalProgress = (summary: any) => {
 // This is the mode the driver WANTS to be in. It only applies when the state is IDLE.
 type VisualMode = 'ondemand' | 'garage' | 'scheduled';
 
-const MODE_CYCLE: VisualMode[] = ['ondemand', 'garage', 'scheduled'];
+const MODE_CYCLE: VisualMode[] = ['garage', 'scheduled'];
 const MODE_META: Record<VisualMode, { icon: any; label: string; color: string }> = {
   ondemand: { icon: 'bolt', label: 'On-Demand', color: '#2E7D32' },
   garage: { icon: 'directions-car', label: 'Garage', color: '#E65100' },
   scheduled: { icon: 'event-note', label: 'Scheduled', color: '#6A1B9A' },
 };
 
-const DashboardScreen = ({ onCreateGarageRide }: { onCreateGarageRide?: () => void }) => {
+const DashboardScreen = ({ onCreateGarageRide, onNavigateToRide }: { onCreateGarageRide?: () => void; onNavigateToRide?: () => void }) => {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
 
   const { status, setStatus } = useGarageRideStore();
   const {
     isOnline,
+    setIsOnline: setCachedIsOnline,
     driverHasActiveRide,
     garageRide: storeGarageRide,
+    offlineMode,
+    setOfflineMode,
   } = useDriverRidesStore();
 
   const [walletSummary, setWalletSummary] = useState<any>(null);
-  const [activeRide, setActiveRide] = useState<any>(null); // Garage ride
-  const [activeOnDemandRide, setActiveOnDemandRide] = useState<any>(null); // On-demand ride
+  const [activeRide, setActiveRide] = useState<any>(null);
+  const [activeOnDemandRide, setActiveOnDemandRide] = useState<any>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [visualMode, setVisualMode] = useState<VisualMode>('ondemand');
+  const [isUpdatingOnline, setIsUpdatingOnline] = useState(false);
   const [isSheetExpanded, setIsSheetExpanded] = useState(true);
+  const [currentTime, setCurrentTime] = useState(Date.now());
+
+  const handleToggleOnline = useCallback(async () => {
+    if (isUpdatingOnline || isOnline === null) return;
+    const activityState = getDriverActivityState(isOnline, storeGarageRide, driverHasActiveRide);
+    if (!isOnline) {
+      const guard = canGoOnline(activityState);
+      if (!guard.allowed) {
+        Alert.alert('Action Blocked', `${guard.reason}\n\n${guard.suggestion}`);
+        return;
+      }
+    }
+    const nextStatus = !isOnline;
+    setIsUpdatingOnline(true);
+    try {
+      await driverApi.updateAvailability({ is_online: nextStatus });
+      setCachedIsOnline(nextStatus);
+    } catch {
+      // silently fail — state stays in sync via store
+    } finally {
+      setIsUpdatingOnline(false);
+    }
+  }, [isUpdatingOnline, isOnline, storeGarageRide, driverHasActiveRide]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   const toggleSheet = () => {
     setIsSheetExpanded((prev) => !prev);
@@ -99,6 +135,7 @@ const DashboardScreen = ({ onCreateGarageRide }: { onCreateGarageRide?: () => vo
   // State is "locked" if the driver is in any non-IDLE state.
   // When locked, the mode switcher is hidden — the status pill shows the current forced state.
   const isLocked = activityState !== 'IDLE';
+  const hasActiveRideContent = ['ON_DEMAND_ACTIVE', 'GARAGE_SESSION', 'GARAGE_DEPARTED'].includes(activityState);
 
   // ── Data fetching (unchanged from the old DashboardScreen) ──
   const fetchDashboardData = async () => {
@@ -167,14 +204,19 @@ const DashboardScreen = ({ onCreateGarageRide }: { onCreateGarageRide?: () => vo
     setIsRefreshing(false);
   };
 
-  // ── Mode cycling (only works when IDLE / unlocked) ──
+  // ── Mode cycling — only between 'garage' and 'scheduled' when OFFLINE/IDLE ──
   const cycleMode = () => {
-    if (isLocked) return; // Shouldn't be reachable, but safety check
-    setVisualMode((prev) => {
-      const idx = MODE_CYCLE.indexOf(prev);
-      return MODE_CYCLE[(idx + 1) % MODE_CYCLE.length];
-    });
+    if (isLocked) return;
+    const next = offlineMode === 'garage' ? 'scheduled' : 'garage';
+    setOfflineMode(next);
   };
+
+  // Determine current icon: online forces ondemand icon; offline uses offlineMode
+  const currentModeIcon = isLocked
+    ? activityDisplay.icon
+    : isOnline
+      ? MODE_META.ondemand
+      : MODE_META[offlineMode];
 
   // ── Garage ride creation with guard ──
   const handleGaragePress = () => {
@@ -193,6 +235,13 @@ const DashboardScreen = ({ onCreateGarageRide }: { onCreateGarageRide?: () => vo
   // ── Computed values ──
   const goalProgress = useMemo(() => getGoalProgress(walletSummary), [walletSummary]);
   const goalColor = goalProgress >= 100 ? '#4CAF50' : goalProgress >= 50 ? COLORS.primary : '#FF9800';
+
+  // Determine if the mode icon represents an action state vs display only
+  const currentModeMeta = isLocked
+    ? { icon: activityDisplay.icon, label: activityDisplay.label, color: activityDisplay.color }
+    : isOnline
+      ? MODE_META.ondemand           // While online, always show on-demand — not switchable
+      : MODE_META[offlineMode];      // While offline, show the current offline mode
 
   const routeCoords = useMemo(() => {
     let sourceRide = null;
@@ -230,30 +279,119 @@ const DashboardScreen = ({ onCreateGarageRide }: { onCreateGarageRide?: () => vo
     return [];
   }, [activeRide, activeOnDemandRide, activityState]);
 
-  const hasFittedRoute = useRef(false);
+  const hasFittedRoute = useRef<string | null>(null);
 
   // ── Auto-center map on route or driver ──
   useEffect(() => {
+    const currentRideId = activeOnDemandRide?.id || activeRide?.id;
+    
     if (isLocked && routeCoords.length > 0 && mapRef.current) {
-      const isInitialFit = !hasFittedRoute.current;
-      hasFittedRoute.current = true;
-      const timer = setTimeout(() => {
-        mapRef.current?.fitToCoordinates(routeCoords, {
-          edgePadding: { top: 80, right: 80, bottom: 250, left: 80 },
-          animated: !isInitialFit,
-        });
-      }, isInitialFit ? 100 : 500);
-      return () => clearTimeout(timer);
+      if (hasFittedRoute.current !== currentRideId) {
+        hasFittedRoute.current = currentRideId;
+        const timer = setTimeout(() => {
+          mapRef.current?.fitToCoordinates(routeCoords, {
+            edgePadding: { top: 80, right: 80, bottom: 350, left: 80 },
+            animated: true,
+          });
+        }, 500);
+        return () => clearTimeout(timer);
+      }
     } else if (!isLocked) {
-      hasFittedRoute.current = false;
-      centerOnDriver();
+      if (hasFittedRoute.current !== null) {
+        hasFittedRoute.current = null;
+        centerOnDriver();
+      }
     }
-  }, [isLocked, routeCoords]);
+  }, [isLocked, routeCoords, activeOnDemandRide?.id, activeRide?.id]);
 
-  // Determine mode icon meta — when locked, show the forced state; when unlocked, show selected mode
-  const currentModeMeta = isLocked
-    ? { icon: activityDisplay.icon, label: activityDisplay.label, color: activityDisplay.color }
-    : MODE_META[visualMode];
+
+  const renderActiveRideDetails = () => {
+    let sourceRide = null;
+    let isGarage = false;
+
+    if (activityState === 'ON_DEMAND_ACTIVE') {
+      sourceRide = activeOnDemandRide;
+    } else if (activityState === 'GARAGE_SESSION' || activityState === 'GARAGE_DEPARTED') {
+      sourceRide = activeRide;
+      isGarage = true;
+    }
+
+    if (!sourceRide) return null;
+
+    const origin = isGarage ? sourceRide.origin_address : sourceRide.pickup_address;
+    const destination = isGarage ? sourceRide.destination_address : sourceRide.dropoff_address;
+    
+    const distance = isGarage ? '--' : `${sourceRide.actual_distance_km || sourceRide.estimated_distance_km || 0} km`;
+    
+    const passengers = isGarage 
+      ? `${sourceRide.booked_seats || 0}/${sourceRide.total_seats || 0}`
+      : `${sourceRide.requested_seats || 1}`;
+
+    const startTime = isGarage 
+      ? (sourceRide.departed_at || sourceRide.created_at)
+      : (sourceRide.trip_started_at || sourceRide.driver_assigned_at || sourceRide.requested_at);
+
+    let timeTaken = '--';
+    if (startTime) {
+      const startMs = new Date(startTime).getTime();
+      const diffMins = Math.max(0, Math.floor((currentTime - startMs) / 60000));
+      if (diffMins < 60) {
+        timeTaken = `${diffMins}m`;
+      } else {
+        const hrs = Math.floor(diffMins / 60);
+        const mins = diffMins % 60;
+        timeTaken = `${hrs}h ${mins}m`;
+      }
+    }
+
+    return (
+      <View style={styles.sheetDetailsContainer}>
+        <View style={styles.sheetDetailRow}>
+          <View style={styles.sheetDetailItem}>
+            <MaterialIcons name="route" size={20} color={COLORS.primary} />
+            <Text style={styles.sheetDetailLabel}>Distance</Text>
+            <Text style={styles.sheetDetailValue}>{distance}</Text>
+          </View>
+          <View style={styles.sheetDetailItem}>
+            <MaterialIcons name="people" size={20} color={COLORS.primary} />
+            <Text style={styles.sheetDetailLabel}>Passengers</Text>
+            <Text style={styles.sheetDetailValue}>{passengers}</Text>
+          </View>
+          <View style={styles.sheetDetailItem}>
+            <MaterialIcons name="timer" size={20} color={COLORS.primary} />
+            <Text style={styles.sheetDetailLabel}>Time Taken</Text>
+            <Text style={styles.sheetDetailValue}>{timeTaken}</Text>
+          </View>
+        </View>
+        <View style={styles.sheetLocationContainer}>
+          <View style={styles.sheetLocationRow}>
+            <MaterialIcons name="my-location" size={16} color={COLORS.primary} />
+            <Text style={styles.sheetLocationText} numberOfLines={1}>{origin || 'Current Location'}</Text>
+          </View>
+          <View style={styles.sheetLocationDot} />
+          <View style={styles.sheetLocationRow}>
+            <MaterialIcons name="location-on" size={16} color={COLORS.error ?? '#B00020'} />
+            <Text style={styles.sheetLocationText} numberOfLines={1}>{destination || 'Destination'}</Text>
+          </View>
+        </View>
+        {onNavigateToRide && (
+          <TouchableOpacity
+            style={{
+              backgroundColor: COLORS.primary,
+              marginTop: 16,
+              paddingVertical: 12,
+              borderRadius: 12,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            onPress={onNavigateToRide}
+          >
+            <Text style={[FONTS.labelLg, { color: '#FFF' }]}>Go to Ride →</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -287,48 +425,46 @@ const DashboardScreen = ({ onCreateGarageRide }: { onCreateGarageRide?: () => vo
         )}
       </MapView>
 
-      {/* ─── Status Pill (Top-Left) — Read-only, shows current state ─── */}
-      <View style={[styles.statusPillContainer, { top: insets.top + 16 }]}>
-        <View style={[styles.statusPill, { borderLeftColor: activityDisplay.color }]}>
-          <View style={[styles.statusDot, { backgroundColor: activityDisplay.color }]} />
-          <Text style={styles.statusPillText}>{activityDisplay.label}</Text>
-        </View>
+      {/* ─── Status Pill + Online Toggle (Top-Left) ─── */}
+      <View style={{ position: 'absolute', left: 16, top: insets.top + 16, zIndex: 10 }}>
+        {/* Online / Offline toggle pill */}
+        <TouchableOpacity
+          onPress={handleToggleOnline}
+          disabled={isUpdatingOnline || isOnline === null}
+          activeOpacity={0.85}
+          style={[
+            styles.onlineTogglePill,
+            isOnline ? styles.onlineTogglePillOnline : styles.onlineTogglePillOffline,
+            (isUpdatingOnline || isOnline === null) && { opacity: 0.5 },
+          ]}
+        >
+          {isUpdatingOnline || isOnline === null ? (
+            <ActivityIndicator size="small" color={isOnline ? '#FFF' : COLORS.primary} />
+          ) : (
+            <View style={[styles.onlineToggleDot, { backgroundColor: isOnline ? '#FFF' : COLORS.primary }]} />
+          )}
+          <Text style={[styles.onlineToggleText, { color: isOnline ? '#FFF' : COLORS.onSurface }]}>
+            {isUpdatingOnline ? 'Updating...' : isOnline ? 'Online' : 'Offline'}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* ─── Right-Side Vertical Toolbar ─── */}
       <View style={[styles.toolbarContainer, { top: insets.top + 16 }]}>
 
-        {/* 1. Mode Switcher — Only visible when unlocked (IDLE) */}
-        {!isLocked && (
-          <TouchableOpacity style={styles.toolIcon} onPress={cycleMode} activeOpacity={0.75}>
-            <MaterialIcons name={currentModeMeta.icon} size={24} color={currentModeMeta.color} />
-          </TouchableOpacity>
-        )}
-
-        {/* 2. Start Garage Ride — Only visible when visualMode is 'garage' AND unlocked */}
-        {!isLocked && visualMode === 'garage' && (
-          <TouchableOpacity
-            style={[styles.toolIcon, styles.garageFab]}
-            onPress={handleGaragePress}
-            activeOpacity={0.8}
-          >
-            <MaterialIcons name="add" size={28} color={COLORS.onPrimary} />
-          </TouchableOpacity>
-        )}
-
-        {/* 3. Daily Goal Progress Ring */}
+        {/* 1. Daily Goal Progress Ring */}
         <TouchableOpacity style={styles.toolIcon} activeOpacity={0.8}>
           <View style={[styles.goalRing, { borderColor: goalColor }]}>
             <Text style={[styles.goalText, { color: goalColor }]}>{goalProgress}%</Text>
           </View>
         </TouchableOpacity>
 
-        {/* 4. GPS Center */}
+        {/* 2. GPS Center */}
         <TouchableOpacity style={styles.toolIcon} onPress={centerOnDriver} activeOpacity={0.8}>
           <MaterialIcons name="my-location" size={22} color={COLORS.onSurfaceVariant} />
         </TouchableOpacity>
 
-        {/* 5. Refresh */}
+        {/* 3. Refresh */}
         <TouchableOpacity
           style={styles.toolIcon}
           onPress={handleRefresh}
@@ -336,79 +472,92 @@ const DashboardScreen = ({ onCreateGarageRide }: { onCreateGarageRide?: () => vo
           activeOpacity={0.8}
         >
           {isRefreshing ? (
-            <LoadingOverlay visible inline size={22} />
+            <ActivityIndicator size="small" color={COLORS.primary} />
           ) : (
             <MaterialIcons name="refresh" size={22} color={COLORS.onSurfaceVariant} />
           )}
         </TouchableOpacity>
-      </View>
 
-      {/* ─── Mode Label (bottom of toolbar, only when unlocked) ─── */}
-      {!isLocked && (
-        <View style={[styles.modeLabelContainer, { top: insets.top + 72 }]}>
-          <View style={[styles.modeLabelPill, { backgroundColor: currentModeMeta.color + '18' }]}>
-            <Text style={[styles.modeLabelText, { color: currentModeMeta.color }]}>
-              {currentModeMeta.label}
-            </Text>
-          </View>
-        </View>
-      )}
-
-      {/* ─── Collapsible Bottom Sheet (mirrors student dashboard) ─── */}
-      <View style={[
-        styles.bottomSheet,
-        !isSheetExpanded && styles.bottomSheetCollapsed,
-        { paddingBottom: Math.max(insets.bottom, 16) + 70 },
-      ]}>
-        <TouchableOpacity style={styles.sheetHeaderButton} onPress={toggleSheet} activeOpacity={0.85}>
-          <View style={styles.sheetHeaderRow}>
-            <Text style={styles.sheetHeaderTitle}>
-              {isSheetExpanded ? 'Hide' : 'Show'}
-            </Text>
-            <MaterialIcons
-              name={isSheetExpanded ? 'keyboard-arrow-down' : 'keyboard-arrow-up'}
-              size={22}
-              color="#5e5e5e"
-            />
-            <View style={styles.sheetHandleCenter} pointerEvents="none">
-              <View style={styles.sheetHandle} />
-            </View>
-          </View>
+        {/* 4. Mode Switcher
+            - Online: shows on-demand icon but is NOT tappable (mode is implicit)
+            - Offline + unlocked: cycles between garage / scheduled
+            - Active ride / garage session: dimmed, not tappable */}
+        <TouchableOpacity
+          style={[styles.toolIcon, (isLocked || isOnline === true) && { opacity: 0.5 }]}
+          onPress={(!isLocked && isOnline !== true) ? cycleMode : undefined}
+          activeOpacity={(isLocked || isOnline === true) ? 1 : 0.75}
+        >
+          <MaterialIcons name={currentModeMeta.icon} size={24} color={currentModeMeta.color} />
         </TouchableOpacity>
 
-        {isSheetExpanded && (
-          <View style={styles.sheetContent}>
-            {isLocked ? (
-              <>
-                <View style={[styles.sheetIconBox, { backgroundColor: activityDisplay.bgColor }]}>
-                  <MaterialIcons name={activityDisplay.icon as any} size={24} color={activityDisplay.color} />
-                </View>
-                <View style={styles.sheetTextCol}>
-                  <Text style={styles.sheetTitle}>{activityDisplay.label}</Text>
-                  <Text style={styles.sheetSub} numberOfLines={1}>
-                    {activityState === 'ON_DEMAND_ACTIVE' ? 'Student on board / En route' :
-                     activityState === 'GARAGE_SESSION' ? 'Waiting for passengers' :
-                     'Heading to destination'}
-                  </Text>
-                </View>
-                <TouchableOpacity style={[styles.sheetBtn, { backgroundColor: activityDisplay.color }]} activeOpacity={0.8}>
-                  <Text style={styles.sheetBtnText}>View</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <View style={[styles.sheetIconBox, { backgroundColor: '#f3f3f3' }]}>
-                  <MaterialIcons name="local-taxi" size={24} color={COLORS.onSurfaceVariant} />
-                </View>
-                <View style={styles.sheetTextCol}>
-                  <Text style={styles.sheetTitle}>Ready for rides</Text>
-                  <Text style={styles.sheetSub}>Select your preferred mode above to start</Text>
-                </View>
-              </>
-            )}
-          </View>
+        {/* 5. Create Garage Ride button
+            Only shown in garage offlineMode.
+            Disabled when: locked, online, scheduled mode is active,
+            or there's an imminent scheduled ride. */}
+        {(offlineMode === 'garage' && !isOnline) && (
+          <TouchableOpacity
+            style={[
+              styles.toolIcon,
+              { backgroundColor: '#E65100' },
+              isLocked && { opacity: 0.4 },
+            ]}
+            onPress={isLocked ? undefined : handleGaragePress}
+            activeOpacity={isLocked ? 1 : 0.8}
+          >
+            <MaterialIcons name="add" size={24} color="#FFF" />
+          </TouchableOpacity>
         )}
       </View>
+
+
+
+
+      {/* ─── Collapsible Bottom Sheet (mirrors student dashboard) ─── */}
+      {hasActiveRideContent && (
+        <View style={[
+          styles.bottomSheet,
+          !isSheetExpanded && styles.bottomSheetCollapsed,
+          { paddingBottom: Math.max(insets.bottom, 16) + 70 },
+        ]}>
+          <TouchableOpacity style={styles.sheetHeaderButton} onPress={toggleSheet} activeOpacity={0.85}>
+            <View style={styles.sheetHeaderRow}>
+              <Text style={styles.sheetHeaderTitle}>
+                {isSheetExpanded ? 'Hide' : 'Show'}
+              </Text>
+              <MaterialIcons
+                name={isSheetExpanded ? 'keyboard-arrow-down' : 'keyboard-arrow-up'}
+                size={22}
+                color="#5e5e5e"
+              />
+              <View style={styles.sheetHandleCenter} pointerEvents="none">
+                <View style={styles.sheetHandle} />
+              </View>
+            </View>
+          </TouchableOpacity>
+
+          {isSheetExpanded && (
+            <View style={styles.sheetContent}>
+              <View style={{ width: '100%' }}>
+                <View style={styles.sheetHeaderInfo}>
+                  <View style={[styles.sheetIconBox, { backgroundColor: activityDisplay.bgColor }]}>
+                    <MaterialIcons name={activityDisplay.icon as any} size={24} color={activityDisplay.color} />
+                  </View>
+                  <View style={styles.sheetTextCol}>
+                    <Text style={styles.sheetTitle}>{activityDisplay.label}</Text>
+                    <Text style={styles.sheetSub} numberOfLines={1}>
+                      {activityState === 'ON_DEMAND_ACTIVE' ? 'Student on board / En route' :
+                       activityState === 'GARAGE_SESSION' ? 'Waiting for passengers' :
+                       activityState === 'GARAGE_DEPARTED' ? 'Heading to destination' :
+                       'Active Session'}
+                    </Text>
+                  </View>
+                </View>
+                {renderActiveRideDetails()}
+              </View>
+            </View>
+          )}
+        </View>
+      )}
     </View>
   );
 };
@@ -422,32 +571,34 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
 
-  // ── Status Pill (Top-Left) ──
-  statusPillContainer: {
-    position: 'absolute',
-    left: 16,
-    zIndex: 10,
-  },
-  statusPill: {
+  // ── Online Toggle Pill (Top-Left) ──
+  onlineTogglePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.surface,
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 999,
     gap: 8,
-    borderLeftWidth: 4,
     ...TOOL_SHADOW,
   },
-  statusDot: {
+  onlineTogglePillOnline: {
+    backgroundColor: COLORS.primary,
+  },
+  onlineTogglePillOffline: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.surfaceContainerLow,
+  },
+  onlineToggleDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
+    backgroundColor: '#FFF',
   },
-  statusPillText: {
+  onlineToggleText: {
     ...FONTS.labelMd,
     color: COLORS.onSurface,
-    fontWeight: '700',
+    fontWeight: '700' as const,
   },
 
   // ── Right-Side Toolbar ──
@@ -556,11 +707,14 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   sheetContent: {
+    paddingHorizontal: 14,
+    paddingTop: 8,
+  },
+  sheetHeaderInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
-    paddingHorizontal: 14,
-    paddingTop: 8,
+    width: '100%',
   },
   sheetIconBox: {
     width: 48,
@@ -582,15 +736,56 @@ const styles = StyleSheet.create({
     color: COLORS.onSurfaceVariant,
     marginTop: 2,
   },
-  sheetBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 999,
+  sheetDetailsContainer: {
+    marginTop: 16,
+    backgroundColor: COLORS.surfaceContainerLowest,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#eee',
   },
-  sheetBtnText: {
+  sheetDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    paddingBottom: 12,
+    marginBottom: 12,
+  },
+  sheetDetailItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  sheetDetailLabel: {
     ...FONTS.labelMd,
-    color: '#ffffff',
+    color: COLORS.onSurfaceVariant,
+    marginTop: 4,
+  },
+  sheetDetailValue: {
+    ...FONTS.titleMd,
+    color: COLORS.onSurface,
     fontWeight: '700',
+    marginTop: 2,
+  },
+  sheetLocationContainer: {
+    paddingHorizontal: 4,
+  },
+  sheetLocationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sheetLocationDot: {
+    width: 2,
+    height: 12,
+    backgroundColor: '#ccc',
+    marginLeft: 7,
+    marginVertical: 2,
+  },
+  sheetLocationText: {
+    ...FONTS.bodySm,
+    color: COLORS.onSurface,
+    flex: 1,
   },
 });
 
