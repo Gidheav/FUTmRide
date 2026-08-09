@@ -42,6 +42,8 @@ class GarageRide(models.Model):
     destination_address = models.CharField(max_length=255)
     destination_latitude = models.DecimalField(max_digits=9, decimal_places=6)
     destination_longitude = models.DecimalField(max_digits=9, decimal_places=6)
+    estimated_distance_km = models.DecimalField(max_digits=8, decimal_places=3, null=True, blank=True)
+    estimated_route_geometry = models.JSONField(default=list, blank=True)
 
     # Vehicle & capacity
     vehicle_type = models.CharField(

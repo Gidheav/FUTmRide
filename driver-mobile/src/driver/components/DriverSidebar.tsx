@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native'
-import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons'
+import { MaterialIcons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useEffect, useRef, useState } from 'react'
 import { COLORS, FONTS } from '../../core/theme'
@@ -18,14 +18,12 @@ import { useExternalWebViewUrl } from '../services/externalConfig'
 type SidebarProps = {
   visible: boolean
   onClose: () => void
-  onLogout: () => void
   onOpenWebLink: (url: string, title: string) => void
 }
 
 export default function DriverSidebar({
   visible,
   onClose,
-  onLogout,
   onOpenWebLink,
 }: SidebarProps) {
   const [isVisible, setIsVisible] = useState(visible)
@@ -111,29 +109,29 @@ export default function DriverSidebar({
                 
                 <TouchableOpacity 
                   style={styles.menuItem} 
-                  onPress={() => handleMenuPress(driverNewsUrl, 'Driver News')}
+                  onPress={() => handleMenuPress(driverNewsUrl, 'News')}
                   activeOpacity={0.7}
                 >
                   <MaterialIcons name="article" size={22} color={COLORS.onSurfaceVariant} />
-                  <Text style={styles.menuText}>Driver News</Text>
+                  <Text style={styles.menuText}>News</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity 
                   style={styles.menuItem} 
-                  onPress={() => handleMenuPress(driverEventsUrl, 'Campus Events')}
+                  onPress={() => handleMenuPress(driverEventsUrl, 'Events')}
                   activeOpacity={0.7}
                 >
                   <MaterialIcons name="event" size={22} color={COLORS.onSurfaceVariant} />
-                  <Text style={styles.menuText}>Campus Events</Text>
+                  <Text style={styles.menuText}>Events</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity 
                   style={styles.menuItem} 
-                  onPress={() => handleMenuPress(communityUrl, 'Driver Community')}
+                  onPress={() => handleMenuPress(communityUrl, 'Community')}
                   activeOpacity={0.7}
                 >
                   <MaterialIcons name="people" size={22} color={COLORS.onSurfaceVariant} />
-                  <Text style={styles.menuText}>Driver Community</Text>
+                  <Text style={styles.menuText}>Community</Text>
                 </TouchableOpacity>
 
                 <View style={styles.divider} />
@@ -166,11 +164,6 @@ export default function DriverSidebar({
                   <Text style={styles.menuText}>Terms of Service</Text>
                 </TouchableOpacity>
               </View>
-
-              <TouchableOpacity style={styles.logoutItem} onPress={onLogout} activeOpacity={0.85}>
-                <MaterialIcons name="logout" size={20} color={COLORS.error} />
-                <Text style={[styles.logoutText, { color: COLORS.error }]}>Sign Out</Text>
-              </TouchableOpacity>
             </View>
           </Animated.View>
         </View>
@@ -249,19 +242,5 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surfaceContainer,
     marginVertical: 8,
     marginHorizontal: 12,
-  },
-  logoutItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    backgroundColor: COLORS.errorContainer,
-    gap: 12,
-    marginTop: 16,
-  },
-  logoutText: {
-    ...FONTS.labelLg,
-    fontWeight: '700',
   },
 })

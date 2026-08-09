@@ -37,6 +37,7 @@ import * as Location from 'expo-location';
 import QRCode from 'react-native-qrcode-svg';
 import { useLocations } from '../../core/locationDataService';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import Constants from 'expo-constants';
 import ActiveRideScreen from '../screens/ActiveRideScreen';
 
 if (
@@ -228,6 +229,68 @@ const resolveMediaUrl = (value?: string | null) => {
   }
 };
 
+const decodePolyline = (t: string) => {
+  let points = [];
+  let index = 0, len = t.length;
+  let lat = 0, lng = 0;
+  while (index < len) {
+    let b, shift = 0, result = 0;
+    do {
+      b = t.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    let dlat = ((result & 1) ? ~(result >> 1) : (result >> 1));
+    lat += dlat;
+
+    shift = 0;
+    result = 0;
+    do {
+      b = t.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    let dlng = ((result & 1) ? ~(result >> 1) : (result >> 1));
+    lng += dlng;
+    points.push({ latitude: (lat / 1e5), longitude: (lng / 1e5) });
+  }
+  return points;
+};
+
+const routeCache: Record<string, { latitude: number, longitude: number }[]> = {};
+const fetchRouteGeometry = async (ride: any) => {
+  if (routeCache[ride.id]) return routeCache[ride.id];
+  const GOOGLE_API_KEY = Constants.expoConfig?.android?.config?.googleMaps?.apiKey || 'AIzaSyD5nLbEz_xY6UOHJ1mbjvipD1PY1A14erQ';
+  
+  const oLat = Number(ride.origin_latitude);
+  const oLng = Number(ride.origin_longitude);
+  const dLat = Number(ride.destination_latitude);
+  const dLng = Number(ride.destination_longitude);
+  if (!oLat || !oLng || !dLat || !dLng) return null;
+
+  let waypoints = '';
+  if (Array.isArray(ride.stops) && ride.stops.length > 0) {
+    const wps = ride.stops
+      .map((s: any) => `${Number(s.latitude)},${Number(s.longitude)}`)
+      .join('|');
+    waypoints = `&waypoints=${wps}`;
+  }
+
+  const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${oLat},${oLng}&destination=${dLat},${dLng}${waypoints}&key=${GOOGLE_API_KEY}`;
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.routes && data.routes.length > 0) {
+      const points = decodePolyline(data.routes[0].overview_polyline.points);
+      routeCache[ride.id] = points;
+      return points;
+    }
+  } catch (e) {
+    console.error('Error fetching directions', e);
+  }
+  return null;
+};
+
 const formatDistance = (value: string | number | null | undefined) => {
   if (value === null || value === undefined) return '—';
   const num = Number(value);
@@ -396,10 +459,16 @@ const ScheduledRideCard = React.memo(function ScheduledRideCard({
 
 import CreateGarageRideScreen from '../screens/CreateGarageRideScreen';
 
-export default function DriverRidesPage() {
+interface DriverRidesPageProps {
+  route?: any;
+  onBack?: () => void;
+  requestedFilter?: string | null;
+  onFilterConsumed?: () => void;
+}
+
+export default function RidesPage({ route, onBack, requestedFilter, onFilterConsumed }: DriverRidesPageProps) {
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
-  const [isCreateGarageModalVisible, setIsCreateGarageModalVisible] = useState(false);
   const {
     isOnline,
     marketplaceRequests: cachedRequests,
@@ -550,6 +619,13 @@ export default function DriverRidesPage() {
 
   const [driverHasActiveRide, setDriverHasActiveRide] = useState(cachedHasActiveRide);
   const [activeFilter, setActiveFilter] = useState('High Fare');
+
+  useEffect(() => {
+    if (requestedFilter) {
+      setActiveFilter(requestedFilter);
+      if (onFilterConsumed) onFilterConsumed();
+    }
+  }, [requestedFilter, onFilterConsumed]);
   // Pagination State
   const [scheduledNextUrl, setScheduledNextUrl] = useState<string | null>(null);
   const [marketplaceNextUrl, setMarketplaceNextUrl] = useState<string | null>(null);
@@ -587,6 +663,7 @@ export default function DriverRidesPage() {
   const [scheduledError, setScheduledError] = useState<string | null>(null);
   const [selectedScheduledRide, setSelectedScheduledRide] = useState<any>(null); // For map highlighting
   const [detailedScheduledRide, setDetailedScheduledRide] = useState<any>(null); // For the modal
+  const [scheduledRoutesGeometry, setScheduledRoutesGeometry] = useState<Record<string, { latitude: number, longitude: number }[]>>({});
   const errorHoldUntil = useRef<number>(0);
   const initialFetchDone = useRef(cachedRequests.length > 0);
   const isFetchingRequests = useRef(false);
@@ -707,6 +784,22 @@ export default function DriverRidesPage() {
       clearInterval(interval);
     };
   }, [garageRide, isOnline]);
+
+  // Fetch true geometry from Google Directions when a scheduled ride is selected
+  useEffect(() => {
+    if (!selectedScheduledRide) return;
+    const rideId = selectedScheduledRide.id;
+    if (scheduledRoutesGeometry[rideId]) return;
+
+    let isMounted = true;
+    (async () => {
+       const geom = await fetchRouteGeometry(selectedScheduledRide);
+       if (isMounted && geom) {
+         setScheduledRoutesGeometry(prev => ({ ...prev, [rideId]: geom }));
+       }
+    })();
+    return () => { isMounted = false; };
+  }, [selectedScheduledRide, scheduledRoutesGeometry]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1289,20 +1382,19 @@ export default function DriverRidesPage() {
     );
   }, [acceptingRideId, driverHasActiveRide, modeLocked, handleAcceptRide, isOnline]);
 
-  if (activeOnDemandRide || garageRide) {
+  if (activeOnDemandRide) {
     return (
       <ActiveRideScreen 
         activeOnDemandRide={activeOnDemandRide}
         onAdvanceRide={handleAdvanceRide}
         advancingRideId={advancingRideId}
-        garageRide={garageRide}
-        garagePassengers={garagePassengers}
-        onDepartGarage={handleDepartGarageRide}
-        onCompleteGarage={handleCompleteGarageRide}
-        onCancelGarage={handleCancelGarageRide}
-        errorMessage={garageError || requestsError}
+        errorMessage={requestsError}
       />
     );
+  }
+
+  if (driverMode === 'garage' || garageRide) {
+    return <CreateGarageRideScreen onBack={onBack} />;
   }
 
   return (
@@ -1351,6 +1443,9 @@ export default function DriverRidesPage() {
                     {/* Origin pin */}
                     <Marker
                       coordinate={{ latitude: oLat, longitude: oLng }}
+                      tracksViewChanges={false}
+                      pinColor="green"
+                      title="Pickup"
                       onPress={() => {
                         setSelectedScheduledRide(ride);
                         if (dLat && dLng) {
@@ -1369,27 +1464,17 @@ export default function DriverRidesPage() {
                           );
                         }
                       }}
-                    >
-                      <View style={[
-                        styles.scheduledMapPin,
-                        isActive && styles.scheduledMapPinActive,
-                      ]}>
-                        <MaterialIcons
-                          name="trip-origin"
-                          size={isActive ? 16 : 12}
-                          color="#fff"
-                        />
-                      </View>
-                    </Marker>
+                    />
 
-                    {/* Destination pin — only shown for selected ride */}
+                    {/* Destination & Stop pins — only shown for selected ride */}
                     {isActive && dLat && dLng && (
                       <>
-                        <Marker coordinate={{ latitude: dLat, longitude: dLng }}>
-                          <View style={styles.scheduledMapPinDest}>
-                            <MaterialIcons name="place" size={14} color="#fff" />
-                          </View>
-                        </Marker>
+                        <Marker 
+                          coordinate={{ latitude: dLat, longitude: dLng }} 
+                          tracksViewChanges={false} 
+                          pinColor="red" 
+                          title="Destination" 
+                        />
                         
                         {/* Render intermediate stops */}
                         {Array.isArray(ride.stops) && ride.stops.map((stop: any, idx: number) => {
@@ -1397,29 +1482,24 @@ export default function DriverRidesPage() {
                           const sLng = Number(stop.longitude);
                           if (!sLat || !sLng) return null;
                           return (
-                            <Marker key={stop.id || idx} coordinate={{ latitude: sLat, longitude: sLng }}>
-                              <View style={styles.scheduledMapPinStop}>
-                                <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>{idx + 1}</Text>
-                              </View>
-                            </Marker>
+                            <Marker 
+                              key={stop.id || idx} 
+                              coordinate={{ latitude: sLat, longitude: sLng }} 
+                              tracksViewChanges={false} 
+                              pinColor="blue"
+                              title={`Stop ${idx + 1}`}
+                            />
                           );
                         })}
 
                         {/* Route line */}
-                        <Polyline
-                          coordinates={[
-                            { latitude: oLat, longitude: oLng },
-                            ...(Array.isArray(ride.stops) 
-                              ? ride.stops
-                                  .map((s: any) => ({ latitude: Number(s.latitude), longitude: Number(s.longitude) }))
-                                  .filter((c: any) => c.latitude && c.longitude)
-                              : []),
-                            { latitude: dLat, longitude: dLng },
-                          ]}
-                          strokeColor={COLORS.primary}
-                          strokeWidth={3}
-                          lineDashPattern={[6, 4]}
-                        />
+                        {scheduledRoutesGeometry[ride.id] && (
+                          <Polyline
+                            coordinates={scheduledRoutesGeometry[ride.id]}
+                            strokeColor={COLORS.primary}
+                            strokeWidth={4}
+                          />
+                        )}
                       </>
                     )}
                   </React.Fragment>
@@ -1456,7 +1536,7 @@ export default function DriverRidesPage() {
           ) : (
             <View style={styles.scheduledListPanel}>
               <View style={styles.scheduledListHeader}>
-                <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>TAP A RIDE TO VIEW ROUTE & DETAILS</Text>
+                <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant }]}>Available Scheduled Rides</Text>
               </View>
               <CustomRefreshFlatList
                 data={availableScheduledRides}
@@ -1524,29 +1604,7 @@ export default function DriverRidesPage() {
         ListFooterComponent={loadingMoreMarketplace ? <LoadingOverlay visible={true} inline size={40} /> : null}
       />
 
-      {/* ── Garage Tab ── */}
-      {driverMode === 'garage' && (
-        <View style={styles.garageTabContainer}>
-          {garageRide ? null : (
-            <View style={styles.premiumEmptyGarage}>
-              <View style={styles.premiumEmptyGarageIcon}>
-                <MaterialIcons name="local-taxi" size={48} color={COLORS.primary} />
-              </View>
-              <Text style={styles.premiumEmptyGarageTitle}>No Active Session</Text>
-              <Text style={styles.premiumEmptyGarageSub}>Start a garage session to pick up passengers directly from bus stops or designated zones.</Text>
-              <TouchableOpacity style={styles.premiumGarageCta} onPress={() => setIsCreateGarageModalVisible(true)} activeOpacity={0.8}>
-                <MaterialIcons name="add" size={24} color="#FFF" />
-                <Text style={styles.premiumGarageCtaText}>Create Garage Session</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-      )}
-
-      {/* ── Create Garage Ride Modal ── */}
-      <Modal visible={isCreateGarageModalVisible} animationType="slide" onRequestClose={() => setIsCreateGarageModalVisible(false)}>
-        <CreateGarageRideScreen onBack={() => setIsCreateGarageModalVisible(false)} />
-      </Modal>
+      {/* Garage Tab is now handled by the early return of CreateGarageRideScreen above */}
 
       <Modal
         visible={!!selectedRideForMap}
@@ -2866,7 +2924,7 @@ const styles = StyleSheet.create({
   },
   // ── Scheduled Map+List hybrid ──────────────────────
   scheduledMapPanel: {
-    flex: 1,
+    flex: 1.5,
     backgroundColor: COLORS.surfaceContainerLow,
     overflow: 'hidden', // Add hidden overflow if we want to clip map edges
   },
@@ -2980,14 +3038,22 @@ const styles = StyleSheet.create({
     ...AMBIENT_SHADOW,
   },
   scheduledMapPinStop: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderBottomRightRadius: 2,
     backgroundColor: COLORS.secondary,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
     borderColor: '#fff',
+    transform: [{ rotate: '-45deg' }],
     ...AMBIENT_SHADOW,
+  },
+  scheduledMapPinStopText: {
+    color: '#fff', 
+    fontSize: 10, 
+    fontWeight: 'bold',
+    transform: [{ rotate: '45deg' }], // counter-rotate so text is upright
   },
 });

@@ -14,6 +14,8 @@ export type GarageRide = {
   destination_address: string
   destination_latitude: number
   destination_longitude: number
+  estimated_distance_km?: string | number | null
+  estimated_route_geometry?: Array<{ latitude: number | string; longitude: number | string }> | null
   vehicle_type: string
   total_seats: number
   booked_seats: number
@@ -167,4 +169,3 @@ export const useDriverRidesStore = create<DriverRidesStore>()(
     }
   )
 )
-

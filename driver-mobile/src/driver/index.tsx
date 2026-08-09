@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { AppState, BackHandler, Platform, StyleSheet, Text, ToastAndroid, TouchableOpacity, View } from 'react-native'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { ActivityIndicator, AppState, BackHandler, Platform, StyleSheet, Text, ToastAndroid, TouchableOpacity, View } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { useQuery } from '@tanstack/react-query'
 import { MaterialIcons } from '@expo/vector-icons'
@@ -52,16 +52,16 @@ import DriverProfilePage from './pages/ProfilePage'
 import EditProfilePage from './pages/EditProfilePage'
 import AccountSettingsPage from './pages/AccountSettingsPage'
 import DriverTransactionsPage from './pages/TransactionsPage'
-import CreateGarageRideScreen from './screens/CreateGarageRideScreen'
 import AppLockScreen from './screens/AppLockScreen'
 import PinSetupScreen from './screens/PinSetupScreen'
-import WebViewScreen from './screens/WebViewScreen'
 import NotificationsPage from './pages/NotificationsPage'
 import DriverLayout from './layout/DriverLayout'
 import LoadingOverlay from './components/LoadingOverlay'
 import type { DriverTab } from './types'
 
-type SubPage = null | 'settings' | 'edit-profile' | 'account-verification' | 'vehicle-verification' | 'verification-success' | 'garage-ride' | 'webview' | 'notifications'
+const WebViewScreen = lazy(() => import('./screens/WebViewScreen'))
+
+type SubPage = null | 'settings' | 'edit-profile' | 'account-verification' | 'vehicle-verification' | 'verification-success' | 'webview' | 'notifications'
 
 const GARAGE_STATUS_LABELS: Record<string, string> = {
   open: 'Accepting passengers',
@@ -81,7 +81,7 @@ export default function DriverApp() {
     loginCompletedAt,
   } = useAuthStore()
   const { setSummary } = useDriverWalletStore()
-  const { garageRide, garagePassengers } = useDriverRidesStore()
+  const { garageRide, garagePassengers, isOnline, offlineMode } = useDriverRidesStore()
   const { settings } = useSettingsStore()
   const {
     isLocked,
@@ -99,6 +99,9 @@ export default function DriverApp() {
   const [sessionWarning, setSessionWarning] = useState('')
   const [pinSetupRequired, setPinSetupRequired] = useState(false)
   const [pendingAnnouncement, setPendingAnnouncement] = useState<DriverInAppAnnouncement | null>(null)
+  const [requestedRidesFilter, setRequestedRidesFilter] = useState<string | null>(null)
+
+  const hideTopBar = activeTab === 'rides' && !isOnline && offlineMode === 'scheduled';
   const [announcementGateVisible, setAnnouncementGateVisible] = useState(false)
   const [announcementRefreshKey, setAnnouncementRefreshKey] = useState(0)
   const [webviewUrl, setWebviewUrl] = useState('')
@@ -666,7 +669,7 @@ export default function DriverApp() {
   }
 
   // ——— Sub-page rendering (full screen, no layout) —————————————————————————————————————————————————————
-  if (subPage) {
+  if (subPage && subPage !== 'garage-ride' && subPage !== 'webview') {
     return (
       <SafeAreaProvider>
         {(() => {
@@ -698,19 +701,6 @@ export default function DriverApp() {
               )
             case 'verification-success':
               return <VerificationSuccessScreen onContinue={() => setSubPage(null)} />
-            case 'garage-ride': return <CreateGarageRideScreen onBack={() => setSubPage(null)} />
-            case 'webview':
-              return (
-                <WebViewScreen 
-                  url={webviewUrl} 
-                  title={webviewTitle} 
-                  onClose={() => {
-                    setSubPage(null)
-                    setWebviewUrl('')
-                    setWebviewTitle('')
-                  }} 
-                />
-              )
             case 'notifications': return <NotificationsPage onBack={() => setSubPage(null)} />
             default: return null
           }
@@ -778,7 +768,8 @@ export default function DriverApp() {
       }
       return
     }
-    setSubPage('garage-ride')
+    setRequestedRidesFilter('Garage')
+    setActiveTab('rides')
   }
 
   const renderPage = () => {
@@ -800,55 +791,82 @@ export default function DriverApp() {
 
   return (
     <SafeAreaProvider>
-      <DriverLayout 
-        activeTab={activeTab} 
-        onTabChange={setActiveTab}
-        onLogout={endDriverSession}
-        onOpenWebLink={(url, title) => {
-          setWebviewUrl(url)
-          setWebviewTitle(title)
-          setSubPage('webview')
-        }}
-        onOpenNotifications={() => setSubPage('notifications')}
-        hasUnreadNotifications={hasUnreadNotifications}
-        title={activeTab === 'transactions' ? 'All Transactions' : undefined}
-        onBack={activeTab === 'transactions' ? () => setActiveTab('wallet') : undefined}
-      >
-        {sessionWarning ? (
-          <View style={s.sessionWarning}>
-            <MaterialIcons name="wifi-off" size={16} color="#B45309" />
-            <Text style={s.sessionWarningText}>{sessionWarning}</Text>
+      <View style={{ flex: 1 }}>
+        <DriverLayout 
+          activeTab={activeTab} 
+          onTabChange={setActiveTab}
+          onLogout={endDriverSession}
+          hideTopBar={hideTopBar}
+          onOpenWebLink={(url, title) => {
+            setWebviewUrl(url)
+            setWebviewTitle(title)
+            setSubPage('webview')
+          }}
+          onOpenNotifications={() => setSubPage('notifications')}
+          hasUnreadNotifications={hasUnreadNotifications}
+          title={activeTab === 'transactions' ? 'All Transactions' : undefined}
+          onBack={activeTab === 'transactions' ? () => setActiveTab('wallet') : undefined}
+        >
+          {sessionWarning ? (
+            <View style={s.sessionWarning}>
+              <MaterialIcons name="wifi-off" size={16} color="#B45309" />
+              <Text style={s.sessionWarningText}>{sessionWarning}</Text>
+            </View>
+          ) : null}
+          {/* All tab screens stay mounted to preserve state (esp. MapView).
+              Inactive tabs are hidden via opacity/pointerEvents for home to prevent MapView unmounting. */}
+          <View style={activeTab === 'home' ? { flex: 1 } : { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0, zIndex: -1 }} pointerEvents={activeTab === 'home' ? 'auto' : 'none'}>
+            <DriverDashboardScreen onCreateGarageRide={handleCreateGarageRide} onNavigateToRide={() => setActiveTab('rides')} />
           </View>
-        ) : null}
-        {/* All tab screens stay mounted to preserve state (esp. MapView).
-            Inactive tabs are hidden via opacity/pointerEvents for home to prevent MapView unmounting. */}
-        <View style={activeTab === 'home' ? { flex: 1 } : { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0, zIndex: -1 }} pointerEvents={activeTab === 'home' ? 'auto' : 'none'}>
-          <DriverDashboardScreen onCreateGarageRide={handleCreateGarageRide} onNavigateToRide={() => setActiveTab('rides')} />
-        </View>
-        <View style={activeTab === 'rides' ? { flex: 1 } : { display: 'none' }}>
-          <DriverRidesPage />
-        </View>
-        <View style={activeTab === 'wallet' ? { flex: 1 } : { display: 'none' }}>
-          <DriverWalletPage onNavigateToAllTransactions={() => setActiveTab('transactions')} />
-        </View>
-        {activeTab === 'transactions' && <DriverTransactionsPage />}
-        <View style={activeTab === 'profile' ? { flex: 1 } : { display: 'none' }}>
-          <DriverProfilePage
-            onNavigateToSettings={() => setSubPage('settings')}
-            onEditProfile={() => setSubPage('edit-profile')}
+          <View style={activeTab === 'rides' ? { flex: 1 } : { display: 'none' }}>
+            <DriverRidesPage onBack={() => setActiveTab('home')} requestedFilter={requestedRidesFilter} onFilterConsumed={() => setRequestedRidesFilter(null)} />
+          </View>
+          <View style={activeTab === 'wallet' ? { flex: 1 } : { display: 'none' }}>
+            <DriverWalletPage onNavigateToAllTransactions={() => setActiveTab('transactions')} />
+          </View>
+          {activeTab === 'transactions' && <DriverTransactionsPage />}
+          <View style={activeTab === 'profile' ? { flex: 1 } : { display: 'none' }}>
+            <DriverProfilePage
+              onNavigateToSettings={() => setSubPage('settings')}
+              onEditProfile={() => setSubPage('edit-profile')}
+            />
+          </View>
+          <InAppAnnouncementModal
+            announcement={pendingAnnouncement}
+            visible={announcementGateVisible}
+            onDismiss={handleDismissAnnouncement}
           />
-        </View>
-        <InAppAnnouncementModal
-          announcement={pendingAnnouncement}
-          visible={announcementGateVisible}
-          onDismiss={handleDismissAnnouncement}
-        />
-      </DriverLayout>
+        </DriverLayout>
+
+        {subPage === 'webview' && (
+          <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 200, backgroundColor: COLORS.background }}>
+            <Suspense fallback={<WebViewLoadingScreen />}>
+              <WebViewScreen
+                url={webviewUrl}
+                title={webviewTitle}
+                onClose={() => {
+                  setSubPage(null)
+                  setWebviewUrl('')
+                  setWebviewTitle('')
+                }}
+              />
+            </Suspense>
+          </View>
+        )}
+      </View>
     </SafeAreaProvider>
   )
 }
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Verification Success Screen Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+function WebViewLoadingScreen() {
+  return (
+    <View style={s.webviewLoadingRoot}>
+      <ActivityIndicator size="large" color={COLORS.primary} />
+    </View>
+  )
+}
+
 function VerificationSuccessScreen({ onContinue }: { onContinue: () => void }) {
   return (
     <View style={s.successRoot}>
@@ -880,6 +898,12 @@ const s = StyleSheet.create({
     ...FONTS.bodySm,
     color: COLORS.tertiary,
     textAlign: 'center',
+  },
+  webviewLoadingRoot: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.background,
   },
   sessionWarning: {
     flexDirection: 'row',

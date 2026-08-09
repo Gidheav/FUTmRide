@@ -1,793 +1,535 @@
-import React, { useMemo, useRef, useState, useEffect } from 'react'
-import {
-  Alert,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native'
-import { MaterialIcons } from '@expo/vector-icons'
-import LoadingOverlay from '../components/LoadingOverlay'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import QRCode from 'react-native-qrcode-svg'
-import MapView, { Marker } from 'react-native-maps'
-import api, { driverApi } from '../../core/api'
-import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme'
-import { useGarageRideStore } from '../../core/garageRideStore'
-import { useDriverRidesStore } from '../../core/driverRidesStore'
-import { useLocations } from '../../core/locationDataService'
+import React, { useMemo, useRef, useState, useEffect } from "react"
+import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, useWindowDimensions } from "react-native"
+import { MaterialIcons } from "@expo/vector-icons"
+import LoadingOverlay from "../components/LoadingOverlay"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
+import QRCode from "react-native-qrcode-svg"
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps"
+import Constants from "expo-constants"
+import api, { driverApi } from "../../core/api"
+import { COLORS, FONTS, AMBIENT_SHADOW } from "../../core/theme"
+import { useGarageRideStore } from "../../core/garageRideStore"
+import { useDriverRidesStore } from "../../core/driverRidesStore"
+import { useLocations } from "../../core/locationDataService"
 
-type CreateGarageRideScreenProps = {
-  onBack: () => void
-}
-
-type LocationOption = {
-  id: string
-  label: string
-  description: string
-  latitude: number
-  longitude: number
-}
+type CreateGarageRideScreenProps = { onBack: () => void }
+type LocationOption = { id: string; label: string; description: string; latitude: number; longitude: number }
 
 const filterLocations = (query: string, locations: LocationOption[]) => {
-  const normalized = query.trim().toLowerCase()
-  if (!normalized) return locations
-  return locations.filter((item) => {
-    const haystack = `${item.label} ${item.description}`.toLowerCase()
-    return haystack.includes(normalized)
-  })
+  const n = query.trim().toLowerCase()
+  if (!n) return locations
+  return locations.filter((i) => `${i.label} ${i.description}`.toLowerCase().includes(n))
 }
-
 const haversineKm = (lat1: number, lng1: number, lat2: number, lng2: number) => {
-  const radius = 6371
-  const toRad = (value: number) => (value * Math.PI) / 180
-  const dLat = toRad(lat2 - lat1)
-  const dLng = toRad(lng2 - lng1)
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2)
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-  return radius * c
+  const R = 6371, r = (v: number) => (v * Math.PI) / 180
+  const dLat = r(lat2 - lat1), dLng = r(lng2 - lng1)
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(r(lat1)) * Math.cos(r(lat2)) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+const fmtCur = (v: number | null) => v === null || isNaN(v) ? "---" : `N${v.toFixed(0)}`
+const fmtDist = (v: number | null) => v === null || isNaN(v) ? "-- km" : `${v.toFixed(2)} km`
+const rc = (v: number) => Number(v.toFixed(6))
+
+const GOOGLE_API_KEY = Constants.expoConfig?.android?.config?.googleMaps?.apiKey || ""
+
+const decodePolyline = (encoded: string): { latitude: number; longitude: number }[] => {
+  const pts: { latitude: number; longitude: number }[] = []
+  let idx = 0, lat = 0, lng = 0
+  while (idx < encoded.length) {
+    let b: number, shift = 0, result = 0
+    do { b = encoded.charCodeAt(idx++) - 63; result |= (b & 0x1f) << shift; shift += 5 } while (b >= 0x20)
+    lat += (result & 1) ? ~(result >> 1) : result >> 1
+    shift = 0; result = 0
+    do { b = encoded.charCodeAt(idx++) - 63; result |= (b & 0x1f) << shift; shift += 5 } while (b >= 0x20)
+    lng += (result & 1) ? ~(result >> 1) : result >> 1
+    pts.push({ latitude: lat / 1e5, longitude: lng / 1e5 })
+  }
+  return pts
 }
 
-const formatCurrency = (value: number | null) => {
-  if (value === null || Number.isNaN(value)) return '₦—'
-  return `₦${value.toFixed(0)}`
+const fetchDirectionsRoute = async (
+  o: LocationOption,
+  d: LocationOption,
+): Promise<{ coords: { latitude: number; longitude: number }[]; distanceKm: number } | null> => {
+  if (!GOOGLE_API_KEY) return null
+  try {
+    const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${o.latitude},${o.longitude}&destination=${d.latitude},${d.longitude}&key=${GOOGLE_API_KEY}`
+    const res = await fetch(url)
+    const data = await res.json()
+    if (data.routes?.length) {
+      const leg = data.routes[0].legs?.[0]
+      const distanceKm = leg?.distance?.value ? leg.distance.value / 1000 : 0
+      const coords = decodePolyline(data.routes[0].overview_polyline.points)
+      return { coords, distanceKm }
+    }
+  } catch { /* fall back to straight line */ }
+  return null
 }
-
-const formatDistance = (value: number | null) => {
-  if (value === null || Number.isNaN(value)) return '— km'
-  return `${value.toFixed(2)} km`
-}
-
-const roundCoord = (value: number) => Number(value.toFixed(6))
 
 export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScreenProps) {
   const insets = useSafeAreaInsets()
+  const { width } = useWindowDimensions()
   const {
-    garageRide: cachedGarageRide,
-    garagePassengers: cachedGaragePassengers,
-    setGarageRide: setCachedGarageRide,
-    setGaragePassengers: setCachedGaragePassengers,
-    savedRoutes,
-    setSavedRoutes,
-    driverProfile,
-    setDriverProfile,
+    garageRide: cachedGarageRide, garagePassengers: cachedGaragePassengers,
+    setGarageRide: setCachedGarageRide, setGaragePassengers: setCachedGaragePassengers,
+    savedRoutes, setSavedRoutes, driverProfile, setDriverProfile,
   } = useDriverRidesStore()
 
-  // Form state
   const [origin, setOrigin] = useState<LocationOption | null>(null)
   const [destination, setDestination] = useState<LocationOption | null>(null)
-  const [seats, setSeats] = useState('4')
+  const [seats, setSeats] = useState(4)
   const [distanceKm, setDistanceKm] = useState<number | null>(null)
   const [estimatedFare, setEstimatedFare] = useState<number | null>(null)
-  const [isEstimating, setIsEstimating] = useState(false)
+  const [isTaring, setIsTaring] = useState(false)
+  const [isTared, setIsTared] = useState(false)
   const [saveRoute, setSaveRoute] = useState(false)
   const [loading, setLoading] = useState(false)
   const [hydrating, setHydrating] = useState(!cachedGarageRide)
   const [isUpdatingRide, setIsUpdatingRide] = useState(false)
-  const [locationPickerOpen, setLocationPickerOpen] = useState<null | 'origin' | 'destination'>(null)
-  const [locationQuery, setLocationQuery] = useState('')
-  const [isMapPreviewOpen, setIsMapPreviewOpen] = useState(false)
+  const [locationPickerOpen, setLocationPickerOpen] = useState<null | "origin" | "destination">(null)
+  const [locationQuery, setLocationQuery] = useState("")
   const [isSavedRoutesOpen, setIsSavedRoutesOpen] = useState(false)
-  
-  // Created ride state
   const [ride, setRide] = useState<any>(cachedGarageRide)
   const [passengers, setPassengers] = useState<any[]>(cachedGaragePassengers)
+  const [routeCoords, setRouteCoords] = useState<{ latitude: number; longitude: number }[] | null>(null)
   const { setStatus } = useGarageRideStore()
-  
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const estimateSeqRef = useRef(0)
   const syncInFlightRef = useRef(false)
+  const mapRef = useRef<MapView>(null)
+  const ACTIVE_STATUSES = new Set(["open", "full", "departed"])
 
-  const ACTIVE_STATUSES = new Set(['open', 'full', 'departed'])
-
-  useEffect(() => {
-    return () => {
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
-    }
-  }, [])
+  useEffect(() => () => { if (pollIntervalRef.current) clearInterval(pollIntervalRef.current) }, [])
 
   useEffect(() => {
-    let isMounted = true
-    const loadActiveRide = async () => {
+    let mounted = true
+    ;(async () => {
       try {
-        const res = await api.get('rides/garage/mine/')
+        const res = await api.get("rides/garage/mine/")
         const list = Array.isArray(res.data) ? res.data : res.data?.results || []
-        const active = list.find((item: any) => ACTIVE_STATUSES.has(item.status)) || null
-        if (!isMounted) return
-        if (active) {
-          setRide(active)
-          setCachedGarageRide(active)
-          startPolling(active.id)
-          setStatus('active')
-        }
-      } catch {
-        // ignore
-      } finally {
-        if (isMounted) setHydrating(false)
-      }
-    }
-    loadActiveRide()
-    return () => {
-      isMounted = false
-    }
+        const active = list.find((i: any) => ACTIVE_STATUSES.has(i.status)) || null
+        if (!mounted) return
+        if (active) { setRide(active); setCachedGarageRide(active); startPolling(active.id); setStatus("active") }
+      } catch { /* ignore */ } finally { if (mounted) setHydrating(false) }
+    })()
+    return () => { mounted = false }
   }, [])
 
   const rawLocations = useLocations()
-  const locations = useMemo(() => {
-    return rawLocations.map((loc) => ({
-      id: loc.id,
-      label: loc.name,
-      description: loc.description,
-      latitude: Number(loc.latitude),
-      longitude: Number(loc.longitude),
-    }))
-  }, [rawLocations])
+  const locations = useMemo(() => rawLocations.map((loc) => ({
+    id: loc.id, label: loc.name, description: loc.description,
+    latitude: Number(loc.latitude), longitude: Number(loc.longitude),
+  })), [rawLocations])
 
-  const filteredLocations = useMemo(() => filterLocations(locationQuery, locations), [locationQuery, locations])
+  const filteredLocations = useMemo(() => {
+    let list = locations
+    if (locationPickerOpen === "origin" && destination) list = list.filter((l) => l.id !== destination.id)
+    if (locationPickerOpen === "destination" && origin) list = list.filter((l) => l.id !== origin.id)
+    return filterLocations(locationQuery, list)
+  }, [locationQuery, locations, locationPickerOpen, origin, destination])
 
   useEffect(() => {
-    let isMounted = true
-    const loadDriverProfile = async () => {
-      try {
-        const res = await driverApi.getProfile()
-        if (!isMounted) return
-        setDriverProfile({ vehicle_type: res?.data?.vehicle_type || null })
-      } catch {
-        // Keep cached profile if available; fallback handled during fare estimate.
-      }
-    }
+    let mounted = true
     if (!driverProfile) {
-      void loadDriverProfile()
+      driverApi.getProfile().then((res) => { if (mounted) setDriverProfile({ vehicle_type: res?.data?.vehicle_type || null }) }).catch(() => {})
     }
-    return () => {
-      isMounted = false
-    }
+    return () => { mounted = false }
   }, [driverProfile, setDriverProfile])
 
   useEffect(() => {
-    let isMounted = true
-    const loadSavedRoutes = async () => {
-      if (syncInFlightRef.current) return
+    let mounted = true
+    if (savedRoutes.length === 0 && !syncInFlightRef.current) {
       syncInFlightRef.current = true
-      try {
-        const res = await driverApi.getSavedRoutes()
+      driverApi.getSavedRoutes().then((res) => {
         const list = Array.isArray(res?.data) ? res.data : res?.data?.results || []
-        if (isMounted) setSavedRoutes(list)
-      } catch {
-        // Keep local cache if offline.
-      } finally {
-        syncInFlightRef.current = false
-      }
+        if (mounted) setSavedRoutes(list)
+      }).catch(() => {}).finally(() => { syncInFlightRef.current = false })
     }
-    if (savedRoutes.length === 0) {
-      void loadSavedRoutes()
-    }
-    return () => {
-      isMounted = false
-    }
+    return () => { mounted = false }
   }, [savedRoutes.length, setSavedRoutes])
 
-  const getVehicleType = () => {
-    const cachedType = driverProfile?.vehicle_type
-    return cachedType ? String(cachedType).toLowerCase() : 'sedan'
+  // Fit map + auto-tare whenever both endpoints change
+  useEffect(() => {
+    if (!origin || !destination) { setRouteCoords(null); setDistanceKm(null); setEstimatedFare(null); setIsTared(false); return }
+
+    setTimeout(() => {
+      mapRef.current?.fitToCoordinates(
+        [{ latitude: origin.latitude, longitude: origin.longitude }, { latitude: destination.latitude, longitude: destination.longitude }],
+        { edgePadding: { top: 80, right: 40, bottom: 260, left: 40 }, animated: true }
+      )
+    }, 300)
+
+    setIsTared(false)
+    setDistanceKm(null)
+    setEstimatedFare(null)
+
+    let cancelled = false
+    ;(async () => { await runTare(origin, destination, () => cancelled) })()
+    return () => { cancelled = true }
+  }, [origin?.id, destination?.id])
+
+  const getVehicleType = () => driverProfile?.vehicle_type ? String(driverProfile.vehicle_type).toLowerCase() : "sedan"
+  const getMaxSeats = () => {
+    const v = getVehicleType()
+    if (v === "suv") return 7
+    if (v === "minibus") return 14
+    if (v === "coaster") return 30
+    return 4
   }
 
-  const refreshEstimate = async (nextOrigin: LocationOption | null, nextDestination: LocationOption | null) => {
-    if (!nextOrigin || !nextDestination) return
-    const nextDistance = haversineKm(
-      nextOrigin.latitude,
-      nextOrigin.longitude,
-      nextDestination.latitude,
-      nextDestination.longitude
-    )
-    setDistanceKm(nextDistance)
-    const currentSeq = ++estimateSeqRef.current
-    setIsEstimating(true)
+  const runTare = async (o: LocationOption, d: LocationOption, isCancelled: () => boolean = () => false) => {
+    if (isCancelled()) return
+    setIsTaring(true)
+    setIsTared(false)
     try {
-      const res = await driverApi.pricingEstimate({
-        vehicle_type: getVehicleType(),
-        distance_km: Number(nextDistance.toFixed(2)),
-        surge_multiplier: 1.0,
-      })
-      if (estimateSeqRef.current === currentSeq) {
-        setEstimatedFare(Number(res?.data?.total_fare || 0))
-      }
-    } catch {
-      // Keep last known estimate; create will re-attempt.
-    } finally {
-      if (estimateSeqRef.current === currentSeq) setIsEstimating(false)
-    }
+      const dirResult = await fetchDirectionsRoute(o, d)
+      if (isCancelled()) return
+      const roadKm = dirResult?.distanceKm && dirResult.distanceKm > 0
+        ? dirResult.distanceKm
+        : haversineKm(o.latitude, o.longitude, d.latitude, d.longitude)
+      if (!isCancelled() && dirResult?.coords) setRouteCoords(dirResult.coords)
+      if (!isCancelled()) setDistanceKm(roadKm)
+      const res = await driverApi.pricingEstimate({ vehicle_type: getVehicleType(), distance_km: Number(roadKm.toFixed(2)), surge_multiplier: 1.0 })
+      if (isCancelled()) return
+      setEstimatedFare(Number(res?.data?.total_fare || 0))
+      setIsTared(true)
+    } catch { /* stay un-tared */ } finally { if (!isCancelled()) setIsTaring(false) }
   }
 
   const handleSelectLocation = (item: LocationOption) => {
-    if (locationPickerOpen === 'origin') {
-      const nextOrigin = item
-      setOrigin(nextOrigin)
-      void refreshEstimate(nextOrigin, destination)
-    } else if (locationPickerOpen === 'destination') {
-      const nextDestination = item
-      setDestination(nextDestination)
-      void refreshEstimate(origin, nextDestination)
-    }
-    setLocationQuery('')
-    setLocationPickerOpen(null)
+    if (locationPickerOpen === "origin") setOrigin(item)
+    else setDestination(item)
+    setLocationQuery(""); setLocationPickerOpen(null)
   }
 
   const handleSwapRoute = () => {
     if (!origin || !destination) return
-    const nextOrigin = destination
-    const nextDestination = origin
-    setOrigin(nextOrigin)
-    setDestination(nextDestination)
-    void refreshEstimate(nextOrigin, nextDestination)
+    setOrigin(destination); setDestination(origin)
   }
 
   const handleUseSavedRoute = (route: any) => {
-    const nextOrigin = {
-      id: route.id || 'saved-origin',
-      label: route.origin_address,
-      description: 'Saved route origin',
-      latitude: roundCoord(Number(route.origin_latitude)),
-      longitude: roundCoord(Number(route.origin_longitude)),
-    }
-    const nextDestination = {
-      id: route.id || 'saved-destination',
-      label: route.destination_address,
-      description: 'Saved route destination',
-      latitude: roundCoord(Number(route.destination_latitude)),
-      longitude: roundCoord(Number(route.destination_longitude)),
-    }
-    setOrigin(nextOrigin)
-    setDestination(nextDestination)
-    void refreshEstimate(nextOrigin, nextDestination)
-    if (route?.id && !String(route.id).startsWith('local-')) {
-      const nextUsedAt = new Date().toISOString()
-      upsertSavedRoute({ ...route, last_used_at: nextUsedAt })
-      driverApi.updateSavedRoute(route.id, { last_used_at: nextUsedAt }).catch(() => {})
+    const o = { id: route.id || "s-o", label: route.origin_address, description: "", latitude: rc(Number(route.origin_latitude)), longitude: rc(Number(route.origin_longitude)) }
+    const d = { id: route.id || "s-d", label: route.destination_address, description: "", latitude: rc(Number(route.destination_latitude)), longitude: rc(Number(route.destination_longitude)) }
+    setOrigin(o); setDestination(d)
+    if (route?.id && !String(route.id).startsWith("local-")) {
+      const t = new Date().toISOString()
+      upsertSavedRoute({ ...route, last_used_at: t })
+      driverApi.updateSavedRoute(route.id, { last_used_at: t }).catch(() => {})
     }
     setIsSavedRoutesOpen(false)
   }
 
   const upsertSavedRoute = (route: any) => {
-    const next = [...savedRoutes]
-    const index = next.findIndex((item) => item.id === route.id)
-    if (index >= 0) {
-      next[index] = route
-    } else {
-      next.unshift(route)
-    }
+    const next = [...savedRoutes]; const idx = next.findIndex((i) => i.id === route.id)
+    if (idx >= 0) next[idx] = route; else next.unshift(route)
     setSavedRoutes(next)
   }
 
-  const getNextPinTarget = () => {
-    if (!origin) return 'origin'
-    if (!destination) return 'destination'
-    return 'destination'
-  }
-
-  const handleMapPress = (event: any) => {
-    const { latitude, longitude } = event?.nativeEvent?.coordinate || {}
-    if (latitude === undefined || longitude === undefined) return
-    const pin: LocationOption = {
-      id: `pin-${Date.now()}`,
-      label: 'Pinned location',
-      description: `Lat ${latitude.toFixed(5)}, Lng ${longitude.toFixed(5)}`,
-      latitude: roundCoord(latitude),
-      longitude: roundCoord(longitude),
-    }
-    if (getNextPinTarget() === 'origin') {
-      setOrigin(pin)
-      void refreshEstimate(pin, destination)
-    } else {
-      setDestination(pin)
-      void refreshEstimate(origin, pin)
-    }
-  }
-
   const handleCreate = async () => {
-    if (!origin || !destination || !seats) {
-      Alert.alert('Missing fields', 'Please fill in all fields.')
-      return
-    }
-
+    if (!origin || !destination) { Alert.alert("Missing fields", "Select origin and destination."); return }
+    if (!isTared) { void runTare(origin, destination); return }
     setLoading(true)
     try {
-      const rawDistance = distanceKm ?? haversineKm(
-        origin.latitude,
-        origin.longitude,
-        destination.latitude,
-        destination.longitude
-      )
-      const distance = Number(rawDistance.toFixed(2))
-
-      let fareValue = estimatedFare
-      if (!fareValue) {
-        const estimate = await driverApi.pricingEstimate({
-          vehicle_type: getVehicleType(),
-          distance_km: distance,
-          surge_multiplier: 1.0,
-        })
-        fareValue = Number(estimate?.data?.total_fare || 0)
-        setEstimatedFare(fareValue)
-      }
-      if (!fareValue || Number.isNaN(fareValue)) {
-        Alert.alert('Pricing unavailable', 'Unable to calculate fare. Please try again.')
-        return
-      }
-
+      const dist = Number((distanceKm ?? haversineKm(origin.latitude, origin.longitude, destination.latitude, destination.longitude)).toFixed(2))
+      const fare = estimatedFare
+      if (!fare || isNaN(fare)) { Alert.alert("Pricing unavailable", "Unable to calculate fare. Tap Distance to recalibrate."); return }
       const payload = {
-        origin_address: origin.label,
-        origin_latitude: roundCoord(origin.latitude),
-        origin_longitude: roundCoord(origin.longitude),
-        destination_address: destination.label,
-        destination_latitude: roundCoord(destination.latitude),
-        destination_longitude: roundCoord(destination.longitude),
-        vehicle_type: getVehicleType(),
-        total_seats: parseInt(seats, 10),
-        fare_per_seat: Number(fareValue),
+        origin_address: origin.label, origin_latitude: rc(origin.latitude), origin_longitude: rc(origin.longitude),
+        destination_address: destination.label, destination_latitude: rc(destination.latitude), destination_longitude: rc(destination.longitude),
+        estimated_distance_km: dist,
+        estimated_route_geometry: routeCoords?.length ? routeCoords.map((point) => ({ latitude: rc(point.latitude), longitude: rc(point.longitude) })) : [],
+        vehicle_type: getVehicleType(), total_seats: seats, fare_per_seat: Number(fare),
       }
-
-      const res = await api.post('rides/garage/create/', payload)
-      setRide(res.data)
-      setCachedGarageRide(res.data)
-      setCachedGaragePassengers([])
-      startPolling(res.data.id)
-      setStatus('active')
-
+      const res = await api.post("rides/garage/create/", payload)
+      const createdRide = {
+        ...res.data,
+        estimated_distance_km: res.data?.estimated_distance_km ?? payload.estimated_distance_km,
+        estimated_route_geometry: Array.isArray(res.data?.estimated_route_geometry) && res.data.estimated_route_geometry.length
+          ? res.data.estimated_route_geometry
+          : payload.estimated_route_geometry,
+      }
+      setRide(createdRide); setCachedGarageRide(createdRide); setCachedGaragePassengers([])
+      startPolling(createdRide.id); setStatus("active")
       if (saveRoute) {
-        const isDuplicate = savedRoutes.some(item => 
-          item.origin_address === origin.label && 
-          item.destination_address === destination.label
+        const oLbl = origin.label, dLbl = destination.label
+        const dup = savedRoutes.some((i: any) =>
+          (i.origin_address === oLbl && i.destination_address === dLbl) ||
+          (i.origin_address === dLbl && i.destination_address === oLbl)
         )
-        if (!isDuplicate) {
-          const tempRoute = {
-            id: `local-${Date.now()}`,
-            name: '',
-            origin_address: origin.label,
-            origin_latitude: roundCoord(origin.latitude),
-            origin_longitude: roundCoord(origin.longitude),
-            destination_address: destination.label,
-            destination_latitude: roundCoord(destination.latitude),
-            destination_longitude: roundCoord(destination.longitude),
-            distance_km: distance,
-            last_used_at: new Date().toISOString(),
-          }
-          upsertSavedRoute(tempRoute)
-          driverApi
-            .createSavedRoute({
-              name: tempRoute.name,
-              origin_address: tempRoute.origin_address,
-              origin_latitude: tempRoute.origin_latitude,
-              origin_longitude: tempRoute.origin_longitude,
-              destination_address: tempRoute.destination_address,
-              destination_latitude: tempRoute.destination_latitude,
-              destination_longitude: tempRoute.destination_longitude,
-              distance_km: tempRoute.distance_km,
-              last_used_at: tempRoute.last_used_at,
-            })
-            .then((resp) => {
-              if (resp?.data?.id) {
-                const next = savedRoutes.filter((item) => {
-                  if (!String(item.id).startsWith('local-')) return true
-                  return !(
-                    item.origin_address === tempRoute.origin_address &&
-                    item.destination_address === tempRoute.destination_address &&
-                    Number(item.distance_km) === Number(tempRoute.distance_km)
-                  )
-                })
-                next.unshift(resp.data)
-                setSavedRoutes(next)
-              }
-            })
-            .catch(() => {
-              // Keep local entry; sync can retry later.
-            })
+        if (!dup) {
+          const tmp: any = { id: `local-${Date.now()}`, name: "", origin_address: oLbl, origin_latitude: rc(origin.latitude), origin_longitude: rc(origin.longitude), destination_address: dLbl, destination_latitude: rc(destination.latitude), destination_longitude: rc(destination.longitude), distance_km: dist, last_used_at: new Date().toISOString() }
+          upsertSavedRoute(tmp)
+          driverApi.createSavedRoute({ name: tmp.name, origin_address: tmp.origin_address, origin_latitude: tmp.origin_latitude, origin_longitude: tmp.origin_longitude, destination_address: tmp.destination_address, destination_latitude: tmp.destination_latitude, destination_longitude: tmp.destination_longitude, distance_km: tmp.distance_km, last_used_at: tmp.last_used_at }).then((r: any) => {
+            if (r?.data?.id) { const nxt = savedRoutes.filter((i: any) => !String(i.id).startsWith("local-") || !(i.origin_address === oLbl && i.destination_address === dLbl)); nxt.unshift(r.data); setSavedRoutes(nxt) }
+          }).catch(() => {})
         }
       }
-    } catch (err: any) {
-      const msg = err?.response?.data?.error?.message || 'Could not create garage ride.'
-      Alert.alert('Error', msg)
-    } finally {
-      setLoading(false)
-    }
+    } catch (err: any) { Alert.alert("Error", err?.response?.data?.error?.message || "Could not create garage ride.") }
+    finally { setLoading(false) }
   }
 
   const startPolling = (rideId: string) => {
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
-    const fetchPassengers = async () => {
-      try {
-        const res = await api.get(`rides/garage/${rideId}/passengers/`)
-        const list = res.data?.results || res.data || []
-        setPassengers(list)
-        setCachedGaragePassengers(list)
-      } catch (err) {
-        // ignore
-      }
+    const fetchP = async () => {
+      try { const res = await api.get(`rides/garage/${rideId}/passengers/`); const list = res.data?.results || res.data || []; setPassengers(list); setCachedGaragePassengers(list) } catch { /* ignore */ }
     }
-    fetchPassengers()
-    pollIntervalRef.current = setInterval(fetchPassengers, 5000)
+    fetchP(); pollIntervalRef.current = setInterval(fetchP, 5000)
   }
 
-  if (hydrating && !ride) {
-    return (
-      <View style={[styles.page, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}> 
-        <LoadingOverlay visible={true} inline size={60} />
-        <Text style={styles.loadingText}>Loading garage ride...</Text>
-      </View>
-    )
-  }
-
-  const handleDepart = async () => {
-    if (!ride) return
-    if (ride.status === 'departed' || isUpdatingRide) return
-    Alert.alert('Depart', 'Are you sure you want to depart and close boarding?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Depart',
-        onPress: async () => {
-          try {
-            setIsUpdatingRide(true)
-            const res = await api.post(`rides/garage/${ride.id}/depart/`)
-            const nextRide = res?.data || ride
-            setRide(nextRide)
-            setCachedGarageRide(nextRide)
-            Alert.alert('Departed', 'Have a safe trip!')
-          } catch (err: any) {
-            Alert.alert('Error', err?.response?.data?.error?.message || 'Failed to depart.')
-          } finally {
-            setIsUpdatingRide(false)
-          }
-        },
-      },
+  const handleDepart = () => {
+    if (!ride || ride.status === "departed" || isUpdatingRide) return
+    Alert.alert("Depart", "Close boarding and depart now?", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Depart", onPress: async () => {
+        try { setIsUpdatingRide(true); const res = await api.post(`rides/garage/${ride.id}/depart/`); const next = res?.data || ride; setRide(next); setCachedGarageRide(next) }
+        catch (err: any) { Alert.alert("Error", err?.response?.data?.error?.message || "Failed.") }
+        finally { setIsUpdatingRide(false) }
+      } },
     ])
   }
 
   const handleComplete = async () => {
-    if (!ride || isUpdatingRide) return
-    if (ride.status !== 'departed') return
-    try {
-      setIsUpdatingRide(true)
-      await api.post(`rides/garage/${ride.id}/complete/`)
-      Alert.alert('Completed', 'Ride completed successfully.')
-      setRide(null)
-      setPassengers([])
-      setCachedGarageRide(null)
-      setCachedGaragePassengers([])
-      setStatus('inactive')
-      onBack()
-    } catch (err: any) {
-      Alert.alert('Error', err?.response?.data?.error?.message || 'Failed to complete ride.')
-    } finally {
-      setIsUpdatingRide(false)
-    }
+    if (!ride || isUpdatingRide || ride.status !== "departed") return
+    try { setIsUpdatingRide(true); await api.post(`rides/garage/${ride.id}/complete/`); Alert.alert("Completed", "Ride completed!"); setRide(null); setPassengers([]); setCachedGarageRide(null); setCachedGaragePassengers([]); setStatus("inactive"); onBack() }
+    catch (err: any) { Alert.alert("Error", err?.response?.data?.error?.message || "Failed.") }
+    finally { setIsUpdatingRide(false) }
   }
 
-  const handleCancel = async () => {
+  const handleCancel = () => {
     if (!ride) return
-    Alert.alert('Cancel Ride', 'Cancel this ride and refund all passengers?', [
-      { text: 'No', style: 'cancel' },
-      {
-        text: 'Yes, Cancel',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await api.post(`rides/garage/${ride.id}/cancel/`)
-            Alert.alert('Cancelled', 'Ride cancelled and passengers refunded.')
-            setRide(null)
-            setPassengers([])
-            setCachedGarageRide(null)
-            setCachedGaragePassengers([])
-            setStatus('inactive')
-            onBack()
-          } catch (err: any) {
-            Alert.alert('Error', err?.response?.data?.error?.message || 'Failed to cancel.')
-          }
-        },
-      },
+    Alert.alert("Cancel Ride", "Cancel and refund all passengers?", [
+      { text: "No", style: "cancel" },
+      { text: "Yes, Cancel", style: "destructive", onPress: async () => {
+        try { await api.post(`rides/garage/${ride.id}/cancel/`); setRide(null); setPassengers([]); setCachedGarageRide(null); setCachedGaragePassengers([]); setStatus("inactive"); onBack() }
+        catch (err: any) { Alert.alert("Error", err?.response?.data?.error?.message || "Failed.") }
+      } },
     ])
   }
 
+  if (hydrating && !ride) {
+    return <View style={[s.page, { paddingTop: insets.top, alignItems: "center", justifyContent: "center" }]}><LoadingOverlay visible={true} inline size={48} /></View>
+  }
+
   if (ride) {
-    // ── Show QR and passenger list ──
-    const totalEarnings = passengers.reduce((sum, p) => sum + Number(p.amount_paid), 0)
-    
+    const totalEarnings = passengers.reduce((sum: number, p: any) => sum + Number(p.amount_paid), 0)
+    const bookedSeats = passengers.reduce((sum: number, p: any) => sum + p.seats_booked, 0)
+    const isDeparted = ride.status === "departed"
+    const qrSize = Math.min(Math.max(width - 88, 260), 320)
     return (
-      <View style={[styles.page, { paddingTop: insets.top }]}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={handleCancel} style={styles.headerBtn}>
-            <MaterialIcons name="close" size={24} color={COLORS.error} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Boarding...</Text>
-          <View style={{ width: 24 }} />
-        </View>
-
-        <ScrollView contentContainerStyle={styles.content}>
-          <View style={styles.qrContainer}>
-            <Text style={styles.qrInstruction}>Have students scan this code to pay & board.</Text>
-            <View style={styles.qrWrapper}>
-              <QRCode
-                value={ride.qr_token}
-                size={300}
-                color="#000"
-                backgroundColor="#FFF"
-              />
+      <View style={[s.page, { paddingTop: 0 }]}>
+        <ScrollView contentContainerStyle={[s.boardingContent, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 24 }]} showsVerticalScrollIndicator={false}>
+          <View style={s.qrCard}>
+            <View style={s.qrWrapper}>
+              <QRCode value={ride.qr_token} size={qrSize} color="#111" backgroundColor="#fff" />
             </View>
-            <Text style={styles.rideRef}>{ride.reference}</Text>
+            <Text style={s.rideRef}>#{ride.reference}</Text>
+            <Text style={s.qrCaption}>Students scan to pay and board</Text>
           </View>
 
-          <View style={styles.statsRow}>
-            <View style={styles.statBox}>
-              <Text style={styles.statLabel}>Seats Booked</Text>
-              <Text style={styles.statValue}>{passengers.reduce((sum, p) => sum + p.seats_booked, 0)} / {ride.total_seats}</Text>
-            </View>
-            <View style={styles.statBox}>
-              <Text style={styles.statLabel}>Earnings So Far</Text>
-              <Text style={styles.statValue}>₦{totalEarnings.toLocaleString()}</Text>
-            </View>
-          </View>
-
-          <View style={styles.passengersSection}>
-            <Text style={styles.passengersTitle}>Passengers ({passengers.length})</Text>
-            {passengers.map((p) => (
-              <View key={p.id} style={styles.passengerRow}>
-                <View style={styles.passengerAvatar}>
-                  <MaterialIcons name="person" size={20} color={COLORS.primaryContainer} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.passengerName}>{p.student?.full_name || 'Student'}</Text>
-                  <Text style={styles.passengerDetails}>{p.seats_booked} seat(s) • ₦{Number(p.amount_paid).toLocaleString()}</Text>
-                </View>
-              </View>
-            ))}
-            {passengers.length === 0 && (
-              <Text style={styles.noPassengers}>Waiting for passengers...</Text>
+          <View style={s.boardingActions}>
+            {!isDeparted && (
+              <TouchableOpacity style={s.inlineCancelBtn} onPress={handleCancel} disabled={isUpdatingRide} activeOpacity={0.85}>
+                <MaterialIcons name="close" size={18} color={COLORS.error} />
+                <Text style={s.inlineCancelTxt}>Cancel</Text>
+              </TouchableOpacity>
             )}
+            {isDeparted
+              ? <TouchableOpacity style={[s.inlinePrimaryBtn, { backgroundColor: "#2E7D32" }]} onPress={handleComplete} disabled={isUpdatingRide} activeOpacity={0.85}><MaterialIcons name="check-circle-outline" size={19} color="#fff" /><Text style={s.inlinePrimaryTxt}>Complete Ride</Text></TouchableOpacity>
+              : <TouchableOpacity style={s.inlinePrimaryBtn} onPress={handleDepart} disabled={isUpdatingRide} activeOpacity={0.85}><MaterialIcons name="directions-car" size={19} color="#fff" /><Text style={s.inlinePrimaryTxt}>Depart Now</Text></TouchableOpacity>
+            }
           </View>
-        </ScrollView>
 
-        <View style={styles.footer}>
-          {ride.status === 'departed' ? (
-            <TouchableOpacity style={styles.completeBtn} onPress={handleComplete} disabled={isUpdatingRide}>
-              <Text style={styles.departBtnText}>Complete Ride</Text>
-              <MaterialIcons name="check-circle" size={20} color="#FFF" />
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={styles.departBtn} onPress={handleDepart} disabled={isUpdatingRide}>
-              <Text style={styles.departBtnText}>Depart Now</Text>
-              <MaterialIcons name="arrow-forward" size={20} color="#FFF" />
-            </TouchableOpacity>
-          )}
-        </View>
+          <View style={s.statsRow}>
+            <View style={s.statCard}>
+              <MaterialIcons name="event-seat" size={18} color={COLORS.primary} />
+              <Text style={s.statVal}>{bookedSeats}/{ride.total_seats}</Text>
+              <Text style={s.statLbl}>Seats</Text>
+            </View>
+            <View style={[s.statCard, { borderColor: "#2E7D3233" }]}>
+              <MaterialIcons name="payments" size={18} color="#2E7D32" />
+              <Text style={[s.statVal, { color: "#2E7D32" }]}>N{totalEarnings.toLocaleString()}</Text>
+              <Text style={s.statLbl}>Earned</Text>
+            </View>
+            <View style={s.statCard}>
+              <MaterialIcons name="confirmation-number" size={18} color={COLORS.onSurfaceVariant} />
+              <Text style={s.statVal}>{ride.fare_per_seat ? `N${Number(ride.fare_per_seat).toFixed(0)}` : "--"}</Text>
+              <Text style={s.statLbl}>Per Seat</Text>
+            </View>
+          </View>
+          <Text style={s.sectionTitle}>Passengers <Text style={s.sectionCount}>{passengers.length}</Text></Text>
+          {passengers.length === 0
+            ? <View style={s.emptyBox}><MaterialIcons name="people-outline" size={32} color={COLORS.surfaceContainerHighest} /><Text style={s.emptyTxt}>Waiting for passengers</Text></View>
+            : passengers.map((p: any) => (
+              <View key={p.id} style={s.pRow}>
+                <View style={s.pAvatar}><MaterialIcons name="person" size={17} color={COLORS.primary} /></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.pName}>{p.student?.full_name || "Student"}</Text>
+                  <Text style={s.pMeta}>{p.seats_booked} seat{p.seats_booked > 1 ? "s" : ""} · N{Number(p.amount_paid).toLocaleString()}</Text>
+                </View>
+                <MaterialIcons name="check-circle" size={16} color="#2E7D32" />
+              </View>
+            ))
+          }
+        </ScrollView>
         <LoadingOverlay visible={isUpdatingRide} />
       </View>
     )
   }
 
-  // ── Show Creation Form ──
+  const mapRegion = origin && destination
+    ? { latitude: (origin.latitude + destination.latitude) / 2, longitude: (origin.longitude + destination.longitude) / 2, latitudeDelta: Math.abs(origin.latitude - destination.latitude) * 2 + 0.04, longitudeDelta: Math.abs(origin.longitude - destination.longitude) * 2 + 0.04 }
+    : origin ? { latitude: origin.latitude, longitude: origin.longitude, latitudeDelta: 0.02, longitudeDelta: 0.02 }
+    : { latitude: 9.6171, longitude: 6.5492, latitudeDelta: 0.05, longitudeDelta: 0.05 }
+
   return (
-    <View style={[styles.page, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={onBack} style={styles.headerBtn}>
-          <MaterialIcons name="arrow-back" size={24} color={COLORS.onSurface} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Create Garage Ride</Text>
-        <View style={{ width: 24 }} />
-      </View>
-
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.description}>
-          Set up a ride at the park. You'll get a QR code for students to scan and pay automatically.
-        </Text>
-
-        {savedRoutes.length > 0 && (
-          <TouchableOpacity 
-            style={[styles.input, { marginBottom: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]} 
-            onPress={() => setIsSavedRoutesOpen(true)}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <MaterialIcons name="bookmark" size={20} color={COLORS.primary} />
-              <Text style={styles.inputText}>Select from Saved Routes</Text>
-            </View>
-            <MaterialIcons name="chevron-right" size={20} color={COLORS.onSurfaceVariant} />
-          </TouchableOpacity>
+    <View style={[s.page, { paddingTop: 0 }]}>
+      <MapView ref={mapRef} style={StyleSheet.absoluteFillObject} provider={PROVIDER_GOOGLE} region={mapRegion} showsUserLocation>
+        {origin && <Marker coordinate={{ latitude: origin.latitude, longitude: origin.longitude }} pinColor="green" title="Origin" tracksViewChanges={false} />}
+        {destination && <Marker coordinate={{ latitude: destination.latitude, longitude: destination.longitude }} pinColor="red" title="Destination" tracksViewChanges={false} />}
+        {origin && destination && (
+          routeCoords && routeCoords.length > 1
+            ? <Polyline coordinates={routeCoords} strokeColor={COLORS.primary} strokeWidth={3} />
+            : <Polyline coordinates={[{ latitude: origin.latitude, longitude: origin.longitude }, { latitude: destination.latitude, longitude: destination.longitude }]} strokeColor={COLORS.primary} strokeWidth={2} lineDashPattern={[6, 4]} />
         )}
+      </MapView>
 
-        <View style={styles.formGroup}>
-          <Text style={styles.label}>Origin (Where are you?)</Text>
-          <TouchableOpacity style={styles.input} onPress={() => setLocationPickerOpen('origin')}>
-            <Text style={styles.inputText}>{origin?.label || 'Select origin'}</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.formGroup}>
-          <Text style={styles.label}>Destination</Text>
-          <TouchableOpacity style={styles.input} onPress={() => setLocationPickerOpen('destination')}>
-            <Text style={styles.inputText}>{destination?.label || 'Select destination'}</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.infoRow}>
-          <View>
-            <Text style={styles.infoLabel}>Distance</Text>
-            <Text style={styles.infoValue}>{formatDistance(distanceKm)}</Text>
-          </View>
-          <View>
-            <Text style={styles.infoLabel}>Fare per Seat</Text>
-            <Text style={styles.infoValue}>{formatCurrency(estimatedFare)}</Text>
-            {isEstimating ? <Text style={styles.infoHint}>Estimating…</Text> : null}
-          </View>
-        </View>
-
-        {(origin || destination) && (
-          <TouchableOpacity style={styles.mapPreviewBtn} onPress={() => setIsMapPreviewOpen(true)}>
-            <MaterialIcons name="map" size={18} color={COLORS.primary} />
-            <Text style={styles.mapPreviewText}>Preview Map</Text>
-          </TouchableOpacity>
-        )}
-
-        <View style={styles.row}>
-          <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
-            <Text style={styles.label}>Total Seats</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="4"
-              value={seats}
-              onChangeText={setSeats}
-              keyboardType="number-pad"
-            />
-          </View>
-        </View>
-
-        <View style={styles.saveRouteRow}>
-          <Text style={styles.saveRouteLabel}>Save this route for quick reuse</Text>
-          <Switch value={saveRoute} onValueChange={setSaveRoute} />
-        </View>
-
-        <TouchableOpacity 
-          style={styles.submitBtn} 
-          onPress={handleCreate}
-          disabled={loading}
-        >
-          <Text style={styles.submitBtnText}>Create Ride & Show QR</Text>
-        </TouchableOpacity>
-      </ScrollView>
-
-      <Modal visible={Boolean(locationPickerOpen)} animationType="slide" onRequestClose={() => setLocationPickerOpen(null)}>
-        <View style={styles.modalPage}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setLocationPickerOpen(null)} style={styles.modalBack}>
-              <MaterialIcons name="close" size={20} color={COLORS.onSurface} />
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>Select location</Text>
-            <View style={{ width: 20 }} />
-          </View>
-          <View style={styles.modalSearch}>
-            <MaterialIcons name="search" size={18} color={COLORS.onSurfaceVariant} />
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Search locations"
-              value={locationQuery}
-              onChangeText={setLocationQuery}
-            />
-          </View>
-          <ScrollView contentContainerStyle={styles.modalList}>
-            {filteredLocations.map((item) => (
-              <TouchableOpacity key={item.id} style={styles.modalItem} onPress={() => handleSelectLocation(item)}>
-                <MaterialIcons name="place" size={18} color={COLORS.primary} />
+      <View style={s.formPanel}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"}>
+          <View style={s.formScroll}>
+            <View style={s.routeCard}>
+              <TouchableOpacity style={s.locRow} onPress={() => setLocationPickerOpen("origin")}>
+                <View style={s.dotGreen} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.modalItemTitle}>{item.label}</Text>
-                  <Text style={styles.modalItemSubtitle}>{item.description}</Text>
+                  <Text style={s.locLbl}>From</Text>
+                  <Text style={[s.locVal, !origin && s.locPlaceholder]} numberOfLines={1}>{origin?.label || "Select pickup"}</Text>
+                </View>
+                <MaterialIcons name="edit" size={15} color={COLORS.onSurfaceVariant} />
+              </TouchableOpacity>
+              <View style={s.divRow}>
+                <View style={s.divLine} />
+                {origin && destination && <TouchableOpacity style={s.swapBtn} onPress={handleSwapRoute}><MaterialIcons name="swap-vert" size={15} color={COLORS.primary} /></TouchableOpacity>}
+              </View>
+              <TouchableOpacity style={s.locRow} onPress={() => setLocationPickerOpen("destination")}>
+                <View style={s.dotRed} />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.locLbl}>To</Text>
+                  <Text style={[s.locVal, !destination && s.locPlaceholder]} numberOfLines={1}>{destination?.label || "Select destination"}</Text>
+                </View>
+                <MaterialIcons name="edit" size={15} color={COLORS.onSurfaceVariant} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={s.metricsCard}>
+              <TouchableOpacity style={s.metric} onPress={() => origin && destination && runTare(origin, destination)} activeOpacity={0.7}>
+                <Text style={s.metLbl}>Distance</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                  <Text style={s.metVal}>{fmtDist(distanceKm)}</Text>
+                  {isTaring && <MaterialIcons name="sync" size={12} color={COLORS.primary} />}
                 </View>
               </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      </Modal>
-
-      <Modal visible={isMapPreviewOpen} animationType="slide" onRequestClose={() => setIsMapPreviewOpen(false)}>
-        <View style={styles.modalPage}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setIsMapPreviewOpen(false)} style={styles.modalBack}>
-              <MaterialIcons name="close" size={20} color={COLORS.onSurface} />
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>Route Preview</Text>
-            <View style={{ width: 20 }} />
+              <View style={s.metDivider} />
+              <View style={s.metric}>
+                <Text style={s.metLbl}>Fare / Seat</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                  <Text style={s.metVal}>{fmtCur(estimatedFare)}</Text>
+                  {isTaring && <MaterialIcons name="sync" size={12} color={COLORS.primary} />}
+                </View>
+              </View>
+              <View style={s.metDivider} />
+              <View style={[s.metric, { flex: 1.2 }]}>
+                <Text style={s.metLbl}>Seats</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <TouchableOpacity onPress={() => setSeats(Math.max(1, seats - 1))} disabled={seats <= 1}>
+                    <MaterialIcons name="remove-circle-outline" size={22} color={seats <= 1 ? COLORS.surfaceContainerHighest : COLORS.primary} />
+                  </TouchableOpacity>
+                  <Text style={s.seatsInput}>{seats}</Text>
+                  <TouchableOpacity onPress={() => setSeats(Math.min(getMaxSeats(), seats + 1))} disabled={seats >= getMaxSeats()}>
+                    <MaterialIcons name="add-circle-outline" size={22} color={seats >= getMaxSeats() ? COLORS.surfaceContainerHighest : COLORS.primary} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
           </View>
-          <Text style={styles.mapHint}>Tap map to set {getNextPinTarget()} location.</Text>
-          <View style={styles.mapWrap}>
-            <MapView
-              style={styles.map}
-              onPress={handleMapPress}
-              initialRegion={
-                origin && destination
-                  ? {
-                      latitude: (origin.latitude + destination.latitude) / 2,
-                      longitude: (origin.longitude + destination.longitude) / 2,
-                      latitudeDelta: Math.abs(origin.latitude - destination.latitude) + 0.02,
-                      longitudeDelta: Math.abs(origin.longitude - destination.longitude) + 0.02,
-                    }
-                  : {
-                      latitude: 9.6171,
-                      longitude: 6.5492,
-                      latitudeDelta: 0.03,
-                      longitudeDelta: 0.03,
-                    }
-              }
+
+          <View style={[s.actionBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+            <View style={s.actionBarLeft}>
+              {savedRoutes.length > 0 && (
+                <TouchableOpacity style={s.savedPill} onPress={() => setIsSavedRoutesOpen(true)}>
+                  <MaterialIcons name="bookmark" size={13} color={COLORS.primary} />
+                  <Text style={s.savedPillTxt}>View</Text>
+                  <MaterialIcons name="chevron-right" size={13} color={COLORS.primary} />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity onPress={() => setSaveRoute(!saveRoute)} style={{ padding: 4 }}>
+                <MaterialIcons name={saveRoute ? "bookmark" : "bookmark-border"} size={24} color={COLORS.primary} />
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity
+              style={[s.createBtn, (!origin || !destination || loading) && s.createBtnOff, !isTared && origin && destination && { backgroundColor: "#6750A4" }]}
+              onPress={isTared ? handleCreate : () => origin && destination && runTare(origin, destination)}
+              disabled={loading || isTaring || !origin || !destination}
+              activeOpacity={0.85}
             >
-              {origin ? (
-                <Marker
-                  coordinate={{ latitude: origin.latitude, longitude: origin.longitude }}
-                  title={origin.label}
-                />
-              ) : null}
-              {destination ? (
-                <Marker
-                  coordinate={{ latitude: destination.latitude, longitude: destination.longitude }}
-                  title={destination.label}
-                />
-              ) : null}
-            </MapView>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal visible={isSavedRoutesOpen} animationType="slide" onRequestClose={() => setIsSavedRoutesOpen(false)}>
-        <View style={styles.modalPage}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setIsSavedRoutesOpen(false)} style={styles.modalBack}>
-              <MaterialIcons name="arrow-back" size={20} color={COLORS.onSurface} />
+              <MaterialIcons name={isTared ? "qr-code-scanner" : "track-changes"} size={17} color="#fff" />
+              <Text style={s.createBtnTxt}>
+                {loading ? "Creating..." : isTaring ? "Taring..." : isTared ? "Create" : "Tare"}
+              </Text>
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>Saved Routes</Text>
-            <View style={{ width: 20 }} />
           </View>
-          <ScrollView contentContainerStyle={styles.modalList}>
-            <View style={{ height: 16 }} />
-            {savedRoutes.length === 0 ? (
-              <Text style={[styles.description, { textAlign: 'center', marginTop: 40 }]}>No saved routes found.</Text>
-            ) : (
-              savedRoutes.map((route) => (
-                <TouchableOpacity
-                  key={route.id}
-                  style={styles.savedRouteCard}
-                  onPress={() => handleUseSavedRoute(route)}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <MaterialIcons name="route" size={24} color={COLORS.primary} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.savedRouteTitle}>{route.name || `${route.origin_address} → ${route.destination_address}`}</Text>
-                      <Text style={styles.savedRouteMeta}>{formatDistance(Number(route.distance_km || 0))}</Text>
-                    </View>
+        </KeyboardAvoidingView>
+      </View>
+
+      <Modal visible={Boolean(locationPickerOpen)} animationType="slide" transparent={true} onRequestClose={() => setLocationPickerOpen(null)}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={s.modalOverlay}>
+          <TouchableWithoutFeedback onPress={() => setLocationPickerOpen(null)}><View style={{ flex: 1 }} /></TouchableWithoutFeedback>
+          <View style={[s.bottomSheetModal, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+            <View style={s.pickerHeader}>
+              <Text style={s.pickerTitle}>{locationPickerOpen === "origin" ? "Select Origin" : "Select Destination"}</Text>
+              <TouchableOpacity onPress={() => setLocationPickerOpen(null)} style={s.pickerBack}><MaterialIcons name="close" size={22} color={COLORS.onSurface} /></TouchableOpacity>
+            </View>
+            <View style={s.pickerSearch}>
+              <MaterialIcons name="search" size={18} color={COLORS.onSurfaceVariant} />
+              <TextInput style={s.pickerInput} placeholder="Search..." placeholderTextColor={COLORS.onSurfaceVariant} value={locationQuery} onChangeText={setLocationQuery} autoFocus />
+              {locationQuery.length > 0 && <TouchableOpacity onPress={() => setLocationQuery("")}><MaterialIcons name="close" size={16} color={COLORS.onSurfaceVariant} /></TouchableOpacity>}
+            </View>
+            <ScrollView contentContainerStyle={s.pickerList} keyboardShouldPersistTaps="handled" style={{ maxHeight: 300 }}>
+              {filteredLocations.map((item) => (
+                <TouchableOpacity key={item.id} style={s.pickerItem} onPress={() => handleSelectLocation(item)}>
+                  <View style={s.pickerIcon}><MaterialIcons name="place" size={17} color={COLORS.primary} /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.pickerItemTitle}>{item.label}</Text>
+                    {item.description ? <Text style={s.pickerItemSub}>{item.description}</Text> : null}
                   </View>
                 </TouchableOpacity>
-              ))
-            )}
-          </ScrollView>
+              ))}
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal visible={isSavedRoutesOpen} animationType="slide" transparent={true} onRequestClose={() => setIsSavedRoutesOpen(false)}>
+        <View style={s.modalOverlay}>
+          <TouchableWithoutFeedback onPress={() => setIsSavedRoutesOpen(false)}><View style={{ flex: 1 }} /></TouchableWithoutFeedback>
+          <View style={[s.bottomSheetModal, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+            <View style={s.pickerHeader}>
+              <Text style={s.pickerTitle}>Saved Routes</Text>
+              <TouchableOpacity onPress={() => setIsSavedRoutesOpen(false)} style={s.pickerBack}><MaterialIcons name="close" size={22} color={COLORS.onSurface} /></TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={s.pickerList} style={{ maxHeight: 300 }}>
+              {savedRoutes.length === 0
+                ? <View style={s.emptyBox}><MaterialIcons name="route" size={36} color={COLORS.surfaceContainerHighest} /><Text style={[s.emptyTxt, { marginTop: 10 }]}>No saved routes yet.</Text></View>
+                : savedRoutes.map((route: any) => (
+                  <TouchableOpacity key={route.id} style={s.savedRouteRow} onPress={() => handleUseSavedRoute(route)}>
+                    <MaterialIcons name="route" size={20} color={COLORS.primary} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.pickerItemTitle} numberOfLines={1}>{route.origin_address} to {route.destination_address}</Text>
+                      <Text style={s.pickerItemSub}>{fmtDist(Number(route.distance_km || 0))}</Text>
+                    </View>
+                    <MaterialIcons name="chevron-right" size={17} color={COLORS.onSurfaceVariant} />
+                  </TouchableOpacity>
+                ))
+              }
+            </ScrollView>
+          </View>
         </View>
       </Modal>
       <LoadingOverlay visible={loading} />
@@ -795,299 +537,68 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
   )
 }
 
-const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: COLORS.surface },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.surfaceContainerLow,
-  },
-  headerBtn: { padding: 4 },
-  headerTitle: { ...FONTS.headlineMd, color: COLORS.onSurface },
-  content: { padding: 20 },
-  description: { ...FONTS.bodyMd, color: COLORS.onSurfaceVariant, marginBottom: 24 },
-  
-  formGroup: { marginBottom: 20 },
-  label: { ...FONTS.labelLg, color: COLORS.onSurface, marginBottom: 8 },
-  input: {
-    backgroundColor: COLORS.surfaceContainerLowest,
-    borderWidth: 1,
-    borderColor: COLORS.surfaceContainerLow,
-    borderRadius: 12,
-    padding: 16,
-    ...FONTS.bodyLg,
-  },
-  inputText: {
-    ...FONTS.bodyLg,
-    color: COLORS.onSurface,
-  },
-  row: { flexDirection: 'row' },
-  
-  submitBtn: {
-    backgroundColor: COLORS.primaryContainer,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  submitBtnText: { ...FONTS.labelLg, color: COLORS.onPrimary },
-
-  savedRoutesWrap: {
-    marginBottom: 20,
-    gap: 10,
-  },
-  savedRoutesHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  sectionTitle: {
-    ...FONTS.labelLg,
-    color: COLORS.onSurface,
-  },
-  swapText: {
-    ...FONTS.labelMd,
-    color: COLORS.primary,
-  },
-  savedRouteCard: {
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: COLORS.surfaceContainerLowest,
-    borderWidth: 1,
-    borderColor: COLORS.surfaceContainerLow,
-  },
-  savedRouteTitle: {
-    ...FONTS.bodyMd,
-    color: COLORS.onSurface,
-  },
-  savedRouteMeta: {
-    ...FONTS.bodySm,
-    color: COLORS.onSurfaceVariant,
-    marginTop: 4,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  infoLabel: {
-    ...FONTS.labelMd,
-    color: COLORS.onSurfaceVariant,
-  },
-  infoValue: {
-    ...FONTS.headlineMd,
-    color: COLORS.onSurface,
-  },
-  infoHint: {
-    ...FONTS.bodySm,
-    color: COLORS.onSurfaceVariant,
-  },
-  mapPreviewBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 16,
-  },
-  mapPreviewText: {
-    ...FONTS.labelMd,
-    color: COLORS.primary,
-  },
-  saveRouteRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
-  saveRouteLabel: {
-    ...FONTS.bodyMd,
-    color: COLORS.onSurface,
-  },
-
-  // QR Screen
-  qrContainer: {
-    alignItems: 'center',
-    backgroundColor: COLORS.surfaceContainerLowest,
-    padding: 4,
-    borderRadius: 12,
-    ...AMBIENT_SHADOW,
-    marginBottom: 24,
-  },
-  qrInstruction: {
-    ...FONTS.bodyMd,
-    color: COLORS.onSurfaceVariant,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  qrWrapper: {
-    padding: 6,
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    elevation: 0,
-  },
-  rideRef: {
-    ...FONTS.labelLg,
-    color: COLORS.primaryContainer,
-    marginTop: 16,
-    letterSpacing: 1,
-  },
-  
-  statsRow: {
-    flexDirection: 'row',
-    gap: 16,
-    marginBottom: 24,
-  },
-  statBox: {
-    flex: 1,
-    backgroundColor: COLORS.surfaceContainerLowest,
-    padding: 16,
-    borderRadius: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.surfaceContainerLow,
-  },
-  statLabel: { ...FONTS.labelMd, color: COLORS.onSurfaceVariant },
-  statValue: { ...FONTS.headlineMd, color: COLORS.onSurface, marginTop: 4 },
-
-  passengersSection: {
-    marginBottom: 40,
-  },
-  passengersTitle: {
-    ...FONTS.headlineMd,
-    color: COLORS.onSurface,
-    marginBottom: 16,
-  },
-  passengerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.surfaceContainerLowest,
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: COLORS.surfaceContainerLow,
-  },
-  passengerAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.surfaceContainerHigh,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  passengerName: { ...FONTS.labelLg, color: COLORS.onSurface },
-  passengerDetails: { ...FONTS.bodySm, color: COLORS.onSurfaceVariant, marginTop: 2 },
-  noPassengers: {
-    ...FONTS.bodyMd,
-    color: COLORS.onSurfaceVariant,
-    textAlign: 'center',
-    fontStyle: 'italic',
-    marginTop: 20,
-  },
-  loadingText: {
-    ...FONTS.bodyMd,
-    color: COLORS.onSurfaceVariant,
-    marginTop: 12,
-  },
-
-  footer: {
-    padding: 16,
-    paddingBottom: 24,
-    backgroundColor: COLORS.surface,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.surfaceContainerLow,
-  },
-  departBtn: {
-    backgroundColor: COLORS.primaryContainer,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    borderRadius: 16,
-    gap: 8,
-  },
-  completeBtn: {
-    backgroundColor: COLORS.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    borderRadius: 16,
-    gap: 8,
-  },
-  departBtnText: { ...FONTS.headlineMd, color: COLORS.onPrimary },
-
-  modalPage: {
-    flex: 1,
-    backgroundColor: COLORS.surface,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.surfaceContainerLow,
-  },
-  modalBack: {
-    padding: 4,
-  },
-  modalTitle: {
-    ...FONTS.labelLg,
-    color: COLORS.onSurface,
-  },
-  modalSearch: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    margin: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: COLORS.surfaceContainerLow,
-    borderRadius: 12,
-  },
-  modalInput: {
-    flex: 1,
-    ...FONTS.bodyMd,
-    color: COLORS.onSurface,
-  },
-  modalList: {
-    paddingHorizontal: 16,
-    paddingBottom: 24,
-    gap: 10,
-  },
-  modalItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.surfaceContainerLow,
-    backgroundColor: COLORS.surfaceContainerLowest,
-  },
-  modalItemTitle: {
-    ...FONTS.bodyMd,
-    color: COLORS.onSurface,
-  },
-  modalItemSubtitle: {
-    ...FONTS.bodySm,
-    color: COLORS.onSurfaceVariant,
-  },
-  mapWrap: {
-    flex: 1,
-  },
-  mapHint: {
-    ...FONTS.bodySm,
-    color: COLORS.onSurfaceVariant,
-    paddingHorizontal: 16,
-    paddingBottom: 8,
-  },
-  map: {
-    flex: 1,
-  },
+const s = StyleSheet.create({
+  page: { flex: 1, backgroundColor: COLORS.background, justifyContent: "flex-end" },
+  formPanel: { backgroundColor: COLORS.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, ...AMBIENT_SHADOW, shadowOpacity: 0.12 },
+  formScroll: { padding: 14, paddingTop: 12 },
+  savedPill: { flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "flex-start", backgroundColor: COLORS.primaryContainer + "22", borderWidth: 1, borderColor: COLORS.primaryContainer, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 20 },
+  savedPillTxt: { fontSize: 11, fontWeight: "600", color: COLORS.primary },
+  routeCard: { backgroundColor: COLORS.surfaceContainerLowest, borderRadius: 14, borderWidth: 1, borderColor: COLORS.surfaceContainerHighest, marginBottom: 8, ...AMBIENT_SHADOW },
+  locRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 10 },
+  dotGreen: { width: 11, height: 11, borderRadius: 6, backgroundColor: "#2E7D32", borderWidth: 2, borderColor: "#2E7D3244" },
+  dotRed: { width: 11, height: 11, borderRadius: 6, backgroundColor: "#B00020", borderWidth: 2, borderColor: "#B0002044" },
+  locLbl: { fontSize: 10, fontWeight: "700", color: COLORS.onSurfaceVariant, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 },
+  locVal: { fontSize: 14, fontWeight: "600", color: COLORS.onSurface },
+  locPlaceholder: { color: COLORS.onSurfaceVariant, fontWeight: "400" },
+  divRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16 },
+  divLine: { flex: 1, height: 1, backgroundColor: COLORS.surfaceContainerHighest },
+  swapBtn: { width: 26, height: 26, borderRadius: 13, backgroundColor: COLORS.primaryContainer + "22", borderWidth: 1, borderColor: COLORS.primaryContainer, alignItems: "center", justifyContent: "center", marginLeft: 8 },
+  metricsCard: { flexDirection: "row", backgroundColor: COLORS.surfaceContainerLowest, borderRadius: 14, borderWidth: 1, borderColor: COLORS.surfaceContainerHighest, marginBottom: 8, overflow: "hidden", ...AMBIENT_SHADOW },
+  metric: { flex: 1, paddingVertical: 9, paddingHorizontal: 10, justifyContent: "center" },
+  metDivider: { width: 1, backgroundColor: COLORS.surfaceContainerHighest, marginVertical: 8 },
+  metLbl: { fontSize: 9, fontWeight: "700", color: COLORS.onSurfaceVariant, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 3 },
+  metVal: { fontSize: 14, fontWeight: "700", color: COLORS.onSurface },
+  seatsInput: { fontSize: 14, fontWeight: "700", color: COLORS.primary, minWidth: 24, textAlign: "center" },
+  createBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: COLORS.primary, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 28, ...AMBIENT_SHADOW, shadowColor: COLORS.primary, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5, alignSelf: "flex-end" },
+  createBtnOff: { backgroundColor: COLORS.surfaceContainerHighest, shadowOpacity: 0, elevation: 0 },
+  createBtnTxt: { color: "#fff", fontSize: 14, fontWeight: "700" },
+  actionBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 14, paddingTop: 10, borderTopWidth: 1, borderTopColor: COLORS.surfaceContainerLow },
+  actionBarLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
+  boardingContent: { paddingHorizontal: 16 },
+  qrCard: { backgroundColor: COLORS.surface, borderRadius: 24, alignItems: "center", paddingVertical: 18, paddingHorizontal: 14, marginBottom: 12, borderWidth: 1, borderColor: COLORS.surfaceContainerHighest, ...AMBIENT_SHADOW, shadowOpacity: 0.12, shadowRadius: 18, elevation: 5 },
+  qrWrapper: { padding: 14, backgroundColor: "#fff", borderRadius: 18, borderWidth: 1, borderColor: "#ECE7F2", ...AMBIENT_SHADOW, shadowOpacity: 0.1, shadowRadius: 16, elevation: 4 },
+  rideRef: { fontSize: 14, fontWeight: "800", color: COLORS.primary, letterSpacing: 1.4, marginTop: 14 },
+  qrCaption: { fontSize: 12, color: COLORS.onSurfaceVariant, marginTop: 5, fontWeight: "600" },
+  boardingActions: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 16 },
+  inlineCancelBtn: { minWidth: 112, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: COLORS.errorContainer, borderWidth: 1, borderColor: COLORS.error + "33", paddingVertical: 11, paddingHorizontal: 16, borderRadius: 22 },
+  inlineCancelTxt: { color: COLORS.error, fontSize: 13, fontWeight: "800" },
+  inlinePrimaryBtn: { minWidth: 138, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: COLORS.primary, paddingVertical: 12, paddingHorizontal: 18, borderRadius: 24, ...AMBIENT_SHADOW, shadowColor: COLORS.primary, shadowOpacity: 0.28, shadowRadius: 12, elevation: 5 },
+  inlinePrimaryTxt: { color: "#fff", fontSize: 14, fontWeight: "800" },
+  statsRow: { flexDirection: "row", gap: 10, marginBottom: 18 },
+  statCard: { flex: 1, backgroundColor: COLORS.surfaceContainerLowest, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 8, alignItems: "center", gap: 4, borderWidth: 1, borderColor: COLORS.primary + "22", ...AMBIENT_SHADOW },
+  statVal: { fontSize: 14, fontWeight: "800", color: COLORS.onSurface },
+  statLbl: { fontSize: 10, color: COLORS.onSurfaceVariant, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.3 },
+  sectionTitle: { fontSize: 14, fontWeight: "700", color: COLORS.onSurface, marginBottom: 10 },
+  sectionCount: { fontSize: 13, fontWeight: "500", color: COLORS.onSurfaceVariant },
+  emptyBox: { alignItems: "center", paddingVertical: 28, gap: 8 },
+  emptyTxt: { fontSize: 13, color: COLORS.onSurfaceVariant, fontStyle: "italic" },
+  pRow: { flexDirection: "row", alignItems: "center", backgroundColor: COLORS.surfaceContainerLowest, padding: 12, borderRadius: 14, marginBottom: 8, borderWidth: 1, borderColor: COLORS.surfaceContainerHighest, gap: 12 },
+  pAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: COLORS.primaryContainer + "22", borderWidth: 1, borderColor: COLORS.primaryContainer, alignItems: "center", justifyContent: "center" },
+  pName: { fontSize: 13, fontWeight: "600", color: COLORS.onSurface },
+  pMeta: { fontSize: 12, color: COLORS.onSurfaceVariant, marginTop: 2 },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
+  bottomSheetModal: { backgroundColor: COLORS.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingTop: 10, maxHeight: "75%", ...AMBIENT_SHADOW, shadowOpacity: 0.15 },
+  pickerHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 18, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.surfaceContainerLow },
+  pickerBack: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
+  pickerTitle: { fontSize: 14, fontWeight: "700", color: COLORS.onSurface },
+  pickerSearch: { flexDirection: "row", alignItems: "center", gap: 8, marginHorizontal: 14, marginVertical: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: COLORS.surfaceContainerLowest, borderRadius: 12, borderWidth: 1, borderColor: COLORS.surfaceContainerHighest },
+  pickerInput: { flex: 1, fontSize: 14, color: COLORS.onSurface },
+  pickerList: { paddingHorizontal: 14, paddingBottom: 20, gap: 6 },
+  pickerItem: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: COLORS.surfaceContainerLowest, padding: 11, borderRadius: 12, borderWidth: 1, borderColor: COLORS.surfaceContainerHighest },
+  pickerIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: COLORS.primaryContainer + "18", alignItems: "center", justifyContent: "center" },
+  pickerItemTitle: { fontSize: 14, fontWeight: "600", color: COLORS.onSurface },
+  pickerItemSub: { fontSize: 12, color: COLORS.onSurfaceVariant, marginTop: 2 },
+  savedRouteRow: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: COLORS.surfaceContainerLowest, padding: 11, borderRadius: 12, borderWidth: 1, borderColor: COLORS.surfaceContainerHighest, marginBottom: 6 },
+  toggleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 6, paddingHorizontal: 2, marginBottom: 10 },
+  toggleLbl: { fontSize: 13, fontWeight: "500", color: COLORS.onSurfaceVariant },
 })

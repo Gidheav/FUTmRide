@@ -374,7 +374,7 @@ const DashboardScreen = ({ onCreateGarageRide, onNavigateToRide }: { onCreateGar
             <Text style={styles.sheetLocationText} numberOfLines={1}>{destination || 'Destination'}</Text>
           </View>
         </View>
-        {onNavigateToRide && (
+        {(isGarage ? onCreateGarageRide : onNavigateToRide) && (
           <TouchableOpacity
             style={{
               backgroundColor: COLORS.primary,
@@ -384,9 +384,9 @@ const DashboardScreen = ({ onCreateGarageRide, onNavigateToRide }: { onCreateGar
               alignItems: 'center',
               justifyContent: 'center',
             }}
-            onPress={onNavigateToRide}
+            onPress={isGarage ? onCreateGarageRide : onNavigateToRide}
           >
-            <Text style={[FONTS.labelLg, { color: '#FFF' }]}>Go to Ride →</Text>
+            <Text style={[FONTS.labelLg, { color: '#FFF' }]}>{isGarage ? "View Ride" : "Go to Ride →"}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -517,7 +517,11 @@ const DashboardScreen = ({ onCreateGarageRide, onNavigateToRide }: { onCreateGar
         <View style={[
           styles.bottomSheet,
           !isSheetExpanded && styles.bottomSheetCollapsed,
-          { paddingBottom: Math.max(insets.bottom, 16) + 70 },
+          { 
+            bottom: 0,
+            maxHeight: '70%',
+            paddingBottom: isSheetExpanded ? Math.max(insets.bottom, 16) : 12,
+          }
         ]}>
           <TouchableOpacity style={styles.sheetHeaderButton} onPress={toggleSheet} activeOpacity={0.85}>
             <View style={styles.sheetHeaderRow}>

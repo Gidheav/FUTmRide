@@ -24,9 +24,10 @@ interface LayoutProps {
   hasUnreadNotifications?: boolean;
   title?: string;
   onBack?: () => void;
+  hideTopBar?: boolean;
 }
 
-export default function DriverLayout({ activeTab, onTabChange, children, onLogout, onOpenWebLink, onOpenNotifications, hasUnreadNotifications, title, onBack }: LayoutProps) {
+export default function DriverLayout({ activeTab, onTabChange, children, onLogout: _onLogout, onOpenWebLink, onOpenNotifications, hasUnreadNotifications, title, onBack, hideTopBar }: LayoutProps) {
   const insets = useSafeAreaInsets();
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const { user } = useAuthStore();
@@ -45,49 +46,50 @@ export default function DriverLayout({ activeTab, onTabChange, children, onLogou
       <DriverSidebar 
         visible={isSidebarVisible} 
         onClose={() => setIsSidebarVisible(false)} 
-        onLogout={() => {
-          setIsSidebarVisible(false);
-          onLogout();
-        }}
         onOpenWebLink={onOpenWebLink || (() => {})}
       />
 
-      {/* Top App Bar with safe area padding */}
-      <View style={[styles.header, { paddingTop: insets.top, height: 64 + insets.top }]}>
-        <View style={styles.headerContent}>
-          {onBack ? (
-            <TouchableOpacity onPress={onBack} style={[styles.menuButton, { zIndex: 10 }]} activeOpacity={0.7}>
-              <MaterialIcons name="arrow-back" size={24} color={COLORS.primary} />
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity onPress={() => setIsSidebarVisible(true)} style={[styles.menuButton, { zIndex: 10 }]} activeOpacity={0.7}>
-              <MaterialIcons name="menu" size={28} color={COLORS.primary} />
-            </TouchableOpacity>
-          )}
-
-          {title && (
-            <View style={{ position: 'absolute', left: 0, right: 0, alignItems: 'center', pointerEvents: 'none' }}>
-              <Text style={[FONTS.titleLg, { color: COLORS.onSurface }]}>{title}</Text>
-            </View>
-          )}
-          
-          <View style={[styles.headerIcons, { zIndex: 10 }]}>
-            <TouchableOpacity style={styles.notificationWrapper} onPress={onOpenNotifications}>
-              <MaterialIcons name="notifications" size={24} color={COLORS.onSurfaceVariant} />
-              {hasUnreadNotifications && <View style={styles.notificationDot} />}
-            </TouchableOpacity>
-            {user?.profile_photo ? (
-              <Image source={{ uri: user.profile_photo }} style={styles.avatar} />
+      {/* Top App Bar with safe area padding — hidden when hideTopBar=true */}
+      {!hideTopBar && (
+        <View style={[styles.header, { paddingTop: insets.top, height: 64 + insets.top }]}>
+          <View style={styles.headerContent}>
+            {onBack ? (
+              <TouchableOpacity onPress={onBack} style={[styles.menuButton, { zIndex: 10 }]} activeOpacity={0.7}>
+                <MaterialIcons name="arrow-back" size={24} color={COLORS.primary} />
+              </TouchableOpacity>
             ) : (
-              <View style={[styles.avatar, styles.initialsContainer]}>
-                <Text style={styles.initialsText}>{getInitials()}</Text>
+              <TouchableOpacity onPress={() => setIsSidebarVisible(true)} style={[styles.menuButton, { zIndex: 10 }]} activeOpacity={0.7}>
+                <MaterialIcons name="menu" size={28} color={COLORS.primary} />
+              </TouchableOpacity>
+            )}
+
+            {title && (
+              <View style={{ position: 'absolute', left: 0, right: 0, alignItems: 'center', pointerEvents: 'none' }}>
+                <Text style={[FONTS.titleLg, { color: COLORS.onSurface }]}>{title}</Text>
               </View>
             )}
+            
+            <View style={[styles.headerIcons, { zIndex: 10 }]}>
+              <TouchableOpacity style={styles.notificationWrapper} onPress={onOpenNotifications}>
+                <MaterialIcons name="notifications" size={24} color={COLORS.onSurfaceVariant} />
+                {hasUnreadNotifications && <View style={styles.notificationDot} />}
+              </TouchableOpacity>
+              {user?.profile_photo ? (
+                <Image source={{ uri: user.profile_photo }} style={styles.avatar} />
+              ) : (
+                <View style={[styles.avatar, styles.initialsContainer]}>
+                  <Text style={styles.initialsText}>{getInitials()}</Text>
+                </View>
+              )}
+            </View>
           </View>
         </View>
-      </View>
+      )}
 
-      <View style={styles.content}>
+      {/* When top bar is hidden, add safe-area top padding as a spacer */}
+      {hideTopBar && <View style={{ height: insets.top }} />}
+
+      <View style={[styles.content, { paddingBottom: 76 + insets.bottom }]}>
         {children}
       </View>
 

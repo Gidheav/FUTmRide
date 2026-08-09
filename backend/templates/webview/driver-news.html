@@ -1,22 +1,405 @@
 {% extends "webview/base.html" %}
 
 {% block content %}
-<div class="content-container">
-    <div class="header-section">
-        <h1>Driver News & Updates</h1>
-        <p class="subtitle">Latest announcements and platform updates for LR-Ride drivers.</p>
-    </div>
+<style>
+    .news-shell {
+        padding: calc(22px + env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom));
+        max-width: 880px;
+        margin: 0 auto;
+    }
 
-    <div class="card">
-        <h3>New App Features</h3>
-        <p class="meta">Posted Today</p>
-        <p>We've launched a new Driver Dashboard. You can now view your earnings and performance stats directly from the Overview menu.</p>
-    </div>
+    .news-hero {
+        position: relative;
+        overflow: hidden;
+        border-radius: 24px;
+        color: #ffffff;
+        background: linear-gradient(135deg, #0f172a 0%, #1f2937 46%, #0b3a68 100%);
+        box-shadow: 0 22px 48px rgba(15, 23, 42, 0.26);
+        padding: 26px 22px 22px;
+        margin-bottom: 18px;
+    }
 
-    <div class="card">
-        <h3>Campus Routing Update</h3>
-        <p class="meta">Posted Yesterday</p>
-        <p>Due to construction near the Science Block, please use the alternative West Gate entrance for all campus drop-offs this week.</p>
-    </div>
-</div>
+    .news-hero::before,
+    .news-hero::after {
+        content: "";
+        position: absolute;
+        border-radius: 999px;
+        pointer-events: none;
+    }
+
+    .news-hero::before {
+        width: 240px;
+        height: 240px;
+        right: -80px;
+        top: -80px;
+        background: radial-gradient(circle, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0));
+    }
+
+    .news-hero::after {
+        width: 180px;
+        height: 180px;
+        left: -70px;
+        bottom: -90px;
+        background: radial-gradient(circle, rgba(255, 214, 145, 0.32), rgba(255, 214, 145, 0));
+    }
+
+    .news-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 999px;
+        padding: 7px 11px;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        font-weight: 800;
+        text-transform: uppercase;
+        background: rgba(255, 255, 255, 0.14);
+        margin-bottom: 12px;
+    }
+
+    .news-title {
+        margin: 0;
+        font-size: 28px;
+        line-height: 1.15;
+        letter-spacing: -0.02em;
+        font-weight: 900;
+    }
+
+    .news-subtitle {
+        margin: 10px 0 16px;
+        font-size: 14px;
+        line-height: 1.62;
+        color: rgba(255, 255, 255, 0.9);
+        max-width: 62ch;
+    }
+
+    .news-metric-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    .news-metric {
+        border-radius: 14px;
+        padding: 12px 10px;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+    }
+
+    .news-metric-label {
+        margin: 0;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: rgba(255, 255, 255, 0.82);
+    }
+
+    .news-metric-value {
+        margin: 4px 0 0;
+        font-size: 18px;
+        line-height: 1.25;
+        font-weight: 900;
+    }
+
+    .news-grid {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: minmax(0, 1.28fr) minmax(0, 1fr);
+    }
+
+    .news-card {
+        border-radius: 18px;
+        background: #ffffff;
+        border: 1px solid #e8eaef;
+        box-shadow: 0 10px 24px rgba(16, 24, 40, 0.06);
+        overflow: hidden;
+    }
+
+    .news-card-pad {
+        padding: 18px;
+    }
+
+    .news-kicker {
+        margin: 0;
+        font-size: 11px;
+        color: #d32f2f;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-weight: 800;
+    }
+
+    .news-headline {
+        margin: 8px 0 0;
+        font-size: 20px;
+        line-height: 1.3;
+        color: #121417;
+        font-weight: 800;
+    }
+
+    .news-paragraph {
+        margin: 10px 0 0;
+        color: #667085;
+        font-size: 14px;
+        line-height: 1.66;
+    }
+
+    .news-chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 14px;
+    }
+
+    .news-chip {
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+        background: #f5f7fa;
+        color: #344054;
+        border: 1px solid #eaecf0;
+    }
+
+    .news-feed {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+    }
+
+    .news-feed-item {
+        padding: 14px 0;
+        border-bottom: 1px dashed #e6e8ee;
+    }
+
+    .news-feed-item:last-child {
+        border-bottom: 0;
+        padding-bottom: 0;
+    }
+
+    .news-feed-title {
+        margin: 0;
+        font-size: 15px;
+        line-height: 1.4;
+        color: #17212b;
+        font-weight: 700;
+    }
+
+    .news-feed-meta {
+        margin: 6px 0 0;
+        color: #667085;
+        font-size: 12px;
+    }
+
+    .news-section-title {
+        margin: 0;
+        font-size: 17px;
+        font-weight: 800;
+        color: #101828;
+    }
+
+    .news-notes {
+        display: grid;
+        gap: 10px;
+        margin-top: 12px;
+    }
+
+    .news-note {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 12px;
+        border-radius: 12px;
+        background: #fafcff;
+        border: 1px solid #e9eef7;
+    }
+
+    .news-dot {
+        width: 9px;
+        height: 9px;
+        margin-top: 6px;
+        border-radius: 999px;
+        background: #0a7ecf;
+        flex: 0 0 auto;
+    }
+
+    .news-note p {
+        margin: 0;
+        color: #344054;
+        font-size: 13px;
+        line-height: 1.55;
+    }
+
+    .news-editor-zone {
+        margin-top: 14px;
+        border-radius: 14px;
+        border: 1px dashed #c9d3e1;
+        background: #fbfcff;
+        padding: 14px;
+    }
+
+    .news-editor-zone p {
+        margin: 0;
+        color: #526175;
+        font-size: 13px;
+        line-height: 1.6;
+    }
+
+    .news-editor-zone p + p {
+        margin-top: 9px;
+    }
+
+    .news-alert {
+        margin-top: 14px;
+        border-radius: 16px;
+        padding: 15px;
+        background: linear-gradient(180deg, #fff5f5 0%, #fff1f1 100%);
+        border: 1px solid #ffd7d7;
+    }
+
+    .news-alert h4 {
+        margin: 0;
+        color: #9b1c1c;
+        font-size: 15px;
+        font-weight: 800;
+    }
+
+    .news-alert p {
+        margin: 8px 0 0;
+        font-size: 13px;
+        line-height: 1.55;
+        color: #7a2020;
+    }
+
+    .news-footer {
+        margin-top: 16px;
+        color: #667085;
+        font-size: 12px;
+        text-align: center;
+    }
+
+    @media (max-width: 760px) {
+        .news-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .news-title {
+            font-size: 24px;
+        }
+
+        .news-metric-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .news-shell {
+            padding-left: 14px;
+            padding-right: 14px;
+        }
+    }
+</style>
+
+<main class="news-shell">
+    <section class="news-hero">
+        <p class="news-badge">Weekly Driver Briefing</p>
+        <h1 class="news-title">Driver News & Updates</h1>
+        <p class="news-subtitle">A premium feed for operations, route intelligence, rider experience updates, and platform improvements. Use this page for live announcements and editorial stories for your driver community.</p>
+
+        <div class="news-metric-grid">
+            <div class="news-metric">
+                <p class="news-metric-label">This Week</p>
+                <p class="news-metric-value">5 Releases</p>
+            </div>
+            <div class="news-metric">
+                <p class="news-metric-label">Priority Notices</p>
+                <p class="news-metric-value">2 Active</p>
+            </div>
+            <div class="news-metric">
+                <p class="news-metric-label">Next Briefing</p>
+                <p class="news-metric-value">Mon 8:00 AM</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="news-grid">
+        <article class="news-card">
+            <div class="news-card-pad">
+                <p class="news-kicker">Featured Update • Posted Today</p>
+                <h2 class="news-headline">Smart Dispatch v2 now live for campus peak hours</h2>
+                <p class="news-paragraph">LR-Ride has rolled out smarter allocation for morning and evening demand windows. The new logic prioritizes shorter repositioning routes, balances zone load, and improves pickup consistency for drivers and riders.</p>
+                <p class="news-paragraph">Use this section for your weekly long-form story, release notes, and performance guidance. You can expand with extra paragraphs whenever needed without changing other templates.</p>
+                <div class="news-chip-row">
+                    <span class="news-chip">Dispatch</span>
+                    <span class="news-chip">Performance</span>
+                    <span class="news-chip">Operations</span>
+                </div>
+            </div>
+        </article>
+
+        <aside class="news-card">
+            <div class="news-card-pad">
+                <h3 class="news-section-title">Quick Headlines</h3>
+                <ul class="news-feed">
+                    <li class="news-feed-item">
+                        <p class="news-feed-title">New earnings summary card added to driver dashboard</p>
+                        <p class="news-feed-meta">Product Team • 2h ago</p>
+                    </li>
+                    <li class="news-feed-item">
+                        <p class="news-feed-title">West Gate reroute remains active near Science Block</p>
+                        <p class="news-feed-meta">Operations • Yesterday</p>
+                    </li>
+                    <li class="news-feed-item">
+                        <p class="news-feed-title">Support hotline now extends to 10:00 PM during exams</p>
+                        <p class="news-feed-meta">Support • Yesterday</p>
+                    </li>
+                    <li class="news-feed-item">
+                        <p class="news-feed-title">Rider no-show policy reminder for end-of-day queue</p>
+                        <p class="news-feed-meta">Policy Desk • 2 days ago</p>
+                    </li>
+                </ul>
+            </div>
+        </aside>
+    </section>
+
+    <section class="news-grid" style="margin-top: 14px;">
+        <article class="news-card">
+            <div class="news-card-pad">
+                <h3 class="news-section-title">Operations Notes</h3>
+                <div class="news-notes">
+                    <div class="news-note">
+                        <span class="news-dot"></span>
+                        <p>Prioritize East Library and Faculty Quarters zones from 4:30 PM to 6:30 PM due to expected post-class traffic.</p>
+                    </div>
+                    <div class="news-note">
+                        <span class="news-dot"></span>
+                        <p>For event nights, keep app location permission on "Always" to improve assignment continuity between trips.</p>
+                    </div>
+                    <div class="news-note">
+                        <span class="news-dot"></span>
+                        <p>Driver verification refreshes may appear this week; submit requested documents early to avoid interruption.</p>
+                    </div>
+                </div>
+            </div>
+        </article>
+
+        <article class="news-card">
+            <div class="news-card-pad">
+                <h3 class="news-section-title">Editorial Space</h3>
+                <p class="news-paragraph">Use this dedicated writing zone for announcements, campaigns, interview highlights, seasonal messages, or driver success stories.</p>
+
+                <div class="news-editor-zone">
+                    <p><strong>Template starter:</strong> "This week, we are introducing..."</p>
+                    <p><strong>Call to action:</strong> "Before Friday, please review..."</p>
+                    <p><strong>Closing note:</strong> "Thanks for helping us deliver safer, faster rides."</p>
+                </div>
+
+                <div class="news-alert">
+                    <h4>Safety Reminder</h4>
+                    <p>Always confirm rider name and destination before departure, especially during high-volume pickup windows.</p>
+                </div>
+            </div>
+        </article>
+    </section>
+
+    <p class="news-footer">LR-Ride Driver Communications • Updated in real time by your operations team.</p>
+</main>
 {% endblock %}
