@@ -249,7 +249,7 @@ const DashboardScreen = ({ onCreateGarageRide, onNavigateToRide }: { onCreateGar
     if (activityState === 'ON_DEMAND_ACTIVE') {
       sourceRide = activeOnDemandRide;
     } else if (activityState === 'GARAGE_SESSION' || activityState === 'GARAGE_DEPARTED') {
-      sourceRide = activeRide;
+      sourceRide = activeRide || storeGarageRide;
     }
 
     if (!sourceRide) return [];
@@ -277,13 +277,13 @@ const DashboardScreen = ({ onCreateGarageRide, onNavigateToRide }: { onCreateGar
       ];
     }
     return [];
-  }, [activeRide, activeOnDemandRide, activityState]);
+  }, [activeRide, activeOnDemandRide, activityState, storeGarageRide]);
 
   const hasFittedRoute = useRef<string | null>(null);
 
   // ── Auto-center map on route or driver ──
   useEffect(() => {
-    const currentRideId = activeOnDemandRide?.id || activeRide?.id;
+    const currentRideId = activeOnDemandRide?.id || activeRide?.id || storeGarageRide?.id;
     
     if (isLocked && routeCoords.length > 0 && mapRef.current) {
       if (hasFittedRoute.current !== currentRideId) {
@@ -302,7 +302,7 @@ const DashboardScreen = ({ onCreateGarageRide, onNavigateToRide }: { onCreateGar
         centerOnDriver();
       }
     }
-  }, [isLocked, routeCoords, activeOnDemandRide?.id, activeRide?.id]);
+  }, [isLocked, routeCoords, activeOnDemandRide?.id, activeRide?.id, storeGarageRide?.id]);
 
 
   const renderActiveRideDetails = () => {
@@ -312,7 +312,7 @@ const DashboardScreen = ({ onCreateGarageRide, onNavigateToRide }: { onCreateGar
     if (activityState === 'ON_DEMAND_ACTIVE') {
       sourceRide = activeOnDemandRide;
     } else if (activityState === 'GARAGE_SESSION' || activityState === 'GARAGE_DEPARTED') {
-      sourceRide = activeRide;
+      sourceRide = activeRide || storeGarageRide;
       isGarage = true;
     }
 
@@ -321,7 +321,9 @@ const DashboardScreen = ({ onCreateGarageRide, onNavigateToRide }: { onCreateGar
     const origin = isGarage ? sourceRide.origin_address : sourceRide.pickup_address;
     const destination = isGarage ? sourceRide.destination_address : sourceRide.dropoff_address;
     
-    const distance = isGarage ? '--' : `${sourceRide.actual_distance_km || sourceRide.estimated_distance_km || 0} km`;
+    const distance = isGarage
+      ? `${sourceRide.estimated_distance_km || 0} km`
+      : `${sourceRide.actual_distance_km || sourceRide.estimated_distance_km || 0} km`;
     
     const passengers = isGarage 
       ? `${sourceRide.booked_seats || 0}/${sourceRide.total_seats || 0}`

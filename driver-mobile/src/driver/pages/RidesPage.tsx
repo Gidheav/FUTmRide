@@ -1394,7 +1394,7 @@ export default function RidesPage({ route, onBack, requestedFilter, onFilterCons
   }
 
   if (driverMode === 'garage' || garageRide) {
-    return <CreateGarageRideScreen onBack={onBack} />;
+    return <CreateGarageRideScreen onBack={onBack || (() => {})} />;
   }
 
   return (

@@ -669,7 +669,7 @@ export default function DriverApp() {
   }
 
   // ——— Sub-page rendering (full screen, no layout) —————————————————————————————————————————————————————
-  if (subPage && subPage !== 'garage-ride' && subPage !== 'webview') {
+  if (subPage && subPage !== 'webview') {
     return (
       <SafeAreaProvider>
         {(() => {

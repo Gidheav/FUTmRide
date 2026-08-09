@@ -1,21 +1,281 @@
 {% extends "webview/base.html" %}
 
 {% block content %}
-<div class="content-container">
-    <div class="header-section">
-        <h1>Driver Community</h1>
-        <p class="subtitle">Connect, share, and learn with other drivers.</p>
-    </div>
+<style>
+    .community-shell {
+        padding: calc(22px + env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom));
+        max-width: 900px;
+        margin: 0 auto;
+    }
 
-    <div class="card">
-        <h3>Driver of the Month</h3>
-        <p class="meta">August 2026</p>
-        <p>Congratulations to <strong>Sarah J.</strong> for completing over 500 trips with a 5.0-star rating this month! Keep up the excellent work.</p>
-    </div>
+    .community-header {
+        position: relative;
+        overflow: hidden;
+        border-radius: 24px;
+        color: #ffffff;
+        background: linear-gradient(135deg, #5E1284 0%, #7A1FA2 50%, #953699 100%);
+        box-shadow: 0 20px 48px rgba(94, 18, 132, 0.28);
+        padding: 28px 22px;
+        margin-bottom: 20px;
+    }
 
-    <div class="card">
-        <h3>Community Poll: Break Zones</h3>
-        <p>Where would you like to see the next dedicated driver rest area on campus? Cast your vote in the weekly newsletter.</p>
-    </div>
-</div>
-{% endblock %}
+    .community-header h1 {
+        margin: 0 0 10px;
+        font-size: 28px;
+        font-weight: 900;
+        letter-spacing: -0.02em;
+    }
+
+    .community-header p {
+        margin: 0;
+        font-size: 15px;
+        line-height: 1.6;
+        color: rgba(255, 255, 255, 0.95);
+    }
+
+    .community-stat-bar {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin-top: 16px;
+    }
+
+    .community-stat {
+        background: rgba(255, 255, 255, 0.15);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 12px;
+        padding: 10px;
+        text-align: center;
+    }
+
+    .community-stat-value {
+        font-size: 18px;
+        font-weight: 900;
+    }
+
+    .community-stat-label {
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-top: 4px;
+        opacity: 0.9;
+    }
+
+    .community-section {
+        border-radius: 18px;
+        background: #ffffff;
+        border: 1px solid #e8eaef;
+        box-shadow: 0 10px 24px rgba(16, 24, 40, 0.06);
+        padding: 18px;
+        margin-bottom: 14px;
+    }
+
+    .community-section-title {
+        margin: 0 0 14px;
+        font-size: 18px;
+        font-weight: 800;
+        color: #121417;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .community-grid-2col {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+    }
+
+    .community-card-compact {
+        border-radius: 14px;
+        background: #f9fafb;
+        border: 1px solid #f0f1f4;
+        padding: 12px;
+    }
+
+    .community-card-compact-badge {
+        display: inline-block;
+        background: #d094ff;
+        color: #5E1284;
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 800;
+        margin-bottom: 6px;
+    }
+
+    .community-card-compact-title {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 800;
+        color: #121417;
+    }
+
+    .community-card-compact-text {
+        margin: 4px 0 0;
+        font-size: 12px;
+        color: #667085;
+        line-height: 1.5;
+    }
+
+    .community-leaderboard {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+    }
+
+    .community-leaderboard-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 0;
+        border-bottom: 1px solid #f0f1f4;
+    }
+
+    .community-leaderboard-item:last-child {
+        border-bottom: 0;
+    }
+
+    .community-rank {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex: 1;
+    }
+
+    .community-rank-badge {
+        min-width: 28px;
+        height: 28px;
+        border-radius: 14px;
+        background: #e9d5ff;
+        color: #5E1284;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        font-size: 12px;
+    }
+
+    .community-rank-badge.gold {
+        background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+        color: #8b6914;
+    }
+
+    .community-rank-badge.silver {
+        background: linear-gradient(135deg, #c0c0c0 0%, #e8e8e8 100%);
+        color: #4a4a4a;
+    }
+
+    .community-rank-badge.bronze {
+        background: linear-gradient(135deg, #cd7f32 0%, #d9a576 100%);
+        color: #5a3a1f;
+    }
+
+    .community-driver-info {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .community-driver-name {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 700;
+        color: #121417;
+    }
+
+    .community-driver-meta {
+        margin: 2px 0 0;
+        font-size: 12px;
+        color: #667085;
+    }
+
+    .community-driver-stats {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        white-space: nowrap;
+    }
+
+    .community-stat-item {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        font-size: 12px;
+    }
+
+    .community-stat-value-sm {
+        font-weight: 800;
+        color: #121417;
+    }
+
+    .community-stat-label-sm {
+        color: #667085;
+        font-size: 10px;
+    }
+
+    .community-wall {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+    }
+
+    .community-post {
+        padding: 14px;
+        border-bottom: 1px dashed #e8eaef;
+        background: #fafbfc;
+        margin-bottom: 10px;
+        border-radius: 12px;
+    }
+
+    .community-post:last-child {
+        border-bottom: 0;
+        margin-bottom: 0;
+    }
+
+    .community-post-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+    }
+
+    .community-post-avatar {
+        width: 24px;
+        height: 24px;
+        border-radius: 12px;
+        background: #d094ff;
+        color: #5E1284;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 10px;
+    }
+
+    .community-post-meta {
+        flex: 1;
+    }
+
+    .community-post-author {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 700;
+        color: #121417;
+    }
+
+    .community-post-time {
+        margin: 1px 0 0;
+        font-size: 11px;
+        color: #667085;
+    }
+
+    .community-post-content {
+        margin: 0;
+        font-size: 13px;
+        line-height: 1.6;
+        color: #344054;
+    }
+
+    .community-achievement-grid {
+        display: grid;\n        grid-template-columns: repeat(3, minmax(0, 1fr));\n        gap: 10px;\n        margin-top: 12px;\n    }\n\n    .community-achievement {\n        text-align: center;\n        padding: 12px;\n        border-radius: 12px;\n        background: #fafbfc;\n        border: 1px solid #e8eaef;\n    }\n\n    .community-achievement-icon {\n        font-size: 24px;\n        margin-bottom: 6px;\n    }\n\n    .community-achievement-name {\n        margin: 0;\n        font-size: 12px;\n        font-weight: 700;\n        color: #121417;\n    }\n\n    .community-achievement-desc {\n        margin: 2px 0 0;\n        font-size: 10px;\n        color: #667085;\n    }\n\n    .community-event-item {\n        padding: 12px;\n        border-radius: 12px;\n        background: linear-gradient(135deg, #e9d5ff 0%, #f3e8ff 100%);\n        border: 1px solid #d094ff;\n        margin-bottom: 8px;\n    }\n\n    .community-event-item:last-child {\n        margin-bottom: 0;\n    }\n\n    .community-event-date {\n        font-size: 11px;\n        font-weight: 800;\n        color: #5E1284;\n        text-transform: uppercase;\n        letter-spacing: 0.04em;\n    }\n\n    .community-event-title {\n        margin: 4px 0 0;\n        font-size: 14px;\n        font-weight: 700;\n        color: #5E1284;\n    }\n\n    .community-event-desc {\n        margin: 3px 0 0;\n        font-size: 12px;\n        color: #7A1FA2;\n        line-height: 1.4;\n    }\n\n    .community-footer {\n        text-align: center;\n        font-size: 12px;\n        color: #667085;\n        margin-top: 20px;\n    }\n\n    .community-footer strong {\n        color: #5E1284;\n        font-weight: 700;\n    }\n\n    .community-cta {\n        display: inline-block;\n        background: linear-gradient(135deg, #5E1284 0%, #953699 100%);\n        color: #ffffff;\n        padding: 10px 16px;\n        border-radius: 8px;\n        font-size: 12px;\n        font-weight: 800;\n        margin-top: 10px;\n        text-decoration: none;\n    }\n\n    @media (max-width: 760px) {\n        .community-grid-2col {\n            grid-template-columns: 1fr;\n        }\n\n        .community-achievement-grid {\n            grid-template-columns: repeat(2, minmax(0, 1fr));\n        }\n\n        .community-stat-bar {\n            grid-template-columns: 1fr;\n        }\n\n        .community-header h1 {\n            font-size: 24px;\n        }\n\n        .community-shell {\n            padding-left: 14px;\n            padding-right: 14px;\n        }\n    }\n</style>\n\n<main class=\"community-shell\">\n    <section class=\"community-header\">\n        <h1>🚀 FUTMRIDE Driver Community</h1>\n        <p>Connect with 1,200+ drivers, celebrate wins, share tips, earn achievements, and grow together on the FUTMRIDE platform.</p>\n        <div class=\"community-stat-bar\">\n            <div class=\"community-stat\">\n                <p class=\"community-stat-value\">1,247</p>\n                <p class=\"community-stat-label\">Active Drivers</p>\n            </div>\n            <div class=\"community-stat\">\n                <p class=\"community-stat-value\">4.8⭐</p>\n                <p class=\"community-stat-label\">Avg Rating</p>\n            </div>\n            <div class=\"community-stat\">\n                <p class=\"community-stat-value\">98K</p>\n                <p class=\"community-stat-label\">Trips This Month</p>\n            </div>\n        </div>\n    </section>\n\n    <section class=\"community-section\">\n        <h2 class=\"community-section-title\">🏆 Leaderboard This Month</h2>\n        <ul class=\"community-leaderboard\">\n            <li class=\"community-leaderboard-item\">\n                <div class=\"community-rank\">\n                    <span class=\"community-rank-badge gold\">🥇</span>\n                    <div class=\"community-driver-info\">\n                        <p class=\"community-driver-name\">Marcus L.</p>\n                        <p class=\"community-driver-meta\">4.92⭐ • 127 trips</p>\n                    </div>\n                </div>\n                <div class=\"community-driver-stats\">\n                    <div class=\"community-stat-item\">\n                        <span class=\"community-stat-value-sm\">$2,845</span>\n                        <span class=\"community-stat-label-sm\">Earned</span>\n                    </div>\n                </div>\n            </li>\n            <li class=\"community-leaderboard-item\">\n                <div class=\"community-rank\">\n                    <span class=\"community-rank-badge silver\">🥈</span>\n                    <div class=\"community-driver-info\">\n                        <p class=\"community-driver-name\">Jasmine K.</p>\n                        <p class=\"community-driver-meta\">4.89⭐ • 114 trips</p>\n                    </div>\n                </div>\n                <div class=\"community-driver-stats\">\n                    <div class=\"community-stat-item\">\n                        <span class=\"community-stat-value-sm\">$2,567</span>\n                        <span class=\"community-stat-label-sm\">Earned</span>\n                    </div>\n                </div>\n            </li>\n            <li class=\"community-leaderboard-item\">\n                <div class=\"community-rank\">\n                    <span class=\"community-rank-badge bronze\">🥉</span>\n                    <div class=\"community-driver-info\">\n                        <p class=\"community-driver-name\">David R.</p>\n                        <p class=\"community-driver-meta\">4.87⭐ • 109 trips</p>\n                    </div>\n                </div>\n                <div class=\"community-driver-stats\">\n                    <div class=\"community-stat-item\">\n                        <span class=\"community-stat-value-sm\">$2,421</span>\n                        <span class=\"community-stat-label-sm\">Earned</span>\n                    </div>\n                </div>\n            </li>\n            <li class=\"community-leaderboard-item\">\n                <div class=\"community-rank\">\n                    <span class=\"community-rank-badge\">4</span>\n                    <div class=\"community-driver-info\">\n                        <p class=\"community-driver-name\">Priya M.</p>\n                        <p class=\"community-driver-meta\">4.84⭐ • 102 trips</p>\n                    </div>\n                </div>\n                <div class=\"community-driver-stats\">\n                    <div class=\"community-stat-item\">\n                        <span class=\"community-stat-value-sm\">$2,156</span>\n                        <span class=\"community-stat-label-sm\">Earned</span>\n                    </div>\n                </div>\n            </li>\n        </ul>\n    </section>\n\n    <section class=\"community-section\">\n        <h2 class=\"community-section-title\">⭐ Driver Achievements</h2>\n        <div class=\"community-achievement-grid\">\n            <div class=\"community-achievement\">\n                <div class=\"community-achievement-icon\">💎</div>\n                <p class=\"community-achievement-name\">Platinum Driver</p>\n                <p class=\"community-achievement-desc\">500+ trips, 4.8+ rating</p>\n            </div>\n            <div class=\"community-achievement\">\n                <div class=\"community-achievement-icon\">✨</div>\n                <p class=\"community-achievement-name\">Perfect Week</p>\n                <p class=\"community-achievement-desc\">5.0⭐ for 7 consecutive days</p>\n            </div>\n            <div class=\"community-achievement\">\n                <div class=\"community-achievement-icon\">🚀</div>\n                <p class=\"community-achievement-name\">Speed Demon</p>\n                <p class=\"community-achievement-desc\">Complete 50 trips in one month</p>\n            </div>\n            <div class=\"community-achievement\">\n                <div class=\"community-achievement-icon\">👥</div>\n                <p class=\"community-achievement-name\">Referral Star</p>\n                <p class=\"community-achievement-desc\">Refer 5 active drivers successfully</p>\n            </div>\n            <div class=\"community-achievement\">\n                <div class=\"community-achievement-icon\">🎯</div>\n                <p class=\"community-achievement-name\">On-Time Pro</p>\n                <p class=\"community-achievement-desc\">95%+ on-time arrival rate, 30+ days</p>\n            </div>\n            <div class=\"community-achievement\">\n                <div class=\"community-achievement-icon\">💝</div>\n                <p class=\"community-achievement-name\">Community Hero</p>\n                <p class=\"community-achievement-desc\">Help 10+ drivers in the community forum</p>\n            </div>\n        </div>\n    </section>\n\n    <section class=\"community-section\">\n        <h2 class=\"community-section-title\">📅 Upcoming Community Events</h2>\n        <div>\n            <div class=\"community-event-item\">\n                <p class=\"community-event-date\">Sept 15 • 6:00 PM</p>\n                <p class=\"community-event-title\">Monthly Driver Meetup</p>\n                <p class=\"community-event-desc\">Network, share stories, win raffle prizes. Refreshments provided!</p>\n            </div>\n            <div class=\"community-event-item\">\n                <p class=\"community-event-date\">Sept 22 • Online</p>\n                <p class=\"community-event-title\">\"Maximize Your Earnings\" Webinar</p>\n                <p class=\"community-event-desc\">Live Q&A with senior drivers and finance team. Learn pro strategies.</p>\n            </div>\n            <div class=\"community-event-item\">\n                <p class=\"community-event-date\">Oct 1 • All Month</p>\n                <p class=\"community-event-title\">September Earnings Challenge</p>\n                <p class=\"community-event-desc\">Top 3 finishers win $500, $250, $100 bonuses. No entry fee.</p>\n            </div>\n        </div>\n    </section>\n\n    <section class=\"community-section\">\n        <h2 class=\"community-section-title\">💬 Community Wall (Recent Posts)</h2>\n        <ul class=\"community-wall\">\n            <li class=\"community-post\">\n                <div class=\"community-post-header\">\n                    <div class=\"community-post-avatar\">MJ</div>\n                    <div class=\"community-post-meta\">\n                        <p class=\"community-post-author\">Marcus L.</p>\n                        <p class=\"community-post-time\">1 hour ago</p>\n                    </div>\n                </div>\n                <p class=\"community-post-content\">Just hit my 500th trip! 🎉 Thanks to all of you for the tips. Consistency + great service = 4.9⭐ rating. Keep grinding!</p>\n            </li>\n            <li class=\"community-post\">\n                <div class=\"community-post-header\">\n                    <div class=\"community-post-avatar\">JK</div>\n                    <div class=\"community-post-meta\">\n                        <p class=\"community-post-author\">Jasmine K.</p>\n                        <p class=\"community-post-time\">3 hours ago</p>\n                    </div>\n                </div>\n                <p class=\"community-post-content\">Anyone else dealing with the parking shortage in East Campus? Pro tip: Use the new Smart Routing feature—it suggests parking lots automatically!</p>\n            </li>\n            <li class=\"community-post\">\n                <div class=\"community-post-header\">\n                    <div class=\"community-post-avatar\">DR</div>\n                    <div class=\"community-post-meta\">\n                        <p class=\"community-post-author\">David R.</p>\n                        <p class=\"community-post-time\">5 hours ago</p>\n                    </div>\n                </div>\n                <p class=\"community-post-content\">New support team member helped me resolve a dispute in 10 minutes. FUTMRIDE support is seriously improving. Big props! 👍</p>\n            </li>\n        </ul>\n    </section>\n\n    <section class=\"community-section\">\n        <h2 class=\"community-section-title\">📚 Driver Tips & Resources</h2>\n        <div class=\"community-grid-2col\">\n            <div class=\"community-card-compact\">\n                <span class=\"community-card-compact-badge\">Video</span>\n                <p class=\"community-card-compact-title\">Mastering Peak Hours</p>\n                <p class=\"community-card-compact-text\">Learn when and where to position yourself for max earnings.</p>\n            </div>\n            <div class=\"community-card-compact\">\n                <span class=\"community-card-compact-badge\">Guide</span>\n                <p class=\"community-card-compact-title\">Vehicle Maintenance 101</p>\n                <p class=\"community-card-compact-text\">Keep your car safe, reliable, and earning. Full checklist included.</p>\n            </div>\n            <div class=\"community-card-compact\">\n                <span class=\"community-card-compact-badge\">Podcast</span>\n                <p class=\"community-card-compact-title\">Stories from the Road</p>\n                <p class=\"community-card-compact-text\">Interviews with top drivers sharing their journey and success secrets.</p>\n            </div>\n            <div class=\"community-card-compact\">\n                <span class=\"community-card-compact-badge\">FAQ</span>\n                <p class=\"community-card-compact-title\">Earnings & Payments</p>\n                <p class=\"community-card-compact-text\">How FUTMRIDE calculates pay, bonuses, referrals, and more.</p>\n            </div>\n        </div>\n    </section>\n\n    <p class=\"community-footer\">💜 <strong>FUTMRIDE Community</strong> — Where drivers succeed together | Questions? Visit Help Center | Join us on Discord for real-time chat</p>\n</main>\n{% endblock %}
