@@ -30,6 +30,7 @@ const DEFAULT_DRIVER_PROFILE = {
   vehicle_year: 2020,
   vehicle_color: 'Unknown',
   plate_number: 'PENDING',
+  vehicle_seats: 5,
 };
 
 const formatPercent = (value?: string | number | null) => {

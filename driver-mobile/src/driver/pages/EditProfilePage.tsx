@@ -29,14 +29,14 @@ const DEFAULT_DRIVER_PROFILE = {
   vehicle_year: 2020,
   vehicle_color: 'Unknown',
   plate_number: 'PENDING',
-  vehicle_seats: 4,
+  vehicle_seats: 5,
 };
 
 const VEHICLE_TYPES = [
-  { value: 'motorbike', label: 'Motorbike', icon: 'two-wheeler' as const, seats: 1 },
-  { value: 'tricycle', label: 'Tricycle (Keke)', icon: 'electric-rickshaw' as const, seats: 3 },
-  { value: 'sedan', label: 'Sedan', icon: 'directions-car' as const, seats: 4 },
-  { value: 'mpv', label: 'MPV / Minivan', icon: 'airport-shuttle' as const, seats: 6 },
+  { value: 'motorbike', label: 'Motorbike', icon: 'two-wheeler' as const, seats: 2 },
+  { value: 'tricycle', label: 'Tricycle (Keke)', icon: 'electric-rickshaw' as const, seats: 4 },
+  { value: 'sedan', label: 'Sedan', icon: 'directions-car' as const, seats: 5 },
+  { value: 'mpv', label: 'MPV / Minivan', icon: 'airport-shuttle' as const, seats: 9 },
   { value: 'minibus', label: 'Minibus', icon: 'directions-bus' as const, seats: 14 },
   { value: 'coach', label: 'Coach', icon: 'directions-bus' as const, seats: 40 },
 ];

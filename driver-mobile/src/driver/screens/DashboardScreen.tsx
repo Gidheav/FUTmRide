@@ -78,6 +78,33 @@ const formatElapsed = (startedAt: any, now: number) => {
   return mins ? `${hrs}h ${mins}m` : `${hrs}h`;
 };
 
+const getRideRouteCoords = (sourceRide: any) => {
+  if (!sourceRide) return [];
+
+  if (Array.isArray(sourceRide.estimated_route_geometry) && sourceRide.estimated_route_geometry.length > 0) {
+    return sourceRide.estimated_route_geometry
+      .map((point: any) => ({
+        latitude: Number(point.latitude),
+        longitude: Number(point.longitude),
+      }))
+      .filter((point: any) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
+  }
+
+  const oLat = Number(sourceRide.origin_latitude || sourceRide.pickup_latitude);
+  const oLng = Number(sourceRide.origin_longitude || sourceRide.pickup_longitude);
+  const dLat = Number(sourceRide.destination_latitude || sourceRide.dropoff_latitude);
+  const dLng = Number(sourceRide.destination_longitude || sourceRide.dropoff_longitude);
+
+  if (oLat && oLng && dLat && dLng) {
+    return [
+      { latitude: oLat, longitude: oLng },
+      { latitude: dLat, longitude: dLng },
+    ];
+  }
+
+  return [];
+};
+
 // ── Visual mode for the dashboard mode-switch tool ──
 // This is the mode the driver WANTS to be in. It only applies when the state is IDLE.
 type VisualMode = 'ondemand' | 'garage' | 'scheduled';
@@ -167,10 +194,12 @@ const DashboardScreen = ({ onCreateGarageRide, onNavigateToRide }: { onCreateGar
       setActiveRide(active || null);
       setWalletSummary(walletRes?.data || null);
 
+      let activeOnDemand = null;
       if (driverHasActiveRide) {
         try {
           const activeRes = await driverApi.getActiveRide();
-          setActiveOnDemandRide(activeRes.data);
+          activeOnDemand = activeRes.data;
+          setActiveOnDemandRide(activeOnDemand);
         } catch (err: any) {
           if (err?.response?.status === 404) {
             setActiveOnDemandRide(null);
@@ -179,11 +208,14 @@ const DashboardScreen = ({ onCreateGarageRide, onNavigateToRide }: { onCreateGar
       } else {
         setActiveOnDemandRide(null);
       }
+
+      return { activeGarageRide: active || null, activeOnDemandRide: activeOnDemand };
     } catch {
       setStatus('inactive');
       setActiveRide(null);
       setActiveOnDemandRide(null);
       setWalletSummary(null);
+      return { activeGarageRide: null, activeOnDemandRide: null };
     }
   };
 
@@ -216,9 +248,22 @@ const DashboardScreen = ({ onCreateGarageRide, onNavigateToRide }: { onCreateGar
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await fetchDashboardData();
-    await centerOnDriver();
-    setIsRefreshing(false);
+    try {
+      const refreshed = await fetchDashboardData();
+      const refreshedRouteCoords = getRideRouteCoords(
+        refreshed.activeOnDemandRide || refreshed.activeGarageRide,
+      );
+
+      if (refreshedRouteCoords.length >= 2) {
+        hasFittedRoute.current = null;
+        mapRef.current?.fitToCoordinates(refreshedRouteCoords, {
+          edgePadding: { top: 80, right: 80, bottom: 350, left: 80 },
+          animated: true,
+        });
+      }
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   // ── Mode cycling — only between 'garage' and 'scheduled' when OFFLINE/IDLE ──
@@ -296,30 +341,7 @@ const DashboardScreen = ({ onCreateGarageRide, onNavigateToRide }: { onCreateGar
     }
 
     if (!sourceRide) return [];
-
-    // 1. If we have exact route geometry from the student/creation, use it!
-    if (Array.isArray(sourceRide.estimated_route_geometry) && sourceRide.estimated_route_geometry.length > 0) {
-      return sourceRide.estimated_route_geometry
-        .map((point: any) => ({
-          latitude: Number(point.latitude),
-          longitude: Number(point.longitude)
-        }))
-        .filter((point: any) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
-    }
-
-    // 2. Fallback: Draw a simple line if geometry is missing
-    const oLat = Number(sourceRide.origin_latitude || sourceRide.pickup_latitude);
-    const oLng = Number(sourceRide.origin_longitude || sourceRide.pickup_longitude);
-    const dLat = Number(sourceRide.destination_latitude || sourceRide.dropoff_latitude);
-    const dLng = Number(sourceRide.destination_longitude || sourceRide.dropoff_longitude);
-
-    if (oLat && oLng && dLat && dLng) {
-      return [
-        { latitude: oLat, longitude: oLng },
-        { latitude: dLat, longitude: dLng },
-      ];
-    }
-    return [];
+    return getRideRouteCoords(sourceRide);
   }, [activeRide, activeOnDemandRide, activityState, storeGarageRide]);
 
   const hasFittedRoute = useRef<string | null>(null);

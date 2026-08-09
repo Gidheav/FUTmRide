@@ -9,6 +9,8 @@ import {
   ScrollView,
   TouchableOpacity,
   Pressable,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -433,40 +435,53 @@ export default function DriverWalletPage({ onNavigateToAllTransactions }: { onNa
       </CustomRefreshScrollView>
 
       {/* ── Modals ── */}
-      <Modal visible={showPayoutModal} transparent animationType="fade" onRequestClose={() => setShowPayoutModal(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Payout Method</Text>
-            <Text style={styles.modalSubtitle}>Link your bank account to cash out.</Text>
+      <Modal visible={showPayoutModal} transparent animationType="slide" onRequestClose={() => setShowPayoutModal(false)}>
+        <Pressable style={styles.modalOverlayBottom} onPress={() => setShowPayoutModal(false)}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
+            style={styles.bottomModalKeyboardWrap}
+          >
+            <Pressable style={styles.payoutSheet} onPress={(e) => e.stopPropagation()}>
+              <View style={styles.sheetHandle} />
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.payoutSheetContent}
+              >
+                <Text style={styles.modalTitle}>Payout Method</Text>
+                <Text style={styles.modalSubtitle}>Link your bank account to cash out.</Text>
 
-            <View style={styles.modalField}>
-              <Text style={styles.modalLabel}>Bank name</Text>
-              <TextInput style={styles.modalInput} value={bankName} onChangeText={setBankName} placeholder="Access Bank" placeholderTextColor="#9ca3af" />
-            </View>
-            <View style={styles.modalField}>
-              <Text style={styles.modalLabel}>Account name</Text>
-              <TextInput style={styles.modalInput} value={accountName} onChangeText={setAccountName} placeholder="John Doe" placeholderTextColor="#9ca3af" />
-            </View>
-            <View style={styles.modalField}>
-              <Text style={styles.modalLabel}>Account number</Text>
-              <TextInput style={styles.modalInput} value={accountNumber} onChangeText={setAccountNumber} placeholder="0123456789" placeholderTextColor="#9ca3af" keyboardType="numeric" />
-            </View>
-            <View style={styles.modalField}>
-              <Text style={styles.modalLabel}>Bank code (optional)</Text>
-              <TextInput style={styles.modalInput} value={bankCode} onChangeText={setBankCode} placeholder="044" placeholderTextColor="#9ca3af" keyboardType="numeric" />
-            </View>
+                <View style={styles.modalField}>
+                  <Text style={styles.modalLabel}>Bank name</Text>
+                  <TextInput style={styles.modalInput} value={bankName} onChangeText={setBankName} placeholder="Access Bank" placeholderTextColor="#9ca3af" />
+                </View>
+                <View style={styles.modalField}>
+                  <Text style={styles.modalLabel}>Account name</Text>
+                  <TextInput style={styles.modalInput} value={accountName} onChangeText={setAccountName} placeholder="John Doe" placeholderTextColor="#9ca3af" />
+                </View>
+                <View style={styles.modalField}>
+                  <Text style={styles.modalLabel}>Account number</Text>
+                  <TextInput style={styles.modalInput} value={accountNumber} onChangeText={setAccountNumber} placeholder="0123456789" placeholderTextColor="#9ca3af" keyboardType="numeric" />
+                </View>
+                <View style={styles.modalField}>
+                  <Text style={styles.modalLabel}>Bank code (optional)</Text>
+                  <TextInput style={styles.modalInput} value={bankCode} onChangeText={setBankCode} placeholder="044" placeholderTextColor="#9ca3af" keyboardType="numeric" />
+                </View>
 
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalCancel} onPress={() => setShowPayoutModal(false)}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalSave} onPress={savePayoutMethod} disabled={savingPayout}>
-                <Text style={styles.modalSaveText}>Save Bank</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+                <View style={styles.modalActions}>
+                  <TouchableOpacity style={styles.modalCancel} onPress={() => setShowPayoutModal(false)}>
+                    <Text style={styles.modalCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.modalSave} onPress={savePayoutMethod} disabled={savingPayout}>
+                    <Text style={styles.modalSaveText}>Save Bank</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </Pressable>
+          </KeyboardAvoidingView>
           <LoadingOverlay visible={savingPayout} />
-        </View>
+        </Pressable>
       </Modal>
 
       <Modal visible={showGoalModal} transparent animationType="fade" onRequestClose={() => setShowGoalModal(false)}>
@@ -921,6 +936,31 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
+  },
+  bottomModalKeyboardWrap: {
+    width: '100%',
+    justifyContent: 'flex-end',
+  },
+  payoutSheet: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 28,
+    height: '88%',
+  },
+  payoutSheetContent: {
+    paddingBottom: 8,
+    flexGrow: 1,
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#e5e7eb',
+    marginBottom: 16,
   },
   receiptSheet: {
     backgroundColor: '#ffffff',

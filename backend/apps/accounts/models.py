@@ -321,6 +321,15 @@ class DriverProfile(models.Model):
         MINIBUS = 'minibus', 'Minibus'
         COACH = 'coach', 'Coach'
 
+    VEHICLE_SEAT_CAPACITY = {
+        'motorbike': 2,
+        'tricycle': 4,
+        'sedan': 5,
+        'mpv': 9,
+        'minibus': 14,
+        'coach': 40,
+    }
+
     class MaintenanceStatus(models.TextChoices):
         ACTIVE = 'active', 'Active'
         IN_SERVICE = 'in_service', 'In-Service'
@@ -396,6 +405,27 @@ class DriverProfile(models.Model):
 
     def __str__(self):
         return f'DriverProfile({self.user.full_name} - {self.plate_number})'
+
+    @classmethod
+    def get_vehicle_seat_capacity(cls, vehicle_type):
+        return cls.VEHICLE_SEAT_CAPACITY.get(str(vehicle_type or '').strip().lower())
+
+    def normalize_vehicle_seats(self):
+        capacity = self.get_vehicle_seat_capacity(self.vehicle_type)
+        if capacity and self.vehicle_seats != capacity:
+            self.vehicle_seats = capacity
+        return self.vehicle_seats
+
+    def save(self, *args, **kwargs):
+        update_fields = kwargs.get('update_fields')
+        capacity = self.get_vehicle_seat_capacity(self.vehicle_type)
+        if capacity and self.vehicle_seats != capacity:
+            self.vehicle_seats = capacity
+            if update_fields is not None:
+                update_fields = set(update_fields)
+                update_fields.add('vehicle_seats')
+                kwargs['update_fields'] = list(update_fields)
+        return super().save(*args, **kwargs)
 
     @property
     def is_eligible_to_accept_rides(self):

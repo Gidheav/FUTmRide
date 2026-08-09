@@ -106,6 +106,7 @@ const DEFAULT_DRIVER_PROFILE = {
   vehicle_model: 'Unknown',
   vehicle_year: 2020,
   plate_number: 'PENDING',
+  vehicle_seats: 5,
 };
 
 

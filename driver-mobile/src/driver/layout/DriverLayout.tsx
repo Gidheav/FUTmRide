@@ -214,8 +214,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     borderTopWidth: 1,
     borderTopColor: COLORS.surfaceContainer,
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
     zIndex: 50,
   },
   bottomNav: {

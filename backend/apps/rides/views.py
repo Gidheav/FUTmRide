@@ -598,7 +598,11 @@ class DriverAcceptRideView(APIView):
                     {'error': {'code': 'VEHICLE_MISMATCH', 'message': 'Ride does not match your vehicle type.'}},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            if ride.requested_seats and ride.requested_seats > profile.vehicle_seats:
+            expected_seats = DriverProfile.get_vehicle_seat_capacity(profile.vehicle_type) or profile.vehicle_seats
+            if profile.vehicle_seats != expected_seats:
+                profile.vehicle_seats = expected_seats
+                profile.save(update_fields=['vehicle_seats'])
+            if ride.requested_seats and ride.requested_seats > expected_seats:
                 return Response(
                     {'error': {'code': 'SEATS_EXCEEDED', 'message': 'Not enough available seats.'}},
                     status=status.HTTP_400_BAD_REQUEST,
