@@ -115,7 +115,8 @@ def secure_webview(request, page):
 
     valid_pages = [
         'news', 'events', 'activities', 'safety',
-        'driver-news', 'campus-events', 'driver-community', 'driver-guidelines'
+        'driver-news', 'campus-events', 'driver-community', 'driver-guidelines',
+        'support', 'terms',
     ]
     if page not in valid_pages:
         raise Http404("Not Found")

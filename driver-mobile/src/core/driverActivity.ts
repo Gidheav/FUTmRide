@@ -188,14 +188,14 @@ export function getActivityDisplay(state: DriverActivityState): {
       }
     case 'GARAGE_SESSION':
       return {
-        label: 'Garage — Collecting',
+        label: 'Garage - Boarding',
         color: '#E65100',
         bgColor: '#FFF3E0',
         icon: 'event-seat',
       }
     case 'GARAGE_DEPARTED':
       return {
-        label: 'Garage — En Route',
+        label: 'Garage - En Route',
         color: '#6A1B9A',
         bgColor: '#F3E5F5',
         icon: 'directions-car',

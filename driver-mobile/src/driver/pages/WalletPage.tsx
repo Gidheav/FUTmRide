@@ -247,17 +247,6 @@ export default function DriverWalletPage({ onNavigateToAllTransactions }: { onNa
     );
   };
 
-  const chartSeries = useMemo(() => {
-    const series = summary?.weekly_analytics?.series ?? [];
-    const amounts = series.map((item) => Number(item.amount || 0));
-    const max = Math.max(1, ...amounts);
-    return series.map((item) => ({
-      day: item.day_label,
-      amount: Number(item.amount || 0),
-      height: Math.max(12, Math.round((Number(item.amount || 0) / max) * 100)),
-    }));
-  }, [summary?.weekly_analytics?.series]);
-
   const latestDocument = useMemo(() => {
     if (!documents?.length) return null;
     return [...documents].sort((a, b) => (b.uploaded_at || '').localeCompare(a.uploaded_at || ''))[0];
@@ -325,60 +314,6 @@ export default function DriverWalletPage({ onNavigateToAllTransactions }: { onNa
             <Text style={styles.inlineGoalTarget}>
               {formatShortCurrency(summary?.daily_goal?.target ?? 0)}
             </Text>
-          </View>
-        </View>
-
-        {/* ── Analytics & Rewards Row ── */}
-        <View style={styles.dualCardRow}>
-          <View style={styles.halfCard}>
-            <View style={styles.halfCardHeader}>
-              <Text style={styles.halfCardTitle}>This Week</Text>
-              <View style={styles.trendBadge}>
-                <MaterialIcons
-                  name={(summary?.weekly_analytics?.change_percent ?? 0) >= 0 ? 'arrow-upward' : 'arrow-downward'}
-                  size={12}
-                  color="#16a34a"
-                />
-                <Text style={styles.trendText}>
-                  {Math.abs(Math.round(summary?.weekly_analytics?.change_percent ?? 0))}%
-                </Text>
-              </View>
-            </View>
-            <Text style={styles.analyticsAmount}>
-              {formatShortCurrency(summary?.weekly_analytics?.total_earned ?? 0)}
-            </Text>
-            <View style={styles.miniChart}>
-              {(chartSeries.length ? chartSeries : [
-                { day: 'M', height: 12 }, { day: 'T', height: 12 }, { day: 'W', height: 12 },
-                { day: 'T', height: 12 }, { day: 'F', height: 12 }, { day: 'S', height: 12 }, { day: 'S', height: 12 },
-              ]).map((bar, idx) => (
-                <View key={idx} style={styles.miniChartCol}>
-                  <View style={styles.miniChartBarWrap}>
-                    <View
-                      style={[
-                        styles.miniChartBar,
-                        { height: `${bar.height}%` },
-                        bar.height >= 80 && styles.miniChartBarActive,
-                      ]}
-                    />
-                  </View>
-                </View>
-              ))}
-            </View>
-          </View>
-
-          <View style={styles.halfCard}>
-            <View style={styles.halfCardHeader}>
-              <Text style={styles.halfCardTitle}>Driver Tier</Text>
-              <MaterialIcons name="military-tech" size={16} color="#d97706" />
-            </View>
-            <Text style={styles.tierName}>{summary?.rewards?.tier ?? 'Driver'}</Text>
-            <Text style={styles.tierPoints}>{(summary?.rewards?.points ?? 0).toLocaleString()} pts</Text>
-            <View style={{ flex: 1 }} />
-            <TouchableOpacity style={styles.viewPerksBtn} activeOpacity={0.7}>
-              <Text style={styles.viewPerksText}>View Perks</Text>
-              <MaterialIcons name="chevron-right" size={14} color="#6A1B9A" />
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -752,93 +687,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Medium',
     fontSize: 12,
     color: '#374151',
-  },
-  dualCardRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  halfCard: {
-    flex: 1,
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#f3f4f6',
-  },
-  halfCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  halfCardTitle: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 13,
-    color: '#6b7280',
-  },
-  trendBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#dcfce7',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 100,
-    gap: 2,
-  },
-  trendText: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 10,
-    color: '#16a34a',
-  },
-  analyticsAmount: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 18,
-    color: '#111827',
-    marginBottom: 12,
-  },
-  miniChart: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    height: 40,
-    gap: 4,
-  },
-  miniChartCol: {
-    flex: 1,
-    height: '100%',
-  },
-  miniChartBarWrap: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  miniChartBar: {
-    backgroundColor: '#f3f4f6',
-    borderRadius: 2,
-    width: '100%',
-  },
-  miniChartBarActive: {
-    backgroundColor: '#c084fc',
-  },
-  tierName: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 18,
-    color: '#111827',
-  },
-  tierPoints: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 13,
-    color: '#6b7280',
-    marginTop: 2,
-  },
-  viewPerksBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    marginTop: 12,
-  },
-  viewPerksText: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 12,
-    color: '#6A1B9A',
   },
   settingsStack: {
     backgroundColor: '#ffffff',

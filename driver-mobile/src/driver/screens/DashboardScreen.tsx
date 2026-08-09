@@ -61,6 +61,23 @@ const getGoalProgress = (summary: any) => {
   return Math.min(100, Math.round((earned / target) * 100));
 };
 
+const formatCompactDistance = (value: any) => {
+  const distance = Number(value);
+  if (!Number.isFinite(distance) || distance <= 0) return '-- km';
+  return `${distance >= 10 ? distance.toFixed(0) : distance.toFixed(1)} km`;
+};
+
+const formatElapsed = (startedAt: any, now: number) => {
+  if (!startedAt) return '--';
+  const startedMs = new Date(startedAt).getTime();
+  if (!Number.isFinite(startedMs)) return '--';
+  const diffMins = Math.max(0, Math.floor((now - startedMs) / 60000));
+  if (diffMins < 60) return `${diffMins}m`;
+  const hrs = Math.floor(diffMins / 60);
+  const mins = diffMins % 60;
+  return mins ? `${hrs}h ${mins}m` : `${hrs}h`;
+};
+
 // ── Visual mode for the dashboard mode-switch tool ──
 // This is the mode the driver WANTS to be in. It only applies when the state is IDLE.
 type VisualMode = 'ondemand' | 'garage' | 'scheduled';
@@ -243,6 +260,32 @@ const DashboardScreen = ({ onCreateGarageRide, onNavigateToRide }: { onCreateGar
       ? MODE_META.ondemand           // While online, always show on-demand — not switchable
       : MODE_META[offlineMode];      // While offline, show the current offline mode
 
+  const activeHeaderMetrics = useMemo(() => {
+    let sourceRide = null;
+    let isGarage = false;
+
+    if (activityState === 'ON_DEMAND_ACTIVE') {
+      sourceRide = activeOnDemandRide;
+    } else if (activityState === 'GARAGE_SESSION' || activityState === 'GARAGE_DEPARTED') {
+      sourceRide = activeRide || storeGarageRide;
+      isGarage = true;
+    }
+
+    if (!sourceRide) return null;
+
+    const distance = isGarage
+      ? sourceRide.estimated_distance_km
+      : (sourceRide.actual_distance_km || sourceRide.estimated_distance_km);
+    const startedAt = isGarage
+      ? sourceRide.created_at
+      : (sourceRide.requested_at || sourceRide.driver_assigned_at || sourceRide.trip_started_at);
+
+    return {
+      distance: formatCompactDistance(distance),
+      elapsed: formatElapsed(startedAt, currentTime),
+    };
+  }, [activeRide, activeOnDemandRide, activityState, currentTime, storeGarageRide]);
+
   const routeCoords = useMemo(() => {
     let sourceRide = null;
 
@@ -321,74 +364,30 @@ const DashboardScreen = ({ onCreateGarageRide, onNavigateToRide }: { onCreateGar
     const origin = isGarage ? sourceRide.origin_address : sourceRide.pickup_address;
     const destination = isGarage ? sourceRide.destination_address : sourceRide.dropoff_address;
     
-    const distance = isGarage
-      ? `${sourceRide.estimated_distance_km || 0} km`
-      : `${sourceRide.actual_distance_km || sourceRide.estimated_distance_km || 0} km`;
-    
-    const passengers = isGarage 
-      ? `${sourceRide.booked_seats || 0}/${sourceRide.total_seats || 0}`
-      : `${sourceRide.requested_seats || 1}`;
-
-    const startTime = isGarage 
-      ? (sourceRide.departed_at || sourceRide.created_at)
-      : (sourceRide.trip_started_at || sourceRide.driver_assigned_at || sourceRide.requested_at);
-
-    let timeTaken = '--';
-    if (startTime) {
-      const startMs = new Date(startTime).getTime();
-      const diffMins = Math.max(0, Math.floor((currentTime - startMs) / 60000));
-      if (diffMins < 60) {
-        timeTaken = `${diffMins}m`;
-      } else {
-        const hrs = Math.floor(diffMins / 60);
-        const mins = diffMins % 60;
-        timeTaken = `${hrs}h ${mins}m`;
-      }
-    }
-
     return (
       <View style={styles.sheetDetailsContainer}>
-        <View style={styles.sheetDetailRow}>
-          <View style={styles.sheetDetailItem}>
-            <MaterialIcons name="route" size={20} color={COLORS.primary} />
-            <Text style={styles.sheetDetailLabel}>Distance</Text>
-            <Text style={styles.sheetDetailValue}>{distance}</Text>
-          </View>
-          <View style={styles.sheetDetailItem}>
-            <MaterialIcons name="people" size={20} color={COLORS.primary} />
-            <Text style={styles.sheetDetailLabel}>Passengers</Text>
-            <Text style={styles.sheetDetailValue}>{passengers}</Text>
-          </View>
-          <View style={styles.sheetDetailItem}>
-            <MaterialIcons name="timer" size={20} color={COLORS.primary} />
-            <Text style={styles.sheetDetailLabel}>Time Taken</Text>
-            <Text style={styles.sheetDetailValue}>{timeTaken}</Text>
-          </View>
-        </View>
         <View style={styles.sheetLocationContainer}>
           <View style={styles.sheetLocationRow}>
-            <MaterialIcons name="my-location" size={16} color={COLORS.primary} />
+            <View style={styles.sheetRouteIcon}>
+              <MaterialIcons name="my-location" size={14} color={COLORS.primary} />
+            </View>
             <Text style={styles.sheetLocationText} numberOfLines={1}>{origin || 'Current Location'}</Text>
           </View>
           <View style={styles.sheetLocationDot} />
           <View style={styles.sheetLocationRow}>
-            <MaterialIcons name="location-on" size={16} color={COLORS.error ?? '#B00020'} />
+            <View style={[styles.sheetRouteIcon, styles.sheetRouteIconEnd]}>
+              <MaterialIcons name="location-on" size={14} color={COLORS.error ?? '#B00020'} />
+            </View>
             <Text style={styles.sheetLocationText} numberOfLines={1}>{destination || 'Destination'}</Text>
           </View>
         </View>
         {(isGarage ? onCreateGarageRide : onNavigateToRide) && (
           <TouchableOpacity
-            style={{
-              backgroundColor: COLORS.primary,
-              marginTop: 16,
-              paddingVertical: 12,
-              borderRadius: 12,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
+            style={styles.sheetPrimaryButton}
             onPress={isGarage ? onCreateGarageRide : onNavigateToRide}
           >
-            <Text style={[FONTS.labelLg, { color: '#FFF' }]}>{isGarage ? "View Ride" : "Go to Ride →"}</Text>
+            <Text style={styles.sheetPrimaryButtonText}>{isGarage ? 'View Ride' : 'Go to Ride'}</Text>
+            <MaterialIcons name="arrow-forward" size={18} color="#FFF" />
           </TouchableOpacity>
         )}
       </View>
@@ -521,8 +520,8 @@ const DashboardScreen = ({ onCreateGarageRide, onNavigateToRide }: { onCreateGar
           !isSheetExpanded && styles.bottomSheetCollapsed,
           { 
             bottom: 0,
-            maxHeight: '70%',
-            paddingBottom: isSheetExpanded ? Math.max(insets.bottom, 16) : 12,
+            maxHeight: '44%',
+            paddingBottom: isSheetExpanded ? Math.max(insets.bottom, 12) : 10,
           }
         ]}>
           <TouchableOpacity style={styles.sheetHeaderButton} onPress={toggleSheet} activeOpacity={0.85}>
@@ -551,12 +550,18 @@ const DashboardScreen = ({ onCreateGarageRide, onNavigateToRide }: { onCreateGar
                   <View style={styles.sheetTextCol}>
                     <Text style={styles.sheetTitle}>{activityDisplay.label}</Text>
                     <Text style={styles.sheetSub} numberOfLines={1}>
-                      {activityState === 'ON_DEMAND_ACTIVE' ? 'Student on board / En route' :
+                      {activityState === 'ON_DEMAND_ACTIVE' ? 'Student on board' :
                        activityState === 'GARAGE_SESSION' ? 'Waiting for passengers' :
                        activityState === 'GARAGE_DEPARTED' ? 'Heading to destination' :
                        'Active Session'}
                     </Text>
                   </View>
+                  {activeHeaderMetrics && (
+                    <View style={styles.sheetMetricCol}>
+                      <Text style={styles.sheetMetricText} numberOfLines={1}>{activeHeaderMetrics.distance}</Text>
+                      <Text style={styles.sheetMetricSubText} numberOfLines={1}>{activeHeaderMetrics.elapsed}</Text>
+                    </View>
+                  )}
                 </View>
                 {renderActiveRideDetails()}
               </View>
@@ -668,7 +673,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 10,
-    paddingTop: 12,
+    paddingTop: 10,
     paddingBottom: 24,
     elevation: 10,
     shadowColor: '#000',
@@ -681,14 +686,14 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   sheetHeaderButton: {
-    marginBottom: 6,
+    marginBottom: 2,
   },
   sheetHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 4,
-    paddingBottom: 4,
+    paddingBottom: 2,
   },
   sheetHeaderTitle: {
     fontSize: 13,
@@ -714,18 +719,18 @@ const styles = StyleSheet.create({
   },
   sheetContent: {
     paddingHorizontal: 14,
-    paddingTop: 8,
+    paddingTop: 4,
   },
   sheetHeaderInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 12,
     width: '100%',
   },
   sheetIconBox: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
+    width: 42,
+    height: 42,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -742,11 +747,27 @@ const styles = StyleSheet.create({
     color: COLORS.onSurfaceVariant,
     marginTop: 2,
   },
+  sheetMetricCol: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    minWidth: 64,
+  },
+  sheetMetricText: {
+    ...FONTS.labelLg,
+    color: COLORS.onSurface,
+    fontWeight: '800',
+  },
+  sheetMetricSubText: {
+    ...FONTS.bodySm,
+    color: COLORS.onSurfaceVariant,
+    marginTop: 2,
+    fontWeight: '700',
+  },
   sheetDetailsContainer: {
-    marginTop: 16,
+    marginTop: 12,
     backgroundColor: COLORS.surfaceContainerLowest,
     borderRadius: 12,
-    padding: 12,
+    padding: 10,
     borderWidth: 1,
     borderColor: '#eee',
   },
@@ -774,24 +795,52 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   sheetLocationContainer: {
-    paddingHorizontal: 4,
+    paddingHorizontal: 2,
   },
   sheetLocationRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
   sheetLocationDot: {
     width: 2,
-    height: 12,
+    height: 10,
     backgroundColor: '#ccc',
-    marginLeft: 7,
+    marginLeft: 10,
     marginVertical: 2,
+  },
+  sheetRouteIcon: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: COLORS.primaryContainer + '33',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetRouteIconEnd: {
+    backgroundColor: (COLORS.error ?? '#B00020') + '14',
   },
   sheetLocationText: {
     ...FONTS.bodySm,
     color: COLORS.onSurface,
     flex: 1,
+  },
+  sheetPrimaryButton: {
+    marginTop: 12,
+    alignSelf: 'flex-end',
+    minWidth: 118,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  sheetPrimaryButtonText: {
+    ...FONTS.labelLg,
+    color: '#FFF',
   },
 });
 

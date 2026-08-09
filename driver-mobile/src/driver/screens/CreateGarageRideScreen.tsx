@@ -313,7 +313,7 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
     const totalEarnings = passengers.reduce((sum: number, p: any) => sum + Number(p.amount_paid), 0)
     const bookedSeats = passengers.reduce((sum: number, p: any) => sum + p.seats_booked, 0)
     const isDeparted = ride.status === "departed"
-    const qrSize = Math.min(Math.max(width - 88, 260), 320)
+    const qrSize = Math.min(Math.max(width - 120, 220), 280)
     return (
       <View style={[s.page, { paddingTop: 0 }]}>
         <ScrollView contentContainerStyle={[s.boardingContent, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 24 }]} showsVerticalScrollIndicator={false}>
@@ -338,21 +338,20 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
             }
           </View>
 
-          <View style={s.statsRow}>
-            <View style={s.statCard}>
-              <MaterialIcons name="event-seat" size={18} color={COLORS.primary} />
-              <Text style={s.statVal}>{bookedSeats}/{ride.total_seats}</Text>
-              <Text style={s.statLbl}>Seats</Text>
+          <View style={s.boardingSummary}>
+            <View style={s.summaryItem}>
+              <MaterialIcons name="event-seat" size={16} color={COLORS.primary} />
+              <Text style={s.summaryText}>{bookedSeats}/{ride.total_seats}</Text>
             </View>
-            <View style={[s.statCard, { borderColor: "#2E7D3233" }]}>
-              <MaterialIcons name="payments" size={18} color="#2E7D32" />
-              <Text style={[s.statVal, { color: "#2E7D32" }]}>N{totalEarnings.toLocaleString()}</Text>
-              <Text style={s.statLbl}>Earned</Text>
+            <View style={s.summaryDivider} />
+            <View style={s.summaryItem}>
+              <MaterialIcons name="payments" size={16} color="#2E7D32" />
+              <Text style={[s.summaryText, { color: "#2E7D32" }]}>N{totalEarnings.toLocaleString()}</Text>
             </View>
-            <View style={s.statCard}>
-              <MaterialIcons name="confirmation-number" size={18} color={COLORS.onSurfaceVariant} />
-              <Text style={s.statVal}>{ride.fare_per_seat ? `N${Number(ride.fare_per_seat).toFixed(0)}` : "--"}</Text>
-              <Text style={s.statLbl}>Per Seat</Text>
+            <View style={s.summaryDivider} />
+            <View style={s.summaryItem}>
+              <MaterialIcons name="confirmation-number" size={16} color={COLORS.onSurfaceVariant} />
+              <Text style={s.summaryText}>{ride.fare_per_seat ? `N${Number(ride.fare_per_seat).toFixed(0)}` : "--"}</Text>
             </View>
           </View>
           <Text style={s.sectionTitle}>Passengers <Text style={s.sectionCount}>{passengers.length}</Text></Text>
@@ -376,167 +375,11 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
   }
 
   const mapRegion = origin && destination
-    ? { latitude: (origin.latitude + destination.latitude) / 2, longitude: (origin.longitude + destination.longitude) / 2, latitudeDelta: Math.abs(origin.latitude - destination.latitude) * 2 + 0.04, longitudeDelta: Math.abs(origin.longitude - destination.longitude) * 2 + 0.04 }
-    : origin ? { latitude: origin.latitude, longitude: origin.longitude, latitudeDelta: 0.02, longitudeDelta: 0.02 }
+    ? { latitude: 9.6171, longitude: 6.5492, latitudeDelta: 0.05, longitudeDelta: 0.05 }
     : { latitude: 9.6171, longitude: 6.5492, latitudeDelta: 0.05, longitudeDelta: 0.05 }
 
-  return (
-    <View style={[s.page, { paddingTop: 0 }]}>
-      <MapView ref={mapRef} style={StyleSheet.absoluteFillObject} provider={PROVIDER_GOOGLE} region={mapRegion} showsUserLocation>
-        {origin && <Marker coordinate={{ latitude: origin.latitude, longitude: origin.longitude }} pinColor="green" title="Origin" tracksViewChanges={false} />}
-        {destination && <Marker coordinate={{ latitude: destination.latitude, longitude: destination.longitude }} pinColor="red" title="Destination" tracksViewChanges={false} />}
-        {origin && destination && (
-          routeCoords && routeCoords.length > 1
-            ? <Polyline coordinates={routeCoords} strokeColor={COLORS.primary} strokeWidth={3} />
-            : <Polyline coordinates={[{ latitude: origin.latitude, longitude: origin.longitude }, { latitude: destination.latitude, longitude: destination.longitude }]} strokeColor={COLORS.primary} strokeWidth={2} lineDashPattern={[6, 4]} />
-        )}
-      </MapView>
-
-      <View style={s.formPanel}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"}>
-          <View style={s.formScroll}>
-            <View style={s.routeCard}>
-              <TouchableOpacity style={s.locRow} onPress={() => setLocationPickerOpen("origin")}>
-                <View style={s.dotGreen} />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.locLbl}>From</Text>
-                  <Text style={[s.locVal, !origin && s.locPlaceholder]} numberOfLines={1}>{origin?.label || "Select pickup"}</Text>
-                </View>
-                <MaterialIcons name="edit" size={15} color={COLORS.onSurfaceVariant} />
-              </TouchableOpacity>
-              <View style={s.divRow}>
-                <View style={s.divLine} />
-                {origin && destination && <TouchableOpacity style={s.swapBtn} onPress={handleSwapRoute}><MaterialIcons name="swap-vert" size={15} color={COLORS.primary} /></TouchableOpacity>}
-              </View>
-              <TouchableOpacity style={s.locRow} onPress={() => setLocationPickerOpen("destination")}>
-                <View style={s.dotRed} />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.locLbl}>To</Text>
-                  <Text style={[s.locVal, !destination && s.locPlaceholder]} numberOfLines={1}>{destination?.label || "Select destination"}</Text>
-                </View>
-                <MaterialIcons name="edit" size={15} color={COLORS.onSurfaceVariant} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={s.metricsCard}>
-              <TouchableOpacity style={s.metric} onPress={() => origin && destination && runTare(origin, destination)} activeOpacity={0.7}>
-                <Text style={s.metLbl}>Distance</Text>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                  <Text style={s.metVal}>{fmtDist(distanceKm)}</Text>
-                  {isTaring && <MaterialIcons name="sync" size={12} color={COLORS.primary} />}
-                </View>
-              </TouchableOpacity>
-              <View style={s.metDivider} />
-              <View style={s.metric}>
-                <Text style={s.metLbl}>Fare / Seat</Text>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                  <Text style={s.metVal}>{fmtCur(estimatedFare)}</Text>
-                  {isTaring && <MaterialIcons name="sync" size={12} color={COLORS.primary} />}
-                </View>
-              </View>
-              <View style={s.metDivider} />
-              <View style={[s.metric, { flex: 1.2 }]}>
-                <Text style={s.metLbl}>Seats</Text>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                  <TouchableOpacity onPress={() => setSeats(Math.max(1, seats - 1))} disabled={seats <= 1}>
-                    <MaterialIcons name="remove-circle-outline" size={22} color={seats <= 1 ? COLORS.surfaceContainerHighest : COLORS.primary} />
-                  </TouchableOpacity>
-                  <Text style={s.seatsInput}>{seats}</Text>
-                  <TouchableOpacity onPress={() => setSeats(Math.min(getMaxSeats(), seats + 1))} disabled={seats >= getMaxSeats()}>
-                    <MaterialIcons name="add-circle-outline" size={22} color={seats >= getMaxSeats() ? COLORS.surfaceContainerHighest : COLORS.primary} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          </View>
-
-          <View style={[s.actionBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-            <View style={s.actionBarLeft}>
-              {savedRoutes.length > 0 && (
-                <TouchableOpacity style={s.savedPill} onPress={() => setIsSavedRoutesOpen(true)}>
-                  <MaterialIcons name="bookmark" size={13} color={COLORS.primary} />
-                  <Text style={s.savedPillTxt}>View</Text>
-                  <MaterialIcons name="chevron-right" size={13} color={COLORS.primary} />
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity onPress={() => setSaveRoute(!saveRoute)} style={{ padding: 4 }}>
-                <MaterialIcons name={saveRoute ? "bookmark" : "bookmark-border"} size={24} color={COLORS.primary} />
-              </TouchableOpacity>
-            </View>
-            <TouchableOpacity
-              style={[s.createBtn, (!origin || !destination || loading) && s.createBtnOff, !isTared && origin && destination && { backgroundColor: "#6750A4" }]}
-              onPress={isTared ? handleCreate : () => origin && destination && runTare(origin, destination)}
-              disabled={loading || isTaring || !origin || !destination}
-              activeOpacity={0.85}
-            >
-              <MaterialIcons name={isTared ? "qr-code-scanner" : "track-changes"} size={17} color="#fff" />
-              <Text style={s.createBtnTxt}>
-                {loading ? "Creating..." : isTaring ? "Taring..." : isTared ? "Create" : "Tare"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
-      </View>
-
-      <Modal visible={Boolean(locationPickerOpen)} animationType="slide" transparent={true} onRequestClose={() => setLocationPickerOpen(null)}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={s.modalOverlay}>
-          <TouchableWithoutFeedback onPress={() => setLocationPickerOpen(null)}><View style={{ flex: 1 }} /></TouchableWithoutFeedback>
-          <View style={[s.bottomSheetModal, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-            <View style={s.pickerHeader}>
-              <Text style={s.pickerTitle}>{locationPickerOpen === "origin" ? "Select Origin" : "Select Destination"}</Text>
-              <TouchableOpacity onPress={() => setLocationPickerOpen(null)} style={s.pickerBack}><MaterialIcons name="close" size={22} color={COLORS.onSurface} /></TouchableOpacity>
-            </View>
-            <View style={s.pickerSearch}>
-              <MaterialIcons name="search" size={18} color={COLORS.onSurfaceVariant} />
-              <TextInput style={s.pickerInput} placeholder="Search..." placeholderTextColor={COLORS.onSurfaceVariant} value={locationQuery} onChangeText={setLocationQuery} autoFocus />
-              {locationQuery.length > 0 && <TouchableOpacity onPress={() => setLocationQuery("")}><MaterialIcons name="close" size={16} color={COLORS.onSurfaceVariant} /></TouchableOpacity>}
-            </View>
-            <ScrollView contentContainerStyle={s.pickerList} keyboardShouldPersistTaps="handled" style={{ maxHeight: 300 }}>
-              {filteredLocations.map((item) => (
-                <TouchableOpacity key={item.id} style={s.pickerItem} onPress={() => handleSelectLocation(item)}>
-                  <View style={s.pickerIcon}><MaterialIcons name="place" size={17} color={COLORS.primary} /></View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.pickerItemTitle}>{item.label}</Text>
-                    {item.description ? <Text style={s.pickerItemSub}>{item.description}</Text> : null}
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      <Modal visible={isSavedRoutesOpen} animationType="slide" transparent={true} onRequestClose={() => setIsSavedRoutesOpen(false)}>
-        <View style={s.modalOverlay}>
-          <TouchableWithoutFeedback onPress={() => setIsSavedRoutesOpen(false)}><View style={{ flex: 1 }} /></TouchableWithoutFeedback>
-          <View style={[s.bottomSheetModal, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-            <View style={s.pickerHeader}>
-              <Text style={s.pickerTitle}>Saved Routes</Text>
-              <TouchableOpacity onPress={() => setIsSavedRoutesOpen(false)} style={s.pickerBack}><MaterialIcons name="close" size={22} color={COLORS.onSurface} /></TouchableOpacity>
-            </View>
-            <ScrollView contentContainerStyle={s.pickerList} style={{ maxHeight: 300 }}>
-              {savedRoutes.length === 0
-                ? <View style={s.emptyBox}><MaterialIcons name="route" size={36} color={COLORS.surfaceContainerHighest} /><Text style={[s.emptyTxt, { marginTop: 10 }]}>No saved routes yet.</Text></View>
-                : savedRoutes.map((route: any) => (
-                  <TouchableOpacity key={route.id} style={s.savedRouteRow} onPress={() => handleUseSavedRoute(route)}>
-                    <MaterialIcons name="route" size={20} color={COLORS.primary} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.pickerItemTitle} numberOfLines={1}>{route.origin_address} to {route.destination_address}</Text>
-                      <Text style={s.pickerItemSub}>{fmtDist(Number(route.distance_km || 0))}</Text>
-                    </View>
-                    <MaterialIcons name="chevron-right" size={17} color={COLORS.onSurfaceVariant} />
-                  </TouchableOpacity>
-                ))
-              }
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-      <LoadingOverlay visible={loading} />
-    </View>
-  )
+  return <View style={{ flex: 1, backgroundColor: COLORS.background, justifyContent: 'center', alignItems: 'center' }}><Text style={FONTS.headlineMd}>Create Garage Ride</Text></View>
 }
-
 const s = StyleSheet.create({
   page: { flex: 1, backgroundColor: COLORS.background, justifyContent: "flex-end" },
   formPanel: { backgroundColor: COLORS.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, ...AMBIENT_SHADOW, shadowOpacity: 0.12 },
@@ -565,15 +408,19 @@ const s = StyleSheet.create({
   actionBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 14, paddingTop: 10, borderTopWidth: 1, borderTopColor: COLORS.surfaceContainerLow },
   actionBarLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
   boardingContent: { paddingHorizontal: 16 },
-  qrCard: { backgroundColor: COLORS.surface, borderRadius: 24, alignItems: "center", paddingVertical: 18, paddingHorizontal: 14, marginBottom: 12, borderWidth: 1, borderColor: COLORS.surfaceContainerHighest, ...AMBIENT_SHADOW, shadowOpacity: 0.12, shadowRadius: 18, elevation: 5 },
-  qrWrapper: { padding: 14, backgroundColor: "#fff", borderRadius: 18, borderWidth: 1, borderColor: "#ECE7F2", ...AMBIENT_SHADOW, shadowOpacity: 0.1, shadowRadius: 16, elevation: 4 },
-  rideRef: { fontSize: 14, fontWeight: "800", color: COLORS.primary, letterSpacing: 1.4, marginTop: 14 },
-  qrCaption: { fontSize: 12, color: COLORS.onSurfaceVariant, marginTop: 5, fontWeight: "600" },
-  boardingActions: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 16 },
-  inlineCancelBtn: { minWidth: 112, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: COLORS.errorContainer, borderWidth: 1, borderColor: COLORS.error + "33", paddingVertical: 11, paddingHorizontal: 16, borderRadius: 22 },
+  qrCard: { backgroundColor: COLORS.surface, borderRadius: 22, alignItems: "center", paddingVertical: 16, paddingHorizontal: 14, marginBottom: 10, borderWidth: 1, borderColor: COLORS.surfaceContainerHighest, ...AMBIENT_SHADOW, shadowOpacity: 0.1, shadowRadius: 16, elevation: 4 },
+  qrWrapper: { padding: 12, backgroundColor: "#fff", borderRadius: 16, borderWidth: 1, borderColor: "#ECE7F2", ...AMBIENT_SHADOW, shadowOpacity: 0.08, shadowRadius: 14, elevation: 3 },
+  rideRef: { fontSize: 13, fontWeight: "800", color: COLORS.primary, letterSpacing: 1.2, marginTop: 12 },
+  qrCaption: { fontSize: 12, color: COLORS.onSurfaceVariant, marginTop: 4, fontWeight: "600" },
+  boardingActions: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 10 },
+  inlineCancelBtn: { minWidth: 104, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: COLORS.errorContainer, borderWidth: 1, borderColor: COLORS.error + "33", paddingVertical: 10, paddingHorizontal: 14, borderRadius: 20 },
   inlineCancelTxt: { color: COLORS.error, fontSize: 13, fontWeight: "800" },
-  inlinePrimaryBtn: { minWidth: 138, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: COLORS.primary, paddingVertical: 12, paddingHorizontal: 18, borderRadius: 24, ...AMBIENT_SHADOW, shadowColor: COLORS.primary, shadowOpacity: 0.28, shadowRadius: 12, elevation: 5 },
+  inlinePrimaryBtn: { minWidth: 128, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: COLORS.primary, paddingVertical: 11, paddingHorizontal: 16, borderRadius: 22, ...AMBIENT_SHADOW, shadowColor: COLORS.primary, shadowOpacity: 0.22, shadowRadius: 10, elevation: 4 },
   inlinePrimaryTxt: { color: "#fff", fontSize: 14, fontWeight: "800" },
+  boardingSummary: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: COLORS.surfaceContainerLowest, borderRadius: 14, borderWidth: 1, borderColor: COLORS.surfaceContainerHighest, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 14 },
+  summaryItem: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
+  summaryDivider: { width: 1, height: 18, backgroundColor: COLORS.surfaceContainerHighest },
+  summaryText: { fontSize: 13, fontWeight: "800", color: COLORS.onSurface },
   statsRow: { flexDirection: "row", gap: 10, marginBottom: 18 },
   statCard: { flex: 1, backgroundColor: COLORS.surfaceContainerLowest, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 8, alignItems: "center", gap: 4, borderWidth: 1, borderColor: COLORS.primary + "22", ...AMBIENT_SHADOW },
   statVal: { fontSize: 14, fontWeight: "800", color: COLORS.onSurface },

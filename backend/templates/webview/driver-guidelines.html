@@ -1,298 +1,85 @@
 {% extends "webview/base.html" %}
 
+{% block title %}Driver Guidelines{% endblock %}
+
 {% block content %}
-<style>
-    .guidelines-shell {
-        padding: calc(22px + env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom));
-        max-width: 900px;
-        margin: 0 auto;
-    }
-
-    .guidelines-header {
-        position: relative;
-        overflow: hidden;
-        border-radius: 24px;
-        color: #ffffff;
-        background: linear-gradient(135deg, #5E1284 0%, #7A1FA2 50%, #953699 100%);
-        box-shadow: 0 20px 48px rgba(94, 18, 132, 0.28);
-        padding: 28px 22px;
-        margin-bottom: 20px;
-    }
-
-    .guidelines-header h1 {
-        margin: 0 0 10px;
-        font-size: 28px;
-        font-weight: 900;
-        letter-spacing: -0.02em;
-    }
-
-    .guidelines-header p {
-        margin: 0;
-        font-size: 15px;
-        line-height: 1.6;
-        color: rgba(255, 255, 255, 0.95);
-        max-width: 65ch;
-    }
-
-    .guidelines-grid {
-        display: grid;
-        gap: 14px;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        margin-bottom: 18px;
-    }
-
-    .guidelines-card {
-        border-radius: 18px;
-        background: #ffffff;
-        border: 1px solid #e8eaef;
-        box-shadow: 0 10px 24px rgba(16, 24, 40, 0.06);
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-    }
-
-    .guidelines-card-pad {
-        padding: 18px;
-    }
-
-    .guidelines-icon {
-        font-size: 24px;
-        margin-bottom: 8px;
-    }
-
-    .guidelines-card-title {
-        margin: 0 0 8px;
-        font-size: 18px;
-        font-weight: 800;
-        color: #121417;
-    }
-
-    .guidelines-card-text {
-        margin: 0;
-        font-size: 14px;
-        line-height: 1.66;
-        color: #667085;
-    }
-
-    .guidelines-checklist {
-        list-style: none;
-        margin: 10px 0 0;
-        padding: 0;
-    }
-
-    .guidelines-checklist li {
-        padding: 8px 0;
-        border-bottom: 1px solid #f0f1f4;
-        font-size: 13px;
-        color: #344054;
-        display: flex;
-        align-items: flex-start;
-        gap: 10px;
-    }
-
-    .guidelines-checklist li:last-child {
-        border-bottom: 0;
-    }
-
-    .guidelines-check {
-        color: #2e9f62;
-        font-weight: 800;
-        flex: 0 0 auto;
-    }
-
-    .guidelines-fullwidth {
-        display: grid;
-        grid-template-columns: 1fr;
-        gap: 14px;
-    }
-
-    .guidelines-section {
-        border-radius: 18px;
-        background: #ffffff;
-        border: 1px solid #e8eaef;
-        box-shadow: 0 10px 24px rgba(16, 24, 40, 0.06);
-        padding: 18px;
-    }
-
-    .guidelines-section-title {
-        margin: 0 0 14px;
-        font-size: 18px;
-        font-weight: 800;
-        color: #121417;
-    }
-
-    .guidelines-section p {
-        margin: 0 0 10px;
-        font-size: 14px;
-        line-height: 1.66;
-        color: #667085;
-    }
-
-    .guidelines-section p:last-child {
-        margin-bottom: 0;
-    }
-
-    .guidelines-alert {
-        padding: 16px;
-        border-radius: 14px;
-        background: #fff5f5;
-        border: 1px solid #ffd7d7;
-        margin-top: 12px;
-    }
-
-    .guidelines-alert-title {
-        margin: 0 0 8px;
-        font-size: 15px;
-        font-weight: 800;
-        color: #9b1c1c;
-    }
-
-    .guidelines-alert-text {
-        margin: 0;
-        font-size: 13px;
-        line-height: 1.6;
-        color: #7a2020;
-    }
-
-    .guidelines-success {
-        padding: 16px;
-        border-radius: 14px;
-        background: linear-gradient(180deg, #f0fdf4 0%, #f1fdf6 100%);
-        border: 1px solid #86efac;
-        margin-top: 12px;
-    }
-
-    .guidelines-success-title {
-        margin: 0 0 8px;
-        font-size: 14px;
-        font-weight: 800;
-        color: #15803d;
-    }
-
-    .guidelines-success-text {
-        margin: 0;
-        font-size: 13px;
-        line-height: 1.6;
-        color: #166534;
-    }
-
-    .guidelines-info {
-        padding: 16px;
-        border-radius: 14px;
-        background: linear-gradient(180deg, #f0f9ff 0%, #f4fbfe 100%);
-        border: 1px solid #7dd3fc;
-        margin-top: 12px;
-    }
-
-    .guidelines-info-title {
-        margin: 0 0 8px;
-        font-size: 14px;
-        font-weight: 800;
-        color: #0369a1;
-    }
-
-    .guidelines-info-text {
-        margin: 0;
-        font-size: 13px;
-        line-height: 1.6;
-        color: #164e63;
-    }
-
-    .guidelines-divider {
-        height: 1px;
-        background: #e8eaef;
-        margin: 14px 0;
-    }
-
-    .guidelines-footer {
-        text-align: center;
-        font-size: 13px;
-        color: #667085;
-        margin-top: 20px;
-    }
-
-    .guidelines-footer strong {
-        color: #5E1284;
-        font-weight: 700;
-    }
-
-    @media (max-width: 760px) {
-        .guidelines-grid {
-            grid-template-columns: 1fr;
-        }
-
-        .guidelines-header h1 {
-            font-size: 24px;
-        }
-
-        .guidelines-shell {
-            padding-left: 14px;
-            padding-right: 14px;
-        }
-    }
-</style>
-
-<main class="guidelines-shell">
-    <section class="guidelines-header">
-        <h1>🛡️ FUTMRIDE Safety & Guidelines</h1>
-        <p>Your complete resource for safe, professional driving, passenger management, vehicle standards, and emergency protocols. All drivers must review these guidelines to maintain platform standing.</p>
+<main class="premium-shell">
+    <section class="premium-hero">
+        <div class="premium-kicker">Driver standards</div>
+        <h1 class="premium-title">Guidelines & Safety</h1>
+        <p class="premium-subtitle">Clear operating rules for campus rides, garage boarding, passenger care, and incident handling.</p>
+        <div class="premium-stats">
+            <div class="premium-stat"><strong>24/7</strong><span>Safety cover</span></div>
+            <div class="premium-stat"><strong>5 min</strong><span>Pre-trip check</span></div>
+            <div class="premium-stat"><strong>Zero</strong><span>Cash rides</span></div>
+        </div>
     </section>
 
-    <div class="guidelines-grid">
-        <div class="guidelines-card">
-            <div class="guidelines-card-pad">
-                <div class="guidelines-icon">🚗</div>
-                <h3 class="guidelines-card-title">Vehicle Standards</h3>
-                <p class="guidelines-card-text">Maintain professional appearance and reliability.</p>
-                <ul class="guidelines-checklist">
-                    <li><span class="guidelines-check">✓</span> Clean interior & exterior daily</li>
-                    <li><span class="guidelines-check">✓</span> Valid registration & insurance</li>
-                    <li><span class="guidelines-check">✓</span> Regular inspections on schedule</li>
-                    <li><span class="guidelines-check">✓</span> No mechanical warning lights</li>
-                    <li><span class="guidelines-check">✓</span> Functioning AC, heating, lights</li>
-                </ul>
-            </div>
-        </div>
+    <section class="premium-grid">
+        <article class="premium-card">
+            <span class="premium-badge">Vehicle</span>
+            <h2>Keep the car ready</h2>
+            <p>Your vehicle should look clean, feel safe, and match your approved profile.</p>
+            <ul class="premium-list">
+                <li><span class="premium-mark">✓</span>Clean seats, floor, boot, and exterior before going online.</li>
+                <li><span class="premium-mark">✓</span>Keep registration, insurance, and plate details current.</li>
+                <li><span class="premium-mark">✓</span>Do not accept rides with warning lights or unsafe tyres.</li>
+            </ul>
+        </article>
 
-        <div class="guidelines-card">
-            <div class="guidelines-card-pad">
-                <div class="guidelines-icon">😊</div>
-                <h3 class="guidelines-card-title">Passenger Conduct</h3>
-                <p class="guidelines-card-text">Create a respectful, safe environment.</p>
-                <ul class="guidelines-checklist">
-                    <li><span class="guidelines-check">✓</span> Greet with a smile; confirm destination</li>
-                    <li><span class="guidelines-check">✓</span> Maintain professional demeanor</li>
-                    <li><span class="guidelines-check">✓</span> Safe routes; no aggressive driving</li>
-                    <li><span class="guidelines-check">✓</span> Report inappropriate behavior immediately</li>
-                    <li><span class="guidelines-check">✓</span> Respect personal boundaries</li>
-                </ul>
-            </div>
-        </div>
+        <article class="premium-card">
+            <span class="premium-badge">Passenger care</span>
+            <h2>Confirm every trip</h2>
+            <p>Start each ride with a quick check so the rider feels safe and the route is correct.</p>
+            <ul class="premium-list">
+                <li><span class="premium-mark">✓</span>Confirm the rider name and destination before moving.</li>
+                <li><span class="premium-mark">✓</span>Use the in-app route unless campus safety redirects you.</li>
+                <li><span class="premium-mark">✓</span>Keep calls, music, and conversations professional.</li>
+            </ul>
+        </article>
 
-        <div class="guidelines-card">
-            <div class="guidelines-card-pad">
-                <div class="guidelines-icon">🆘</div>
-                <h3 class="guidelines-card-title">Emergency Protocols</h3>
-                <p class="guidelines-card-text">Know how to respond when incidents occur.</p>
-                <ul class="guidelines-checklist">
-                    <li><span class="guidelines-check">✓</span> SOS button activates 24/7 support</li>
-                    <li><span class="guidelines-check">✓</span> Campus security number: ext 5555</li>
-                    <li><span class="guidelines-check">✓</span> Medical: Call 911; notify FUTMRIDE</li>
-                    <li><span class="guidelines-check">✓</span> Stay calm; do not engage aggression</li>
-                    <li><span class="guidelines-check">✓</span> Document incidents with photos/notes</li>
-                </ul>
-            </div>
-        </div>
+        <article class="premium-card">
+            <span class="premium-badge">Garage rides</span>
+            <h2>Boarding discipline</h2>
+            <p>Garage ride QR boarding must stay inside LR Ride so seats, payments, and refunds remain traceable.</p>
+            <ul class="premium-list">
+                <li><span class="premium-mark">✓</span>Create one active garage ride at a time.</li>
+                <li><span class="premium-mark">✓</span>Wait for QR payment confirmation before departure.</li>
+                <li><span class="premium-mark">✓</span>Mark departed only when boarding is closed.</li>
+            </ul>
+        </article>
 
-        <div class="guidelines-card">
-            <div class="guidelines-card-pad">
-                <div class="guidelines-icon">📋</div>
-                <h3 class="guidelines-card-title">Documentation & Verification</h3>
-                <p class="guidelines-card-text">Keep records current and accessible.</p>
-                <ul class="guidelines-checklist">
-                    <li><span class="guidelines-check">✓</span> Driver's license: Valid & current</li>
-                    <li><span class="guidelines-check">✓</span> Vehicle registration: Posted visibly</li>
-                    <li><span class="guidelines-check">✓</span> Insurance: Active coverage on file</li>
-                    <li><span class="guidelines-check">✓</span> Background check: Annual renewal</li>
-                    <li><span class="guidelines-check">✓</span> Photos: Vehicle & you on profile</li>
-                </ul>\n            </div>\n        </div>\n    </div>\n\n    <div class=\"guidelines-fullwidth\">\n        <section class=\"guidelines-section\">\n            <h3 class=\"guidelines-section-title\">📍 Route & Navigation Best Practices</h3>\n            <p>Always use FUTMRIDE's in-app routing for current traffic conditions and rider preferences. Avoid shortcuts through residential areas or private property unless specifically directed. Notify riders of delays proactively via in-app chat. Plan for parking at pickup/dropoff locations—don't double-park or block entrances.</p>\n            <p><strong>Accessibility First:</strong> Help elderly, disabled, or mobility-challenged passengers. Wait patiently for pickup of large items or packages. If a rider needs assistance, ask before offering help.</p>\n            <div class=\"guidelines-success\">\n                <p class=\"guidelines-success-title\">✓ Tip: High ratings come from reliability</p>\n                <p class=\"guidelines-success-text\">Arrive on time, take the fastest safe route, and communicate. Passengers remember drivers who care about their time.</p>\n            </div>\n        </section>\n\n        <section class=\"guidelines-section\">\n            <h3 class=\"guidelines-section-title\">🔐 Privacy & Data Security</h3>\n            <p>Protect passenger information. Never share rider details with others or use personal data outside the app. Do not take photos of passengers without explicit written consent. Keep app login credentials private; never share your account.</p>\n            <p><strong>Payment Security:</strong> All payments process through FUTMRIDE. Never ask for cash, digital payment, or personal information directly from riders. Report fraudulent requests immediately to support@futmride.com.</p>\n            <div class=\"guidelines-info\">\n                <p class=\"guidelines-info-title\">ℹ️ Encryption & Safety</p>\n                <p class=\"guidelines-info-text\">Your location, chats, and transactions are encrypted end-to-end. Protect your phone with a strong PIN or biometric lock.</p>\n            </div>\n        </section>\n\n        <section class=\"guidelines-section\">\n            <h3 class=\"guidelines-section-title\">⚠️ Zero-Tolerance Violations</h3>\n            <p>FUTMRIDE maintains strict community standards. Violations may result in temporary deactivation or permanent removal from the platform. These include:</p>\n            <ul class=\"guidelines-checklist\" style=\"margin: 12px 0;\">\n                <li><span class=\"guidelines-check\">⛔</span> Drug or alcohol use while driving</li>\n                <li><span class=\"guidelines-check\">⛔</span> Physical or verbal abuse toward passengers/riders</li>\n                <li><span class=\"guidelines-check\">⛔</span> Discrimination based on protected characteristics</li>\n                <li><span class=\"guidelines-check\">⛔</span> Operating unregistered or unsafe vehicle</li>\n                <li><span class=\"guidelines-check\">⛔</span> Falsifying documents or identity</li>\n                <li><span class=\"guidelines-check\">⛔</span> Taking rides offline (cash only outside app)</li>\n                <li><span class=\"guidelines-check\">⛔</span> Sexual harassment or inappropriate conduct</li>\n            </ul>\n            <div class=\"guidelines-alert\">\n                <p class=\"guidelines-alert-title\">⚠️ Report Violations</p>\n                <p class=\"guidelines-alert-text\">Witness a violation? Contact safety@futmride.com or use the in-app Report button. All reports are investigated confidentially.</p>\n            </div>\n        </section>\n\n        <section class=\"guidelines-section\">\n            <h3 class=\"guidelines-section-title\">💡 Stay Updated & Get Support</h3>\n            <p><strong>Regular Training:</strong> Check the Driver News section for monthly safety updates, new feature tutorials, and policy changes. Knowledge = better earnings and ratings.</p>\n            <p><strong>Support Channels:</strong></p>\n            <ul class=\"guidelines-checklist\" style=\"margin: 10px 0;\">\n                <li><span class=\"guidelines-check\">📞</span> 24/7 Support Hotline: 1-800-FUTMRIDE</li>\n                <li><span class=\"guidelines-check\">💬</span> In-App Chat: Instant response during business hours</li>\n                <li><span class=\"guidelines-check\">📧</span> Email: support@futmride.com (24h response)</li>\n                <li><span class=\"guidelines-check\">🌐</span> Help Center: help.futmride.com with searchable FAQs</li>\n            </ul>\n            <div class=\"guidelines-success\">\n                <p class=\"guidelines-success-title\">✓ Questions? We're Here to Help</p>\n                <p class=\"guidelines-success-text\">No question is too small. A well-informed driver is a successful driver. Reach out anytime.</p>\n            </div>\n        </section>\n    </div>\n\n    <p class=\"guidelines-footer\"><strong>FUTMRIDE</strong> Safety & Guidelines Version 2.1 | Last Updated: September 2026 | Your safety is our priority.</p>\n</main>\n{% endblock %}
+        <article class="premium-card">
+            <span class="premium-badge">Privacy</span>
+            <h2>Protect rider data</h2>
+            <p>Rider phone, route, profile, and payment details are for trip handling only.</p>
+            <ul class="premium-list">
+                <li><span class="premium-mark">✓</span>Never share screenshots or trip details outside support.</li>
+                <li><span class="premium-mark">✓</span>Keep your driver account locked with PIN or biometrics.</li>
+                <li><span class="premium-mark">✓</span>Report suspicious payment requests immediately.</li>
+            </ul>
+        </article>
+    </section>
+
+    <section class="premium-stack" style="margin-top:10px;">
+        <article class="premium-card soft">
+            <div class="premium-row">
+                <h2>Emergency protocol</h2>
+                <span class="premium-badge">Act fast</span>
+            </div>
+            <p>Stop in a safe visible place, contact campus security or emergency services, then notify LR Ride support from the app. Preserve trip details and avoid arguments at the scene.</p>
+            <div class="premium-callout" style="margin-top:10px;">For threats, injury, harassment, vehicle breakdown, or payment fraud, end the ride safely and report with clear notes.</div>
+        </article>
+
+        <article class="premium-card">
+            <h2>Zero-tolerance actions</h2>
+            <ul class="premium-list">
+                <li><span class="premium-mark">!</span>Driving under alcohol, drugs, or unsafe fatigue.</li>
+                <li><span class="premium-mark">!</span>Taking riders offline for cash or private payment.</li>
+                <li><span class="premium-mark">!</span>Harassment, intimidation, discrimination, or unsafe driving.</li>
+                <li><span class="premium-mark">!</span>Using a different vehicle or account than the approved profile.</li>
+            </ul>
+        </article>
+    </section>
+</main>
+{% endblock %}
