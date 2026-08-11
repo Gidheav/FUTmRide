@@ -599,9 +599,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.surfaceContainerLowest,
+    overflow: 'hidden',
   },
   map: {
     ...StyleSheet.absoluteFillObject,
+    bottom: -35,
   },
 
   // ── Online Toggle Pill (Top-Left) ──

@@ -358,21 +358,29 @@ class PasswordResetRequestView(APIView):
         email = serializer.validated_data.get('email')
         phone_number = serializer.validated_data.get('phone_number')
 
-        target = email or phone_number
         if email:
             user = User.objects.filter(email__iexact=email).first()
-            if user:
-                EmailOTPService.create_and_send(
-                    user,
-                    OTPVerification.Purpose.PASSWORD_RESET,
-                    email=user.email,
-                )
-            return Response({'message': f'If an account exists for {target}, a reset code has been sent.'})
+        else:
+            user = User.objects.filter(phone_number=phone_number).first()
 
-        user = User.objects.filter(phone_number=phone_number).first()
-        if user:
-            OTPService.create_and_send(user, OTPVerification.Purpose.PASSWORD_RESET)
-        return Response({'message': f'If an account exists for {target}, a reset code has been sent.'})
+        if not user:
+            return Response(
+                {'error': {'code': 'NOT_FOUND', 'message': 'Account not found. Please contact admin for account recovery.'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if not user.email:
+            return Response(
+                {'error': {'code': 'NO_EMAIL', 'message': 'Account does not have an email attached. Please contact admin for account recovery.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        EmailOTPService.create_and_send(
+            user,
+            OTPVerification.Purpose.PASSWORD_RESET,
+            email=user.email,
+        )
+        return Response({'message': 'A reset code has been sent to your email.'})
 
 
 class PasswordResetConfirmView(APIView):

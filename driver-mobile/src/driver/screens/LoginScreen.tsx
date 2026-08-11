@@ -1,4 +1,4 @@
-﻿import {
+import {
   Alert,
   ImageBackground,
   KeyboardAvoidingView,
@@ -10,6 +10,7 @@
   TextInput,
   TouchableOpacity,
   View,
+  Modal,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useState, useEffect } from 'react'
@@ -43,6 +44,9 @@ export default function DriverLoginScreen() {
   const [twoFactorCode, setTwoFactorCode] = useState('')
   const [twoFactorChallenge, setTwoFactorChallenge] = useState('')
   const [twoFactorBusy, setTwoFactorBusy] = useState(false)
+  const [forgotModalVisible, setForgotModalVisible] = useState(false)
+  const [forgotIdentifier, setForgotIdentifier] = useState('')
+  const [forgotLoading, setForgotLoading] = useState(false)
   const availableTwoFactorMethods = twoFactorMethods.length
     ? twoFactorMethods
     : ['totp', 'sms', 'email']
@@ -235,6 +239,32 @@ export default function DriverLoginScreen() {
       setRegisterError(getApiErrorMessage(err, 'Registration failed. Please try again.'))
     } finally {
       setRegisterLoading(false)
+    }
+  }
+
+  const handleForgotPassword = async () => {
+    if (!forgotIdentifier.trim()) {
+      Alert.alert('Error', 'Please enter your email or phone number')
+      return
+    }
+
+    setForgotLoading(true)
+
+    const trimmed = forgotIdentifier.trim()
+    const payload = trimmed.includes('@')
+      ? { email: trimmed }
+      : { phone_number: trimmed }
+
+    try {
+      const res = await api.post('auth/password-reset/request/', payload)
+      Alert.alert('Code Sent', res.data?.message || 'A reset code has been sent.')
+      setForgotModalVisible(false)
+      setForgotIdentifier('')
+    } catch (err: any) {
+      const msg = getApiErrorMessage(err, 'Failed to request reset.')
+      Alert.alert('Reset Failed', msg)
+    } finally {
+      setForgotLoading(false)
     }
   }
 
@@ -462,7 +492,9 @@ export default function DriverLoginScreen() {
                         </View>
 
                         <View style={styles.forgotWrap}>
-                          <Text style={styles.forgotText}>Forgot Password?</Text>
+                          <TouchableOpacity onPress={() => setForgotModalVisible(true)}>
+                            <Text style={styles.forgotText}>Forgot Password?</Text>
+                          </TouchableOpacity>
                         </View>
 
                         <TouchableOpacity
@@ -490,6 +522,55 @@ export default function DriverLoginScreen() {
         </View>
       </KeyboardAvoidingView>
       <LoadingOverlay visible={loading || registerLoading || twoFactorBusy} />
+
+      {/* Forgot Password Modal */}
+      <Modal
+        visible={forgotModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setForgotModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <TouchableOpacity 
+            style={styles.modalBackground} 
+            activeOpacity={1} 
+            onPress={() => setForgotModalVisible(false)} 
+          />
+          <View style={styles.modalContent}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Forgot Password</Text>
+            <Text style={styles.modalSubtitle}>
+              Enter your registered email or phone number to receive a reset code.
+            </Text>
+            
+            <View style={styles.inputGroup}>
+              <MaterialIcons name="person" size={20} color="#5e5e5e" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Email or Phone Number"
+                placeholderTextColor="#7b7b7b"
+                value={forgotIdentifier}
+                onChangeText={setForgotIdentifier}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                editable={!forgotLoading}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.primaryButton, forgotLoading && styles.primaryButtonDisabled]}
+              onPress={handleForgotPassword}
+              disabled={forgotLoading}
+            >
+              <Text style={styles.primaryButtonText}>Send Code</Text>
+              <MaterialIcons name="send" size={18} color="#ffffff" />
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   )
 }
@@ -753,5 +834,44 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.error || '#ba1a1a',
     fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalBackground: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalContent: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+    elevation: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+  },
+  modalHandle: {
+    width: 48,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#e2e2e2',
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1a1c1c',
+    marginBottom: 8,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#7b7b7b',
+    marginBottom: 24,
   },
 })

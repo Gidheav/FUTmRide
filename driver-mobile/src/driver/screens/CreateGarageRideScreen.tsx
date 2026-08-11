@@ -375,10 +375,165 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
   }
 
   const mapRegion = origin && destination
-    ? { latitude: 9.6171, longitude: 6.5492, latitudeDelta: 0.05, longitudeDelta: 0.05 }
+    ? { latitude: (origin.latitude + destination.latitude) / 2, longitude: (origin.longitude + destination.longitude) / 2, latitudeDelta: Math.abs(origin.latitude - destination.latitude) * 2 + 0.04, longitudeDelta: Math.abs(origin.longitude - destination.longitude) * 2 + 0.04 }
+    : origin ? { latitude: origin.latitude, longitude: origin.longitude, latitudeDelta: 0.02, longitudeDelta: 0.02 }
     : { latitude: 9.6171, longitude: 6.5492, latitudeDelta: 0.05, longitudeDelta: 0.05 }
 
-  return <View style={{ flex: 1, backgroundColor: COLORS.background, justifyContent: 'center', alignItems: 'center' }}><Text style={FONTS.headlineMd}>Create Garage Ride</Text></View>
+  return (
+    <View style={[s.page, { paddingTop: 0 }]}>
+      <MapView ref={mapRef} style={StyleSheet.absoluteFillObject} provider={PROVIDER_GOOGLE} region={mapRegion} showsUserLocation>
+        {origin && <Marker coordinate={{ latitude: origin.latitude, longitude: origin.longitude }} pinColor="green" title="Origin" tracksViewChanges={false} />}
+        {destination && <Marker coordinate={{ latitude: destination.latitude, longitude: destination.longitude }} pinColor="red" title="Destination" tracksViewChanges={false} />}
+        {origin && destination && (
+          routeCoords && routeCoords.length > 1
+            ? <Polyline coordinates={routeCoords} strokeColor={COLORS.primary} strokeWidth={3} />
+            : <Polyline coordinates={[{ latitude: origin.latitude, longitude: origin.longitude }, { latitude: destination.latitude, longitude: destination.longitude }]} strokeColor={COLORS.primary} strokeWidth={2} lineDashPattern={[6, 4]} />
+        )}
+      </MapView>
+
+      <View style={s.formPanel}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"}>
+          <View style={s.formScroll}>
+            <View style={s.routeCard}>
+              <TouchableOpacity style={s.locRow} onPress={() => setLocationPickerOpen("origin")}>
+                <View style={s.dotGreen} />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.locLbl}>From</Text>
+                  <Text style={[s.locVal, !origin && s.locPlaceholder]} numberOfLines={1}>{origin?.label || "Select pickup"}</Text>
+                </View>
+                <MaterialIcons name="edit" size={15} color={COLORS.onSurfaceVariant} />
+              </TouchableOpacity>
+              <View style={s.divRow}>
+                <View style={s.divLine} />
+                {origin && destination && <TouchableOpacity style={s.swapBtn} onPress={handleSwapRoute}><MaterialIcons name="swap-vert" size={15} color={COLORS.primary} /></TouchableOpacity>}
+              </View>
+              <TouchableOpacity style={s.locRow} onPress={() => setLocationPickerOpen("destination")}>
+                <View style={s.dotRed} />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.locLbl}>To</Text>
+                  <Text style={[s.locVal, !destination && s.locPlaceholder]} numberOfLines={1}>{destination?.label || "Select destination"}</Text>
+                </View>
+                <MaterialIcons name="edit" size={15} color={COLORS.onSurfaceVariant} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={s.metricsCard}>
+              <TouchableOpacity style={s.metric} onPress={() => origin && destination && runTare(origin, destination)} activeOpacity={0.7}>
+                <Text style={s.metLbl}>Distance</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                  <Text style={s.metVal}>{fmtDist(distanceKm)}</Text>
+                  {isTaring && <MaterialIcons name="sync" size={12} color={COLORS.primary} />}
+                </View>
+              </TouchableOpacity>
+              <View style={s.metDivider} />
+              <View style={s.metric}>
+                <Text style={s.metLbl}>Fare / Seat</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                  <Text style={s.metVal}>{fmtCur(estimatedFare)}</Text>
+                  {isTaring && <MaterialIcons name="sync" size={12} color={COLORS.primary} />}
+                </View>
+              </View>
+              <View style={s.metDivider} />
+              <View style={[s.metric, { flex: 1.2 }]}>
+                <Text style={s.metLbl}>Seats</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <TouchableOpacity onPress={() => setSeats(Math.max(1, seats - 1))} disabled={seats <= 1}>
+                    <MaterialIcons name="remove-circle-outline" size={22} color={seats <= 1 ? COLORS.surfaceContainerHighest : COLORS.primary} />
+                  </TouchableOpacity>
+                  <Text style={s.seatsInput}>{seats}</Text>
+                  <TouchableOpacity onPress={() => setSeats(Math.min(getMaxSeats(), seats + 1))} disabled={seats >= getMaxSeats()}>
+                    <MaterialIcons name="add-circle-outline" size={22} color={seats >= getMaxSeats() ? COLORS.surfaceContainerHighest : COLORS.primary} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </View>
+
+          <View style={[s.actionBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+            <View style={s.actionBarLeft}>
+              {savedRoutes.length > 0 && (
+                <TouchableOpacity style={s.savedPill} onPress={() => setIsSavedRoutesOpen(true)}>
+                  <MaterialIcons name="bookmark" size={13} color={COLORS.primary} />
+                  <Text style={s.savedPillTxt}>View</Text>
+                  <MaterialIcons name="chevron-right" size={13} color={COLORS.primary} />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity onPress={() => setSaveRoute(!saveRoute)} style={{ padding: 4 }}>
+                <MaterialIcons name={saveRoute ? "bookmark" : "bookmark-border"} size={24} color={COLORS.primary} />
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity
+              style={[s.createBtn, (!origin || !destination || loading) && s.createBtnOff, !isTared && origin && destination && { backgroundColor: "#6750A4" }]}
+              onPress={isTared ? handleCreate : () => origin && destination && runTare(origin, destination)}
+              disabled={loading || isTaring || !origin || !destination}
+              activeOpacity={0.85}
+            >
+              <MaterialIcons name={isTared ? "qr-code-scanner" : "track-changes"} size={17} color="#fff" />
+              <Text style={s.createBtnTxt}>
+                {loading ? "Creating..." : isTaring ? "Taring..." : isTared ? "Create" : "Tare"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
+
+      <Modal visible={Boolean(locationPickerOpen)} animationType="slide" transparent={true} onRequestClose={() => setLocationPickerOpen(null)}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={s.modalOverlay}>
+          <TouchableWithoutFeedback onPress={() => setLocationPickerOpen(null)}><View style={{ flex: 1 }} /></TouchableWithoutFeedback>
+          <View style={[s.bottomSheetModal, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+            <View style={s.pickerHeader}>
+              <Text style={s.pickerTitle}>{locationPickerOpen === "origin" ? "Select Origin" : "Select Destination"}</Text>
+              <TouchableOpacity onPress={() => setLocationPickerOpen(null)} style={s.pickerBack}><MaterialIcons name="close" size={22} color={COLORS.onSurface} /></TouchableOpacity>
+            </View>
+            <View style={s.pickerSearch}>
+              <MaterialIcons name="search" size={18} color={COLORS.onSurfaceVariant} />
+              <TextInput style={s.pickerInput} placeholder="Search..." placeholderTextColor={COLORS.onSurfaceVariant} value={locationQuery} onChangeText={setLocationQuery} autoFocus />
+              {locationQuery.length > 0 && <TouchableOpacity onPress={() => setLocationQuery("")}><MaterialIcons name="close" size={16} color={COLORS.onSurfaceVariant} /></TouchableOpacity>}
+            </View>
+            <ScrollView contentContainerStyle={s.pickerList} keyboardShouldPersistTaps="handled" style={{ maxHeight: 300 }}>
+              {filteredLocations.map((item) => (
+                <TouchableOpacity key={item.id} style={s.pickerItem} onPress={() => handleSelectLocation(item)}>
+                  <View style={s.pickerIcon}><MaterialIcons name="place" size={17} color={COLORS.primary} /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.pickerItemTitle}>{item.label}</Text>
+                    {item.description ? <Text style={s.pickerItemSub}>{item.description}</Text> : null}
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal visible={isSavedRoutesOpen} animationType="slide" transparent={true} onRequestClose={() => setIsSavedRoutesOpen(false)}>
+        <View style={s.modalOverlay}>
+          <TouchableWithoutFeedback onPress={() => setIsSavedRoutesOpen(false)}><View style={{ flex: 1 }} /></TouchableWithoutFeedback>
+          <View style={[s.bottomSheetModal, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+            <View style={s.pickerHeader}>
+              <Text style={s.pickerTitle}>Saved Routes</Text>
+              <TouchableOpacity onPress={() => setIsSavedRoutesOpen(false)} style={s.pickerBack}><MaterialIcons name="close" size={22} color={COLORS.onSurface} /></TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={s.pickerList} style={{ maxHeight: 300 }}>
+              {savedRoutes.length === 0
+                ? <View style={s.emptyBox}><MaterialIcons name="route" size={36} color={COLORS.surfaceContainerHighest} /><Text style={[s.emptyTxt, { marginTop: 10 }]}>No saved routes yet.</Text></View>
+                : savedRoutes.map((route: any) => (
+                  <TouchableOpacity key={route.id} style={s.savedRouteRow} onPress={() => handleUseSavedRoute(route)}>
+                    <MaterialIcons name="route" size={20} color={COLORS.primary} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.pickerItemTitle} numberOfLines={1}>{route.origin_address} to {route.destination_address}</Text>
+                      <Text style={s.pickerItemSub}>{fmtDist(Number(route.distance_km || 0))}</Text>
+                    </View>
+                    <MaterialIcons name="chevron-right" size={17} color={COLORS.onSurfaceVariant} />
+                  </TouchableOpacity>
+                ))
+              }
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+      <LoadingOverlay visible={loading} />
+    </View>
+  )
 }
 const s = StyleSheet.create({
   page: { flex: 1, backgroundColor: COLORS.background, justifyContent: "flex-end" },
