@@ -7,7 +7,7 @@ from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.models import User, UserRole
+from apps.accounts.models import DriverProfile, User, UserRole
 from apps.accounts.permissions import IsAdminOrCampusAdmin
 from apps.payments.models import WalletTransaction
 from apps.payments.services import WalletService
@@ -578,6 +578,11 @@ class DriverExpressInterestView(APIView):
             return Response({'error': 'This ride is no longer accepting drivers.'}, status=status.HTTP_400_BAD_REQUEST)
             
         profile = getattr(request.user, 'driver_profile', None)
+        if not profile or profile.verification_status != DriverProfile.VerificationStatus.APPROVED:
+            return Response(
+                {'error': 'Your driver account is not yet approved.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         if not profile or profile.vehicle_type not in ride.allowed_vehicle_types:
             return Response({'error': 'This ride requires a different vehicle type.'}, status=status.HTTP_400_BAD_REQUEST)
             

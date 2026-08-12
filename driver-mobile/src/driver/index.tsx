@@ -97,6 +97,7 @@ export default function DriverApp() {
   const [lockError, setLockError] = useState('')
   const [lockStatus, setLockStatus] = useState('')
   const [sessionWarning, setSessionWarning] = useState('')
+  const [sessionRefreshing, setSessionRefreshing] = useState(false)
   const [pinSetupRequired, setPinSetupRequired] = useState(false)
   const [pendingAnnouncement, setPendingAnnouncement] = useState<DriverInAppAnnouncement | null>(null)
   const [requestedRidesFilter, setRequestedRidesFilter] = useState<string | null>(null)
@@ -216,7 +217,7 @@ export default function DriverApp() {
         if (localSnapshot) {
           void syncDriverSessionInBackground().then((ok) => {
             if (!ok && isMounted) {
-              setSessionWarning('You are offline. Cached driver data is available.')
+              setSessionWarning('You appear to be offline.')
             }
           })
           return
@@ -285,7 +286,7 @@ export default function DriverApp() {
         if (sessionActive) {
           void syncDriverSessionInBackground().then((ok) => {
             if (ok) setSessionWarning('')
-            else setSessionWarning('You are offline. Cached driver data is available.')
+            else setSessionWarning('You appear to be offline.')
           })
         }
         return
@@ -300,7 +301,7 @@ export default function DriverApp() {
       if (lockTimeoutMinutes === -1 || !hasUnlockMethod) {
         void syncDriverSessionInBackground().then((ok) => {
           if (ok) setSessionWarning('')
-          else setSessionWarning('You are offline. Cached driver data is available.')
+          else setSessionWarning('You appear to be offline.')
         })
         return
       }
@@ -325,7 +326,7 @@ export default function DriverApp() {
       setUnlocked()
       void syncDriverSessionInBackground().then((ok) => {
         if (ok) setSessionWarning('')
-        else setSessionWarning('You are offline. Cached driver data is available.')
+        else setSessionWarning('You appear to be offline.')
       })
     })
 
@@ -516,6 +517,22 @@ export default function DriverApp() {
     } finally {
       setLockStatus('')
       setLockBusy(false)
+    }
+  }
+
+  const handleRefreshCachedSession = async () => {
+    if (sessionRefreshing) return
+    setSessionRefreshing(true)
+    setSessionWarning('')
+    try {
+      await hydrateTokens()
+      await refreshAndFetchDriverSession()
+      await prefetchDriverEssentials()
+      await saveDriverSessionSnapshotFromStores()
+    } catch (error) {
+      setSessionWarning('You appear to be offline.')
+    } finally {
+      setSessionRefreshing(false)
     }
   }
 
@@ -811,6 +828,21 @@ export default function DriverApp() {
             <View style={s.sessionWarning}>
               <MaterialIcons name="wifi-off" size={16} color="#B45309" />
               <Text style={s.sessionWarningText}>{sessionWarning}</Text>
+              <TouchableOpacity
+                style={s.sessionRefreshBtn}
+                onPress={handleRefreshCachedSession}
+                disabled={sessionRefreshing}
+                activeOpacity={0.85}
+              >
+                {sessionRefreshing ? (
+                  <ActivityIndicator size="small" color="#92400E" />
+                ) : (
+                  <>
+                    <MaterialIcons name="refresh" size={14} color="#92400E" />
+                    <Text style={s.sessionRefreshText}>Refresh</Text>
+                  </>
+                )}
+              </TouchableOpacity>
             </View>
           ) : null}
           {/* All tab screens stay mounted to preserve state (esp. MapView).
@@ -921,6 +953,23 @@ const s = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     lineHeight: 16,
+  },
+  sessionRefreshBtn: {
+    minHeight: 30,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+    backgroundColor: '#FFFBEB',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  sessionRefreshText: {
+    color: '#92400E',
+    fontSize: 12,
+    fontWeight: '800',
   },
   banner: {
     flexDirection: 'row', alignItems: 'center', gap: 10,

@@ -7,6 +7,7 @@ import QRCode from "react-native-qrcode-svg"
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps"
 import Constants from "expo-constants"
 import api, { driverApi } from "../../core/api"
+import { useAuthStore } from "../../core/authStore"
 import { COLORS, FONTS, AMBIENT_SHADOW } from "../../core/theme"
 import { useGarageRideStore } from "../../core/garageRideStore"
 import { useDriverRidesStore } from "../../core/driverRidesStore"
@@ -31,6 +32,7 @@ const fmtDist = (v: number | null) => v === null || isNaN(v) ? "-- km" : `${v.to
 const rc = (v: number) => Number(v.toFixed(6))
 
 const GOOGLE_API_KEY = Constants.expoConfig?.android?.config?.googleMaps?.apiKey || ""
+const DRIVER_VERIFICATION_MESSAGE = "Your driver account must be verified before you can accept rides, create garage rides, or join scheduled rides."
 
 const decodePolyline = (encoded: string): { latitude: number; longitude: number }[] => {
   const pts: { latitude: number; longitude: number }[] = []
@@ -69,6 +71,8 @@ const fetchDirectionsRoute = async (
 export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScreenProps) {
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
+  const { user } = useAuthStore()
+  const isDriverVerified = Boolean(user?.is_verified)
   const {
     garageRide: cachedGarageRide, garagePassengers: cachedGaragePassengers,
     setGarageRide: setCachedGarageRide, setGaragePassengers: setCachedGaragePassengers,
@@ -225,6 +229,7 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
   }
 
   const handleCreate = async () => {
+    if (!isDriverVerified) { Alert.alert("Verification Required", DRIVER_VERIFICATION_MESSAGE); return }
     if (!origin || !destination) { Alert.alert("Missing fields", "Select origin and destination."); return }
     if (!isTared) { void runTare(origin, destination); return }
     setLoading(true)
@@ -463,8 +468,8 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
               </TouchableOpacity>
             </View>
             <TouchableOpacity
-              style={[s.createBtn, (!origin || !destination || loading) && s.createBtnOff, !isTared && origin && destination && { backgroundColor: "#6750A4" }]}
-              onPress={isTared ? handleCreate : () => origin && destination && runTare(origin, destination)}
+              style={[s.createBtn, (!origin || !destination || loading || !isDriverVerified) && s.createBtnOff, !isTared && origin && destination && isDriverVerified && { backgroundColor: "#6750A4" }]}
+              onPress={isDriverVerified ? (isTared ? handleCreate : () => origin && destination && runTare(origin, destination)) : () => Alert.alert("Verification Required", DRIVER_VERIFICATION_MESSAGE)}
               disabled={loading || isTaring || !origin || !destination}
               activeOpacity={0.85}
             >

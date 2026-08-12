@@ -19,6 +19,7 @@ import LoadingOverlay from '../components/LoadingOverlay';
 import CustomRefreshFlatList from '../components/CustomRefreshFlatList';
 import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
 import { API_ROOT_URL, driverApi } from '../../core/api';
+import { useAuthStore } from '../../core/authStore';
 import { startDriverLocationTracking, stopDriverLocationTracking } from '../../core/locationSocket';
 import { useGarageRideStore } from '../../core/garageRideStore';
 import { useDriverRidesStore } from '../../core/driverRidesStore';
@@ -108,6 +109,8 @@ const DEFAULT_DRIVER_PROFILE = {
   plate_number: 'PENDING',
   vehicle_seats: 5,
 };
+
+const DRIVER_VERIFICATION_MESSAGE = 'Your driver account must be verified before you can accept rides, create garage rides, or join scheduled rides.';
 
 
 type DriverMode = 'garage' | 'scheduled' | 'ondemand';
@@ -470,6 +473,8 @@ interface DriverRidesPageProps {
 export default function RidesPage({ route, onBack, requestedFilter, onFilterConsumed }: DriverRidesPageProps) {
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
+  const { user } = useAuthStore();
+  const isDriverVerified = Boolean(user?.is_verified);
   const {
     isOnline,
     marketplaceRequests: cachedRequests,
@@ -964,6 +969,10 @@ export default function RidesPage({ route, onBack, requestedFilter, onFilterCons
 
   const handleAcceptRide = useCallback(async (rideId: string) => {
     if (acceptingRideId) return;
+    if (!isDriverVerified) {
+      Alert.alert('Verification Required', DRIVER_VERIFICATION_MESSAGE);
+      return;
+    }
 
     // Scheduled ride proximity guard
     if (upcomingScheduledRide && driverLocation) {
@@ -995,7 +1004,7 @@ export default function RidesPage({ route, onBack, requestedFilter, onFilterCons
     }
 
     performAcceptRide(rideId);
-  }, [acceptingRideId, upcomingScheduledRide, driverLocation, marketplaceRequests]);
+  }, [acceptingRideId, isDriverVerified, upcomingScheduledRide, driverLocation, marketplaceRequests]);
 
   const performAcceptRide = async (rideId: string) => {
     setAcceptingRideId(rideId);
@@ -1141,6 +1150,10 @@ export default function RidesPage({ route, onBack, requestedFilter, onFilterCons
     
     // Only apply the guard if they are trying to GO online (not offline)
     if (!isOnline) {
+      if (!isDriverVerified) {
+        Alert.alert('Verification Required', DRIVER_VERIFICATION_MESSAGE);
+        return;
+      }
       const guard = canGoOnline(activityState, hasLock);
       if (!guard.allowed) {
         Alert.alert('Action Blocked', `${guard.reason}\n\n${guard.suggestion}`);
@@ -1266,6 +1279,10 @@ export default function RidesPage({ route, onBack, requestedFilter, onFilterCons
   const [cancellingInterestId, setCancellingInterestId] = useState<string | null>(null);
 
   const handleExpressInterest = useCallback(async (rideId: string) => {
+    if (!isDriverVerified) {
+      Alert.alert('Verification Required', DRIVER_VERIFICATION_MESSAGE);
+      return;
+    }
     setExpressingInterestId(rideId);
     try {
       await driverApi.expressInterestScheduledRide(rideId);
@@ -1278,7 +1295,7 @@ export default function RidesPage({ route, onBack, requestedFilter, onFilterCons
     } finally {
       setExpressingInterestId(null);
     }
-  }, []);
+  }, [isDriverVerified]);
 
   const handleCancelInterest = useCallback(async (rideId: string) => {
     setCancellingInterestId(rideId);
@@ -1377,11 +1394,11 @@ export default function RidesPage({ route, onBack, requestedFilter, onFilterCons
             setReadyRideMapId(null);
             setSelectedRideForMap(ride);
           }}
-          disabled={Boolean(acceptingRideId === ride.id || driverHasActiveRide || modeLocked || !isOnline)}
+          disabled={Boolean(acceptingRideId === ride.id || driverHasActiveRide || modeLocked || !isOnline || !isDriverVerified)}
         />
       </View>
     );
-  }, [acceptingRideId, driverHasActiveRide, modeLocked, handleAcceptRide, isOnline]);
+  }, [acceptingRideId, driverHasActiveRide, modeLocked, handleAcceptRide, isOnline, isDriverVerified]);
 
   if (activeOnDemandRide) {
     return (
@@ -1764,7 +1781,7 @@ export default function RidesPage({ route, onBack, requestedFilter, onFilterCons
                     handleAcceptRide(selectedRideForMap.id);
                     setSelectedRideForMap(null);
                   }}
-                  disabled={acceptingRideId === selectedRideForMap.id}
+                  disabled={acceptingRideId === selectedRideForMap.id || !isDriverVerified}
                   activeOpacity={0.86}
                 >
                   {acceptingRideId === selectedRideForMap.id ? (
@@ -1905,7 +1922,7 @@ export default function RidesPage({ route, onBack, requestedFilter, onFilterCons
                     <TouchableOpacity
                       style={[styles.mapSheetAcceptButton, { flex: 1, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' }]}
                       onPress={() => { handleExpressInterest(ride.id); setDetailedScheduledRide(null); }}
-                      disabled={isExp}
+                      disabled={isExp || !isDriverVerified}
                       activeOpacity={0.85}
                     >
                       {isExp

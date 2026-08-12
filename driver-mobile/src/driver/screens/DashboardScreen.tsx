@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { COLORS, FONTS } from '../../core/theme';
 import { driverApi, driverWalletApi } from '../../core/api';
+import { useAuthStore } from '../../core/authStore';
 import { useGarageRideStore } from '../../core/garageRideStore';
 import { useDriverRidesStore } from '../../core/driverRidesStore';
 import {
@@ -116,11 +117,15 @@ const MODE_META: Record<VisualMode, { icon: any; label: string; color: string }>
   scheduled: { icon: 'event-note', label: 'Scheduled', color: '#6A1B9A' },
 };
 
+const DRIVER_VERIFICATION_MESSAGE = 'Your driver account must be verified before you can accept rides, create garage rides, or join scheduled rides.';
+
 const DashboardScreen = ({ onCreateGarageRide, onNavigateToRide }: { onCreateGarageRide?: () => void; onNavigateToRide?: () => void }) => {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
 
   const { status, setStatus } = useGarageRideStore();
+  const { user } = useAuthStore();
+  const isDriverVerified = Boolean(user?.is_verified);
   const {
     isOnline,
     setIsOnline: setCachedIsOnline,
@@ -142,6 +147,10 @@ const DashboardScreen = ({ onCreateGarageRide, onNavigateToRide }: { onCreateGar
     if (isUpdatingOnline || isOnline === null) return;
     const activityState = getDriverActivityState(isOnline, storeGarageRide, driverHasActiveRide);
     if (!isOnline) {
+      if (!isDriverVerified) {
+        Alert.alert('Verification Required', DRIVER_VERIFICATION_MESSAGE);
+        return;
+      }
       const guard = canGoOnline(activityState);
       if (!guard.allowed) {
         Alert.alert('Action Blocked', `${guard.reason}\n\n${guard.suggestion}`);
@@ -158,7 +167,7 @@ const DashboardScreen = ({ onCreateGarageRide, onNavigateToRide }: { onCreateGar
     } finally {
       setIsUpdatingOnline(false);
     }
-  }, [isUpdatingOnline, isOnline, storeGarageRide, driverHasActiveRide]);
+  }, [isUpdatingOnline, isOnline, isDriverVerified, storeGarageRide, driverHasActiveRide]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(Date.now()), 60000);
@@ -282,6 +291,10 @@ const DashboardScreen = ({ onCreateGarageRide, onNavigateToRide }: { onCreateGar
 
   // ── Garage ride creation with guard ──
   const handleGaragePress = () => {
+    if (!isDriverVerified) {
+      Alert.alert('Verification Required', DRIVER_VERIFICATION_MESSAGE);
+      return;
+    }
     const guard = canCreateGarageRide(activityState);
     if (!guard.allowed) {
       Alert.alert(
@@ -522,10 +535,10 @@ const DashboardScreen = ({ onCreateGarageRide, onNavigateToRide }: { onCreateGar
             style={[
               styles.toolIcon,
               { backgroundColor: '#E65100' },
-              isLocked && { opacity: 0.4 },
+              (isLocked || !isDriverVerified) && { opacity: 0.4 },
             ]}
             onPress={isLocked ? undefined : handleGaragePress}
-            activeOpacity={isLocked ? 1 : 0.8}
+            activeOpacity={(isLocked || !isDriverVerified) ? 1 : 0.8}
           >
             <MaterialIcons name="add" size={24} color="#FFF" />
           </TouchableOpacity>
