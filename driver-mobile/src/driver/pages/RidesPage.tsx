@@ -353,8 +353,8 @@ const getRideInitialRegion = (coordinates: MapCoordinate[]): Region => {
     return {
       latitude: coordinates[0].latitude,
       longitude: coordinates[0].longitude,
-      latitudeDelta: 0.025,
-      longitudeDelta: 0.025,
+      latitudeDelta: 0.055,
+      longitudeDelta: 0.055,
     };
   }
 
@@ -368,8 +368,8 @@ const getRideInitialRegion = (coordinates: MapCoordinate[]): Region => {
   return {
     latitude: (minLatitude + maxLatitude) / 2,
     longitude: (minLongitude + maxLongitude) / 2,
-    latitudeDelta: Math.max(maxLatitude - minLatitude, 0.01) + 0.025,
-    longitudeDelta: Math.max(maxLongitude - minLongitude, 0.01) + 0.025,
+    latitudeDelta: Math.max(maxLatitude - minLatitude, 0.035) + 0.035,
+    longitudeDelta: Math.max(maxLongitude - minLongitude, 0.035) + 0.035,
   };
 };
 
@@ -595,33 +595,14 @@ export default function RidesPage({ route, onBack, requestedFilter, onFilterCons
     }
 
     const timer = setTimeout(() => {
-      if (driverMode === 'ondemand') {
-        if (!isOnline) {
-          showToast('Go online to receive on-demand requests', 'info');
-        } else if (sortedMarketplaceRequests.length > 0 && !loadingRequests) {
-          mapRef.current?.fitToCoordinates(
-            sortedMarketplaceRequests
-              .filter(r => r.pickup_latitude && r.pickup_longitude)
-              .map((r: any) => ({
-                latitude: Number(r.pickup_latitude),
-                longitude: Number(r.pickup_longitude),
-              })),
-            {
-              edgePadding: { top: 80, right: 40, bottom: 260, left: 40 },
-              animated: true,
-            },
-          );
-        }
-      } else {
-        mapRef.current?.fitToCoordinates(selectedRideCoordinates, {
-          edgePadding: { top: 80, right: 40, bottom: 260, left: 40 },
-          animated: true,
-        });
-      }
+      mapRef.current?.fitToCoordinates(selectedRideCoordinates, {
+        edgePadding: { top: 110, right: 70, bottom: 320, left: 70 },
+        animated: true,
+      });
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [isRideMapReady, selectedRideCoordinates, driverMode, isOnline, sortedMarketplaceRequests, loadingRequests]);
+  }, [isRideMapReady, selectedRideCoordinates]);
 
   const [driverHasActiveRide, setDriverHasActiveRide] = useState(cachedHasActiveRide);
   const [activeFilter, setActiveFilter] = useState('High Fare');

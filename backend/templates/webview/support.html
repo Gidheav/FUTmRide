@@ -1,0 +1,73 @@
+{% extends "webview/base.html" %}
+
+{% block title %}Help & Support{% endblock %}
+
+{% block content %}
+<header class="wv-header">
+    <div class="wv-header-row">
+        <span class="wv-icon">?</span>
+        <h1 class="wv-title">Help & Support</h1>
+    </div>
+    <p class="wv-subtitle">Fast help for account, ride, wallet, and safety issues.</p>
+</header>
+
+<main class="wv-main wv-stack">
+    <section class="wv-alert">
+        <h2 class="wv-alert-title">Urgent Ride Issue</h2>
+        <div class="wv-contact">
+            <div>
+                <p class="wv-contact-title">Campus Security</p>
+                <p class="wv-contact-subtitle">Use this for immediate safety concerns.</p>
+            </div>
+            <a class="wv-call" href="tel:112">Call</a>
+        </div>
+    </section>
+
+    <section>
+        <h2 class="wv-section-title">Contact LR Ride</h2>
+        <div class="wv-card wv-card-pad">
+            <div class="wv-contact">
+                <div>
+                    <p class="wv-contact-title">Email Support</p>
+                    <p class="wv-contact-subtitle">support@lrride.app</p>
+                </div>
+                <a class="wv-call" href="mailto:support@lrride.app">Email</a>
+            </div>
+            <div class="wv-contact">
+                <div>
+                    <p class="wv-contact-title">Driver Support</p>
+                    <p class="wv-contact-subtitle">Ride disputes, verification, payouts, and account help.</p>
+                </div>
+                <a class="wv-call" href="tel:112">Call</a>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <h2 class="wv-section-title">Common Issues</h2>
+        <ul class="wv-card wv-list">
+            <li class="wv-list-item">
+                <span class="wv-dot"></span>
+                <div>
+                    <h3 class="wv-card-title">Verification pending</h3>
+                    <p class="wv-body">Check Profile for the latest account and vehicle document status. Rejected documents can be resubmitted from the verification screen.</p>
+                </div>
+            </li>
+            <li class="wv-list-item">
+                <span class="wv-dot" style="background: var(--blue);"></span>
+                <div>
+                    <h3 class="wv-card-title">Wallet or payout issue</h3>
+                    <p class="wv-body">Include the ride reference, transaction reference, amount, and date when contacting support.</p>
+                </div>
+            </li>
+            <li class="wv-list-item">
+                <span class="wv-dot" style="background: var(--amber);"></span>
+                <div>
+                    <h3 class="wv-card-title">App cannot load live data</h3>
+                    <p class="wv-body">Use the refresh button on the offline banner once your connection is back. Live actions need an online session.</p>
+                </div>
+            </li>
+        </ul>
+    </section>
+</main>
+{% endblock %}
