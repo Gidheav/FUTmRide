@@ -791,9 +791,13 @@ export default function DriverApp() {
 
   const renderPage = () => {
     switch (activeTab) {
-      case 'home':  return <DriverDashboardScreen onCreateGarageRide={handleCreateGarageRide} onNavigateToRide={() => setActiveTab('rides')} />
+      case 'home':  return <DriverDashboardScreen onCreateGarageRide={handleCreateGarageRide} onNavigateToRide={() => setActiveTab('rides')} onReconnect={handleRefreshCachedSession} />
       case 'rides': return <DriverRidesPage />
-      case 'wallet': return <DriverWalletPage onNavigateToAllTransactions={() => setActiveTab('transactions')} />
+      case 'wallet': return <DriverWalletPage onNavigateToAllTransactions={() => setActiveTab('transactions')} onOpenWebLink={(url, title) => {
+        setWebviewUrl(url)
+        setWebviewTitle(title)
+        setSubPage('webview')
+      }} />
       case 'transactions': return <DriverTransactionsPage />
       case 'profile':
         return (
@@ -802,7 +806,7 @@ export default function DriverApp() {
             onEditProfile={() => setSubPage('edit-profile')}
           />
         )
-      default: return <DriverDashboardScreen onNavigateToRide={() => setActiveTab('rides')} />
+      default: return <DriverDashboardScreen onNavigateToRide={() => setActiveTab('rides')} onReconnect={handleRefreshCachedSession} />
     }
   }
 
@@ -848,13 +852,17 @@ export default function DriverApp() {
           {/* All tab screens stay mounted to preserve state (esp. MapView).
               Inactive tabs are hidden via opacity/pointerEvents for home to prevent MapView unmounting. */}
           <View style={activeTab === 'home' ? { flex: 1 } : { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0, zIndex: -1 }} pointerEvents={activeTab === 'home' ? 'auto' : 'none'}>
-            <DriverDashboardScreen onCreateGarageRide={handleCreateGarageRide} onNavigateToRide={() => setActiveTab('rides')} />
+            <DriverDashboardScreen onCreateGarageRide={handleCreateGarageRide} onNavigateToRide={() => setActiveTab('rides')} onReconnect={handleRefreshCachedSession} />
           </View>
           <View style={activeTab === 'rides' ? { flex: 1 } : { display: 'none' }}>
             <DriverRidesPage onBack={() => setActiveTab('home')} requestedFilter={requestedRidesFilter} onFilterConsumed={() => setRequestedRidesFilter(null)} />
           </View>
           <View style={activeTab === 'wallet' ? { flex: 1 } : { display: 'none' }}>
-            <DriverWalletPage onNavigateToAllTransactions={() => setActiveTab('transactions')} />
+            <DriverWalletPage onNavigateToAllTransactions={() => setActiveTab('transactions')} onOpenWebLink={(url, title) => {
+              setWebviewUrl(url)
+              setWebviewTitle(title)
+              setSubPage('webview')
+            }} />
           </View>
           {activeTab === 'transactions' && <DriverTransactionsPage />}
           <View style={activeTab === 'profile' ? { flex: 1 } : { display: 'none' }}>

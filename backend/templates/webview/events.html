@@ -1,45 +1,346 @@
 {% extends 'webview/base.html' %}
 
-{% block title %}Campus Events{% endblock %}
+{% block title %}Driver Events{% endblock %}
 
 {% block content %}
-<header class="wv-header">
-    <div class="wv-header-row">
-        <span class="wv-icon">E</span>
-        <h1 class="wv-title">Events</h1>
-    </div>
-    <p class="wv-subtitle">Discover what is happening on campus.</p>
-</header>
+<style>
+    .events-shell {
+        width: 100%;
+        max-width: 760px;
+        margin: 0 auto;
+        padding: calc(18px + env(safe-area-inset-top)) 14px calc(18px + env(safe-area-inset-bottom));
+    }
 
-<main class="wv-main wv-stack">
-    <article class="wv-card">
-        <div class="wv-top-line" style="background: var(--green);"></div>
-        <div class="wv-card-pad">
-            <div class="wv-card-head">
-                <h2 class="wv-card-title">Tech Symposium 2026</h2>
-                <span class="wv-pill">Upcoming</span>
-            </div>
-            <div class="wv-meta">
-                <span>Oct 15, 10:00 AM</span>
-                <span>Main Auditorium</span>
-            </div>
-            <p class="wv-body">Join industry leaders for a day of talks on AI, mobility, and the future of tech.</p>
-        </div>
-    </article>
+    .events-hero {
+        position: relative;
+        overflow: hidden;
+        border-radius: 24px;
+        color: #ffffff;
+        background: linear-gradient(135deg, #101815 0%, #123f2c 55%, #006d36 100%);
+        box-shadow: 0 22px 48px rgba(16, 24, 21, 0.18);
+        padding: 24px 20px 20px;
+        margin-bottom: 14px;
+    }
 
-    <article class="wv-card">
-        <div class="wv-top-line" style="background: var(--blue);"></div>
-        <div class="wv-card-pad">
-            <div class="wv-card-head">
-                <h2 class="wv-card-title">Inter-Faculty Sports Final</h2>
-                <span class="wv-pill" style="background: #eef5ff; color: var(--blue);">Upcoming</span>
+    .events-hero::before,
+    .events-hero::after {
+        content: "";
+        position: absolute;
+        border-radius: 999px;
+        pointer-events: none;
+    }
+
+    .events-hero::before {
+        width: 220px;
+        height: 220px;
+        right: -80px;
+        top: -90px;
+        background: radial-gradient(circle, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0));
+    }
+
+    .events-hero::after {
+        width: 180px;
+        height: 180px;
+        left: -90px;
+        bottom: -90px;
+        background: radial-gradient(circle, rgba(255, 206, 132, 0.24), rgba(255, 206, 132, 0));
+    }
+
+    .events-kicker {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 999px;
+        padding: 7px 11px;
+        margin-bottom: 12px;
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        color: rgba(255, 255, 255, 0.94);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .events-title {
+        margin: 0;
+        font-size: 28px;
+        line-height: 1.08;
+        font-weight: 900;
+        letter-spacing: -0.03em;
+    }
+
+    .events-subtitle {
+        margin: 10px 0 0;
+        color: rgba(255, 255, 255, 0.88);
+        font-size: 14px;
+        line-height: 1.62;
+        max-width: 62ch;
+    }
+
+    .events-metrics {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 16px;
+    }
+
+    .events-metric {
+        border-radius: 16px;
+        padding: 11px 10px;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        min-width: 0;
+    }
+
+    .events-metric strong {
+        display: block;
+        font-size: 17px;
+        line-height: 1.12;
+        font-weight: 900;
+    }
+
+    .events-metric span {
+        display: block;
+        margin-top: 4px;
+        color: rgba(255, 255, 255, 0.74);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+    }
+
+    .events-section {
+        margin-top: 14px;
+        display: grid;
+        gap: 12px;
+    }
+
+    .events-card {
+        overflow: hidden;
+        border-radius: 20px;
+        background: #ffffff;
+        border: 1px solid #e5e8ea;
+        box-shadow: 0 12px 28px rgba(16, 24, 40, 0.07);
+    }
+
+    .events-card-top {
+        height: 6px;
+        background: linear-gradient(90deg, #006d36 0%, #0f8a55 100%);
+    }
+
+    .events-card-top.alt {
+        background: linear-gradient(90deg, #1769aa 0%, #3f8ed5 100%);
+    }
+
+    .events-card-pad {
+        padding: 18px;
+    }
+
+    .events-card-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+    }
+
+    .events-card-title {
+        margin: 0;
+        color: #121417;
+        font-size: 18px;
+        line-height: 1.25;
+        font-weight: 850;
+        letter-spacing: -0.01em;
+    }
+
+    .events-pill {
+        flex: 0 0 auto;
+        border-radius: 999px;
+        padding: 6px 10px;
+        background: #e7f6ed;
+        color: #006d36;
+        font-size: 11px;
+        font-weight: 850;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+    }
+
+    .events-pill.alt {
+        background: #eaf3fb;
+        color: #1769aa;
+    }
+
+    .events-meta {
+        display: grid;
+        gap: 6px;
+        margin: 0 0 12px;
+        color: #667085;
+        font-size: 13px;
+        line-height: 1.45;
+    }
+
+    .events-body {
+        margin: 0;
+        color: #344054;
+        font-size: 14px;
+        line-height: 1.66;
+    }
+
+    .events-footer {
+        margin-top: 14px;
+        padding: 16px;
+        border-radius: 18px;
+        background: linear-gradient(180deg, #fbfdfb 0%, #f6fbf8 100%);
+        border: 1px solid #e4eee8;
+    }
+
+    .events-footer h3 {
+        margin: 0 0 8px;
+        color: #101815;
+        font-size: 16px;
+        line-height: 1.25;
+        font-weight: 850;
+    }
+
+    .events-footer p {
+        margin: 0;
+        color: #526175;
+        font-size: 13px;
+        line-height: 1.6;
+    }
+
+    .events-footer-list {
+        list-style: none;
+        margin: 12px 0 0;
+        padding: 0;
+        display: grid;
+        gap: 10px;
+    }
+
+    .events-footer-item {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        padding: 12px;
+        border-radius: 14px;
+        background: #ffffff;
+        border: 1px solid #e7ece8;
+    }
+
+    .events-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: #006d36;
+        margin-top: 5px;
+        flex: 0 0 auto;
+    }
+
+    .events-footer-item strong {
+        display: block;
+        color: #17212b;
+        font-size: 13px;
+        line-height: 1.4;
+        font-weight: 800;
+    }
+
+    .events-footer-item span {
+        display: block;
+        margin-top: 4px;
+        color: #667085;
+        font-size: 12px;
+        line-height: 1.5;
+    }
+
+    @media (max-width: 420px) {
+        .events-shell {
+            padding-left: 10px;
+            padding-right: 10px;
+        }
+
+        .events-title {
+            font-size: 24px;
+        }
+
+        .events-metrics {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<main class="events-shell">
+    <section class="events-hero">
+        <div class="events-kicker">Driver Events</div>
+        <h1 class="events-title">Campus Events</h1>
+        <p class="events-subtitle">A premium summary of scheduled campus activity, presented for drivers to anticipate demand, plan positioning, and stay ahead of busy periods.</p>
+        <div class="events-metrics">
+            <div class="events-metric">
+                <strong>2</strong>
+                <span>Featured Events</span>
             </div>
-            <div class="wv-meta">
-                <span>Oct 18, 4:00 PM</span>
-                <span>Sports Complex</span>
+            <div class="events-metric">
+                <strong>High</strong>
+                <span>Demand Outlook</span>
             </div>
-            <p class="wv-body">Come support your faculty as they battle it out for the ultimate championship cup.</p>
+            <div class="events-metric">
+                <strong>Oct</strong>
+                <span>Peak Window</span>
+            </div>
         </div>
-    </article>
+    </section>
+
+    <section class="events-section">
+        <article class="events-card">
+            <div class="events-card-top"></div>
+            <div class="events-card-pad">
+                <div class="events-card-head">
+                    <h2 class="events-card-title">Tech Symposium 2026</h2>
+                    <span class="events-pill">Upcoming</span>
+                </div>
+                <div class="events-meta">
+                    <span>Oct 15, 10:00 AM</span>
+                    <span>Main Auditorium</span>
+                </div>
+                <p class="events-body">Join industry leaders for a day of talks on AI, mobility, and the future of tech.</p>
+            </div>
+        </article>
+
+        <article class="events-card">
+            <div class="events-card-top alt"></div>
+            <div class="events-card-pad">
+                <div class="events-card-head">
+                    <h2 class="events-card-title">Inter-Faculty Sports Final</h2>
+                    <span class="events-pill alt">Upcoming</span>
+                </div>
+                <div class="events-meta">
+                    <span>Oct 18, 4:00 PM</span>
+                    <span>Sports Complex</span>
+                </div>
+                <p class="events-body">Come support your faculty as they battle it out for the ultimate championship cup.</p>
+            </div>
+        </article>
+    </section>
+
+    <section class="events-footer">
+        <h3>Operational note</h3>
+        <p>These events may create concentrated ride demand before start time and after closing. Position vehicles early, keep cash-out and pickup readiness in mind, and prioritize quick response around main campus access points.</p>
+        <ul class="events-footer-list">
+            <li class="events-footer-item">
+                <span class="events-dot"></span>
+                <div>
+                    <strong>Before event start</strong>
+                    <span>Expect short, high-frequency trips from hostels, lecture halls, and parking clusters.</span>
+                </div>
+            </li>
+            <li class="events-footer-item">
+                <span class="events-dot"></span>
+                <div>
+                    <strong>After event close</strong>
+                    <span>Anticipate surge demand at exits and transport corridors as attendees disperse.</span>
+                </div>
+            </li>
+        </ul>
+    </section>
 </main>
 {% endblock %}

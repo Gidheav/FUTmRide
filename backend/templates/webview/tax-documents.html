@@ -1,0 +1,54 @@
+{% extends "webview/base.html" %}
+
+{% block title %}Tax & Documents{% endblock %}
+
+{% block content %}
+<main class="premium-shell">
+    <section class="premium-hero">
+        <div class="premium-kicker">Driver Records</div>
+        <h1 class="premium-title">Tax & Documents</h1>
+        <p class="premium-subtitle">
+            {% if user_first_name %}
+                {{ user_first_name }}, your driver statements and document history will appear here.
+            {% else %}
+                Your driver statements and document history will appear here.
+            {% endif %}
+        </p>
+        <div class="premium-stats">
+            <div class="premium-stat"><strong>0</strong><span>Statements</span></div>
+            <div class="premium-stat"><strong>0</strong><span>Tax forms</span></div>
+            <div class="premium-stat"><strong>0</strong><span>Downloads</span></div>
+        </div>
+    </section>
+
+    <section class="premium-stack">
+        <article class="premium-card">
+            <div class="premium-row">
+                <h2>No activities for now</h2>
+                <span class="premium-badge">Coming soon</span>
+            </div>
+            <p>
+                Tax documents, annual summaries, and downloadable driver statements are not available yet.
+                When records are published for your account, they will show here automatically.
+            </p>
+        </article>
+
+        <section class="premium-grid">
+            <article class="premium-card soft">
+                <span class="premium-badge">Statements</span>
+                <h3>Monthly earnings</h3>
+                <p>Future monthly earnings summaries will be listed here for review and download.</p>
+            </article>
+            <article class="premium-card soft">
+                <span class="premium-badge">Documents</span>
+                <h3>Driver records</h3>
+                <p>Verified account and vehicle document records will be linked here when enabled.</p>
+            </article>
+        </section>
+
+        <article class="premium-callout">
+            Need help with a payout or document issue? Contact LR Ride support with your ride or transaction reference.
+        </article>
+    </section>
+</main>
+{% endblock %}

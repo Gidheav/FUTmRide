@@ -21,6 +21,7 @@ import { COLORS, FONTS, AMBIENT_SHADOW } from '../../core/theme';
 import { driverApi, driverWalletApi, verificationApi } from '../../core/api';
 import { useAuthStore } from '../../core/authStore';
 import { useDriverWalletStore } from '../../core/driverWalletStore';
+import { useExternalWebViewUrl } from '../services/externalConfig';
 
 const FILTER_TABS = ['All', 'Earned', 'Payouts', 'Bonuses'];
 
@@ -50,7 +51,14 @@ const formatDate = (value?: string | null) => {
   });
 };
 
-export default function DriverWalletPage({ onNavigateToAllTransactions }: { onNavigateToAllTransactions?: () => void }) {
+export default function DriverWalletPage({
+  onNavigateToAllTransactions,
+  onOpenWebLink,
+}: {
+  onNavigateToAllTransactions?: () => void;
+  onOpenWebLink?: (url: string, title: string) => void;
+}) {
+  const taxDocumentsUrl = useExternalWebViewUrl('tax_documents_url');
   const [loading, setLoading] = useState(true);
   const [showPayoutModal, setShowPayoutModal] = useState(false);
   const [savingPayout, setSavingPayout] = useState(false);
@@ -338,7 +346,11 @@ export default function DriverWalletPage({ onNavigateToAllTransactions }: { onNa
 
           <View style={styles.settingDivider} />
 
-          <TouchableOpacity style={styles.settingRow} activeOpacity={0.7}>
+          <TouchableOpacity
+            style={styles.settingRow}
+            onPress={() => onOpenWebLink?.(taxDocumentsUrl, 'Tax & Documents')}
+            activeOpacity={0.7}
+          >
             <View style={styles.settingIconWrap}>
               <MaterialIcons name="receipt-long" size={18} color="#4b5563" />
             </View>

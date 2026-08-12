@@ -69,6 +69,7 @@ def app_config(request):
         "driver_guidelines_url": os.environ.get("MOBILE_DRIVER_GUIDELINES_URL", default_webview_url("driver-guidelines")),
         "support_url": os.environ.get("MOBILE_SUPPORT_URL", default_webview_url("support")),
         "terms_url": os.environ.get("MOBILE_TERMS_URL", default_webview_url("terms")),
+        "tax_documents_url": os.environ.get("MOBILE_TAX_DOCUMENTS_URL", default_webview_url("tax-documents")),
     })
 
 
@@ -116,7 +117,7 @@ def secure_webview(request, page):
     valid_pages = [
         'news', 'events', 'activities', 'safety',
         'driver-news', 'campus-events', 'driver-community', 'driver-guidelines',
-        'support', 'terms',
+        'support', 'terms', 'tax-documents',
     ]
     if page not in valid_pages:
         raise Http404("Not Found")

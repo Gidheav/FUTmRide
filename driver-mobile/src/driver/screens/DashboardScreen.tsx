@@ -119,7 +119,15 @@ const MODE_META: Record<VisualMode, { icon: any; label: string; color: string }>
 
 const DRIVER_VERIFICATION_MESSAGE = 'Your driver account must be verified before you can accept rides, create garage rides, or join scheduled rides.';
 
-const DashboardScreen = ({ onCreateGarageRide, onNavigateToRide }: { onCreateGarageRide?: () => void; onNavigateToRide?: () => void }) => {
+const DashboardScreen = ({
+  onCreateGarageRide,
+  onNavigateToRide,
+  onReconnect,
+}: {
+  onCreateGarageRide?: () => void;
+  onNavigateToRide?: () => void;
+  onReconnect?: () => Promise<void>;
+}) => {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
 
@@ -258,6 +266,7 @@ const DashboardScreen = ({ onCreateGarageRide, onNavigateToRide }: { onCreateGar
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
+      await onReconnect?.();
       const refreshed = await fetchDashboardData();
       const refreshedRouteCoords = getRideRouteCoords(
         refreshed.activeOnDemandRide || refreshed.activeGarageRide,
