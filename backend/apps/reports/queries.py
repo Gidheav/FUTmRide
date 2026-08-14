@@ -21,8 +21,8 @@ def _dec(v) -> Decimal:
     return Decimal(str(v))
 
 
-def _fmt_money(v) -> str:
-    return f'{_dec(v):,.2f}'
+def _fmt_money(v) -> Decimal:
+    return _dec(v)
 
 
 def _ride_qs(campus, start, end, status=None):
@@ -184,12 +184,22 @@ def _commission_summary(campus, start, end, filters):
         rides=Count('id'),
         commission=Sum('platform_commission'),
         fares=Sum('total_fare'),
+        driver=Sum('driver_earnings'),
     )
+    promos = _dec(_wallet_qs(campus, start, end, source=WalletTransaction.Source.PROMOTION).aggregate(t=Sum('amount'))['t'])
+    
+    gw_success = _gw_qs(campus, start, end).filter(gateway_status=GatewayTransaction.GatewayStatus.SUCCESS).aggregate(vol=Sum('amount'))['vol']
+    gateway_fees = _dec(gw_success) * Decimal('0.015')
+
     headers = ['Metric', 'Value']
     rows = [
         ['Completed Rides', agg['rides'] or 0],
-        ['Platform Commission (NGN)', _fmt_money(agg['commission'])],
         ['Gross Fares (NGN)', _fmt_money(agg['fares'])],
+        ['Platform Commission (NGN)', _fmt_money(agg['commission'])],
+        ['Driver Payouts (NGN)', _fmt_money(agg['driver'])],
+        ['Promos/Contra-Revenue (NGN)', _fmt_money(promos)],
+        ['Estimated Gateway Fees (NGN)', _fmt_money(gateway_fees)],
+        ['Net Revenue (NGN)', _fmt_money(_dec(agg['commission']) - promos - gateway_fees)],
         ['Avg Commission/Ride', _fmt_money(_dec(agg['commission']) / max(agg['rides'] or 1, 1))],
     ]
     return headers, rows, _meta(campus, start, end)
@@ -214,21 +224,53 @@ def _net_settlement(campus, start, end, filters):
 
 def _daily_cash_position(campus, start, end, filters):
     qs = _ride_qs(campus, start, end, RideStatus.COMPLETED).annotate(day=TruncDate('trip_completed_at'))
-    headers = ['Date', 'Rides', 'Commission (NGN)', 'Gross Fares (NGN)']
+    daily_rides = {
+        row['day']: row 
+        for row in qs.values('day').annotate(rides=Count('id'), commission=Sum('platform_commission'), fares=Sum('total_fare'))
+    }
+
+    gw_qs = _gw_qs(campus, start, end).filter(gateway_status=GatewayTransaction.GatewayStatus.SUCCESS).annotate(day=TruncDate('created_at'))
+    daily_topups = {row['day']: row['vol'] for row in gw_qs.values('day').annotate(vol=Sum('amount'))}
+
+    wdr_qs = _wdr_qs(campus, start, end).filter(status=DriverWithdrawal.Status.COMPLETED).annotate(day=TruncDate('processed_at'))
+    daily_wdr = {row['day']: row['vol'] for row in wdr_qs.values('day').annotate(vol=Sum('amount'))}
+
+    ref_qs = _wallet_qs(campus, start, end, source=WalletTransaction.Source.RIDE_REFUND).annotate(day=TruncDate('created_at'))
+    daily_ref = {row['day']: row['vol'] for row in ref_qs.values('day').annotate(vol=Sum('amount'))}
+
+    all_days = sorted(list(set(daily_rides.keys()) | set(daily_topups.keys()) | set(daily_wdr.keys()) | set(daily_ref.keys())))
+    headers = ['Date', 'Rides', 'Gross Fares (NGN)', 'Commission (NGN)', 'Cash Inflow (Top-ups)', 'Cash Outflow (Withdrawals)', 'Refunds Issued', 'Net Cash Position']
     rows = []
-    for row in qs.values('day').annotate(
-        rides=Count('id'), commission=Sum('platform_commission'), fares=Sum('total_fare'),
-    ).order_by('day'):
-        rows.append([row['day'], row['rides'], _fmt_money(row['commission']), _fmt_money(row['fares'])])
+    for d in all_days:
+        if not d: continue
+        r = daily_rides.get(d, {})
+        inflow = _dec(daily_topups.get(d, 0))
+        outflow = _dec(daily_wdr.get(d, 0))
+        refunds = _dec(daily_ref.get(d, 0))
+        net = inflow - outflow
+        rows.append([
+            d, r.get('rides', 0), _dec(r.get('fares', 0)), _dec(r.get('commission', 0)),
+            inflow, outflow, refunds, net
+        ])
     return headers, rows, _meta(campus, start, end)
 
 
 def _monthly_revenue(campus, start, end, filters):
     qs = _ride_qs(campus, start, end, RideStatus.COMPLETED).annotate(month=TruncMonth('trip_completed_at'))
-    headers = ['Month', 'Rides', 'Commission (NGN)']
+    data = list(qs.values('month').annotate(rides=Count('id'), commission=Sum('platform_commission'), fares=Sum('total_fare')).order_by('month'))
+    headers = ['Month', 'Rides', 'Gross Fares (NGN)', 'Commission (NGN)', 'Take Rate %', 'MoM Growth %']
     rows = []
-    for row in qs.values('month').annotate(rides=Count('id'), commission=Sum('platform_commission')).order_by('month'):
-        rows.append([row['month'].strftime('%Y-%m') if row['month'] else '', row['rides'], _fmt_money(row['commission'])])
+    prev_commission = None
+    for row in data:
+        fares = _dec(row['fares'])
+        comm = _dec(row['commission'])
+        take_rate = (comm / fares * 100) if fares else Decimal('0')
+        growth = ((comm - prev_commission) / prev_commission * 100) if prev_commission else Decimal('0')
+        prev_commission = comm
+        rows.append([
+            row['month'].strftime('%Y-%m') if row['month'] else '', 
+            row['rides'], fares, comm, f'{take_rate:.1f}', f'{growth:.1f}' if prev_commission else '-'
+        ])
     return headers, rows, _meta(campus, start, end)
 
 
@@ -276,15 +318,16 @@ def _revenue_by_vehicle(campus, start, end, filters):
 
 def _completed_rides_register(campus, start, end, filters):
     qs = _ride_qs(campus, start, end, RideStatus.COMPLETED)
-    headers = ['Reference', 'Route', 'Vehicle', 'Fare', 'Commission', 'Payment', 'Completed']
+    headers = ['Reference', 'Route', 'Vehicle', 'Base Fare', 'Surge Multiplier', 'Total Fare', 'Platform Commission', 'Driver Earnings', 'Payment', 'Completed']
     rows = []
     for ride in qs.order_by('-trip_completed_at')[:2000]:
         rows.append([
             _mask_reference(ride.reference),
             _route_hint(ride.pickup_address, ride.dropoff_address),
             ride.vehicle_type_requested,
+            _fmt_money(ride.base_fare), ride.surge_multiplier,
             _fmt_money(ride.total_fare), _fmt_money(ride.platform_commission),
-            ride.payment_method, ride.trip_completed_at,
+            _fmt_money(ride.driver_earnings), ride.payment_method, ride.trip_completed_at,
         ])
     return headers, rows, _meta(campus, start, end)
 
@@ -501,8 +544,20 @@ def _payout_fees(campus, start, end, filters):
 def _driver_earnings_pool(campus, start, end, filters):
     qs = _ride_qs(campus, start, end, RideStatus.COMPLETED)
     agg = qs.aggregate(total=Sum('driver_earnings'), rides=Count('id'))
+    wdr_qs = _wdr_qs(campus, start, end).filter(status=DriverWithdrawal.Status.COMPLETED)
+    wdr_agg = wdr_qs.aggregate(total=Sum('amount'))
+    
+    earnings = _dec(agg['total'])
+    withdrawals = _dec(wdr_agg['total'])
+    liability = earnings - withdrawals
+    
     headers = ['Metric', 'Value']
-    rows = [['Completed Rides', agg['rides'] or 0], ['Driver Earnings Pool (NGN)', _fmt_money(agg['total'])]]
+    rows = [
+        ['Completed Rides', agg['rides'] or 0],
+        ['Total Driver Earnings (NGN)', _fmt_money(earnings)],
+        ['Total Withdrawals (NGN)', _fmt_money(withdrawals)],
+        ['Current Liability Owed (NGN)', _fmt_money(liability)]
+    ]
     return headers, rows, _meta(campus, start, end)
 
 

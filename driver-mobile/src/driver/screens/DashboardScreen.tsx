@@ -12,6 +12,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Circle, Path } from 'react-native-svg';
 
 import { COLORS, FONTS } from '../../core/theme';
 import { driverApi, driverWalletApi } from '../../core/api';
@@ -118,6 +119,42 @@ const MODE_META: Record<VisualMode, { icon: any; label: string; color: string }>
 };
 
 const DRIVER_VERIFICATION_MESSAGE = 'Your driver account must be verified before you can accept rides, create garage rides, or join scheduled rides.';
+
+const GoalProgressPie = ({ progress, color }: { progress: number; color: string }) => {
+  const size = 36;
+  const radius = size / 2;
+  const clampedProgress = Math.min(100, Math.max(0, progress));
+
+  const polarToCartesian = (angleDegrees: number) => {
+    const angleRadians = ((angleDegrees - 90) * Math.PI) / 180;
+    return {
+      x: radius + radius * Math.cos(angleRadians),
+      y: radius + radius * Math.sin(angleRadians),
+    };
+  };
+
+  const endAngle = (clampedProgress / 100) * 360;
+  const start = polarToCartesian(0);
+  const end = polarToCartesian(endAngle);
+  const largeArcFlag = endAngle > 180 ? 1 : 0;
+  const wedgePath = [
+    `M ${radius} ${radius}`,
+    `L ${start.x} ${start.y}`,
+    `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${end.x} ${end.y}`,
+    'Z',
+  ].join(' ');
+
+  return (
+    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <Circle cx={radius} cy={radius} r={radius} fill={COLORS.surfaceContainerLow} />
+      {clampedProgress >= 100 ? (
+        <Circle cx={radius} cy={radius} r={radius} fill={color} />
+      ) : clampedProgress > 0 ? (
+        <Path d={wedgePath} fill={color} />
+      ) : null}
+    </Svg>
+  );
+};
 
 const DashboardScreen = ({
   onCreateGarageRide,
@@ -499,8 +536,8 @@ const DashboardScreen = ({
 
         {/* 1. Daily Goal Progress Ring */}
         <TouchableOpacity style={styles.toolIcon} activeOpacity={0.8}>
-          <View style={[styles.goalRing, { borderColor: goalColor }]}>
-            <Text style={[styles.goalText, { color: goalColor }]}>{goalProgress}%</Text>
+          <View style={styles.goalPieWrap}>
+            <GoalProgressPie progress={goalProgress} color={goalColor} />
           </View>
         </TouchableOpacity>
 
@@ -678,17 +715,13 @@ const styles = StyleSheet.create({
   garageFab: {
     backgroundColor: COLORS.primary,
   },
-  goalRing: {
+  goalPieWrap: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    borderWidth: 3,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  goalText: {
-    fontSize: 10,
-    fontWeight: '800',
   },
 
   // ── Mode Label ──

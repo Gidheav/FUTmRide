@@ -60,6 +60,7 @@ export default function EditProfilePage({ onBack }: Props) {
   const [savingPersonal, setSavingPersonal] = useState(false);
   const [savingVehicle, setSavingVehicle] = useState(false);
   const [vehiclePicker, setVehiclePicker] = useState(false);
+  const isSavingProfile = savingPersonal || savingVehicle;
 
   const [firstName, setFirstName] = useState(user?.first_name ?? '');
   const [lastName, setLastName] = useState(user?.last_name ?? '');
@@ -241,6 +242,17 @@ export default function EditProfilePage({ onBack }: Props) {
         <View style={styles.backButton} />
       </View>
 
+      {isSavingProfile && (
+        <View style={styles.saveStatusWrap}>
+          <LoadingOverlay
+            visible={true}
+            inline
+            size={28}
+            message={savingPersonal ? 'Saving personal details...' : 'Saving vehicle details...'}
+          />
+        </View>
+      )}
+
       {loading ? (
         <View style={styles.loadingWrap}>
           <LoadingOverlay visible={true} inline size={60} />
@@ -323,14 +335,8 @@ export default function EditProfilePage({ onBack }: Props) {
 
               <View style={styles.actionRow}>
                 <TouchableOpacity style={styles.saveBtn} onPress={savePersonalDetails} disabled={savingPersonal} activeOpacity={0.8}>
-                  {savingPersonal ? (
-                    <LoadingOverlay visible={true} inline size={18} />
-                  ) : (
-                    <>
-                      <Text style={styles.saveBtnText}>Save</Text>
-                      <MaterialIcons name="check" size={16} color="#ffffff" />
-                    </>
-                  )}
+                  <Text style={styles.saveBtnText}>{savingPersonal ? 'Saving...' : 'Save'}</Text>
+                  {!savingPersonal && <MaterialIcons name="check" size={16} color="#ffffff" />}
                 </TouchableOpacity>
               </View>
             </View>
@@ -417,14 +423,8 @@ export default function EditProfilePage({ onBack }: Props) {
 
               <View style={styles.actionRow}>
                 <TouchableOpacity style={styles.saveBtn} onPress={saveVehicleDetails} disabled={savingVehicle} activeOpacity={0.8}>
-                  {savingVehicle ? (
-                    <LoadingOverlay visible={true} inline size={18} />
-                  ) : (
-                    <>
-                      <Text style={styles.saveBtnText}>Save</Text>
-                      <MaterialIcons name="check" size={16} color="#ffffff" />
-                    </>
-                  )}
+                  <Text style={styles.saveBtnText}>{savingVehicle ? 'Saving...' : 'Save'}</Text>
+                  {!savingVehicle && <MaterialIcons name="check" size={16} color="#ffffff" />}
                 </TouchableOpacity>
               </View>
             </View>
@@ -503,6 +503,11 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  saveStatusWrap: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 4,
   },
   loadingText: {
     fontSize: 14,

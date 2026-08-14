@@ -5,14 +5,25 @@ import csv
 import io
 import zipfile
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
 from django.core.files.base import ContentFile
 
 
-def _safe_str(v: Any) -> str:
+def _safe_val(v: Any) -> Any:
     if v is None:
         return ''
+    if isinstance(v, (int, float, Decimal)):
+        return v
+    return str(v)
+
+
+def _safe_str_for_pdf(v: Any) -> str:
+    if v is None:
+        return ''
+    if isinstance(v, Decimal):
+        return f'{v:,.2f}'
     return str(v)
 
 
@@ -21,7 +32,7 @@ def export_csv(headers: list[str], rows: list[list[Any]]) -> bytes:
     writer = csv.writer(buf)
     writer.writerow(headers)
     for row in rows:
-        writer.writerow([_safe_str(c) for c in row])
+        writer.writerow([_safe_val(c) for c in row])
     return buf.getvalue().encode('utf-8-sig')
 
 
@@ -33,7 +44,7 @@ def export_xlsx(headers: list[str], rows: list[list[Any]], sheet_name: str = 'Re
     ws.title = sheet_name[:31]
     ws.append(headers)
     for row in rows:
-        ws.append([_safe_str(c) for c in row])
+        ws.append([_safe_val(c) for c in row])
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -54,10 +65,10 @@ def export_pdf(title: str, headers: list[str], rows: list[list[Any]], meta: dict
     ]
     if meta:
         for k, v in meta.items():
-            story.append(Paragraph(f'<b>{k}:</b> {_safe_str(v)}', styles['Normal']))
+            story.append(Paragraph(f'<b>{k}:</b> {_safe_str_for_pdf(v)}', styles['Normal']))
         story.append(Spacer(1, 12))
 
-    data = [headers] + [[_safe_str(c) for c in row] for row in rows[:500]]
+    data = [headers] + [[_safe_str_for_pdf(c) for c in row] for row in rows[:500]]
     if len(rows) > 500:
         data.append(['…'] * len(headers))
         data.append([f'(Truncated — {len(rows)} total rows)'] + [''] * (len(headers) - 1))

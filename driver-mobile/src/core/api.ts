@@ -239,6 +239,7 @@ export const driverApi = {
   updateProfile: (data: any) => api.patch('users/me/driver-profile/', data),
   updateAvailability: (data: any) => api.patch('users/me/driver-profile/availability/', data),
   getActiveRide: () => api.get('rides/driver/active/'),
+  getRideDetail: (rideId: string) => api.get(`rides/${rideId}/`),
   getRideHistory: () => api.get('rides/driver/history/'),
   advanceRide: (rideId: string, payload?: any) => api.post(`rides/${rideId}/advance/`, payload),
   getMarketplaceRequests: (url?: string) => api.get(url || 'rides/driver/requests/'),

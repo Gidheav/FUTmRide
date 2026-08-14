@@ -855,7 +855,12 @@ export default function DriverApp() {
             <DriverDashboardScreen onCreateGarageRide={handleCreateGarageRide} onNavigateToRide={() => setActiveTab('rides')} onReconnect={handleRefreshCachedSession} />
           </View>
           <View style={activeTab === 'rides' ? { flex: 1 } : { display: 'none' }}>
-            <DriverRidesPage onBack={() => setActiveTab('home')} requestedFilter={requestedRidesFilter} onFilterConsumed={() => setRequestedRidesFilter(null)} />
+            <DriverRidesPage
+              onBack={() => setActiveTab('home')}
+              onRideFinished={() => setActiveTab('home')}
+              requestedFilter={requestedRidesFilter}
+              onFilterConsumed={() => setRequestedRidesFilter(null)}
+            />
           </View>
           <View style={activeTab === 'wallet' ? { flex: 1 } : { display: 'none' }}>
             <DriverWalletPage onNavigateToAllTransactions={() => setActiveTab('transactions')} onOpenWebLink={(url, title) => {

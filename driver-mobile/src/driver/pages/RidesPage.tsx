@@ -466,11 +466,12 @@ import CreateGarageRideScreen from '../screens/CreateGarageRideScreen';
 interface DriverRidesPageProps {
   route?: any;
   onBack?: () => void;
+  onRideFinished?: () => void;
   requestedFilter?: string | null;
   onFilterConsumed?: () => void;
 }
 
-export default function RidesPage({ route, onBack, requestedFilter, onFilterConsumed }: DriverRidesPageProps) {
+export default function RidesPage({ route, onBack, onRideFinished, requestedFilter, onFilterConsumed }: DriverRidesPageProps) {
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const { user } = useAuthStore();
@@ -486,6 +487,7 @@ export default function RidesPage({ route, onBack, requestedFilter, onFilterCons
     setDriverHasActiveRide: setCachedHasActiveRide,
     setGarageRide: setCachedGarageRide,
     setGaragePassengers: setCachedGaragePassengers,
+    setRideHistory: setCachedRideHistory,
     offlineMode,
   } = useDriverRidesStore();
 
@@ -673,6 +675,27 @@ export default function RidesPage({ route, onBack, requestedFilter, onFilterCons
 
   const garageIsActive = garageRide && ['open', 'full', 'departed'].includes(garageRide.status);
   const isOfflineBlocked = Boolean(driverHasActiveRide || garageIsActive);
+
+  const clearFinishedOnDemandRide = useCallback((rideId: string) => {
+    setActiveOnDemandRide(null);
+    setDriverHasActiveRide(false);
+    setCachedHasActiveRide(false);
+    setMarketplaceRequests((prev) => {
+      const next = prev.filter((ride) => ride.id !== rideId);
+      setCachedRequests(next);
+      return next;
+    });
+    setSelectedRideForMap((selected) => (selected?.id === rideId ? null : selected));
+    driverApi.getRideHistory()
+      .then((historyRes) => {
+        const rides = Array.isArray(historyRes?.data)
+          ? historyRes.data
+          : historyRes?.data?.results || [];
+        setCachedRideHistory(rides.slice(0, 50));
+      })
+      .catch(() => {});
+    onRideFinished?.();
+  }, [onRideFinished, setCachedHasActiveRide, setCachedRequests, setCachedRideHistory]);
 
 
 
@@ -1102,11 +1125,13 @@ export default function RidesPage({ route, onBack, requestedFilter, onFilterCons
       }
 
       const res = await driverApi.advanceRide(rideId, payload);
-      setActiveOnDemandRide(res.data);
-      if (['completed', 'cancelled'].includes(res.data.status)) {
-        setDriverHasActiveRide(false);
-        setCachedHasActiveRide(false);
-        setActiveOnDemandRide(null);
+      const nextRide = res.data;
+      if (['completed', 'cancelled', 'cancelled_by_student', 'cancelled_by_driver', 'cancelled_no_driver', 'cancelled_no_show'].includes(nextRide.status)) {
+        clearFinishedOnDemandRide(rideId);
+      } else {
+        setActiveOnDemandRide(nextRide);
+        setDriverHasActiveRide(true);
+        setCachedHasActiveRide(true);
       }
     } catch (error: any) {
       const data = error?.response?.data;
@@ -1121,7 +1146,33 @@ export default function RidesPage({ route, onBack, requestedFilter, onFilterCons
     } finally {
       setAdvancingRideId(null);
     }
-  }, [advancingRideId]);
+  }, [advancingRideId, activeOnDemandRide?.status, clearFinishedOnDemandRide]);
+
+  useEffect(() => {
+    if (!activeOnDemandRide?.id || activeOnDemandRide.status !== 'pending_completion') return;
+
+    let isMounted = true;
+    const pollRideCompletion = async () => {
+      try {
+        const res = await driverApi.getRideDetail(activeOnDemandRide.id);
+        const nextRide = res?.data;
+        if (!isMounted || !nextRide) return;
+        if (['completed', 'cancelled', 'cancelled_by_student', 'cancelled_by_driver', 'cancelled_no_driver', 'cancelled_no_show'].includes(nextRide.status)) {
+          clearFinishedOnDemandRide(activeOnDemandRide.id);
+        } else {
+          setActiveOnDemandRide(nextRide);
+        }
+      } catch {
+        // Keep the waiting screen visible until the next successful poll.
+      }
+    };
+
+    const interval = setInterval(pollRideCompletion, 5000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [activeOnDemandRide?.id, activeOnDemandRide?.status, clearFinishedOnDemandRide]);
 
   const handleToggleOnline = async () => {
     if (isUpdatingOnline || isOnline === null) return;

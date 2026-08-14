@@ -34,6 +34,7 @@ ACTIVE_DRIVER_STATUSES = [
     RideStatus.DRIVER_EN_ROUTE,
     RideStatus.DRIVER_ARRIVED,
     RideStatus.IN_PROGRESS,
+    RideStatus.PENDING_COMPLETION,
 ]
 
 
@@ -316,13 +317,34 @@ class CancelRideView(APIView):
 
 class DriverRideStatusUpdateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    DROPOFF_VERIFICATION_RADIUS_KM = Decimal('0.5')
 
     STATUS_FLOW = {
         RideStatus.DRIVER_ASSIGNED: RideStatus.DRIVER_EN_ROUTE,
         RideStatus.DRIVER_EN_ROUTE: RideStatus.DRIVER_ARRIVED,
         RideStatus.DRIVER_ARRIVED: RideStatus.IN_PROGRESS,
         RideStatus.IN_PROGRESS: RideStatus.PENDING_COMPLETION,
+        RideStatus.PENDING_COMPLETION: RideStatus.COMPLETED,
     }
+
+    def _driver_is_inside_dropoff_axis(self, ride, request):
+        lat = request.data.get('latitude')
+        lng = request.data.get('longitude', request.data.get('lng'))
+        if not lat or not lng or not ride.dropoff_latitude or not ride.dropoff_longitude:
+            return False, None
+
+        try:
+            from apps.rides.engine import _haversine_distance
+            dist_km = _haversine_distance(
+                float(lat),
+                float(lng),
+                float(ride.dropoff_latitude),
+                float(ride.dropoff_longitude),
+            )
+        except (ValueError, TypeError):
+            return False, None
+
+        return dist_km <= float(self.DROPOFF_VERIFICATION_RADIUS_KM), dist_km
 
     def post(self, request, ride_id):
         if request.user.role != UserRole.DRIVER:
@@ -341,22 +363,22 @@ class DriverRideStatusUpdateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         
-        # GPS Auto Location Verification for Complete Trip
-        if ride.status == RideStatus.IN_PROGRESS:
-            lat = request.data.get('latitude')
-            lng = request.data.get('longitude')
-            if lat and lng and ride.dropoff_latitude and ride.dropoff_longitude:
-                try:
-                    from apps.rides.engine import _haversine_distance
-                    dist_km = _haversine_distance(
-                        float(lat), float(lng), 
-                        float(ride.dropoff_latitude), float(ride.dropoff_longitude)
-                    )
-                    # If within 200 meters, bypass pending_completion
-                    if dist_km <= 0.2:
-                        next_status = RideStatus.COMPLETED
-                except (ValueError, TypeError):
-                    pass
+        gps_verified = False
+        gps_distance_km = None
+        # Completion needs live GPS inside the wider dropoff axis, otherwise it waits for student confirmation.
+        if ride.status in [RideStatus.IN_PROGRESS, RideStatus.PENDING_COMPLETION]:
+            gps_verified, gps_distance_km = self._driver_is_inside_dropoff_axis(ride, request)
+            if gps_verified:
+                next_status = RideStatus.COMPLETED
+            elif ride.status == RideStatus.PENDING_COMPLETION:
+                response_data = RideDetailSerializer(ride, context={'request': request}).data
+                response_data['completion_verification'] = {
+                    'verified': False,
+                    'distance_km': gps_distance_km,
+                    'radius_km': float(self.DROPOFF_VERIFICATION_RADIUS_KM),
+                    'message': 'Waiting for student confirmation.',
+                }
+                return Response(response_data)
         
         try:
             ride.transition_to(next_status)
@@ -364,10 +386,7 @@ class DriverRideStatusUpdateView(APIView):
         except ValueError as e:
             return Response({'error': {'code': 'INVALID_TRANSITION', 'message': str(e)}}, status=status.HTTP_400_BAD_REQUEST)
         
-        if next_status == RideStatus.PENDING_COMPLETION:
-            from apps.rides.tasks import auto_confirm_pending_ride
-            auto_confirm_pending_ride.apply_async(args=[str(ride.id)], countdown=300)
-        elif next_status == RideStatus.COMPLETED:
+        if next_status == RideStatus.COMPLETED:
             from apps.rides.services import finalize_ride_completion
             finalize_ride_completion(ride)
             
@@ -385,7 +404,7 @@ class DriverActiveRideView(generics.RetrieveAPIView):
             raise PermissionDenied('Only drivers can access this endpoint.')
         ride = Ride.objects.filter(
             driver=self.request.user,
-            status__in=[RideStatus.DRIVER_ASSIGNED, RideStatus.DRIVER_EN_ROUTE, RideStatus.DRIVER_ARRIVED, RideStatus.IN_PROGRESS],
+            status__in=ACTIVE_DRIVER_STATUSES,
         ).select_related('student', 'driver', 'driver__driver_profile').first()
         if not ride:
             # Self-heal stale profile.is_on_trip flag if set

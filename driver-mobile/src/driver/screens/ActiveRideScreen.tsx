@@ -54,6 +54,15 @@ const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c; // Distance in km
 };
 
+const PENDING_COMPLETION_SECONDS = 300;
+
+const formatCountdown = (seconds: number) => {
+  const safeSeconds = Math.max(0, seconds);
+  const mins = Math.floor(safeSeconds / 60);
+  const secs = safeSeconds % 60;
+  return `${mins}:${String(secs).padStart(2, '0')}`;
+};
+
 export type ActiveRideScreenProps = {
   // On-Demand props
   activeOnDemandRide?: any | null;
@@ -94,6 +103,7 @@ export default function ActiveRideScreen({
   const [currentSpeed, setCurrentSpeed] = useState<number>(0); // km/h
   const [distanceLeft, setDistanceLeft] = useState<number>(0); // km
   const [etaMins, setEtaMins] = useState<number>(0); // mins
+  const [pendingSecondsLeft, setPendingSecondsLeft] = useState(PENDING_COMPLETION_SECONDS);
 
   const ride = activeOnDemandRide || garageRide;
   const isGarage = !!garageRide;
@@ -286,6 +296,7 @@ export default function ActiveRideScreen({
         { label: 'Heading', active: s === 'driver_assigned' || s === 'driver_en_route', completed: s === 'driver_arrived' || s === 'in_progress' || s === 'pending_completion' || s === 'completed' },
         { label: 'Arrived', active: s === 'driver_arrived', completed: s === 'in_progress' || s === 'pending_completion' || s === 'completed' },
         { label: 'In Progress', active: s === 'in_progress', completed: s === 'pending_completion' || s === 'completed' },
+        { label: 'Completed', active: s === 'pending_completion', completed: s === 'completed' },
       ];
     }
   };
@@ -293,6 +304,26 @@ export default function ActiveRideScreen({
 
   const isAdvancing = advancingRideId === ride.id;
   const isPendingCompletion = !isGarage && ride.status === 'pending_completion';
+
+  useEffect(() => {
+    if (!isPendingCompletion) {
+      setPendingSecondsLeft(PENDING_COMPLETION_SECONDS);
+      return;
+    }
+
+    const pendingAt = ride.pending_completion_at
+      ? new Date(ride.pending_completion_at).getTime()
+      : Date.now();
+
+    const updateCountdown = () => {
+      const elapsedSeconds = Math.floor((Date.now() - pendingAt) / 1000);
+      setPendingSecondsLeft(Math.max(0, PENDING_COMPLETION_SECONDS - elapsedSeconds));
+    };
+
+    updateCountdown();
+    const timer = setInterval(updateCountdown, 1000);
+    return () => clearInterval(timer);
+  }, [isPendingCompletion, ride.pending_completion_at]);
 
   // Action Button Configuration
   let buttonLabel = 'Advance Status';
@@ -384,10 +415,10 @@ export default function ActiveRideScreen({
       </View>
 
       {/* ── Telemetry Bottom Sheet ── */}
-      <View style={[styles.bottomSheet, AMBIENT_SHADOW, { paddingBottom: Math.max(insets.bottom, 16) + 70 }]}>
+      <View style={[styles.bottomSheet, AMBIENT_SHADOW, { paddingBottom: Math.max(insets.bottom, 12) }]}>
         <View style={styles.sheetHandleWrap}>
           <TouchableOpacity 
-            style={{ width: '100%', alignItems: 'center', paddingVertical: 12 }} 
+            style={{ width: '100%', alignItems: 'center', paddingVertical: 9 }} 
             onPress={() => setIsExpanded(!isExpanded)}
             activeOpacity={1}
           >
@@ -419,8 +450,18 @@ export default function ActiveRideScreen({
             <View style={styles.timelineContainer}>
               {timelineSteps.map((step, index) => {
                 const isLast = index === timelineSteps.length - 1;
+                const nextStep = timelineSteps[index + 1];
+                const trackFilled = Boolean(step.completed && (nextStep?.completed || nextStep?.active));
                 return (
                   <View key={index} style={styles.timelineStepContainer}>
+                    <View style={styles.timelineTrackLayer} pointerEvents="none">
+                      {!isLast && (
+                        <View style={[
+                          styles.timelineTrack,
+                          { backgroundColor: trackFilled ? '#2E7D32' : COLORS.surfaceVariant }
+                        ]} />
+                      )}
+                    </View>
                     <View style={styles.timelineNodeRow}>
                       <View style={[
                         styles.timelineNode,
@@ -430,12 +471,6 @@ export default function ActiveRideScreen({
                       ]}>
                         {step.completed && <MaterialIcons name="check" size={12} color="#FFF" />}
                       </View>
-                      {!isLast && (
-                        <View style={[
-                          styles.timelineTrack,
-                          { backgroundColor: step.completed ? '#2E7D32' : COLORS.surfaceVariant }
-                        ]} />
-                      )}
                     </View>
                     <Text style={[
                       styles.timelineText,
@@ -451,22 +486,37 @@ export default function ActiveRideScreen({
             </View>
           )}
 
+          {isPendingCompletion ? (
+            <View style={styles.pendingCard}>
+              <View style={styles.pendingIconWrap}>
+                <MaterialIcons name="hourglass-top" size={22} color={COLORS.primary} />
+              </View>
+              <View style={styles.pendingTextCol}>
+                <Text style={styles.pendingTitle}>Waiting for student verification</Text>
+                <Text style={styles.pendingSub}>
+                  This ride will complete automatically if the student does not respond.
+                </Text>
+              </View>
+              <View style={styles.pendingCountdown}>
+                <Text style={styles.pendingCountdownText}>{formatCountdown(pendingSecondsLeft)}</Text>
+              </View>
+            </View>
+          ) : null}
+
           {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
-          {/* Primary Action Button (No Spinners) */}
-          <TouchableOpacity
-            style={[styles.primaryBtn, { backgroundColor: buttonColor, opacity: isAdvancing ? 0.7 : 1 }]}
-            onPress={buttonAction}
-            disabled={isAdvancing || isPendingCompletion}
-            activeOpacity={0.8}
-          >
-            <Text style={[
-              FONTS.labelLg, 
-              { color: (isPendingCompletion || isAdvancing) ? COLORS.onSurfaceVariant : '#FFF' }
-            ]}>
-              {buttonLabel}
-            </Text>
-          </TouchableOpacity>
+          {!isPendingCompletion && (
+            <TouchableOpacity
+              style={[styles.primaryBtn, { backgroundColor: buttonColor, opacity: isAdvancing ? 0.7 : 1 }]}
+              onPress={buttonAction}
+              disabled={isAdvancing}
+              activeOpacity={0.8}
+            >
+              <Text style={[FONTS.labelLg, { color: isAdvancing ? COLORS.onSurfaceVariant : '#FFF' }]}>
+                {buttonLabel}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </View>
@@ -527,71 +577,84 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: COLORS.surface,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    maxHeight: '85%',
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
   },
   sheetHandleWrap: {
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
     backgroundColor: COLORS.surface,
   },
   sheetHandle: {
-    width: 48,
-    height: 6,
-    borderRadius: 3,
+    width: 42,
+    height: 4,
+    borderRadius: 2,
     backgroundColor: COLORS.outlineVariant,
   },
   sheetContent: {
-    paddingHorizontal: 24,
-    paddingTop: 8,
+    paddingHorizontal: 14,
+    paddingTop: 2,
   },
   telemetryRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 24,
+    marginBottom: 12,
   },
   telemetryCard: {
     alignItems: 'center',
     flex: 1,
   },
   telemetryValue: {
-    ...FONTS.headlineXl,
+    ...FONTS.headlineMd,
     color: COLORS.onSurface,
+    fontWeight: '800' as const,
   },
   telemetryLabel: {
     ...FONTS.labelMd,
     color: COLORS.onSurfaceVariant,
     textTransform: 'uppercase',
-    marginTop: 4,
+    marginTop: 2,
   },
   telemetryDivider: {
     width: 1,
-    height: 40,
+    height: 32,
     backgroundColor: COLORS.surfaceVariant,
   },
   timelineContainer: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    marginBottom: 24,
+    marginBottom: 14,
     paddingHorizontal: 8,
   },
   timelineStepContainer: {
     flex: 1,
     alignItems: 'center',
+    position: 'relative',
+  },
+  timelineTrackLayer: {
+    position: 'absolute',
+    top: 9,
+    left: '50%',
+    right: '-50%',
+    height: 3,
+    justifyContent: 'center',
+    zIndex: 1,
   },
   timelineNodeRow: {
-    flexDirection: 'row',
     alignItems: 'center',
-    width: '100%',
-    marginBottom: 8,
+    justifyContent: 'center',
+    width: 20,
+    marginBottom: 6,
+    zIndex: 2,
   },
   timelineNode: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
@@ -599,19 +662,22 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   timelineTrack: {
-    flex: 1,
+    width: '100%',
     height: 3,
-    marginLeft: -12, // Pull under node
-    marginRight: -12,
-    zIndex: 1,
+    borderRadius: 999,
   },
   timelineText: {
     ...FONTS.labelMd,
     textAlign: 'center',
+    fontSize: 11,
+    lineHeight: 14,
   },
   primaryBtn: {
-    paddingVertical: 18,
-    borderRadius: 16,
+    alignSelf: 'center',
+    minWidth: 156,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -620,5 +686,51 @@ const styles = StyleSheet.create({
     color: COLORS.error,
     marginBottom: 16,
     textAlign: 'center',
+  },
+  pendingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.surfaceContainerHigh,
+    backgroundColor: COLORS.surfaceContainerLowest,
+    padding: 12,
+    marginBottom: 12,
+  },
+  pendingIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primaryContainer + '33',
+  },
+  pendingTextCol: {
+    flex: 1,
+  },
+  pendingTitle: {
+    ...FONTS.labelLg,
+    color: COLORS.onSurface,
+    fontWeight: '800' as const,
+  },
+  pendingSub: {
+    ...FONTS.bodySm,
+    color: COLORS.onSurfaceVariant,
+    marginTop: 2,
+    lineHeight: 17,
+  },
+  pendingCountdown: {
+    minWidth: 54,
+    borderRadius: 10,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+    alignItems: 'center',
+  },
+  pendingCountdownText: {
+    ...FONTS.labelLg,
+    color: COLORS.onPrimary,
+    fontWeight: '900' as const,
   },
 });
