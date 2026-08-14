@@ -68,6 +68,46 @@ const fetchDirectionsRoute = async (
   return null
 }
 
+const normalizeRouteCoords = (geometry: any): { latitude: number; longitude: number }[] => {
+  if (!Array.isArray(geometry)) return []
+  return geometry
+    .map((point) => ({
+      latitude: Number(point?.latitude ?? point?.lat),
+      longitude: Number(point?.longitude ?? point?.lng),
+    }))
+    .filter((point) => (
+      Number.isFinite(point.latitude) &&
+      Number.isFinite(point.longitude) &&
+      Math.abs(point.latitude) <= 90 &&
+      Math.abs(point.longitude) <= 180
+    ))
+}
+
+const fetchBackendRoute = async (
+  o: LocationOption,
+  d: LocationOption,
+  vehicleType: string,
+): Promise<{ coords: { latitude: number; longitude: number }[]; distanceKm: number } | null> => {
+  try {
+    const res = await driverApi.getRouteOptions({
+      pickup_latitude: o.latitude,
+      pickup_longitude: o.longitude,
+      dropoff_latitude: d.latitude,
+      dropoff_longitude: d.longitude,
+      vehicle_type: vehicleType,
+    })
+    const route = Array.isArray(res?.data?.routes) ? res.data.routes[0] : null
+    const coords = normalizeRouteCoords(route?.geometry)
+    const distanceKm = Number(route?.distance_km)
+    if (coords.length > 1 && Number.isFinite(distanceKm) && distanceKm > 0) {
+      return { coords, distanceKm }
+    }
+  } catch {
+    // Frontend Google fallback below keeps manual taring usable if backend routing is unavailable.
+  }
+  return null
+}
+
 export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScreenProps) {
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
@@ -151,6 +191,16 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
     return () => { mounted = false }
   }, [savedRoutes.length, setSavedRoutes])
 
+  useEffect(() => {
+    if (!routeCoords || routeCoords.length < 2) return
+    setTimeout(() => {
+      mapRef.current?.fitToCoordinates(routeCoords, {
+        edgePadding: { top: 80, right: 40, bottom: 260, left: 40 },
+        animated: true,
+      })
+    }, 120)
+  }, [routeCoords])
+
   // Fit map + auto-tare whenever both endpoints change
   useEffect(() => {
     if (!origin || !destination) { setRouteCoords(null); setDistanceKm(null); setEstimatedFare(null); setIsTared(false); return }
@@ -185,14 +235,15 @@ export default function CreateGarageRideScreen({ onBack }: CreateGarageRideScree
     setIsTaring(true)
     setIsTared(false)
     try {
-      const dirResult = await fetchDirectionsRoute(o, d)
+      const vehicleType = getVehicleType()
+      const dirResult = await fetchBackendRoute(o, d, vehicleType) || await fetchDirectionsRoute(o, d)
       if (isCancelled()) return
       const roadKm = dirResult?.distanceKm && dirResult.distanceKm > 0
         ? dirResult.distanceKm
         : haversineKm(o.latitude, o.longitude, d.latitude, d.longitude)
       if (!isCancelled() && dirResult?.coords) setRouteCoords(dirResult.coords)
       if (!isCancelled()) setDistanceKm(roadKm)
-      const res = await driverApi.pricingEstimate({ vehicle_type: getVehicleType(), distance_km: Number(roadKm.toFixed(2)), surge_multiplier: 1.0 })
+      const res = await driverApi.pricingEstimate({ vehicle_type: vehicleType, distance_km: Number(roadKm.toFixed(2)), surge_multiplier: 1.0 })
       if (isCancelled()) return
       setEstimatedFare(Number(res?.data?.total_fare || 0))
       setIsTared(true)

@@ -147,9 +147,9 @@ class RideRouteOptionsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        if request.user.role != UserRole.STUDENT:
+        if request.user.role not in [UserRole.STUDENT, UserRole.DRIVER]:
             return Response(
-                {'error': {'code': 'FORBIDDEN', 'message': 'Only students can estimate ride routes.'}},
+                {'error': {'code': 'FORBIDDEN', 'message': 'Only students and drivers can estimate ride routes.'}},
                 status=status.HTTP_403_FORBIDDEN,
             )
         try:
@@ -212,6 +212,7 @@ class StudentActiveRideView(generics.RetrieveAPIView):
                 RideStatus.REQUESTED, RideStatus.SEARCHING,
                 RideStatus.DRIVER_ASSIGNED, RideStatus.DRIVER_EN_ROUTE,
                 RideStatus.DRIVER_ARRIVED, RideStatus.IN_PROGRESS,
+                RideStatus.PENDING_COMPLETION,
             ],
         ).select_related('student', 'driver', 'driver__driver_profile').first()
         if not ride:
@@ -389,6 +390,10 @@ class DriverRideStatusUpdateView(APIView):
         if next_status == RideStatus.COMPLETED:
             from apps.rides.services import finalize_ride_completion
             finalize_ride_completion(ride)
+        elif next_status == RideStatus.PENDING_COMPLETION:
+            from apps.rides.tasks import auto_confirm_pending_ride
+            # Schedule task to auto complete ride in 5 minutes
+            auto_confirm_pending_ride.apply_async(args=[str(ride.id)], countdown=300)
             
         notify_student_ride_status(ride)
         logger.info('ride_advanced ref=%s to=%s driver=%s', ride.reference, next_status, str(request.user.id))

@@ -166,6 +166,7 @@ class RideListSerializer(serializers.ModelSerializer):
             'requested_at',
             'scheduled_pickup_time',
             'trip_completed_at',
+            'pending_completion_at',
         ]
         read_only_fields = fields
 
@@ -271,6 +272,7 @@ class RideDetailSerializer(serializers.ModelSerializer):
             'driver_arrived_at',
             'trip_started_at',
             'trip_completed_at',
+            'pending_completion_at',
         ]
         read_only_fields = fields
 

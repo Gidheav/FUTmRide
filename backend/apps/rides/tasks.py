@@ -219,11 +219,12 @@ def auto_confirm_pending_ride(self, ride_id: str):
         return
 
     if ride.status == RideStatus.PENDING_COMPLETION:
-        logger.info('auto_confirming_ride ref=%s', ride.reference)
+        logger.info('auto_confirming_pending_ride ref=%s', ride.reference)
         try:
             ride.transition_to(RideStatus.COMPLETED)
             ride.save()
             finalize_ride_completion(ride)
             notify_student_ride_status(ride)
+            logger.info('auto_confirmed_pending_ride_success ref=%s', ride.reference)
         except Exception as e:
-            logger.error('auto_confirm_error ride=%s err=%s', ride.id, str(e))
+            logger.error('auto_confirm_pending_ride_error ref=%s err=%s', ride.reference, str(e))

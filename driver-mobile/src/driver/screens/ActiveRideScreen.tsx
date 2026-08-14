@@ -68,7 +68,7 @@ export type ActiveRideScreenProps = {
   activeOnDemandRide?: any | null;
   onAdvanceRide?: (rideId: string) => Promise<void>;
   advancingRideId?: string | null;
-  
+
   // Garage props
   garageRide?: any | null;
   garagePassengers?: any[];
@@ -93,7 +93,7 @@ export default function ActiveRideScreen({
 }: ActiveRideScreenProps) {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
-  
+
   const [driverLocation, setDriverLocation] = useState<MapCoordinate | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true); // Default open to show telemetry
@@ -107,9 +107,9 @@ export default function ActiveRideScreen({
 
   const ride = activeOnDemandRide || garageRide;
   const isGarage = !!garageRide;
-  
+
   // Track previous locations for manual speed calculation if needed
-  const locationHistoryRef = useRef<{lat: number, lon: number, time: number}[]>([]);
+  const locationHistoryRef = useRef<{ lat: number, lon: number, time: number }[]>([]);
 
   const routeCoordinates = useMemo(() => {
     if (!ride) return [];
@@ -157,7 +157,7 @@ export default function ActiveRideScreen({
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') return;
-        
+
         sub = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.Highest, // Highest accuracy for driving telemetry
@@ -166,7 +166,7 @@ export default function ActiveRideScreen({
           },
           (loc) => {
             if (!isMounted) return;
-            
+
             const currentLat = loc.coords.latitude;
             const currentLon = loc.coords.longitude;
             const currentTime = loc.timestamp;
@@ -205,14 +205,14 @@ export default function ActiveRideScreen({
                 nextObjectiveCoords.longitude
               );
               setDistanceLeft(distToObj);
-              
+
               // 3. Calculate ETA
               let estimatedMins = 0;
               if (distToObj < 0.05) {
-                 estimatedMins = 0; // Less than 50 meters
+                estimatedMins = 0; // Less than 50 meters
               } else {
-                 const assumedAvgSpeedKmh = speedKmh > 5 ? speedKmh : 30; // Fallback to 30km/h if stopped/slow
-                 estimatedMins = (distToObj / assumedAvgSpeedKmh) * 60;
+                const assumedAvgSpeedKmh = speedKmh > 5 ? speedKmh : 30; // Fallback to 30km/h if stopped/slow
+                estimatedMins = (distToObj / assumedAvgSpeedKmh) * 60;
               }
               setEtaMins(Math.max(0, estimatedMins));
             }
@@ -222,7 +222,7 @@ export default function ActiveRideScreen({
         console.warn('Driver location tracking error:', err);
       }
     })();
-    
+
     return () => {
       isMounted = false;
       sub?.remove();
@@ -231,12 +231,12 @@ export default function ActiveRideScreen({
 
   useEffect(() => {
     if (!mapReady || !mapRef.current || !originCoord || !destCoord || hasInitialFitted) return;
-    
+
     const coordsToFit = [...routeCoordinates];
     if (coordsToFit.length === 0) {
       coordsToFit.push(originCoord, destCoord);
     }
-    
+
     if (driverLocation) {
       coordsToFit.push(driverLocation);
     }
@@ -363,7 +363,7 @@ export default function ActiveRideScreen({
         provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
         style={styles.map}
         onMapReady={() => setMapReady(true)}
-        showsUserLocation={false} 
+        showsUserLocation={false}
         showsCompass={false}
         showsScale={false}
         showsMyLocationButton={false}
@@ -406,7 +406,7 @@ export default function ActiveRideScreen({
         <TouchableOpacity style={styles.floatingActionBtn} onPress={handleNavigate} activeOpacity={0.8}>
           <MaterialIcons name="navigation" size={24} color={COLORS.primary} />
         </TouchableOpacity>
-        
+
         {!isGarage && (
           <TouchableOpacity style={[styles.floatingActionBtn, { marginTop: 12 }]} onPress={handleCallStudent} activeOpacity={0.8}>
             <MaterialIcons name="call" size={24} color={COLORS.primary} />
@@ -417,8 +417,8 @@ export default function ActiveRideScreen({
       {/* ── Telemetry Bottom Sheet ── */}
       <View style={[styles.bottomSheet, AMBIENT_SHADOW, { paddingBottom: Math.max(insets.bottom, 12) }]}>
         <View style={styles.sheetHandleWrap}>
-          <TouchableOpacity 
-            style={{ width: '100%', alignItems: 'center', paddingVertical: 9 }} 
+          <TouchableOpacity
+            style={{ width: '100%', alignItems: 'center', paddingVertical: 9 }}
             onPress={() => setIsExpanded(!isExpanded)}
             activeOpacity={1}
           >
@@ -466,8 +466,8 @@ export default function ActiveRideScreen({
                       <View style={[
                         styles.timelineNode,
                         step.completed ? { backgroundColor: '#2E7D32', borderColor: '#2E7D32' } :
-                        step.active ? { backgroundColor: COLORS.primaryContainer, borderColor: COLORS.primary, borderWidth: 3 } :
-                        { backgroundColor: COLORS.surfaceContainerHighest, borderColor: COLORS.outlineVariant }
+                          step.active ? { backgroundColor: COLORS.primaryContainer, borderColor: COLORS.primary, borderWidth: 3 } :
+                            { backgroundColor: COLORS.surfaceContainerHighest, borderColor: COLORS.outlineVariant }
                       ]}>
                         {step.completed && <MaterialIcons name="check" size={12} color="#FFF" />}
                       </View>
@@ -492,9 +492,9 @@ export default function ActiveRideScreen({
                 <MaterialIcons name="hourglass-top" size={22} color={COLORS.primary} />
               </View>
               <View style={styles.pendingTextCol}>
-                <Text style={styles.pendingTitle}>Waiting for student verification</Text>
+                <Text style={styles.pendingTitle}>Verifying trip completion</Text>
                 <Text style={styles.pendingSub}>
-                  This ride will complete automatically if the student does not respond.
+                  Live GPS will verify or student will manaully confirm trip conpletion.
                 </Text>
               </View>
               <View style={styles.pendingCountdown}>

@@ -242,6 +242,7 @@ export const driverApi = {
   getRideDetail: (rideId: string) => api.get(`rides/${rideId}/`),
   getRideHistory: () => api.get('rides/driver/history/'),
   advanceRide: (rideId: string, payload?: any) => api.post(`rides/${rideId}/advance/`, payload),
+  getRouteOptions: (data: any) => api.post('rides/route-options/', data),
   getMarketplaceRequests: (url?: string) => api.get(url || 'rides/driver/requests/'),
   acceptRideRequest: (rideId: string) => api.post(`rides/driver/requests/${rideId}/accept/`),
   getGarageRides: () => api.get('rides/garage/mine/'),

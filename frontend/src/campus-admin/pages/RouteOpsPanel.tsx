@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, type CSSProperties } from 'react'
+import { useState, useEffect, useCallback, useRef, type CSSProperties, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   Bus, Users, CalendarClock, Clock, MapPin, Navigation, ChevronDown, ChevronUp,
@@ -135,6 +135,7 @@ export default function RouteOpsPanel() {
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([])
   const [now, setNow] = useState(Date.now())
   const [statusFilter, setStatusFilter] = useState('all')
+  const [sortOption, setSortOption] = useState('time_asc')
   const [paxFilter, setPaxFilter] = useState<'all' | 'unassigned' | 'checked_in' | 'no_show'>('all')
   const [paxSearch, setPaxSearch] = useState('')
   const [showAddBus, setShowAddBus] = useState(false)
@@ -328,7 +329,21 @@ export default function RouteOpsPanel() {
   }
 
   // ── Derived data ──
-  const filteredRides = statusFilter === 'all' ? rides : rides.filter(r => r.status === statusFilter)
+  const filteredRides = useMemo(() => {
+    let filtered = statusFilter === 'all' ? rides : rides.filter(r => r.status === statusFilter)
+    
+    // Sort
+    filtered = [...filtered].sort((a, b) => {
+      if (sortOption === 'time_asc') return new Date(a.window_start).getTime() - new Date(b.window_start).getTime()
+      if (sortOption === 'time_desc') return new Date(b.window_start).getTime() - new Date(a.window_start).getTime()
+      if (sortOption === 'alpha_asc') return a.reference.localeCompare(b.reference)
+      if (sortOption === 'alpha_desc') return b.reference.localeCompare(a.reference)
+      if (sortOption === 'pax_desc') return b.passenger_count - a.passenger_count
+      return 0
+    })
+
+    return filtered
+  }, [rides, statusFilter, sortOption])
   const totalPax = rides.reduce((a, r) => a + r.passenger_count, 0)
   const totalBuses = buses.length
   const busesEnRoute = buses.filter(b => ['departed', 'en_route'].includes(b.status)).length
@@ -404,11 +419,38 @@ export default function RouteOpsPanel() {
                 <span style={s.badge}>{filteredRides.length}</span>
               </div>
               <div style={s.filterRow}>
-                {['all', 'scheduled', 'boarding', 'departed', 'completed', 'cancelled'].map(f => (
-                  <button key={f} style={{ ...s.filterChip, ...(statusFilter === f ? s.filterChipActive : {}) }} onClick={() => setStatusFilter(f)}>
-                    {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
-                  </button>
-                ))}
+                <div style={s.premiumSelectWrap}>
+                  <Filter size={12} color={T.textMuted} style={s.premiumSelectIcon} />
+                  <select 
+                    style={s.premiumSelect} 
+                    value={statusFilter} 
+                    onChange={e => setStatusFilter(e.target.value)}
+                  >
+                    <option value="all">All Statuses</option>
+                    <option value="scheduled">Scheduled</option>
+                    <option value="boarding">Boarding</option>
+                    <option value="departed">Departed</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                  <ChevronDown size={12} color={T.textMuted} style={s.premiumSelectArrow} />
+                </div>
+                
+                <div style={s.premiumSelectWrap}>
+                  <ArrowRightLeft size={12} color={T.textMuted} style={{...s.premiumSelectIcon, transform: 'translateY(-50%) rotate(90deg)'}} />
+                  <select 
+                    style={s.premiumSelect} 
+                    value={sortOption} 
+                    onChange={e => setSortOption(e.target.value)}
+                  >
+                    <option value="time_asc">Time (Earliest)</option>
+                    <option value="time_desc">Time (Latest)</option>
+                    <option value="alpha_asc">Route (A-Z)</option>
+                    <option value="alpha_desc">Route (Z-A)</option>
+                    <option value="pax_desc">Passengers (High-Low)</option>
+                  </select>
+                  <ChevronDown size={12} color={T.textMuted} style={s.premiumSelectArrow} />
+                </div>
               </div>
             </div>
 
@@ -942,7 +984,7 @@ const s: Record<string, CSSProperties> = {
   badge: { fontSize: 10, fontWeight: 700, background: T.accentBg, color: '#a855f7', borderRadius: 0, padding: '2px 8px' },
 
   // ── Filters ──
-  filterRow: { display: 'flex', gap: 4, flexWrap: 'wrap' },
+  filterRow: { display: 'flex', gap: 6, width: '100%', alignItems: 'center', marginTop: 4 },
   filterChip: { padding: '4px 10px', borderRadius: 0, border: `1px solid ${T.border}`, background: 'transparent', color: T.textMuted, fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: T.fontFamily, transition: 'all 0.15s' },
   filterChipActive: { background: T.accentBg, color: '#a855f7', borderColor: 'rgba(168,85,247,0.3)' },
 
@@ -1046,4 +1088,10 @@ const s: Record<string, CSSProperties> = {
 
   // ── Empty ──
   emptyState: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 32, color: T.textMuted, fontSize: 12 },
+  
+  // ── Premium Select ──
+  premiumSelectWrap: { position: 'relative', display: 'flex', alignItems: 'center', flex: 1, minWidth: 0 },
+  premiumSelectIcon: { position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', zIndex: 1 },
+  premiumSelectArrow: { position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', zIndex: 1 },
+  premiumSelect: { width: '100%', appearance: 'none', background: T.bgInput, border: `1px solid ${T.border}`, borderRadius: 6, padding: '5px 20px 5px 24px', color: T.textPrimary, fontSize: 11, fontWeight: 500, outline: 'none', cursor: 'pointer', fontFamily: T.fontFamily, boxShadow: '0 2px 6px rgba(0,0,0,0.05)', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' },
 }

@@ -656,6 +656,7 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
   const errorHoldUntil = useRef<number>(0);
   const initialFetchDone = useRef(cachedRequests.length > 0);
   const isFetchingRequests = useRef(false);
+  const pendingGpsVerifyInFlight = useRef(false);
 
   // Compute upcoming scheduled ride for the awareness banner
   const upcomingScheduledRide = useMemo(() => {
@@ -1167,10 +1168,37 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
       }
     };
 
-    const interval = setInterval(pollRideCompletion, 5000);
+    const verifyPendingCompletionWithGps = async () => {
+      if (pendingGpsVerifyInFlight.current) return;
+      pendingGpsVerifyInFlight.current = true;
+      try {
+        const { getCurrentPositionAsync, Accuracy } = await import('expo-location');
+        const loc = await getCurrentPositionAsync({ accuracy: Accuracy.High });
+        const res = await driverApi.advanceRide(activeOnDemandRide.id, {
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+        });
+        const nextRide = res?.data;
+        if (!isMounted || !nextRide) return;
+        if (['completed', 'cancelled', 'cancelled_by_student', 'cancelled_by_driver', 'cancelled_no_driver', 'cancelled_no_show'].includes(nextRide.status)) {
+          clearFinishedOnDemandRide(activeOnDemandRide.id);
+        } else {
+          setActiveOnDemandRide(nextRide);
+        }
+      } catch {
+        // GPS may fail or be outside the dropoff axis; keep waiting for student confirmation.
+      } finally {
+        pendingGpsVerifyInFlight.current = false;
+      }
+    };
+
+    void verifyPendingCompletionWithGps();
+    const pollInterval = setInterval(pollRideCompletion, 5000);
+    const gpsInterval = setInterval(verifyPendingCompletionWithGps, 12000);
     return () => {
       isMounted = false;
-      clearInterval(interval);
+      clearInterval(pollInterval);
+      clearInterval(gpsInterval);
     };
   }, [activeOnDemandRide?.id, activeOnDemandRide?.status, clearFinishedOnDemandRide]);
 
