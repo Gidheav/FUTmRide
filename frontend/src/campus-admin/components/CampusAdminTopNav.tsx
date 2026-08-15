@@ -606,9 +606,6 @@ export default function CampusAdminTopNav() {
                 </span>
               )}
             </button>
-            <Link to="/profile" style={s.topAvatar}>
-              <UserIcon size={16} color={T.textSecondary} />
-            </Link>
             <button style={s.topIconBtn} onClick={() => logoutMutation.mutate()}>
               <LogOut size={14} />
             </button>
@@ -638,9 +635,5 @@ const s: Record<string, CSSProperties> = {
     background: 'transparent', color: T.textSecondary, cursor: 'pointer',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
   },
-  topAvatar: {
-    width: 28, height: 28, borderRadius: 14, background: T.bgCard,
-    border: `1px solid ${T.border}`, display: 'flex', alignItems: 'center',
-    justifyContent: 'center', color: T.textSecondary,
-  },
+
 }

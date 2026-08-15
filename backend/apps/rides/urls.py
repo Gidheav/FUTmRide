@@ -15,6 +15,7 @@ from .views import (
     DriverMarketplaceListView,
     DriverAcceptRideView,
     AvailableRidesView,
+    CampusAdminActiveOnDemandRidesView,
 )
 from .operations_views import (
     AdminLivePassengersView,
@@ -134,6 +135,9 @@ urlpatterns = [
 
     # Campus Admin: active garage rides
     path('garage/active/', CampusAdminActiveGarageRidesView.as_view(), name='garage-ride-active'),
+
+    # Campus Admin: active on-demand passenger rides
+    path('ondemand/active/', CampusAdminActiveOnDemandRidesView.as_view(), name='ondemand-ride-active'),
 
     # ── Scheduled Rides (Campus Admin) ───────────────────────────────────────
     path('scheduled/create/', ScheduledRideCreateView.as_view(), name='scheduled-ride-create'),

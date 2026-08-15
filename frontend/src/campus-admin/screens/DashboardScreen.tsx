@@ -4,7 +4,7 @@ import {
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Plus, X, Search,
   Layers, Pencil, MousePointer2, Ruler, Square, Circle,
   ZoomIn, ZoomOut, Crosshair, Maximize2, Undo2, Redo2, Trash2,
-  MapPin, Map as MapIcon, Download, UploadCloud,
+  MapPin, Map as MapIcon, Download, UploadCloud, Car, CarFront, BusFront, Bus,
 } from 'lucide-react'
 import { GoogleMap, useJsApiLoader, Polyline, Marker, InfoWindow, Circle as MapCircle } from '@react-google-maps/api'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -62,6 +62,13 @@ interface RouteProjection {
 }
 
 const ROUTE_COLORS = ['#f59e0b', '#3b82f6', '#10b981', '#a855f7', '#ef4444', '#06b6d4']
+
+const VEHICLE_OPTIONS = [
+  { key: 'sedan', label: 'Sedan', icon: Car },
+  { key: 'mpv', label: 'MPV', icon: CarFront },
+  { key: 'minibus', label: 'Minibus', icon: BusFront },
+  { key: 'coach', label: 'Coach', icon: Bus },
+]
 
 /* ──────────────────────────────────────────────────────────────────────────────
    Colour & Design Tokens
@@ -636,50 +643,129 @@ export default function DashboardPage() {
     setTimeout(() => setNewRideIds(prev => { const n = new Set(prev); n.delete(id); return n }), 2500)
   }
 
-  useEffect(() => {
-    const ws = createAuthenticatedWebSocket('/ws/campus-admin/rides/')
-    if (!ws) return
+  // WebSocket connection status for UI indicator
+  const [wsStatus, setWsStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
 
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data)
-        // ── Garage ride events ─────────────────────────────────────────────
-        if (data.type === 'initial_rides') {
-          setActiveGarageRides(data.rides)
-        } else if (data.type === 'ride_created') {
-          setActiveGarageRides(prev => [data.ride, ...prev])
-          flashRide(data.ride.id)
-        } else if (data.type === 'ride_updated') {
-          setActiveGarageRides(prev => prev.map(r => r.id === data.ride.id ? data.ride : r))
-        } else if (data.type === 'ride_departed' || data.type === 'ride_cancelled') {
-          setActiveGarageRides(prev => prev.filter(r => r.id !== (data.ride?.id || data.ride_id)))
-        }
-        // ── On-demand passenger ride events ───────────────────────────────
-        else if (data.type === 'initial_on_demand_rides') {
-          setActiveOnDemandRides(data.rides)
-        } else if (data.type === 'on_demand_ride_created') {
-          setActiveOnDemandRides(prev => [data.ride, ...prev])
-          flashRide(data.ride.id)
-        } else if (data.type === 'on_demand_ride_updated') {
-          setActiveOnDemandRides(prev => prev.map(r => r.id === data.ride.id ? data.ride : r))
-        } else if (data.type === 'on_demand_ride_cancelled') {
-          setActiveOnDemandRides(prev => prev.filter(r => r.id !== (data.ride?.id || data.ride_id)))
-        }
-      } catch (e) {
-        console.error('WS parse error:', e)
+  // ── REST API: Fetch initial data on mount (works even without WS) ──
+  const fetchRidesViaREST = useCallback(async () => {
+    try {
+      const [garageRes, onDemandRes] = await Promise.allSettled([
+        apiService.get<any>('rides/garage/active/'),
+        apiService.get<any>('rides/ondemand/active/'),
+      ])
+      if (garageRes.status === 'fulfilled') {
+        const data = garageRes.value
+        setActiveGarageRides(Array.isArray(data) ? data : data?.results ?? [])
       }
-    }
-
-    // Heartbeat: keep WS alive with a ping every 25s
-    const pingInterval = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }))
-    }, 25_000)
-
-    return () => {
-      clearInterval(pingInterval)
-      ws.close()
+      if (onDemandRes.status === 'fulfilled') {
+        const data = onDemandRes.value
+        setActiveOnDemandRides(Array.isArray(data) ? data : data?.results ?? [])
+      }
+    } catch (e) {
+      console.warn('[Dashboard] REST fetch failed:', e)
     }
   }, [])
+
+  // Load via REST immediately on mount
+  useEffect(() => { fetchRidesViaREST() }, [fetchRidesViaREST])
+
+  // Safety-net: re-fetch via REST every 30s to catch anything WS missed
+  useEffect(() => {
+    const interval = setInterval(fetchRidesViaREST, 30_000)
+    return () => clearInterval(interval)
+  }, [fetchRidesViaREST])
+
+  // ── WebSocket: Live delta updates on top of REST baseline ──
+  useEffect(() => {
+    let ws: WebSocket | null = null
+    let pingInterval: ReturnType<typeof setInterval> | null = null
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+    let isMounted = true
+
+    const connect = () => {
+      if (!isMounted) return
+      setWsStatus('connecting')
+      ws = createAuthenticatedWebSocket('/ws/campus-admin/rides/')
+      if (!ws) {
+        setWsStatus('disconnected')
+        // Retry in 5s if token was missing (user might still be logging in)
+        reconnectTimer = setTimeout(connect, 5000)
+        return
+      }
+
+      ws.onopen = () => {
+        if (!isMounted) return
+        setWsStatus('connected')
+        console.log('[Dashboard WS] Connected')
+      }
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+          // ── Garage ride events ──
+          if (data.type === 'initial_rides') {
+            setActiveGarageRides(data.rides)
+          } else if (data.type === 'ride_created') {
+            setActiveGarageRides(prev => {
+              if (prev.some(r => r.id === data.ride.id)) return prev
+              return [data.ride, ...prev]
+            })
+            flashRide(data.ride.id)
+          } else if (data.type === 'ride_updated') {
+            setActiveGarageRides(prev => prev.map(r => r.id === data.ride.id ? data.ride : r))
+          } else if (data.type === 'ride_departed' || data.type === 'ride_cancelled') {
+            setActiveGarageRides(prev => prev.filter(r => r.id !== (data.ride?.id || data.ride_id)))
+          }
+          // ── On-demand passenger ride events ──
+          else if (data.type === 'initial_on_demand_rides') {
+            setActiveOnDemandRides(data.rides)
+          } else if (data.type === 'on_demand_ride_created') {
+            setActiveOnDemandRides(prev => {
+              if (prev.some(r => r.id === data.ride.id)) return prev
+              return [data.ride, ...prev]
+            })
+            flashRide(data.ride.id)
+          } else if (data.type === 'on_demand_ride_updated') {
+            setActiveOnDemandRides(prev => prev.map(r => r.id === data.ride.id ? data.ride : r))
+          } else if (data.type === 'on_demand_ride_cancelled') {
+            setActiveOnDemandRides(prev => prev.filter(r => r.id !== (data.ride?.id || data.ride_id)))
+          }
+        } catch (e) {
+          console.error('[Dashboard WS] Parse error:', e)
+        }
+      }
+
+      ws.onclose = (ev) => {
+        if (!isMounted) return
+        setWsStatus('disconnected')
+        console.warn('[Dashboard WS] Closed', ev.code, ev.reason)
+        // Auto-reconnect after 3s (unless component unmounted)
+        reconnectTimer = setTimeout(connect, 3000)
+      }
+
+      ws.onerror = () => {
+        // onclose will fire right after, which handles reconnection
+        console.error('[Dashboard WS] Error')
+      }
+
+      // Heartbeat ping every 25s
+      pingInterval = setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'ping' }))
+        }
+      }, 25_000)
+    }
+
+    connect()
+
+    return () => {
+      isMounted = false
+      if (pingInterval) clearInterval(pingInterval)
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      if (ws) ws.close()
+    }
+  }, [])
+
 
   // Tool visibility: each tool's work shown/hidden independently
   const [toolVisibility, setToolVisibility] = useState<Record<string, boolean>>({
@@ -1338,6 +1424,12 @@ export default function DashboardPage() {
                       {activeGarageRides.length + activeOnDemandRides.length}
                     </span>
                   )}
+                  {/* WS Connection Status */}
+                  <div style={{ 
+                    width: 8, height: 8, borderRadius: '50%', marginLeft: 4,
+                    background: wsStatus === 'connected' ? '#10b981' : wsStatus === 'connecting' ? '#f59e0b' : '#ef4444',
+                    boxShadow: wsStatus === 'connected' ? '0 0 6px #10b981' : 'none'
+                  }} title={`Live Updates: ${wsStatus}`} />
                 </div>
                 <button style={s.moreBtn} onClick={() => setOpenRequestsPanel(false)}>
                   <ChevronLeft size={16} />
@@ -2081,20 +2173,31 @@ export default function DashboardPage() {
                 </div>
 
                 <div style={s.rpSection}>
-                  <div style={s.rpLabel}>Allowed Vehicle Types</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
-                    {[
-                      { key: 'sedan', label: 'Sedan' },
-                      { key: 'mpv', label: 'MPV' },
-                      { key: 'minibus', label: 'Minibus' },
-                      { key: 'coach', label: 'Coach' },
-                    ].map((item) => {
+                  <div style={s.rpLabel}>Vehicle options</div>
+                  <div style={s.rpVehicleGrid}>
+                    {VEHICLE_OPTIONS.map((item) => {
                       const isChecked = allowedVehicleTypes.includes(item.key)
+                      const Icon = item.icon
                       return (
-                        <div key={item.key} style={s.rpCheckRow} onClick={() => {
-                          if (isChecked && allowedVehicleTypes.length === 1) return // Keep at least one
-                          setAllowedVehicleTypes(prev => isChecked ? prev.filter(k => k !== item.key) : [...prev, item.key])
-                        }}>
+                        <button
+                          key={item.key}
+                          type="button"
+                          title={item.label}
+                          aria-label={item.label}
+                          style={{
+                            ...s.rpVehicleTile,
+                            background: isChecked ? T.accentBg : T.bgInput,
+                            borderColor: isChecked ? T.accent : T.border,
+                            color: isChecked ? T.accent : T.textSecondary,
+                          }}
+                          onClick={() => {
+                            if (isChecked && allowedVehicleTypes.length === 1) return // Keep at least one
+                            setAllowedVehicleTypes((prev) => isChecked ? prev.filter((k) => k !== item.key) : [...prev, item.key])
+                          }}
+                        >
+                          <div style={s.rpVehicleIconWrap}>
+                            <Icon size={20} strokeWidth={1.8} />
+                          </div>
                           <div style={{
                             ...s.rpCheckbox,
                             background: isChecked ? T.accent : 'transparent',
@@ -2106,8 +2209,7 @@ export default function DashboardPage() {
                               </svg>
                             )}
                           </div>
-                          <span style={s.rpCheckLabel}>{item.label}</span>
-                        </div>
+                        </button>
                       )
                     })}
                   </div>
@@ -2505,15 +2607,40 @@ const s: Record<string, CSSProperties> = {
     color: T.textWhite,
     textAlign: 'right',
   },
-  rpCheckRow: {
-    display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, cursor: 'pointer',
+  rpVehicleGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gap: 6,
+    marginBottom: 12,
+  },
+  rpVehicleTile: {
+    minHeight: 'auto',
+    padding: '4px 0 0',
+    borderRadius: 0,
+    border: 'none',
+    background: 'transparent',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 6,
+    cursor: 'pointer',
+    transition: 'all 0.15s',
+    width: '100%',
+  },
+  rpVehicleIconWrap: {
+    width: 26,
+    height: 26,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   rpCheckbox: {
     width: 16, height: 16, borderRadius: 4, border: `1.5px solid ${T.border}`,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     cursor: 'pointer', transition: 'all 0.15s', flexShrink: 0,
   },
-  rpCheckLabel: { fontSize: 11, color: T.textSecondary },
   rpRadioRow: {
     display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, cursor: 'pointer',
   },

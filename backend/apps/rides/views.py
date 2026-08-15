@@ -854,3 +854,28 @@ class StudentDisputeRideCompletionView(APIView):
         except Exception as e:
             logger.error('dispute_completion_error ride=%s err=%s', ride.id, str(e))
             return Response({'error': {'code': 'SYSTEM_ERROR', 'message': 'Could not dispute ride.'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class CampusAdminActiveOnDemandRidesView(generics.ListAPIView):
+    """
+    GET /rides/ondemand/active/
+    Campus admin fetches all active on-demand passenger rides.
+    Used for initial dashboard load; WebSocket provides live updates on top.
+    """
+    serializer_class = RideDetailSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        role = getattr(self.request.user, 'role', None)
+        if role not in ('admin', 'campus_admin'):
+            raise PermissionDenied('Only campus admins can access this endpoint.')
+        return Ride.objects.filter(
+            status__in=[
+                RideStatus.REQUESTED,
+                RideStatus.SEARCHING,
+                RideStatus.DRIVER_ASSIGNED,
+                RideStatus.DRIVER_EN_ROUTE,
+            ]
+        ).select_related(
+            'student', 'driver', 'driver__driver_profile'
+        ).order_by('-requested_at')
