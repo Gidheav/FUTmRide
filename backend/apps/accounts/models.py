@@ -565,7 +565,7 @@ class MapSettings(models.Model):
     
     # Map Provider
     active_provider = models.CharField(max_length=20, choices=MapProvider.choices, default=MapProvider.GOOGLE)
-    default_map_type = models.CharField(max_length=20, choices=MapType.choices, default=MapType.ROADMAP)
+    default_map_type = models.CharField(max_length=20, choices=MapType.choices, default=MapType.HYBRID)
     
     # Real-time Layers
     live_traffic_enabled = models.BooleanField(default=True)

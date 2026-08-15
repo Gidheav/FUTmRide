@@ -6,7 +6,7 @@ import {
   ZoomIn, ZoomOut, Crosshair, Maximize2, Undo2, Redo2, Trash2,
   MapPin, Map as MapIcon, Download, UploadCloud,
 } from 'lucide-react'
-import { GoogleMap, useJsApiLoader, DrawingManager, Polyline, Marker, InfoWindow, Circle as MapCircle } from '@react-google-maps/api'
+import { GoogleMap, useJsApiLoader, Polyline, Marker, InfoWindow, Circle as MapCircle } from '@react-google-maps/api'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { T, useCampusThemeStore } from '../theme'
 import { createAuthenticatedWebSocket } from '../../core/ws'
@@ -14,6 +14,14 @@ import { apiService } from '../../services/api.service'
 import { calculateFare, configToDraft, defaultFareDraft } from '../engine/fareCalculator'
 import type { FareConfig, PlatformSettings } from '../engine/types'
 import { routeEndpointLabel } from '../shared/routeDisplay'
+import {
+  ADMIN_MAP_MAX_ZOOM,
+  ADMIN_MAP_MIN_ZOOM,
+  DEFAULT_ADMIN_MAP_TYPE,
+  NIGER_STATE_MAP_RESTRICTION,
+  type AdminMapType,
+  normalizeAdminMapType,
+} from '../mapConfig'
 
 const GMAP_LIBS: ('drawing' | 'geometry' | 'places')[] = ['drawing', 'geometry', 'places']
 
@@ -90,6 +98,36 @@ export interface GarageRide {
   status: string
   driver_note: string
   created_at: string
+}
+
+export interface OnDemandRide {
+  id: string
+  reference: string
+  student: {
+    id: string
+    full_name: string
+    average_rating?: string | null
+  }
+  driver?: {
+    id: string
+    full_name: string
+    average_rating?: string | null
+  } | null
+  status: string
+  vehicle_type_requested: string
+  requested_seats: number
+  pickup_latitude: string
+  pickup_longitude: string
+  pickup_address: string
+  dropoff_latitude: string
+  dropoff_longitude: string
+  dropoff_address: string
+  total_fare: string | null
+  base_fare: string | null
+  estimated_distance_km: string | null
+  estimated_duration_minutes: number | null
+  requested_at: string
+  payment_method: string
 }
 
 // Distance helper since we compute distance/time locally for admin overlay
@@ -199,6 +237,7 @@ export default function DashboardPage() {
 
 
   const setOpenRequestsPanel = (open: boolean) => {
+    setIsLeftPanelOpen(open)
     const params = new URLSearchParams(location.search)
     if (open) {
       params.set('panel', 'open')
@@ -254,7 +293,9 @@ export default function DashboardPage() {
   const [pricingSettings, setPricingSettings] = useState<PlatformSettings>(DEFAULT_PLATFORM_SETTINGS)
   const [liveFareConfigs, setLiveFareConfigs] = useState<Record<string, FareConfig>>({})
   const [isCreatingRide, setIsCreatingRide] = useState(false)
-  const [mapTypeId, setMapTypeId] = useState<'roadmap' | 'hybrid'>('roadmap')
+  const [mapTypeId, setMapTypeId] = useState<AdminMapType>(
+    normalizeAdminMapType(localStorage.getItem('lr_ride_default_map_type') || DEFAULT_ADMIN_MAP_TYPE)
+  )
 
   useEffect(() => {
     let mounted = true
@@ -262,7 +303,8 @@ export default function DashboardPage() {
       .then((data) => {
         if (!mounted) return
         if (data?.default_map_type) {
-          setMapTypeId(data.default_map_type)
+          // Temporarily disabled so localStorage isn't overridden by backend default
+          // setMapTypeId(normalizeAdminMapType(data.default_map_type))
         }
       })
       .catch(() => {})
@@ -583,6 +625,17 @@ export default function DashboardPage() {
   // Real-time Garage Rides feed
   const [activeGarageRides, setActiveGarageRides] = useState<GarageRide[]>([])
 
+  // Real-time On-Demand passenger rides feed
+  const [activeOnDemandRides, setActiveOnDemandRides] = useState<OnDemandRide[]>([])
+
+  // Track new-ride IDs for pulse animation
+  const [newRideIds, setNewRideIds] = useState<Set<string>>(new Set())
+
+  const flashRide = (id: string) => {
+    setNewRideIds(prev => new Set([...prev, id]))
+    setTimeout(() => setNewRideIds(prev => { const n = new Set(prev); n.delete(id); return n }), 2500)
+  }
+
   useEffect(() => {
     const ws = createAuthenticatedWebSocket('/ws/campus-admin/rides/')
     if (!ws) return
@@ -590,21 +643,40 @@ export default function DashboardPage() {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)
+        // ── Garage ride events ─────────────────────────────────────────────
         if (data.type === 'initial_rides') {
           setActiveGarageRides(data.rides)
         } else if (data.type === 'ride_created') {
           setActiveGarageRides(prev => [data.ride, ...prev])
+          flashRide(data.ride.id)
         } else if (data.type === 'ride_updated') {
           setActiveGarageRides(prev => prev.map(r => r.id === data.ride.id ? data.ride : r))
         } else if (data.type === 'ride_departed' || data.type === 'ride_cancelled') {
           setActiveGarageRides(prev => prev.filter(r => r.id !== (data.ride?.id || data.ride_id)))
+        }
+        // ── On-demand passenger ride events ───────────────────────────────
+        else if (data.type === 'initial_on_demand_rides') {
+          setActiveOnDemandRides(data.rides)
+        } else if (data.type === 'on_demand_ride_created') {
+          setActiveOnDemandRides(prev => [data.ride, ...prev])
+          flashRide(data.ride.id)
+        } else if (data.type === 'on_demand_ride_updated') {
+          setActiveOnDemandRides(prev => prev.map(r => r.id === data.ride.id ? data.ride : r))
+        } else if (data.type === 'on_demand_ride_cancelled') {
+          setActiveOnDemandRides(prev => prev.filter(r => r.id !== (data.ride?.id || data.ride_id)))
         }
       } catch (e) {
         console.error('WS parse error:', e)
       }
     }
 
+    // Heartbeat: keep WS alive with a ping every 25s
+    const pingInterval = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }))
+    }, 25_000)
+
     return () => {
+      clearInterval(pingInterval)
       ws.close()
     }
   }, [])
@@ -1255,36 +1327,65 @@ export default function DashboardPage() {
           isLeftPanelOpen ? (
             <div style={s.leftPanel}>
               <div style={s.panelHeader}>
-                <span style={s.panelTitle}>Open Requests</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={s.panelTitle}>Open Requests</span>
+                  {(activeGarageRides.length + activeOnDemandRides.length) > 0 && (
+                    <span style={{
+                      fontSize: 9, fontWeight: 700, background: T.accent,
+                      color: '#000', padding: '2px 7px', borderRadius: 10,
+                      minWidth: 18, textAlign: 'center',
+                    }}>
+                      {activeGarageRides.length + activeOnDemandRides.length}
+                    </span>
+                  )}
+                </div>
                 <button style={s.moreBtn} onClick={() => setOpenRequestsPanel(false)}>
                   <ChevronLeft size={16} />
                 </button>
               </div>
               <div style={s.requestList}>
+                {/* ── Garage Rides (driver-initiated) ── */}
                 {activeGarageRides.map((req) => {
                   const distanceKm = getHaversineDistance(
                     Number(req.origin_latitude), Number(req.origin_longitude),
                     Number(req.destination_latitude), Number(req.destination_longitude)
                   )
-                  const estTimeMin = Math.max(1, Math.round((distanceKm / 40) * 60)) // Assuming 40km/h avg speed
-                  const matchPct = Math.min(99, Math.max(75, 100 - Math.round(distanceKm))) // Visual mock for route match
+                  const estTimeMin = Math.max(1, Math.round((distanceKm / 40) * 60))
+                  const matchPct = Math.min(99, Math.max(75, 100 - Math.round(distanceKm)))
+                  const isNew = newRideIds.has(req.id)
 
                   return (
-                    <div key={req.id} style={s.reqCard}>
+                    <div key={req.id} style={{
+                      ...s.reqCard,
+                      borderColor: isNew ? T.accent : undefined,
+                      boxShadow: isNew ? `0 0 0 2px ${T.accent}44` : undefined,
+                      transition: 'border-color 0.4s, box-shadow 0.4s',
+                    }}>
+                      {/* Badge row */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                        <span style={{ fontSize: 9, fontWeight: 700, background: '#7c3aed', color: '#fff', padding: '2px 7px', borderRadius: 4, letterSpacing: 0.5 }}>
+                          GARAGE RIDE
+                        </span>
+                        <span style={{ fontSize: 9, color: T.textMuted, marginLeft: 'auto' }}>
+                          #{req.reference}
+                        </span>
+                        {isNew && (
+                          <span style={{ fontSize: 9, fontWeight: 700, background: T.accent, color: '#000', padding: '2px 6px', borderRadius: 4, animation: 'pulse 1s infinite' }}>
+                            NEW
+                          </span>
+                        )}
+                      </div>
                       <div style={s.reqRow}>
                         <span style={s.reqLabel}>Route:</span>
-                        <span style={s.reqRoute}>{routeEndpointLabel(req, 'origin', true)} to {routeEndpointLabel(req, 'destination', true)}</span>
+                        <span style={s.reqRoute}>{routeEndpointLabel(req, 'origin', true)} → {routeEndpointLabel(req, 'destination', true)}</span>
                       </div>
                       <div style={s.reqRow}>
                         <span style={s.reqLabel}>Est. Fare:</span>
-                        <span style={{ ...s.reqValue, color: T.accent }}>₦{req.fare_per_seat}</span>
+                        <span style={{ ...s.reqValue, color: T.accent }}>₦{req.fare_per_seat}/seat</span>
                       </div>
                       <div style={s.reqRow}>
-                        <span style={s.reqLabel}>Passenger:</span>
-                        <span style={s.reqValue}>
-                          {req.booked_seats}/{req.total_seats} (Reputation: {req.driver.average_rating || 'New'}
-                          <span style={{ color: T.warn }}>*</span>)
-                        </span>
+                        <span style={s.reqLabel}>Seats:</span>
+                        <span style={s.reqValue}>{req.booked_seats}/{req.total_seats} booked</span>
                       </div>
                       <div style={s.reqRow}>
                         <span style={s.reqLabel}>Vehicle:</span>
@@ -1295,27 +1396,102 @@ export default function DashboardPage() {
                           {req.driver.full_name} • {req.driver_note || 'No notes'}
                         </span>
                       </div>
-                      <div style={s.reqRow}>
-                        <span style={s.reqLabel}>Time:</span>
-                        <span style={s.reqValue}>{estTimeMin} min</span>
-                      </div>
                       <div style={s.reqMatchRow}>
-                        <span style={s.reqLabel}>Route Match:</span>
+                        <span style={s.reqLabel}>Match:</span>
                         <span style={s.matchBadge}>{matchPct}%</span>
-                        <span style={s.reqCoord}>{Number(req.origin_latitude).toFixed(4)}, {Number(req.origin_longitude).toFixed(4)}</span>
+                        <span style={s.reqCoord}>{estTimeMin} min est.</span>
                       </div>
                     </div>
                   )
                 })}
-                {activeGarageRides.length === 0 && (
+
+                {/* ── On-Demand Passenger Rides ── */}
+                {activeOnDemandRides.map((req) => {
+                  const distanceKm = req.estimated_distance_km
+                    ? Number(req.estimated_distance_km)
+                    : getHaversineDistance(
+                        Number(req.pickup_latitude), Number(req.pickup_longitude),
+                        Number(req.dropoff_latitude), Number(req.dropoff_longitude)
+                      )
+                  const estTimeMin = req.estimated_duration_minutes
+                    ?? Math.max(1, Math.round((distanceKm / 40) * 60))
+                  const isNew = newRideIds.has(req.id)
+
+                  const statusLabel: Record<string, string> = {
+                    requested: 'Waiting',
+                    searching: 'Searching',
+                    driver_assigned: 'Driver Assigned',
+                  }
+
+                  return (
+                    <div key={req.id} style={{
+                      ...s.reqCard,
+                      borderColor: isNew ? '#f59e0b' : undefined,
+                      boxShadow: isNew ? '0 0 0 2px #f59e0b44' : undefined,
+                      transition: 'border-color 0.4s, box-shadow 0.4s',
+                    }}>
+                      {/* Badge row */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                        <span style={{ fontSize: 9, fontWeight: 700, background: '#0891b2', color: '#fff', padding: '2px 7px', borderRadius: 4, letterSpacing: 0.5 }}>
+                          PASSENGER
+                        </span>
+                        <span style={{ fontSize: 9, background: 'rgba(255,255,255,0.07)', color: T.textSecondary, padding: '2px 6px', borderRadius: 4 }}>
+                          {statusLabel[req.status] ?? req.status.replace(/_/g, ' ')}
+                        </span>
+                        <span style={{ fontSize: 9, color: T.textMuted, marginLeft: 'auto' }}>
+                          #{req.reference}
+                        </span>
+                        {isNew && (
+                          <span style={{ fontSize: 9, fontWeight: 700, background: '#f59e0b', color: '#000', padding: '2px 6px', borderRadius: 4 }}>
+                            NEW
+                          </span>
+                        )}
+                      </div>
+                      <div style={s.reqRow}>
+                        <span style={s.reqLabel}>Route:</span>
+                        <span style={s.reqRoute}>
+                          {req.pickup_address?.split(',')[0] || 'Pickup'} → {req.dropoff_address?.split(',')[0] || 'Dropoff'}
+                        </span>
+                      </div>
+                      <div style={s.reqRow}>
+                        <span style={s.reqLabel}>Fare:</span>
+                        <span style={{ ...s.reqValue, color: '#f59e0b' }}>₦{req.total_fare ?? '—'}</span>
+                      </div>
+                      <div style={s.reqRow}>
+                        <span style={s.reqLabel}>Seats:</span>
+                        <span style={s.reqValue}>{req.requested_seats} requested</span>
+                      </div>
+                      <div style={s.reqRow}>
+                        <span style={s.reqLabel}>Vehicle:</span>
+                        <span style={s.reqValue}>{req.vehicle_type_requested}</span>
+                      </div>
+                      <div style={{ ...s.reqRow, paddingLeft: 52 }}>
+                        <span style={{ ...s.reqValue, color: T.textMuted, fontSize: 10 }}>
+                          {req.student.full_name} • {req.payment_method}
+                          {req.driver ? ` • Driver: ${req.driver.full_name}` : ''}
+                        </span>
+                      </div>
+                      <div style={s.reqMatchRow}>
+                        <span style={s.reqLabel}>Distance:</span>
+                        <span style={{ ...s.matchBadge, background: '#0891b2' }}>{distanceKm.toFixed(1)} km</span>
+                        <span style={s.reqCoord}>{estTimeMin} min est.</span>
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {activeGarageRides.length === 0 && activeOnDemandRides.length === 0 && (
                   <div style={{ padding: 20, textAlign: 'center', color: T.textMuted, fontSize: 12 }}>
-                    No active requests. Waiting for drivers...
+                    <div style={{ fontSize: 22, marginBottom: 8 }}>📡</div>
+                    <div style={{ fontWeight: 600, marginBottom: 4, color: T.textSecondary }}>Listening for requests...</div>
+                    <div style={{ fontSize: 10 }}>New rides will appear here instantly</div>
                   </div>
                 )}
               </div>
             </div>
           ) : (
-            <div style={{ ...s.leftPanel, width: 36, alignItems: 'center', cursor: 'pointer' }} onClick={() => setIsLeftPanelOpen(true)}>
+            <div style={{ ...s.leftPanel, width: 36, alignItems: 'center', cursor: 'pointer' }} onClick={() => setOpenRequestsPanel(true)}>
+
               <div style={{ padding: '10px 0', borderBottom: `1px solid ${T.border}`, width: '100%', display: 'flex', justifyContent: 'center' }}>
                 <ChevronRight size={16} color={T.textMuted} />
               </div>
@@ -1413,11 +1589,15 @@ export default function DashboardPage() {
               <div style={s.toolDivider} />
               <select
                 value={mapTypeId}
-                onChange={e => setMapTypeId(e.target.value as any)}
+                onChange={e => {
+                  const next = normalizeAdminMapType(e.target.value)
+                  setMapTypeId(next)
+                  localStorage.setItem('lr_ride_default_map_type', next)
+                }}
                 style={{ ...s.toolBtn, width: 'auto', padding: '0 8px', fontSize: 11, cursor: 'pointer', appearance: 'auto', background: 'transparent', border: `1px solid ${T.border}`, borderRadius: 4 }}
               >
                 <option value="roadmap" style={{ color: '#000' }}>Roadmap</option>
-                <option value="satellite" style={{ color: '#000' }}>Satellite</option>
+                <option value="hybrid" style={{ color: '#000' }}>Hybrid</option>
               </select>
               <div style={s.toolDivider} />
               <button style={s.filterBtn} onClick={handleClear} title={activeTool ? `Clear ${activeTool} work` : 'Clear all'}>
@@ -1428,11 +1608,11 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Map area */}
+          {/* Map area (Full bleed, absolutely positioned behind everything) */}
           <div style={s.mapArea}>
             <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
               {isLoaded ? (
-                <GoogleMap
+                  <GoogleMap
                   mapContainerStyle={{ width: '100%', height: '100%', backgroundColor: mode === 'dark' ? '#0f1117' : '#f9fafb' }}
                   center={MAP_CENTER}
                   onLoad={onMapLoad}
@@ -1440,15 +1620,19 @@ export default function DashboardPage() {
                   onClick={handleMapClick}
                   mapTypeId={mapTypeId}
                   options={{
+                    mapTypeId: mapTypeId,
                     disableDefaultUI: true,
                     draggable: !activeTool || activeTool === 'search' || activeTool === 'measure',
                     draggableCursor: activeTool === 'measure' ? 'crosshair' : undefined,
                     draggingCursor: activeTool === 'measure' ? 'crosshair' : undefined,
                     clickableIcons: false,
                     gestureHandling: 'greedy',
+                    restriction: NIGER_STATE_MAP_RESTRICTION,
+                    minZoom: ADMIN_MAP_MIN_ZOOM,
+                    maxZoom: ADMIN_MAP_MAX_ZOOM,
                     backgroundColor: mode === 'dark' ? '#0f1117' : '#ffffff',
 
-                    styles: mode === 'dark' ? [
+                    styles: mode === 'dark' && mapTypeId === 'roadmap' ? [
                       { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
                       { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
                       { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
@@ -1468,19 +1652,7 @@ export default function DashboardPage() {
                     ] : [],
                   }}
                 >
-                  {/* Drawing Manager for draw/rectangle/circle tools */}
-                  {(activeTool === 'draw' || activeTool === 'rectangle' || activeTool === 'circle') && drawingMode && (
-                    <DrawingManager
-                      drawingMode={drawingMode}
-                      onOverlayComplete={onOverlayComplete}
-                      options={{
-                        drawingControl: false,
-                        polylineOptions: { strokeColor: T.accent, strokeWeight: 3, strokeOpacity: 0.9 },
-                        rectangleOptions: { fillColor: T.accent, fillOpacity: 0.15, strokeColor: T.accent, strokeWeight: 2 },
-                        circleOptions: { fillColor: T.accent, fillOpacity: 0.15, strokeColor: T.accent, strokeWeight: 2 },
-                      }}
-                    />
-                  )}
+                  {/* Drawing Manager removed (deprecated in v3.65) */}
                   {/* Measure routes + endpoints (visible when toolVisibility.measure is on) */}
                   {toolVisibility.measure && measurePoints.length >= 2 && (
                     <>
@@ -1594,7 +1766,10 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
+          </div>
 
+          {/* Dummy flex element to fill the space in centerPanel left by absolute mapArea. We put the overlays here so they are bounded by centerPanel. */}
+          <div style={{ flex: 1, position: 'relative', pointerEvents: 'none' }}>
             {toolVisibility.measure && measureRoutes.length > 0 && (
               <div style={s.measureRoutesPanel}>
                 <div style={s.measureRoutesPanelTitle}>
@@ -2000,13 +2175,14 @@ export default function DashboardPage() {
 const s: Record<string, CSSProperties> = {
   /* Content */
   content: {
-    flex: 1, display: 'flex', overflow: 'hidden',
+    flex: 1, display: 'flex', overflow: 'hidden', position: 'relative',
   },
 
   /* Left panel */
   leftPanel: {
     width: 230, background: T.bgPanel, borderRight: `1px solid ${T.border}`,
-    display: 'flex', flexDirection: 'column', flexShrink: 0,
+    display: 'flex', flexDirection: 'column', flexShrink: 0, pointerEvents: 'auto',
+    position: 'relative', zIndex: 20,
   },
   panelHeader: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -2040,12 +2216,13 @@ const s: Record<string, CSSProperties> = {
 
   /* Center panel */
   centerPanel: {
-    flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0,
+    flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, pointerEvents: 'none', zIndex: 10,
   },
   mapToolbar: {
     height: 36, background: T.bgPanel, display: 'flex', alignItems: 'center',
     justifyContent: 'space-between', padding: '0 10px',
-    borderBottom: `1px solid ${T.border}`, flexShrink: 0,
+    borderBottom: `1px solid ${T.border}`, flexShrink: 0, pointerEvents: 'auto',
+    position: 'relative', zIndex: 10,
   },
   toolbarLeft: { display: 'flex', alignItems: 'center', gap: 6 },
   toolbarRight: { display: 'flex', alignItems: 'center', gap: 3 },
@@ -2074,8 +2251,7 @@ const s: Record<string, CSSProperties> = {
 
   /* Map area */
   mapArea: {
-    flex: 1, position: 'relative', background: T.mapBg,
-    overflow: 'hidden', minHeight: 0,
+    position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'auto',
   },
   mapGrid: {
     position: 'absolute', inset: 0, width: '100%', height: '100%',
@@ -2087,7 +2263,7 @@ const s: Record<string, CSSProperties> = {
     position: 'absolute', top: 10, left: 10, width: 180,
     background: T.mapOverlayBg, borderRadius: 8,
     border: `1px solid ${T.border}`, backdropFilter: 'blur(12px)',
-    zIndex: 10, overflow: 'hidden',
+    zIndex: 10, overflow: 'hidden', pointerEvents: 'auto',
   },
   overlaySection: { borderBottom: `1px solid ${T.border}` },
   overlaySectionHeader: {
@@ -2174,7 +2350,8 @@ const s: Record<string, CSSProperties> = {
   dataFeed: {
     background: T.bgPanel, borderTop: `1px solid ${T.border}`,
     display: 'flex', flexDirection: 'column', flexShrink: 0,
-    transition: 'height 0.2s', overflow: 'hidden',
+    transition: 'height 0.2s', overflow: 'hidden', pointerEvents: 'auto',
+    position: 'relative', zIndex: 10,
   },
   dataFeedHeader: {
     padding: '6px 12px', fontSize: 11, fontWeight: 700,
@@ -2192,9 +2369,10 @@ const s: Record<string, CSSProperties> = {
 
   /* Right panel */
   rightPanel: {
-    width: 230, background: T.bgPanel, borderLeft: `1px solid ${T.border}`,
+    width: 276, background: T.bgPanel, borderLeft: `1px solid ${T.border}`,
     display: 'flex', flexDirection: 'column', flexShrink: 0,
-    overflowY: 'auto',
+    overflowY: 'auto', pointerEvents: 'auto',
+    position: 'relative', zIndex: 20,
   },
   rpHeader: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',

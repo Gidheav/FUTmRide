@@ -19,17 +19,8 @@ const SIDEBAR_ICONS = [
 const s: Record<string, CSSProperties> = {
   sidebar: {
     width: 52, background: T.sidebar, display: 'flex', flexDirection: 'column',
-    alignItems: 'center', borderRight: `1px solid ${T.border}`, paddingTop: 12,
+    alignItems: 'center', borderRight: `1px solid ${T.border}`, paddingTop: 8,
     flexShrink: 0, height: '100vh'
-  },
-  sidebarLogo: { marginBottom: 8 },
-  logoCircle: {
-    width: 40, height: 40, borderRadius: 8, background: 'transparent',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  logoImg: {
-    width: '100%', height: '100%', objectFit: 'contain', transform: 'scale(2.05)'
   },
   sidebarIcons: { display: 'flex', flexDirection: 'column', gap: 2, width: '100%' },
   sidebarBtn: {
@@ -44,11 +35,6 @@ export default function CampusAdminSidebar() {
 
   return (
     <aside style={s.sidebar}>
-      <div style={s.sidebarLogo}>
-        <div style={s.logoCircle}>
-          <img src="/fut-icon.png" alt="FUT Logo" style={s.logoImg} />
-        </div>
-      </div>
       <div style={s.sidebarIcons}>
         {SIDEBAR_ICONS.map((item, i) => {
           const Icon = item.icon

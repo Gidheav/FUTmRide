@@ -29,6 +29,52 @@ from .utils import has_blocking_active_ride
 
 logger = logging.getLogger('apps.rides')
 
+
+def broadcast_on_demand_event(event_type: str, ride=None, ride_id=None):
+    """
+    Push a real-time on-demand ride event to all connected campus admin dashboards.
+    Runs in a fire-and-forget daemon thread so it never blocks the request cycle.
+    """
+    import threading
+    from .consumers import CAMPUS_ADMIN_GROUP
+
+    message = {'type': event_type}
+    try:
+        if ride is not None:
+            from .serializers import RideDetailSerializer
+            message['ride'] = dict(RideDetailSerializer(ride).data)
+        if ride_id is not None:
+            message['ride_id'] = str(ride_id)
+    except Exception as exc:
+        logger.warning('broadcast_on_demand_event serialization failed: %s', str(exc))
+        return
+
+    def _do_broadcast():
+        try:
+            import asyncio
+            from channels.layers import get_channel_layer
+
+            channel_layer = get_channel_layer()
+            if channel_layer is None:
+                return
+
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(
+                    asyncio.wait_for(
+                        channel_layer.group_send(CAMPUS_ADMIN_GROUP, message),
+                        timeout=5.0,
+                    )
+                )
+            finally:
+                loop.close()
+        except Exception as exc:
+            logger.warning('broadcast_on_demand_event failed: %s', str(exc))
+
+    threading.Thread(target=_do_broadcast, daemon=True).start()
+
+
 ACTIVE_DRIVER_STATUSES = [
     RideStatus.DRIVER_ASSIGNED,
     RideStatus.DRIVER_EN_ROUTE,
@@ -140,6 +186,8 @@ class RideRequestView(generics.CreateAPIView):
 
         logger.info('ride_requested ref=%s student=%s assigned=%s', ride.reference, str(request.user.id), False)
         notify_student_ride_status(ride)
+        # Broadcast to campus admin dashboard in real time
+        broadcast_on_demand_event('on_demand_ride_created', ride=ride)
         return Response(RideDetailSerializer(ride, context={'request': request}).data, status=status.HTTP_201_CREATED)
 
 
@@ -313,6 +361,8 @@ class CancelRideView(APIView):
             raise PermissionDenied('You cannot cancel this ride.')
         logger.info('ride_cancelled ref=%s by=%s', ride.reference, str(request.user.id))
         notify_student_ride_status(ride)
+        # Broadcast cancellation to campus admin dashboard
+        broadcast_on_demand_event('on_demand_ride_cancelled', ride_id=ride.id)
         return Response(RideDetailSerializer(ride, context={'request': request}).data)
 
 
@@ -397,6 +447,12 @@ class DriverRideStatusUpdateView(APIView):
             
         notify_student_ride_status(ride)
         logger.info('ride_advanced ref=%s to=%s driver=%s', ride.reference, next_status, str(request.user.id))
+        # If ride is still active on-demand (assigned/en-route/arrived), push updated state to admin
+        if next_status not in [RideStatus.COMPLETED, RideStatus.PENDING_COMPLETION]:
+            broadcast_on_demand_event('on_demand_ride_updated', ride=ride)
+        else:
+            # Ride is no longer "open/searching" — remove from admin dashboard
+            broadcast_on_demand_event('on_demand_ride_cancelled', ride_id=ride.id)
         return Response(RideDetailSerializer(ride, context={'request': request}).data)
 
 
@@ -645,6 +701,8 @@ class DriverAcceptRideView(APIView):
             profile.is_on_trip = True
             profile.save(update_fields=['is_on_trip'])
         notify_student_ride_status(ride)
+        # Ride has been accepted — broadcast updated state (now DRIVER_ASSIGNED)
+        broadcast_on_demand_event('on_demand_ride_updated', ride=ride)
         return Response(RideDetailSerializer(ride, context={'request': request}).data)
 
 

@@ -3,6 +3,7 @@ import { create } from 'zustand'
 export type DispatchTab = 'route_ops' | 'live_fleet'
 
 export type MapLayerConfig = {
+  default_map_type?: 'roadmap' | 'hybrid'
   live_traffic_enabled: boolean
   demand_heatmaps_enabled: boolean
   driver_clustering_enabled: boolean
@@ -38,6 +39,7 @@ export const useDispatchStore = create<{
   wsConnected: false,
   setWsConnected: (val) => set({ wsConnected: val }),
   mapLayerConfig: {
+    default_map_type: 'hybrid',
     live_traffic_enabled: false,
     demand_heatmaps_enabled: false,
     driver_clustering_enabled: false,

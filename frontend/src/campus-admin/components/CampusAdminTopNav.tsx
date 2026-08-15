@@ -270,10 +270,10 @@ export default function CampusAdminTopNav() {
         ) : (
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3 }}>
-              Elite Command
+              FutmRide Control Center
             </div>
             <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
-              Replacing Pro Rides &amp; Dispatch Center
+              Regulated ride operations and dispatch
             </div>
           </div>
         )}
@@ -510,35 +510,6 @@ export default function CampusAdminTopNav() {
           >
             <Activity size={13} strokeWidth={1.8} />
             <span>Live Operations</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              const params = new URLSearchParams(location.search)
-              params.set('mode', 'map-editor')
-              navigate({ pathname: location.pathname, search: `?${params.toString()}` })
-            }}
-            style={{
-              ...s.topNavBtn,
-              color: searchParams.get('mode') === 'map-editor' ? T.accent : T.textSecondary,
-              background: searchParams.get('mode') === 'map-editor' ? T.accentBg : 'transparent',
-            }}
-          >
-            <Map size={13} strokeWidth={1.8} />
-            <span>Map Editor</span>
-          </button>
-          <div style={{ width: 1, height: 16, background: T.border, margin: '0 8px' }} />
-          <button
-            type="button"
-            onClick={toggleOpenRequestsPanel}
-            style={{
-              ...s.topNavBtn,
-              color: isOpenRequestsPanel ? T.accent : T.textSecondary,
-              background: isOpenRequestsPanel ? T.accentBg : 'transparent',
-            }}
-          >
-            <FolderOpen size={13} strokeWidth={1.8} />
-            <span>Open Requests</span>
           </button>
         </nav>
       ) : location.pathname === '/notifications' ? (

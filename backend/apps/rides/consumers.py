@@ -2,7 +2,8 @@
 WebSocket consumer for real-time ride data streaming to campus admin dashboard.
 
 Campus admin connects → joins 'campus_admin_rides' group → receives live updates
-whenever a garage ride is created, updated, departed, or cancelled.
+whenever a garage ride is created, updated, departed, or cancelled,
+or whenever an on-demand passenger ride is created, updated, or cancelled.
 """
 import json
 import logging
@@ -21,13 +22,20 @@ class CampusAdminRidesConsumer(AsyncWebsocketConsumer):
     On connect:
       - Validates user is admin or campus_admin
       - Joins the campus_admin_rides channel group
-      - Sends all currently active garage rides as the initial payload
+      - Sends all currently active garage rides as 'initial_rides'
+      - Sends all active on-demand passenger rides as 'initial_on_demand_rides'
 
     On receive (from group broadcast):
-      - ride_created   → new ride card appears in the dashboard
-      - ride_updated   → seat count / status changes in-place
-      - ride_departed  → ride moves to departed state
-      - ride_cancelled → ride removed from active list
+      Garage rides:
+        - ride_created   → new ride card appears in the dashboard
+        - ride_updated   → seat count / status changes in-place
+        - ride_departed  → ride moves to departed state
+        - ride_cancelled → ride removed from active list
+
+      On-demand passenger rides:
+        - on_demand_ride_created   → new passenger request card appears
+        - on_demand_ride_updated   → status changes in-place
+        - on_demand_ride_cancelled → removed from active list
     """
 
     async def connect(self):
@@ -54,6 +62,13 @@ class CampusAdminRidesConsumer(AsyncWebsocketConsumer):
             'rides': active_rides,
         }))
 
+        # Send initial payload: all active on-demand passenger rides
+        on_demand_rides = await self.get_active_on_demand_rides()
+        await self.send(text_data=json.dumps({
+            'type': 'initial_on_demand_rides',
+            'rides': on_demand_rides,
+        }))
+
     async def disconnect(self, code):
         if hasattr(self, 'group_name'):
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
@@ -75,6 +90,11 @@ class CampusAdminRidesConsumer(AsyncWebsocketConsumer):
             await self.send(text_data=json.dumps({
                 'type': 'initial_rides',
                 'rides': active_rides,
+            }))
+            on_demand_rides = await self.get_active_on_demand_rides()
+            await self.send(text_data=json.dumps({
+                'type': 'initial_on_demand_rides',
+                'rides': on_demand_rides,
             }))
 
     # ── Group message handlers (called by channel_layer.group_send) ──────
@@ -107,6 +127,27 @@ class CampusAdminRidesConsumer(AsyncWebsocketConsumer):
             'ride_id': event['ride_id'],
         }))
 
+    async def on_demand_ride_created(self, event):
+        """A new on-demand passenger ride request was created."""
+        await self.send(text_data=json.dumps({
+            'type': 'on_demand_ride_created',
+            'ride': event['ride'],
+        }))
+
+    async def on_demand_ride_updated(self, event):
+        """An on-demand ride status changed (e.g., driver assigned)."""
+        await self.send(text_data=json.dumps({
+            'type': 'on_demand_ride_updated',
+            'ride': event['ride'],
+        }))
+
+    async def on_demand_ride_cancelled(self, event):
+        """An on-demand passenger ride was cancelled."""
+        await self.send(text_data=json.dumps({
+            'type': 'on_demand_ride_cancelled',
+            'ride_id': event['ride_id'],
+        }))
+
     # ── Database helpers ─────────────────────────────────────────────────
 
     @database_sync_to_async
@@ -123,3 +164,17 @@ class CampusAdminRidesConsumer(AsyncWebsocketConsumer):
 
         # Serialize without request context (no absolute URLs needed for WS)
         return GarageRideDetailSerializer(rides, many=True).data
+
+    @database_sync_to_async
+    def get_active_on_demand_rides(self):
+        """Fetch all active on-demand passenger rides (searching/requested)."""
+        from .models import Ride, RideStatus
+        from .serializers import RideDetailSerializer
+
+        rides = Ride.objects.filter(
+            status__in=[RideStatus.REQUESTED, RideStatus.SEARCHING]
+        ).select_related(
+            'student', 'driver', 'driver__driver_profile'
+        ).order_by('-requested_at')
+
+        return RideDetailSerializer(rides, many=True).data

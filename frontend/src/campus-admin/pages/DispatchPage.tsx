@@ -9,6 +9,12 @@ import api from '../../core/api'
 import { createAuthenticatedWebSocket } from '../../core/ws'
 import RouteOpsPanel from './RouteOpsPanel'
 import { routeEndpointLabel } from '../shared/routeDisplay'
+import {
+  ADMIN_MAP_MAX_ZOOM,
+  ADMIN_MAP_MIN_ZOOM,
+  NIGER_STATE_MAP_RESTRICTION,
+  normalizeAdminMapType,
+} from '../mapConfig'
 
 const MAP_CENTER = { lat: 9.5323, lng: 6.4526 }
 const DEFAULT_ZOOM = 14
@@ -110,6 +116,7 @@ function LiveFleetPanel() {
 
   const { mode } = useCampusThemeStore()
   const { showTraffic, showHeat, showRoutes, setWsConnected, recenterTrigger, mapLayerConfig, applyMapLayerConfig } = useDispatchStore()
+  const adminMapType = normalizeAdminMapType(mapLayerConfig.default_map_type)
   const [mapZoom, setMapZoom] = useState(DEFAULT_ZOOM)
 
   const mapRef = useRef<google.maps.Map | null>(null)
@@ -539,6 +546,7 @@ function LiveFleetPanel() {
               mapContainerStyle={{ width: '100%', height: '100%', backgroundColor: mode === 'dark' ? '#0f1117' : '#f9fafb' }}
               center={MAP_CENTER}
               zoom={DEFAULT_ZOOM}
+              mapTypeId={adminMapType}
               onLoad={(map) => { mapRef.current = map }}
               onZoomChanged={() => setMapZoom(mapRef.current?.getZoom() ?? DEFAULT_ZOOM)}
               options={{
@@ -547,8 +555,11 @@ function LiveFleetPanel() {
                 streetViewControl: false,
                 clickableIcons: false,
                 gestureHandling: 'greedy',
+                restriction: NIGER_STATE_MAP_RESTRICTION,
+                minZoom: ADMIN_MAP_MIN_ZOOM,
+                maxZoom: ADMIN_MAP_MAX_ZOOM,
                 backgroundColor: mode === 'dark' ? '#0f1117' : '#ffffff',
-                styles: mode === 'dark' ? [
+                styles: mode === 'dark' && adminMapType === 'roadmap' ? [
                   { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
                   { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
                   { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
