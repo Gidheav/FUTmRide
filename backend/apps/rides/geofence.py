@@ -15,14 +15,26 @@ MINNA_BOUNDS = {
     'west': Decimal('6.37'),
 }
 
+METERS_PER_DEGREE_LAT = Decimal('111320')
+
+
+def _configured_buffer_degrees() -> Decimal:
+    try:
+        from apps.accounts.models import MapSettings
+        buffer_meters = Decimal(str(MapSettings.load().geofence_buffer_meters or 0))
+    except Exception:
+        buffer_meters = Decimal('0')
+    return max(Decimal('0'), buffer_meters) / METERS_PER_DEGREE_LAT
+
 
 def is_in_service_area(lat, lng) -> bool:
     """Return True if (lat, lng) are within the Minna bounding box."""
     lat = Decimal(str(lat))
     lng = Decimal(str(lng))
+    buffer_degrees = _configured_buffer_degrees()
     return (
-        MINNA_BOUNDS['south'] <= lat <= MINNA_BOUNDS['north']
-        and MINNA_BOUNDS['west'] <= lng <= MINNA_BOUNDS['east']
+        MINNA_BOUNDS['south'] - buffer_degrees <= lat <= MINNA_BOUNDS['north'] + buffer_degrees
+        and MINNA_BOUNDS['west'] - buffer_degrees <= lng <= MINNA_BOUNDS['east'] + buffer_degrees
     )
 
 

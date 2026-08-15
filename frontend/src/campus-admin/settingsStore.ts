@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type SettingsTab = 'account' | 'display' | 'notifications' | 'system' | 'promotion' | 'integration' | 'feature_flag' | 'support' | 'access'
+export type SettingsTab = 'account' | 'display' | 'map' | 'notifications' | 'system' | 'promotion' | 'integration' | 'feature_flag' | 'support' | 'access'
 
 interface SettingsState {
   activeTab: SettingsTab

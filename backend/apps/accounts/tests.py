@@ -2,7 +2,7 @@
 from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework import status
-from .models import User, StudentProfile, DriverProfile, OTPVerification, StudentSignupVerificationSession, UserRole
+from .models import AuditLog, MapSettings, User, StudentProfile, DriverProfile, OTPVerification, StudentSignupVerificationSession, UserRole
 from django.core.management import call_command
 from django.test import override_settings
 from django.utils import timezone
@@ -235,6 +235,67 @@ class IntegrationSettingsTestCase(TestCase):
         }, format='json')
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertEqual(res.data['payments_enabled'], False)
+
+
+class MapSettingsTestCase(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.url = reverse('auth-settings-map')
+        self.public_url = reverse('auth-settings-map-public')
+        self.admin = User.objects.create_user(
+            phone_number='+2348011111120',
+            password='SecurePass123!',
+            first_name='Map',
+            last_name='Admin',
+            role=UserRole.ADMIN,
+            data_consent_given=True,
+        )
+        self.student = User.objects.create_user(
+            phone_number='+2348011111121',
+            email='map.student@st.futminna.edu.ng',
+            password='SecurePass123!',
+            first_name='Map',
+            last_name='Student',
+            role=UserRole.STUDENT,
+            data_consent_given=True,
+        )
+
+    def test_admin_can_load_map_settings_without_mock_style_json(self):
+        self.client.force_authenticate(user=self.admin)
+        res = self.client.get(self.url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertIn('provider_readiness', res.data)
+        self.assertIn('health_checks', res.data)
+        self.assertNotIn('custom_style_json', res.data)
+
+    def test_student_can_load_public_map_settings_only(self):
+        self.client.force_authenticate(user=self.student)
+        res = self.client.get(self.public_url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertIn('driver_clustering_enabled', res.data)
+        self.assertNotIn('provider_readiness', res.data)
+        self.assertNotIn('change_reason', res.data)
+
+    def test_critical_patch_requires_change_reason(self):
+        self.client.force_authenticate(user=self.admin)
+        res = self.client.patch(self.url, {'geofence_buffer_meters': 75}, format='json')
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('change_reason', res.data)
+
+    def test_patch_updates_version_and_audit_log(self):
+        self.client.force_authenticate(user=self.admin)
+        res = self.client.patch(self.url, {
+            'live_traffic_enabled': False,
+            'demand_heatmaps_enabled': True,
+            'driver_clustering_enabled': True,
+            'refresh_interval_seconds': 30,
+            'change_reason': 'Tune live fleet layers',
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        settings_obj = MapSettings.load()
+        self.assertEqual(settings_obj.config_version, 2)
+        self.assertEqual(settings_obj.updated_by, self.admin)
+        self.assertTrue(AuditLog.objects.filter(action=AuditLog.Action.MAP_CONFIG_UPDATE).exists())
 
     def test_login_nonexistent_user_rejected(self):
         res = self.client.post(self.login_url, {

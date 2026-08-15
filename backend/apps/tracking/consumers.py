@@ -223,9 +223,11 @@ class CampusAdminFleetConsumer(AsyncWebsocketConsumer):
         logger.info('ws_campus_admin_fleet_connected user_id=%s campus=%s', str(self.user.id), self.campus_id)
 
         initial = await self.get_fleet_snapshot(self.campus_id)
+        map_config = await self.get_map_layer_config()
         await self.send(text_data=json.dumps({
             'type': 'initial_positions',
             'drivers': initial,
+            'map_config': map_config,
         }))
 
     async def disconnect(self, code):
@@ -242,9 +244,11 @@ class CampusAdminFleetConsumer(AsyncWebsocketConsumer):
             await self.send(text_data=json.dumps({'type': 'pong'}))
         elif data.get('type') == 'refresh':
             initial = await self.get_fleet_snapshot(self.campus_id)
+            map_config = await self.get_map_layer_config()
             await self.send(text_data=json.dumps({
                 'type': 'initial_positions',
                 'drivers': initial,
+                'map_config': map_config,
             }))
 
     async def fleet_location(self, event):
@@ -299,6 +303,20 @@ class CampusAdminFleetConsumer(AsyncWebsocketConsumer):
             })
 
         return data
+
+    @database_sync_to_async
+    def get_map_layer_config(self):
+        from apps.accounts.models import MapSettings
+
+        settings_obj = MapSettings.load()
+        return {
+            'live_traffic_enabled': settings_obj.live_traffic_enabled,
+            'demand_heatmaps_enabled': settings_obj.demand_heatmaps_enabled,
+            'driver_clustering_enabled': settings_obj.driver_clustering_enabled,
+            'refresh_interval_seconds': settings_obj.refresh_interval_seconds,
+            'cluster_threshold_zoom': settings_obj.cluster_threshold_zoom,
+            'config_version': settings_obj.config_version,
+        }
 
 
 class CampusAdminIncidentConsumer(AsyncWebsocketConsumer):

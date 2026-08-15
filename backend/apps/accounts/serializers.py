@@ -1,4 +1,5 @@
 import re
+import uuid
 from datetime import timedelta
 from django.conf import settings
 from django.utils import timezone
@@ -824,12 +825,101 @@ class ConfirmPasswordChangeSerializer(serializers.Serializer):
         return attrs
 
 
+POI_CATEGORIES = {'gate', 'hostel', 'faculty', 'parking', 'landmark', 'terminal', 'safety', 'other'}
+POI_STATUSES = {'active', 'hidden', 'retired'}
+
+
+def _coerce_float(value, field_name):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        raise serializers.ValidationError({field_name: 'Must be a valid number.'})
+
+
+def normalize_map_pois(value):
+    if value in (None, ''):
+        return []
+    if not isinstance(value, list):
+        raise serializers.ValidationError('POIs must be a list.')
+
+    now = timezone.now().isoformat()
+    normalized = []
+    for index, item in enumerate(value):
+        if isinstance(item, str):
+            name = item.strip()
+            if not name:
+                continue
+            normalized.append({
+                'id': str(uuid.uuid4()),
+                'name': name[:120],
+                'category': 'landmark',
+                'lat': None,
+                'lng': None,
+                'status': 'active',
+                'icon': 'pin',
+                'priority': index + 1,
+                'created_at': now,
+                'updated_at': now,
+            })
+            continue
+
+        if not isinstance(item, dict):
+            raise serializers.ValidationError(f'POI at index {index} must be an object.')
+
+        name = str(item.get('name') or '').strip()
+        if not name:
+            raise serializers.ValidationError(f'POI at index {index} requires a name.')
+
+        lat = item.get('lat', item.get('latitude'))
+        lng = item.get('lng', item.get('longitude'))
+        if lat in ('', None) or lng in ('', None):
+            lat_value = None
+            lng_value = None
+        else:
+            lat_value = _coerce_float(lat, f'pois[{index}].lat')
+            lng_value = _coerce_float(lng, f'pois[{index}].lng')
+            if not (-90 <= lat_value <= 90):
+                raise serializers.ValidationError(f'POI "{name}" latitude must be between -90 and 90.')
+            if not (-180 <= lng_value <= 180):
+                raise serializers.ValidationError(f'POI "{name}" longitude must be between -180 and 180.')
+
+        category = str(item.get('category') or 'landmark').strip().lower()
+        status_value = str(item.get('status') or 'active').strip().lower()
+        if category not in POI_CATEGORIES:
+            raise serializers.ValidationError(f'POI "{name}" has an invalid category.')
+        if status_value not in POI_STATUSES:
+            raise serializers.ValidationError(f'POI "{name}" has an invalid status.')
+        try:
+            priority = int(item.get('priority') or index + 1)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError(f'POI "{name}" priority must be a whole number.')
+
+        normalized.append({
+            'id': str(item.get('id') or uuid.uuid4()),
+            'name': name[:120],
+            'category': category,
+            'lat': lat_value,
+            'lng': lng_value,
+            'status': status_value,
+            'icon': str(item.get('icon') or 'pin').strip()[:40],
+            'priority': priority,
+            'created_at': item.get('created_at') or now,
+            'updated_at': now,
+        })
+    return normalized
+
+
 class MapSettingsSerializer(serializers.ModelSerializer):
+    provider_readiness = serializers.SerializerMethodField()
+    routing_provider = serializers.SerializerMethodField()
+    active_route_graph = serializers.SerializerMethodField()
+    updated_by_name = serializers.SerializerMethodField()
+    change_reason = serializers.CharField(required=False, allow_blank=True, max_length=255)
+
     class Meta:
         model = MapSettings
         fields = [
             'active_provider',
-            'custom_style_json',
             'live_traffic_enabled',
             'demand_heatmaps_enabled',
             'driver_clustering_enabled',
@@ -841,6 +931,141 @@ class MapSettingsSerializer(serializers.ModelSerializer):
             'pois',
             'idle_driver_icon',
             'cluster_threshold_zoom',
+            'config_version',
+            'change_reason',
+            'updated_by_name',
+            'provider_readiness',
+            'routing_provider',
+            'active_route_graph',
             'updated_at',
         ]
-        read_only_fields = ['updated_at']
+        read_only_fields = [
+            'config_version',
+            'updated_by_name',
+            'provider_readiness',
+            'routing_provider',
+            'active_route_graph',
+            'updated_at',
+        ]
+
+    def get_provider_readiness(self, obj):
+        osrm_base_url = getattr(settings, 'OSRM_BASE_URL', '')
+        google_maps_key = getattr(settings, 'GOOGLE_MAPS_API_KEY', '')
+        mapbox_token = getattr(settings, 'MAPBOX_ACCESS_TOKEN', '')
+        return {
+            'google': {'configured': bool(google_maps_key), 'label': 'Google Maps API'},
+            'mapbox': {'configured': bool(mapbox_token), 'label': 'Mapbox GL'},
+            'osrm': {'configured': bool(osrm_base_url), 'label': 'OSRM Self-Hosted', 'base_url': osrm_base_url},
+        }
+
+    def get_routing_provider(self, obj):
+        try:
+            from apps.pricing.models import PlatformSettings
+            return PlatformSettings.load().distance_provider
+        except Exception:
+            return obj.active_provider
+
+    def get_active_route_graph(self, obj):
+        try:
+            from apps.pricing.models import RouteGraphVersion
+            graph = RouteGraphVersion.get_active()
+            if not graph:
+                return {'configured': False}
+            return {
+                'configured': True,
+                'id': str(graph.id),
+                'version_name': graph.version_name,
+                'published_at': graph.published_at,
+            }
+        except Exception:
+            return {'configured': False}
+
+    def get_updated_by_name(self, obj):
+        if not obj.updated_by_id:
+            return ''
+        return obj.updated_by.full_name or obj.updated_by.email
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data['pois'] = normalize_map_pois(data.get('pois') or [])
+        return data
+
+    def validate_refresh_interval_seconds(self, value):
+        allowed = {5, 15, 30, 60}
+        if value not in allowed:
+            raise serializers.ValidationError('Refresh interval must be one of 5, 15, 30, or 60 seconds.')
+        return value
+
+    def validate_cluster_threshold_zoom(self, value):
+        if not 8 <= value <= 20:
+            raise serializers.ValidationError('Cluster threshold zoom must be between 8 and 20.')
+        return value
+
+    def validate_geofence_buffer_meters(self, value):
+        if not 0 <= value <= 1000:
+            raise serializers.ValidationError('Geofence buffer must be between 0 and 1000 meters.')
+        return value
+
+    def validate_pois(self, value):
+        return normalize_map_pois(value)
+
+    def validate(self, attrs):
+        for field in ('prefer_main_roads_weight', 'avoid_pedestrian_weight', 'speed_limit_enforcement_weight'):
+            if field in attrs and not 0 <= attrs[field] <= 100:
+                raise serializers.ValidationError({field: 'Weight must be between 0 and 100.'})
+
+        critical_fields = {
+            'active_provider',
+            'live_traffic_enabled',
+            'demand_heatmaps_enabled',
+            'driver_clustering_enabled',
+            'refresh_interval_seconds',
+            'cluster_threshold_zoom',
+            'geofence_buffer_meters',
+            'prefer_main_roads_weight',
+            'avoid_pedestrian_weight',
+            'speed_limit_enforcement_weight',
+            'pois',
+        }
+        if self.instance and critical_fields.intersection(attrs):
+            reason = str(attrs.get('change_reason') or '').strip()
+            if len(reason) < 8:
+                raise serializers.ValidationError({'change_reason': 'Provide a change reason of at least 8 characters for map changes.'})
+        return attrs
+
+
+class PublicMapSettingsSerializer(serializers.ModelSerializer):
+    active_route_graph = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MapSettings
+        fields = [
+            'active_provider',
+            'live_traffic_enabled',
+            'demand_heatmaps_enabled',
+            'driver_clustering_enabled',
+            'refresh_interval_seconds',
+            'geofence_buffer_meters',
+            'pois',
+            'idle_driver_icon',
+            'cluster_threshold_zoom',
+            'config_version',
+            'active_route_graph',
+            'updated_at',
+        ]
+
+    def get_active_route_graph(self, obj):
+        try:
+            from apps.pricing.models import RouteGraphVersion
+            graph = RouteGraphVersion.get_active()
+            return {'configured': bool(graph), 'version_name': graph.version_name if graph else ''}
+        except Exception:
+            return {'configured': False, 'version_name': ''}
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data['pois'] = [
+            poi for poi in normalize_map_pois(data.get('pois') or [])
+            if poi.get('status') == 'active'
+        ]
+        return data

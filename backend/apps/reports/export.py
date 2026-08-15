@@ -38,13 +38,42 @@ def export_csv(headers: list[str], rows: list[list[Any]]) -> bytes:
 
 def export_xlsx(headers: list[str], rows: list[list[Any]], sheet_name: str = 'Report') -> bytes:
     from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 
     wb = Workbook()
     ws = wb.active
     ws.title = sheet_name[:31]
+    
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+    border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+    
     ws.append(headers)
-    for row in rows:
+    for col_idx, cell in enumerate(ws[1], 1):
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.border = border
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+
+    for r_idx, row in enumerate(rows, 2):
         ws.append([_safe_val(c) for c in row])
+        for c_idx, cell in enumerate(ws[r_idx], 1):
+            cell.border = border
+            if isinstance(cell.value, (int, float, Decimal)):
+                cell.alignment = Alignment(horizontal='right')
+                
+    for col in ws.columns:
+        max_length = 0
+        column = col[0].column_letter
+        for cell in col:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        adjusted_width = min(max_length + 2, 50)
+        ws.column_dimensions[column].width = adjusted_width
+
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -53,20 +82,47 @@ def export_xlsx(headers: list[str], rows: list[list[Any]], sheet_name: str = 'Re
 def export_pdf(title: str, headers: list[str], rows: list[list[Any]], meta: dict | None = None) -> bytes:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4, landscape
-    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), title=title)
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), title=title, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     styles = getSampleStyleSheet()
+    
+    title_style = ParagraphStyle(
+        'EnterpriseTitle',
+        parent=styles['Title'],
+        fontName='Helvetica-Bold',
+        fontSize=18,
+        spaceAfter=12,
+        textColor=colors.HexColor('#0f172a')
+    )
+    subtitle_style = ParagraphStyle(
+        'EnterpriseSubtitle',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=10,
+        textColor=colors.HexColor('#64748b')
+    )
+    
     story = [
-        Paragraph(title, styles['Title']),
+        Paragraph("<b>FUTmRide</b> | Enterprise Reporting", subtitle_style),
+        Spacer(1, 10),
+        Paragraph(title, title_style),
         Spacer(1, 8),
     ]
     if meta:
-        for k, v in meta.items():
-            story.append(Paragraph(f'<b>{k}:</b> {_safe_str_for_pdf(v)}', styles['Normal']))
-        story.append(Spacer(1, 12))
+        meta_data = [[Paragraph(f'<b>{k}:</b>', subtitle_style), Paragraph(_safe_str_for_pdf(v), subtitle_style)] for k, v in meta.items()]
+        if meta_data:
+            meta_table = Table(meta_data, colWidths=[120, 300])
+            meta_table.setStyle(TableStyle([
+                ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+            ]))
+            story.append(meta_table)
+            story.append(Spacer(1, 16))
 
     data = [headers] + [[_safe_str_for_pdf(c) for c in row] for row in rows[:500]]
     if len(rows) > 500:
@@ -74,18 +130,31 @@ def export_pdf(title: str, headers: list[str], rows: list[list[Any]], meta: dict
         data.append([f'(Truncated — {len(rows)} total rows)'] + [''] * (len(headers) - 1))
 
     table = Table(data, repeatRows=1)
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e293b')),
+    
+    table_style = TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0f172a')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('FONTSIZE', (0, 0), (-1, -1), 7),
-        ('GRID', (0, 0), (-1, -1), 0.25, colors.grey),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+        ('TOPPADDING', (0, 0), (-1, 0), 8),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
-    ]))
+    ])
+    
+    for col_idx, h in enumerate(headers):
+        if any(keyword in h.lower() for keyword in ('amount', 'fee', 'fare', 'price', 'total', 'commission', 'payout', 'ngn', 'value')):
+            table_style.add('ALIGN', (col_idx, 0), (col_idx, -1), 'RIGHT')
+
+    table.setStyle(table_style)
     story.append(table)
-    story.append(Spacer(1, 16))
+    story.append(Spacer(1, 20))
     story.append(Paragraph(
-        f'Generated {datetime.now().strftime("%Y-%m-%d %H:%M")} · LR-Ride Financial Reports · Confidential',
-        styles['Normal'],
+        f'Generated {datetime.now().strftime("%Y-%m-%d %H:%M")} · FUTmRide Enterprise System · Strictly Confidential',
+        ParagraphStyle('Footer', parent=styles['Normal'], fontName='Helvetica-Oblique', fontSize=8, textColor=colors.HexColor('#94a3b8'), alignment=TA_CENTER)
     ))
     doc.build(story)
     return buf.getvalue()

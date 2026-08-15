@@ -2,6 +2,15 @@ import { create } from 'zustand'
 
 export type DispatchTab = 'route_ops' | 'live_fleet'
 
+export type MapLayerConfig = {
+  live_traffic_enabled: boolean
+  demand_heatmaps_enabled: boolean
+  driver_clustering_enabled: boolean
+  refresh_interval_seconds: number
+  cluster_threshold_zoom: number
+  config_version?: number
+}
+
 export const useDispatchStore = create<{
   activeTab: DispatchTab
   setActiveTab: (tab: DispatchTab) => void
@@ -13,6 +22,8 @@ export const useDispatchStore = create<{
   setShowRoutes: (val: boolean | ((p: boolean) => boolean)) => void
   wsConnected: boolean
   setWsConnected: (val: boolean) => void
+  mapLayerConfig: MapLayerConfig
+  applyMapLayerConfig: (config: Partial<MapLayerConfig>) => void
   recenterTrigger: number
   triggerRecenter: () => void
 }>((set) => ({
@@ -26,6 +37,21 @@ export const useDispatchStore = create<{
   setShowRoutes: (val) => set((state) => ({ showRoutes: typeof val === 'function' ? val(state.showRoutes) : val })),
   wsConnected: false,
   setWsConnected: (val) => set({ wsConnected: val }),
+  mapLayerConfig: {
+    live_traffic_enabled: false,
+    demand_heatmaps_enabled: false,
+    driver_clustering_enabled: false,
+    refresh_interval_seconds: 15,
+    cluster_threshold_zoom: 14,
+  },
+  applyMapLayerConfig: (config) => set((state) => {
+    const next = { ...state.mapLayerConfig, ...config }
+    return {
+      mapLayerConfig: next,
+      showTraffic: next.live_traffic_enabled,
+      showHeat: next.demand_heatmaps_enabled,
+    }
+  }),
   recenterTrigger: 0,
   triggerRecenter: () => set((state) => ({ recenterTrigger: state.recenterTrigger + 1 })),
 }))

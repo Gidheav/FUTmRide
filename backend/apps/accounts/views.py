@@ -1,6 +1,7 @@
 import logging
 import secrets
 from django.conf import settings
+from django.core.cache import cache
 from django.db import models
 from django.utils import timezone
 from django.core import signing
@@ -51,6 +52,7 @@ from .serializers import (
     UserRegistrationSerializer,
     CampusSerializer,
     MapSettingsSerializer,
+    PublicMapSettingsSerializer,
 )
 from .services import OTPService, EmailOTPService, StudentSignupVerificationService
 from .system_health import get_system_health_report
@@ -1343,11 +1345,68 @@ class MapSettingsView(APIView):
     def get(self, request):
         settings_obj = MapSettings.load()
         serializer = MapSettingsSerializer(settings_obj)
-        return Response(serializer.data)
+        data = serializer.data
+        data['health_checks'] = self._health_checks()
+        return Response(data)
 
     def patch(self, request):
         settings_obj = MapSettings.load()
+        before = MapSettingsSerializer(settings_obj).data
         serializer = MapSettingsSerializer(settings_obj, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
+        saved = serializer.save(updated_by=request.user)
+        saved.config_version = (saved.config_version or 0) + 1
+        saved.save(update_fields=['config_version'])
+        cache.delete('public_map_settings')
+
+        after = MapSettingsSerializer(saved).data
+        changed_fields = [
+            field for field in serializer.validated_data.keys()
+            if before.get(field) != after.get(field)
+        ]
+        log_audit(
+            request,
+            'map_config_update',
+            target_type='map_settings',
+            target_id=str(saved.id),
+            metadata={
+                'changed_fields': changed_fields,
+                'change_reason': saved.change_reason,
+                'config_version': saved.config_version,
+            },
+        )
+        data = after
+        data['health_checks'] = self._health_checks()
+        return Response(data)
+
+    def _health_checks(self):
+        try:
+            from apps.pricing.models import RouteGraphVersion
+            route_graph_ready = bool(RouteGraphVersion.get_active())
+        except Exception:
+            route_graph_ready = False
+        try:
+            cache.set('map_settings_health_probe', 'ok', timeout=10)
+            redis_ready = cache.get('map_settings_health_probe') == 'ok'
+        except Exception:
+            redis_ready = False
+        return {
+            'google_directions': {'status': 'configured' if getattr(settings, 'GOOGLE_MAPS_API_KEY', '') else 'unconfigured'},
+            'osrm': {'status': 'configured' if getattr(settings, 'OSRM_BASE_URL', '') else 'unconfigured'},
+            'route_graph': {'status': 'configured' if route_graph_ready else 'unconfigured'},
+            'websocket_location_feed': {'status': 'configured'},
+            'redis_driver_location_cache': {'status': 'configured' if redis_ready else 'unavailable'},
+        }
+
+
+class PublicMapSettingsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        cached = cache.get('public_map_settings')
+        if cached:
+            return Response(cached)
+        settings_obj = MapSettings.load()
+        data = PublicMapSettingsSerializer(settings_obj).data
+        cache.set('public_map_settings', data, timeout=60)
+        return Response(data)

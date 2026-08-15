@@ -28,12 +28,37 @@ class CampusRouter:
 
     def __init__(self, vehicle_type: str = None):
         self.vehicle_type = vehicle_type
+        self.map_settings = self._load_map_settings()
         self.graph_version = RouteGraphVersion.get_active()
         self.nodes = {}  # index -> (lat, lng)
         self.node_to_idx = {}  # (lat, lng) -> index
-        self.edges = {}  # u -> list of (v, weight_km, lane_id)
+        self.edges = {}  # u -> list of (v, cost_km, lane_id, physical_km)
         self.lanes_cache = {}
         self._build_graph()
+
+    def _load_map_settings(self):
+        try:
+            from apps.accounts.models import MapSettings
+            return MapSettings.load()
+        except Exception:
+            return None
+
+    def _lane_cost_multiplier(self, lane: RouteLane) -> float:
+        if not self.map_settings:
+            return 1.0
+        main_weight = max(0, min(100, getattr(self.map_settings, 'prefer_main_roads_weight', 85))) / 100
+        pedestrian_weight = max(0, min(100, getattr(self.map_settings, 'avoid_pedestrian_weight', 95))) / 100
+        speed_weight = max(0, min(100, getattr(self.map_settings, 'speed_limit_enforcement_weight', 50))) / 100
+        label = f'{lane.name or ""} {lane.priority or ""}'.lower()
+
+        multiplier = 1.0
+        if 'main' in label or lane.priority == 'main':
+            multiplier -= 0.25 * main_weight
+        if any(token in label for token in ('pedestrian', 'walkway', 'footpath')):
+            multiplier += 2.0 * pedestrian_weight
+        if any(token in label for token in ('slow', 'speed_limit', 'speed limit')):
+            multiplier += 0.5 * speed_weight
+        return max(0.25, multiplier)
 
     def _get_node_idx(self, lat: float, lng: float) -> int:
         coord = (round(float(lat), 6), round(float(lng), 6))
@@ -75,9 +100,10 @@ class CampusRouter:
                 # Approximate distance for this specific segment
                 dist = _haversine_distance(lat1, lng1, lat2, lng2)
                 
-                self.edges[u].append((v, dist, str(lane.id)))
+                cost = dist * self._lane_cost_multiplier(lane)
+                self.edges[u].append((v, cost, str(lane.id), dist))
                 if lane.direction == RouteLane.Direction.TWO_WAY:
-                    self.edges[v].append((u, dist, str(lane.id)))
+                    self.edges[v].append((u, cost, str(lane.id), dist))
 
     def _project_to_segment(
         self,
@@ -162,13 +188,13 @@ class CampusRouter:
         edges.setdefault(virtual_idx, [])
 
         if is_start:
-            edges[virtual_idx].append((to_node, snap_km + to_to_km, lane_id))
+            edges[virtual_idx].append((to_node, snap_km + to_to_km, lane_id, snap_km + to_to_km))
             if lane.direction == RouteLane.Direction.TWO_WAY:
-                edges[virtual_idx].append((from_node, snap_km + to_from_km, lane_id))
+                edges[virtual_idx].append((from_node, snap_km + to_from_km, lane_id, snap_km + to_from_km))
         else:
-            edges.setdefault(from_node, []).append((virtual_idx, to_from_km + snap_km, lane_id))
+            edges.setdefault(from_node, []).append((virtual_idx, to_from_km + snap_km, lane_id, to_from_km + snap_km))
             if lane.direction == RouteLane.Direction.TWO_WAY:
-                edges.setdefault(to_node, []).append((virtual_idx, to_to_km + snap_km, lane_id))
+                edges.setdefault(to_node, []).append((virtual_idx, to_to_km + snap_km, lane_id, to_to_km + snap_km))
 
         nodes[virtual_idx] = projected
 
@@ -213,12 +239,12 @@ class CampusRouter:
             if current_dist > distances[u]:
                 continue
 
-            for v, weight, lane_id in edges.get(u, []):
+            for v, weight, lane_id, physical_km in edges.get(u, []):
                 distance = current_dist + weight
 
                 if distance < distances[v]:
                     distances[v] = distance
-                    previous[v] = (u, lane_id)
+                    previous[v] = (u, lane_id, physical_km)
                     heapq.heappush(pq, (distance, v))
 
         if distances[end_node] == float('inf'):
@@ -227,14 +253,16 @@ class CampusRouter:
         # Reconstruct path
         path_nodes = []
         path_lanes = set()
+        physical_segments = []
         curr = end_node
         
         while curr is not None:
             path_nodes.append(curr)
             prev_info = previous[curr]
             if prev_info:
-                curr, lane_id = prev_info
+                curr, lane_id, physical_km = prev_info
                 path_lanes.add(lane_id)
+                physical_segments.append(physical_km)
             else:
                 curr = None
                 
@@ -245,7 +273,7 @@ class CampusRouter:
             lat, lng = nodes[idx]
             geometry.append({'latitude': lat, 'longitude': lng})
 
-        total_distance = distances[end_node]
+        total_distance = sum(physical_segments)
 
         return {
             'distance_km': round(total_distance, 3),
@@ -258,5 +286,11 @@ class CampusRouter:
                 'snap_method': 'nearest_lane_segment',
                 'snap_pickup_km': round(snap_pickup, 3),
                 'snap_dropoff_km': round(snap_dropoff, 3),
+                'route_cost_km': round(distances[end_node], 3),
+                'routing_weights': {
+                    'prefer_main_roads': getattr(self.map_settings, 'prefer_main_roads_weight', None),
+                    'avoid_pedestrian_walkways': getattr(self.map_settings, 'avoid_pedestrian_weight', None),
+                    'speed_limit_enforcement': getattr(self.map_settings, 'speed_limit_enforcement_weight', None),
+                },
             }
         }

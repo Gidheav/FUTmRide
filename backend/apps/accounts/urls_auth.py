@@ -12,7 +12,7 @@ from .views import (
     PinResetRequestOTPView, PinResetConfirmView,
     TwoFactorStartView, TwoFactorConfirmView, TwoFactorDisableView,
     TwoFactorChallengeRequestView, TwoFactorChallengeVerifyView,
-    MapSettingsView,
+    MapSettingsView, PublicMapSettingsView,
 )
 
 urlpatterns = [
@@ -45,4 +45,5 @@ urlpatterns = [
     path('settings/integrations/config/', IntegrationConfigView.as_view(), name='auth-integrations-config'),
     path('settings/system-health/', SystemHealthStatusView.as_view(), name='auth-system-health-status'),
     path('settings/map/', MapSettingsView.as_view(), name='auth-settings-map'),
+    path('settings/map/public/', PublicMapSettingsView.as_view(), name='auth-settings-map-public'),
 ]

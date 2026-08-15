@@ -561,10 +561,6 @@ class MapSettings(models.Model):
     
     # Map Provider
     active_provider = models.CharField(max_length=20, choices=MapProvider.choices, default=MapProvider.GOOGLE)
-    custom_style_json = models.TextField(
-        default='[\n  {\n    "featureType": "landscape.man_made",\n    "elementType": "geometry.fill",\n    "stylers": [{"color": "#f9f9f9"}]\n  },\n  {\n    "featureType": "poi.business",\n    "stylers": [{"visibility": "off"}]\n  }\n]', 
-        blank=True
-    )
     
     # Real-time Layers
     live_traffic_enabled = models.BooleanField(default=True)
@@ -588,6 +584,13 @@ class MapSettings(models.Model):
     # Visual Marker Customization
     idle_driver_icon = models.CharField(max_length=50, default='Standard Car (Green)')
     cluster_threshold_zoom = models.IntegerField(default=14)
+
+    # Governance
+    config_version = models.PositiveIntegerField(default=1)
+    change_reason = models.CharField(max_length=255, blank=True)
+    updated_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='map_setting_updates',
+    )
     
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -617,6 +620,7 @@ class AuditLog(models.Model):
         WALLET_DEBIT = 'wallet_debit', 'Wallet Debit'
         PAYMENT_WEBHOOK = 'payment_webhook', 'Payment Webhook'
         INTEGRATION_UPDATE = 'integration_update', 'Integration Update'
+        MAP_CONFIG_UPDATE = 'map_config_update', 'Map Config Update'
         USER_UPDATE = 'user_update', 'User Update'
         OTHER = 'other', 'Other'
 

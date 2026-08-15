@@ -210,7 +210,8 @@ export const ReportsTab = memo(({
       setRuns((prev) => [run, ...prev.filter((r) => r.id !== run.id)]);
       setPanel('queue');
       if (run.status === 'success' && run.has_file) {
-        await apiService.downloadReportRun(run.id);
+        const ext = format === 'xlsx' ? 'xlsx' : format === 'pdf' ? 'pdf' : format === 'zip' ? 'zip' : 'csv';
+        await apiService.downloadReportRun(run.id, `${run.report_key}_${run.period.toLowerCase()}.${ext}`);
       }
     } catch {
       /* silent */

@@ -229,3 +229,14 @@ a:hover {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--gray-400);
 }
+
+/* Hide Google Maps branding */
+.gmnoprint a, .gmnoprint span, .gm-style-cc {
+  display: none !important;
+}
+.gmnoprint div {
+  background: none !important;
+}
+a[href^="https://maps.google.com/maps"], a[href^="http://maps.google.com/maps"] {
+  display: none !important;
+}

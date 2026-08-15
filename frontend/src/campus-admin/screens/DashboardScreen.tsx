@@ -175,12 +175,7 @@ function Toggle({ active, onToggle, color }: { active: boolean; onToggle: () => 
 const MAP_CENTER = { lat: 9.6139, lng: 6.5569 } // Minna city operating area
 const DEFAULT_ZOOM = 12
 const ROUTE_STOP_RADIUS_METERS = 150
-const MINNA_BOUNDS = {
-  north: 9.78,
-  south: 9.42,
-  east: 6.78,
-  west: 6.30,
-}
+
 const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
   commission_rate: 0.15,
   distance_provider: 'osrm',
@@ -1428,12 +1423,7 @@ export default function DashboardPage() {
                     clickableIcons: false,
                     gestureHandling: 'greedy',
                     backgroundColor: mode === 'dark' ? '#0f1117' : '#ffffff',
-                    minZoom: 11,
-                    maxZoom: 19,
-                    restriction: {
-                      latLngBounds: MINNA_BOUNDS,
-                      strictBounds: true,
-                    },
+
                     styles: mode === 'dark' ? [
                       { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
                       { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },

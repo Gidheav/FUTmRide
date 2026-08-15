@@ -80,6 +80,10 @@ type DispatchKpi = {
   avg_dispatch_minutes: number | null
 }
 
+type FleetMapMarker =
+  | { kind: 'driver'; driver: FleetDriver }
+  | { kind: 'cluster'; id: string; latitude: number; longitude: number; count: number }
+
 const statusOptions = ['all', 'open', 'full', 'departed', 'cancelled']
 
 const toNumber = (value: unknown) => {
@@ -105,7 +109,8 @@ function LiveFleetPanel() {
   const [fleetFilter, setFleetFilter] = useState<'all' | 'idle' | 'on_trip'>('all')
 
   const { mode } = useCampusThemeStore()
-  const { showTraffic, showHeat, showRoutes, setWsConnected, recenterTrigger } = useDispatchStore()
+  const { showTraffic, showHeat, showRoutes, setWsConnected, recenterTrigger, mapLayerConfig, applyMapLayerConfig } = useDispatchStore()
+  const [mapZoom, setMapZoom] = useState(DEFAULT_ZOOM)
 
   const mapRef = useRef<google.maps.Map | null>(null)
   const trafficLayerRef = useRef<google.maps.TrafficLayer | null>(null)
@@ -118,6 +123,20 @@ function LiveFleetPanel() {
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? '',
     libraries: ['drawing', 'geometry', 'places'],
   })
+
+  useEffect(() => {
+    let cancelled = false
+    api.get('/auth/settings/map/public/')
+      .then((res) => {
+        if (!cancelled) applyMapLayerConfig(res.data)
+      })
+      .catch(() => {
+        if (!cancelled) applyMapLayerConfig({})
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [applyMapLayerConfig])
 
   useEffect(() => {
     const ws = createAuthenticatedWebSocket('/ws/campus-admin/rides/')
@@ -189,6 +208,7 @@ function LiveFleetPanel() {
       try {
         const data = JSON.parse(event.data)
         if (data.type === 'initial_positions') {
+          if (data.map_config) applyMapLayerConfig(data.map_config)
           const next: Record<string, FleetDriver> = {}
           for (const driver of data.drivers || []) {
             if (driver?.driver_id) {
@@ -208,7 +228,7 @@ function LiveFleetPanel() {
     return () => {
       ws.close()
     }
-  }, [])
+  }, [applyMapLayerConfig])
 
   useEffect(() => {
     setWsConnected(rideWsConnected || fleetWsConnected || incidentWsConnected)
@@ -233,13 +253,13 @@ function LiveFleetPanel() {
     }
 
     void loadTelemetry()
-    timer = setInterval(loadTelemetry, 60000)
+    timer = setInterval(loadTelemetry, Math.max(5, mapLayerConfig.refresh_interval_seconds || 15) * 1000)
 
     return () => {
       isActive = false
       if (timer) clearInterval(timer)
     }
-  }, [])
+  }, [mapLayerConfig.refresh_interval_seconds])
 
   const selectedRide = useMemo(
     () => activeGarageRides.find((ride) => ride.id === selectedRideId) || null,
@@ -349,6 +369,47 @@ function LiveFleetPanel() {
     if (fleetFilter === 'on_trip') return onTripDrivers
     return onlineDrivers
   }, [fleetFilter, idleDrivers, onTripDrivers, onlineDrivers])
+  const activeDriverId = selectedDriverId || selectedRideDriverId
+
+  const fleetMapMarkers = useMemo<FleetMapMarker[]>(() => {
+    if (!mapLayerConfig.driver_clustering_enabled || mapZoom >= mapLayerConfig.cluster_threshold_zoom) {
+      return filteredFleet.map((driver) => ({ kind: 'driver', driver } as FleetMapMarker))
+    }
+
+    const cells: Record<string, { lat: number; lng: number; count: number; drivers: FleetDriver[] }> = {}
+    const passthrough: FleetMapMarker[] = []
+    for (const driver of filteredFleet) {
+      if (driver.is_on_trip || driver.driver_id === activeDriverId) {
+        passthrough.push({ kind: 'driver', driver })
+        continue
+      }
+      const cellLat = Math.round(driver.latitude * 250) / 250
+      const cellLng = Math.round(driver.longitude * 250) / 250
+      const key = `${cellLat}:${cellLng}`
+      const cell = cells[key] || { lat: 0, lng: 0, count: 0, drivers: [] }
+      cell.lat += driver.latitude
+      cell.lng += driver.longitude
+      cell.count += 1
+      cell.drivers.push(driver)
+      cells[key] = cell
+    }
+
+    const clusters: FleetMapMarker[] = []
+    Object.entries(cells).forEach(([id, cell]) => {
+      if (cell.count === 1) {
+        clusters.push({ kind: 'driver', driver: cell.drivers[0] })
+      } else {
+        clusters.push({
+          kind: 'cluster',
+          id,
+          latitude: cell.lat / cell.count,
+          longitude: cell.lng / cell.count,
+          count: cell.count,
+        })
+      }
+    })
+    return [...passthrough, ...clusters]
+  }, [activeDriverId, filteredFleet, mapLayerConfig.cluster_threshold_zoom, mapLayerConfig.driver_clustering_enabled, mapZoom])
 
   const incidentRides = useMemo(() => {
     const now = Date.now()
@@ -380,7 +441,6 @@ function LiveFleetPanel() {
       .slice(0, 50)
   }, [mergedIncidents])
 
-  const activeDriverId = selectedDriverId || selectedRideDriverId
   const activeDriver = activeDriverId ? fleetDrivers[activeDriverId] : null
 
   const handleRecenter = useCallback(() => {
@@ -480,6 +540,7 @@ function LiveFleetPanel() {
               center={MAP_CENTER}
               zoom={DEFAULT_ZOOM}
               onLoad={(map) => { mapRef.current = map }}
+              onZoomChanged={() => setMapZoom(mapRef.current?.getZoom() ?? DEFAULT_ZOOM)}
               options={{
                 disableDefaultUI: true,
                 zoomControl: true,
@@ -507,7 +568,25 @@ function LiveFleetPanel() {
                 ] : [],
               }}
             >
-              {filteredFleet.slice(0, 500).map((driver) => {
+              {fleetMapMarkers.slice(0, 500).map((marker) => {
+                if (marker.kind === 'cluster') {
+                  return (
+                    <Marker
+                      key={`cluster-${marker.id}`}
+                      position={{ lat: marker.latitude, lng: marker.longitude }}
+                      label={{ text: String(marker.count), color: '#fff', fontSize: '11px', fontWeight: '800' }}
+                      icon={{
+                        path: google.maps.SymbolPath.CIRCLE,
+                        scale: 14,
+                        fillColor: T.heatTeal,
+                        fillOpacity: 0.88,
+                        strokeColor: '#0f172a',
+                        strokeWeight: 2,
+                      }}
+                    />
+                  )
+                }
+                const driver = marker.driver
                 const isFocused = driver.driver_id === activeDriverId
                 const color = driver.is_on_trip ? T.accent : T.heatTeal
                 return (
