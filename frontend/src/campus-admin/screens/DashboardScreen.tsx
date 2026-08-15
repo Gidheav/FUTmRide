@@ -254,6 +254,20 @@ export default function DashboardPage() {
   const [pricingSettings, setPricingSettings] = useState<PlatformSettings>(DEFAULT_PLATFORM_SETTINGS)
   const [liveFareConfigs, setLiveFareConfigs] = useState<Record<string, FareConfig>>({})
   const [isCreatingRide, setIsCreatingRide] = useState(false)
+  const [mapTypeId, setMapTypeId] = useState<'roadmap' | 'satellite'>('roadmap')
+
+  useEffect(() => {
+    let mounted = true
+    apiService.get<any>('auth/settings/map/')
+      .then((data) => {
+        if (!mounted) return
+        if (data?.default_map_type) {
+          setMapTypeId(data.default_map_type)
+        }
+      })
+      .catch(() => {})
+    return () => { mounted = false }
+  }, [])
 
   useEffect(() => {
     let mounted = true
@@ -1397,6 +1411,15 @@ export default function DashboardPage() {
                 </button>
               ))}
               <div style={s.toolDivider} />
+              <select
+                value={mapTypeId}
+                onChange={e => setMapTypeId(e.target.value as any)}
+                style={{ ...s.toolBtn, width: 'auto', padding: '0 8px', fontSize: 11, cursor: 'pointer', appearance: 'auto', background: 'transparent', border: `1px solid ${T.border}`, borderRadius: 4 }}
+              >
+                <option value="roadmap" style={{ color: '#000' }}>Roadmap</option>
+                <option value="satellite" style={{ color: '#000' }}>Satellite</option>
+              </select>
+              <div style={s.toolDivider} />
               <button style={s.filterBtn} onClick={handleClear} title={activeTool ? `Clear ${activeTool} work` : 'Clear all'}>
                 <Trash2 size={13} /> Clear{activeTool ? ` ${activeTool}` : ''}
               </button>
@@ -1415,6 +1438,7 @@ export default function DashboardPage() {
                   onLoad={onMapLoad}
                   zoom={DEFAULT_ZOOM}
                   onClick={handleMapClick}
+                  mapTypeId={mapTypeId}
                   options={{
                     disableDefaultUI: true,
                     draggable: !activeTool || activeTool === 'search' || activeTool === 'measure',

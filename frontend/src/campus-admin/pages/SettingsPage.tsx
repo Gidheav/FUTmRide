@@ -732,6 +732,28 @@ function MapGisSettingsReplica() {
               </div>
             ))}
           </div>
+
+          <div style={{ marginTop: 24, paddingTop: 16, borderTop: `1px solid ${T.border}` }}>
+            <h4 style={{ fontSize: 13, fontWeight: 700, color: T.textPrimary, marginBottom: 12 }}>Default Map View</h4>
+            <div style={{ display: 'flex', gap: 12 }}>
+              {(['roadmap', 'satellite'] as const).map((type) => {
+                const active = (settings.default_map_type || 'roadmap') === type
+                return (
+                  <button
+                    key={type}
+                    onClick={() => handleUpdate({ default_map_type: type })}
+                    style={{ flex: 1, textAlign: 'left', border: active ? `2px solid ${T.accent}` : `1px solid ${T.borderLight}`, background: active ? `${T.accent}0d` : T.bgCard, borderRadius: 8, padding: 12, cursor: 'pointer', position: 'relative' }}
+                  >
+                    {active && <CheckCircle size={16} color={T.accent} fill={`${T.accent}33`} style={{ position: 'absolute', top: 12, right: 12 }} />}
+                    <h5 style={{ fontSize: 12, fontWeight: 800, color: T.textPrimary, margin: '0 0 4px 0', textTransform: 'capitalize' }}>{type === 'roadmap' ? 'Default (Roadmap)' : 'Satellite'}</h5>
+                    <p style={{ fontSize: 11, color: T.textSecondary, margin: 0 }}>
+                      {type === 'roadmap' ? 'Standard 2D map view' : 'Real building imagery'}
+                    </p>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
         </section>
 
         <section style={{ ...panelStyle, gridColumn: 'span 4' }}>

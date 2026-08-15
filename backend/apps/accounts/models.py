@@ -557,10 +557,15 @@ class MapSettings(models.Model):
         MAPBOX = 'mapbox', 'Mapbox GL'
         OSRM = 'osrm', 'OSRM Self-Hosted'
 
+    class MapType(models.TextChoices):
+        ROADMAP = 'roadmap', 'Roadmap (Default)'
+        SATELLITE = 'satellite', 'Satellite'
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
     # Map Provider
     active_provider = models.CharField(max_length=20, choices=MapProvider.choices, default=MapProvider.GOOGLE)
+    default_map_type = models.CharField(max_length=20, choices=MapType.choices, default=MapType.ROADMAP)
     
     # Real-time Layers
     live_traffic_enabled = models.BooleanField(default=True)

@@ -52,10 +52,10 @@ from .serializers import (
     UserRegistrationSerializer,
     CampusSerializer,
     MapSettingsSerializer,
-    PublicMapSettingsSerializer,
 )
 from .services import OTPService, EmailOTPService, StudentSignupVerificationService
 from .system_health import get_system_health_report
+from .map_config import get_cached_public_map_settings, invalidate_public_map_settings
 from apps.pricing.models import PlatformSettings
 
 logger = logging.getLogger('apps.accounts')
@@ -1357,7 +1357,7 @@ class MapSettingsView(APIView):
         saved = serializer.save(updated_by=request.user)
         saved.config_version = (saved.config_version or 0) + 1
         saved.save(update_fields=['config_version'])
-        cache.delete('public_map_settings')
+        invalidate_public_map_settings()
 
         after = MapSettingsSerializer(saved).data
         changed_fields = [
@@ -1403,10 +1403,4 @@ class PublicMapSettingsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        cached = cache.get('public_map_settings')
-        if cached:
-            return Response(cached)
-        settings_obj = MapSettings.load()
-        data = PublicMapSettingsSerializer(settings_obj).data
-        cache.set('public_map_settings', data, timeout=60)
-        return Response(data)
+        return Response(get_cached_public_map_settings())

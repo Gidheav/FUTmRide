@@ -201,6 +201,48 @@ class AuthenticationTestCase(TestCase):
         }, format='json')
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_login_nonexistent_user_rejected(self):
+        res = self.client.post(self.login_url, {
+            'email': 'ghost.m9999999@st.futminna.edu.ng',
+            'password': 'SecurePass123!',
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_authenticated_me_endpoint(self):
+        login_res = self.client.post(self.login_url, {
+            'email': 'aisha.m2302417@st.futminna.edu.ng',
+            'password': 'SecurePass123!',
+        }, format='json')
+        token = login_res.data['access']
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+        res = self.client.get(reverse('user-me'))
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['phone_number'], '+2348011111111')
+
+    def test_unauthenticated_me_rejected(self):
+        res = self.client.get(reverse('user-me'))
+        self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_account_lockout_after_five_failures(self):
+        for _ in range(5):
+            self.client.post(self.login_url, {
+                'email': 'aisha.m2302417@st.futminna.edu.ng',
+                'password': 'WrongPassword!',
+            }, format='json')
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.is_locked)
+
+    def test_logout_blacklists_token(self):
+        login_res = self.client.post(self.login_url, {
+            'email': 'aisha.m2302417@st.futminna.edu.ng',
+            'password': 'SecurePass123!',
+        }, format='json')
+        token = login_res.data['access']
+        refresh = login_res.data['refresh']
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+        res = self.client.post(reverse('auth-logout'), {'refresh': refresh}, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
 
 class IntegrationSettingsTestCase(TestCase):
     def setUp(self):
@@ -296,48 +338,6 @@ class MapSettingsTestCase(TestCase):
         self.assertEqual(settings_obj.config_version, 2)
         self.assertEqual(settings_obj.updated_by, self.admin)
         self.assertTrue(AuditLog.objects.filter(action=AuditLog.Action.MAP_CONFIG_UPDATE).exists())
-
-    def test_login_nonexistent_user_rejected(self):
-        res = self.client.post(self.login_url, {
-            'email': 'ghost.m9999999@st.futminna.edu.ng',
-            'password': 'SecurePass123!',
-        }, format='json')
-        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_authenticated_me_endpoint(self):
-        login_res = self.client.post(self.login_url, {
-            'email': 'aisha.m2302417@st.futminna.edu.ng',
-            'password': 'SecurePass123!',
-        }, format='json')
-        token = login_res.data['access']
-        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
-        res = self.client.get(reverse('user-me'))
-        self.assertEqual(res.status_code, status.HTTP_200_OK)
-        self.assertEqual(res.data['phone_number'], '+2348011111111')
-
-    def test_unauthenticated_me_rejected(self):
-        res = self.client.get(reverse('user-me'))
-        self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
-
-    def test_account_lockout_after_five_failures(self):
-        for _ in range(5):
-            self.client.post(self.login_url, {
-                'email': 'aisha.m2302417@st.futminna.edu.ng',
-                'password': 'WrongPassword!',
-            }, format='json')
-        self.user.refresh_from_db()
-        self.assertTrue(self.user.is_locked)
-
-    def test_logout_blacklists_token(self):
-        login_res = self.client.post(self.login_url, {
-            'email': 'aisha.m2302417@st.futminna.edu.ng',
-            'password': 'SecurePass123!',
-        }, format='json')
-        token = login_res.data['access']
-        refresh = login_res.data['refresh']
-        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
-        res = self.client.post(reverse('auth-logout'), {'refresh': refresh}, format='json')
-        self.assertEqual(res.status_code, status.HTTP_200_OK)
 
 
 class SystemHealthStatusTestCase(TestCase):

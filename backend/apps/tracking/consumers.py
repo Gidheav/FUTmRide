@@ -306,17 +306,9 @@ class CampusAdminFleetConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def get_map_layer_config(self):
-        from apps.accounts.models import MapSettings
+        from apps.accounts.map_config import get_map_layer_config
 
-        settings_obj = MapSettings.load()
-        return {
-            'live_traffic_enabled': settings_obj.live_traffic_enabled,
-            'demand_heatmaps_enabled': settings_obj.demand_heatmaps_enabled,
-            'driver_clustering_enabled': settings_obj.driver_clustering_enabled,
-            'refresh_interval_seconds': settings_obj.refresh_interval_seconds,
-            'cluster_threshold_zoom': settings_obj.cluster_threshold_zoom,
-            'config_version': settings_obj.config_version,
-        }
+        return get_map_layer_config()
 
 
 class CampusAdminIncidentConsumer(AsyncWebsocketConsumer):

@@ -920,6 +920,7 @@ class MapSettingsSerializer(serializers.ModelSerializer):
         model = MapSettings
         fields = [
             'active_provider',
+            'default_map_type',
             'live_traffic_enabled',
             'demand_heatmaps_enabled',
             'driver_clustering_enabled',
@@ -1041,6 +1042,7 @@ class PublicMapSettingsSerializer(serializers.ModelSerializer):
         model = MapSettings
         fields = [
             'active_provider',
+            'default_map_type',
             'live_traffic_enabled',
             'demand_heatmaps_enabled',
             'driver_clustering_enabled',
