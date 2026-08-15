@@ -134,20 +134,26 @@ class ScheduledRideListView(generics.ListAPIView):
         qs = scope_admin_queryset(self.request.user, qs)
 
         status_filter = self.request.query_params.get('status')
-        if status_filter:
-            qs = qs.filter(status=status_filter)
-
         date_filter = self.request.query_params.get('date')
-        if date_filter:
-            qs = qs.filter(departure_date=date_filter)
-
         date_from = self.request.query_params.get('date_from')
-        if date_from:
-            qs = qs.filter(departure_date__gte=date_from)
-
         date_to = self.request.query_params.get('date_to')
-        if date_to:
-            qs = qs.filter(departure_date__lte=date_to)
+
+        if not any([status_filter, date_filter, date_from, date_to]):
+            import datetime
+            from django.utils import timezone
+            cutoff_date = timezone.now().date() - datetime.timedelta(days=1)
+            qs = qs.filter(departure_date__gte=cutoff_date).exclude(
+                status__in=[ScheduledRideStatus.COMPLETED, ScheduledRideStatus.CANCELLED]
+            )
+        else:
+            if status_filter:
+                qs = qs.filter(status=status_filter)
+            if date_filter:
+                qs = qs.filter(departure_date=date_filter)
+            if date_from:
+                qs = qs.filter(departure_date__gte=date_from)
+            if date_to:
+                qs = qs.filter(departure_date__lte=date_to)
 
         return qs.order_by('departure_date', 'window_start')
 
@@ -177,6 +183,17 @@ class DispatchedBusListView(generics.ListAPIView):
         ]
         
         qs = qs.filter(status__in=active_statuses)
+        
+        # Smart default: exclude old completed buses (older than 48 hours)
+        import datetime
+        from django.utils import timezone
+        from django.db.models import Q
+        cutoff_time = timezone.now() - datetime.timedelta(hours=48)
+        qs = qs.filter(
+            Q(departed_at__gte=cutoff_time) | 
+            Q(status__in=[BusAssignmentStatus.DEPARTED, BusAssignmentStatus.EN_ROUTE, BusAssignmentStatus.ARRIVED])
+        )
+
         return qs.order_by('-departed_at', 'ride__departure_date')
 
 

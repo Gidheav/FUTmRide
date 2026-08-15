@@ -8,6 +8,7 @@ import { routeEndpointLabel } from '../../../shared/routeDisplay'
 
 interface DispatchedBus {
   id: string
+  ride_id: string
   ride_reference: string
   origin_address: string
   origin_name?: string | null
@@ -56,12 +57,11 @@ export const DeparturesTab: React.FC<DeparturesTabProps> = ({ search }) => {
     fetchRides()
   }, [])
 
-  const handleAction = async (id: string, action: 'cancel' | 'depart' | 'complete') => {
-    if (!window.confirm(`Are you sure you want to mark this ride as ${action}?`)) return
+  const handleBusAction = async (busId: string, rideId: string, action: 'cancel' | 'complete') => {
+    if (!window.confirm(`Are you sure you want to mark this as ${action}?`)) return
     try {
-      if (action === 'cancel') await apiService.cancelScheduledRide(id)
-      if (action === 'depart') await apiService.departScheduledRide(id)
-      if (action === 'complete') await apiService.completeScheduledRide(id)
+      if (action === 'cancel') await apiService.cancelScheduledRide(rideId)
+      if (action === 'complete') await apiService.completeBus(rideId, busId)
       fetchRides()
     } catch (e: any) {
       alert(`Error: ${e.response?.data?.detail || e.message}`)
@@ -191,10 +191,10 @@ export const DeparturesTab: React.FC<DeparturesTabProps> = ({ search }) => {
                     <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                       {['departed', 'en_route'].includes(ride.status) && (
                         <>
-                          <button type="button" style={{ ...campusPanel.btnPrimary, background: T.accent, padding: '4px 8px', opacity: 0.5, cursor: 'not-allowed' }} title="Complete" onClick={() => {}}>
+                          <button type="button" style={{ ...campusPanel.btnPrimary, background: T.accent, padding: '4px 8px' }} title="Complete" onClick={() => handleBusAction(ride.id, ride.ride_id, 'complete')}>
                             <CheckCircle2 size={14} />
                           </button>
-                          <button type="button" style={{ ...campusPanel.btnSecondary, background: '#ef444415', color: '#ef4444', borderColor: '#ef444433', padding: '4px 8px', opacity: 0.5, cursor: 'not-allowed' }} title="Cancel/Failed" onClick={() => {}}>
+                          <button type="button" style={{ ...campusPanel.btnSecondary, background: '#ef444415', color: '#ef4444', borderColor: '#ef444433', padding: '4px 8px' }} title="Cancel/Failed" onClick={() => handleBusAction(ride.id, ride.ride_id, 'cancel')}>
                             <Trash2 size={14} />
                           </button>
                         </>

@@ -24,6 +24,7 @@ class RidesConfig(AppConfig):
             tasks = [
                 ('Cancel expired ride requests', 'rides.expire_unassigned_rides', every_minute),
                 ('Close expired scheduled rides', 'rides.auto_close_expired_scheduled_rides', every_minute),
+                ('Resolve stale scheduled rides', 'rides.auto_resolve_stale_scheduled_rides', every_hour),
                 ('Cleanup abandoned gateway transactions', 'payments.cleanup_abandoned_gateway_transactions', every_hour),
                 ('Cleanup expired OTPs', 'accounts.cleanup_expired_otps', every_day),
             ]

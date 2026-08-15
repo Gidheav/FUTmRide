@@ -812,6 +812,7 @@ class ScheduledRideJoinSerializer(serializers.Serializer):
         )
 
 class DispatchedBusListSerializer(serializers.ModelSerializer):
+    ride_id = serializers.UUIDField(source='ride.id', read_only=True)
     ride_reference = serializers.CharField(source='ride.reference', read_only=True)
     origin_address = serializers.CharField(source='ride.origin_address', read_only=True)
     origin_name = serializers.SerializerMethodField()
@@ -825,7 +826,7 @@ class DispatchedBusListSerializer(serializers.ModelSerializer):
     class Meta:
         model = ScheduledRideBusAssignment
         fields = [
-            'id', 'ride_reference', 'origin_address', 'origin_name',
+            'id', 'ride_id', 'ride_reference', 'origin_address', 'origin_name',
             'destination_address', 'destination_name',
             'scheduled_departure_date', 'scheduled_window_start',
             'driver_name', 'bus_label', 'status', 'departed_at', 'arrived_at', 

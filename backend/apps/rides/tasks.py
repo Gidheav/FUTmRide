@@ -228,3 +228,141 @@ def auto_confirm_pending_ride(self, ride_id: str):
             logger.info('auto_confirmed_pending_ride_success ref=%s', ride.reference)
         except Exception as e:
             logger.error('auto_confirm_pending_ride_error ref=%s err=%s', ride.reference, str(e))
+
+
+@shared_task(bind=True, name='rides.auto_resolve_stale_scheduled_rides')
+def auto_resolve_stale_scheduled_rides(self):
+    from django.utils import timezone
+    import datetime
+    from django.db import transaction
+    from apps.rides.scheduled_models import (
+        ScheduledRide, ScheduledRideStatus, 
+        ScheduledRideBusAssignment, BusAssignmentStatus,
+        ScheduledRidePassenger, PassengerStatus
+    )
+    from apps.payments.models import WalletTransaction
+    from apps.payments.services import WalletService
+
+    now = timezone.now()
+    processed_rides = 0
+    processed_buses = 0
+
+    def get_ride_end_time(ride):
+        if not ride.departure_date or not ride.window_end:
+            return None
+        return timezone.make_aware(
+            datetime.datetime.combine(ride.departure_date, ride.window_end),
+            timezone.get_current_timezone()
+        )
+
+    # Sweep 1: SCHEDULED rides past window_end + 6h
+    stale_scheduled = ScheduledRide.objects.filter(
+        status=ScheduledRideStatus.SCHEDULED,
+        departure_date__lte=now.date()
+    )
+    for ride in stale_scheduled:
+        end_time = get_ride_end_time(ride)
+        if end_time and (now - end_time).total_seconds() > 6 * 3600:
+            with transaction.atomic():
+                locked_ride = ScheduledRide.objects.select_for_update().get(id=ride.id)
+                if locked_ride.status == ScheduledRideStatus.SCHEDULED:
+                    locked_ride.transition_to(ScheduledRideStatus.CANCELLED)
+                    locked_ride.save(update_fields=['status'])
+                    
+                    # Refund active passengers
+                    for pax in locked_ride.passengers.filter(status=PassengerStatus.CONFIRMED):
+                        pax.status = PassengerStatus.CANCELLED
+                        pax.save(update_fields=['status'])
+                        if pax.amount_paid > 0:
+                            WalletService.credit(
+                                user=pax.student,
+                                amount=pax.amount_paid,
+                                source=WalletTransaction.Source.RIDE_REFUND,
+                                narration=f"Refund: Ride {locked_ride.reference} cancelled",
+                                ride_id=None,
+                                scheduled_ride_id=str(locked_ride.id)
+                            )
+                    processed_rides += 1
+
+    # Sweep 2: BOARDING rides past window_end + 4h with no departed bus
+    stale_boarding = ScheduledRide.objects.filter(
+        status=ScheduledRideStatus.BOARDING,
+        departure_date__lte=now.date()
+    )
+    for ride in stale_boarding:
+        end_time = get_ride_end_time(ride)
+        if end_time and (now - end_time).total_seconds() > 4 * 3600:
+            has_departed = ScheduledRideBusAssignment.objects.filter(
+                ride=ride,
+                status__in=[BusAssignmentStatus.DEPARTED, BusAssignmentStatus.EN_ROUTE, BusAssignmentStatus.ARRIVED, BusAssignmentStatus.COMPLETED]
+            ).exists()
+            if not has_departed:
+                with transaction.atomic():
+                    locked_ride = ScheduledRide.objects.select_for_update().get(id=ride.id)
+                    if locked_ride.status == ScheduledRideStatus.BOARDING:
+                        locked_ride.transition_to(ScheduledRideStatus.CANCELLED)
+                        locked_ride.save(update_fields=['status'])
+                        
+                        # Refund active passengers
+                        for pax in locked_ride.passengers.filter(status__in=[PassengerStatus.CONFIRMED, PassengerStatus.CHECKED_IN]):
+                            pax.status = PassengerStatus.CANCELLED
+                            pax.save(update_fields=['status'])
+                            if pax.amount_paid > 0:
+                                WalletService.credit(
+                                    user=pax.student,
+                                    amount=pax.amount_paid,
+                                    source=WalletTransaction.Source.RIDE_REFUND,
+                                    narration=f"Refund: Ride {locked_ride.reference} cancelled",
+                                    ride_id=None,
+                                    scheduled_ride_id=str(locked_ride.id)
+                                )
+                        processed_rides += 1
+
+    # Sweep 3: DEPARTED/EN_ROUTE buses past departed_at + 8h
+    cutoff_8h = now - datetime.timedelta(hours=8)
+    stale_en_route_buses = ScheduledRideBusAssignment.objects.filter(
+        status__in=[BusAssignmentStatus.DEPARTED, BusAssignmentStatus.EN_ROUTE],
+        departed_at__lte=cutoff_8h
+    )
+    for bus in stale_en_route_buses:
+        with transaction.atomic():
+            locked_bus = ScheduledRideBusAssignment.objects.select_for_update().get(id=bus.id)
+            if locked_bus.status in [BusAssignmentStatus.DEPARTED, BusAssignmentStatus.EN_ROUTE]:
+                locked_bus.transition_to(BusAssignmentStatus.COMPLETED)
+                locked_bus.save(update_fields=['status'])
+                processed_buses += 1
+
+    # Sweep 4: ARRIVED buses past arrived_at + 2h
+    cutoff_2h = now - datetime.timedelta(hours=2)
+    stale_arrived_buses = ScheduledRideBusAssignment.objects.filter(
+        status=BusAssignmentStatus.ARRIVED,
+        arrived_at__lte=cutoff_2h
+    )
+    for bus in stale_arrived_buses:
+        with transaction.atomic():
+            locked_bus = ScheduledRideBusAssignment.objects.select_for_update().get(id=bus.id)
+            if locked_bus.status == BusAssignmentStatus.ARRIVED:
+                locked_bus.transition_to(BusAssignmentStatus.COMPLETED)
+                locked_bus.save(update_fields=['status'])
+                processed_buses += 1
+
+    # Complete parent rides if all their buses are completed
+    # Find active rides where all buses are completed
+    active_rides = ScheduledRide.objects.filter(
+        status__in=[ScheduledRideStatus.SCHEDULED, ScheduledRideStatus.BOARDING, ScheduledRideStatus.DEPARTED]
+    ).exclude(buses__isnull=True)
+    
+    for ride in active_rides:
+        buses = ScheduledRideBusAssignment.objects.filter(ride=ride)
+        if buses.exists() and all(b.status == BusAssignmentStatus.COMPLETED for b in buses):
+            with transaction.atomic():
+                locked_ride = ScheduledRide.objects.select_for_update().get(id=ride.id)
+                if locked_ride.status in [ScheduledRideStatus.SCHEDULED, ScheduledRideStatus.BOARDING, ScheduledRideStatus.DEPARTED]:
+                    locked_ride.transition_to(ScheduledRideStatus.COMPLETED)
+                    locked_ride.save(update_fields=['status'])
+                    processed_rides += 1
+
+    if processed_rides > 0 or processed_buses > 0:
+        logger.info('auto_resolve_stale_scheduled_rides processed_rides=%d processed_buses=%d', processed_rides, processed_buses)
+
+    return {'processed_rides': processed_rides, 'processed_buses': processed_buses}
