@@ -254,7 +254,7 @@ export default function DashboardPage() {
   const [pricingSettings, setPricingSettings] = useState<PlatformSettings>(DEFAULT_PLATFORM_SETTINGS)
   const [liveFareConfigs, setLiveFareConfigs] = useState<Record<string, FareConfig>>({})
   const [isCreatingRide, setIsCreatingRide] = useState(false)
-  const [mapTypeId, setMapTypeId] = useState<'roadmap' | 'satellite'>('roadmap')
+  const [mapTypeId, setMapTypeId] = useState<'roadmap' | 'hybrid'>('roadmap')
 
   useEffect(() => {
     let mounted = true

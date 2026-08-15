@@ -322,7 +322,7 @@ class MapSettingsTestCase(TestCase):
         self.client.force_authenticate(user=self.admin)
         res = self.client.patch(self.url, {'geofence_buffer_meters': 75}, format='json')
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('change_reason', res.data)
+        self.assertIn('change_reason', res.data['error']['details'])
 
     def test_patch_updates_version_and_audit_log(self):
         self.client.force_authenticate(user=self.admin)

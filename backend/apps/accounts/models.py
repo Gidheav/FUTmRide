@@ -559,7 +559,7 @@ class MapSettings(models.Model):
 
     class MapType(models.TextChoices):
         ROADMAP = 'roadmap', 'Roadmap (Default)'
-        SATELLITE = 'satellite', 'Satellite'
+        HYBRID = 'hybrid', 'Satellite (with roads & labels)'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
