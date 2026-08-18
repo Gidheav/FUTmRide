@@ -91,24 +91,51 @@ class BusAssignmentListView(generics.ListAPIView):
 class BusAssignmentCreateView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
 
+    @transaction.atomic
     def post(self, request, ride_id):
         ride = _get_scoped_ride(request.user, ride_id)
-        serializer = BusAssignmentCreateSerializer(data=request.data, context={'ride': ride})
+
+        serializer = BusAssignmentCreateSerializer(
+            data=request.data, context={'ride': ride}
+        )
         serializer.is_valid(raise_exception=True)
-        bus = ScheduledRideBusAssignment.objects.create(ride=ride, **serializer.validated_data)
-        
+        data = serializer.validated_data
+
+        # ── Lock the ride row so concurrent requests can't both compute the
+        # same `order` value and race into the unique constraint ──────────────
+        ScheduledRide.objects.select_for_update().get(pk=ride.pk)
+
+        # Recompute a safe order inside the transaction (the serializer's
+        # pre-validate may have seen stale state if requests arrive together)
+        desired_order = data.get('order', 1)
+        if ScheduledRideBusAssignment.objects.filter(
+            ride=ride, order=desired_order
+        ).exists():
+            # That slot is taken — bump to the next free order number
+            max_order = (
+                ScheduledRideBusAssignment.objects
+                .filter(ride=ride)
+                .order_by('-order')
+                .values_list('order', flat=True)
+                .first()
+            ) or 0
+            data['order'] = max_order + 1
+
+        bus = ScheduledRideBusAssignment.objects.create(ride=ride, **data)
+
         # Mark driver interest as assigned if a driver was selected
         if bus.driver:
             ScheduledRideDriverInterest.objects.filter(
-                ride=ride, 
+                ride=ride,
                 driver=bus.driver,
-                status='interested'
+                status='interested',
             ).update(status='assigned')
-            
+
         return Response(
             BusAssignmentReadSerializer(bus).data,
             status=status.HTTP_201_CREATED,
         )
+
 
 
 class BusAssignmentUpdateView(APIView):

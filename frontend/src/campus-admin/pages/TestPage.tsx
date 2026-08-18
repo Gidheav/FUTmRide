@@ -116,9 +116,9 @@ export default function TestPage() {
   const queryArea = searchParams.get('area')
   const area = queryArea === 'rides' ? 'rides' : queryArea === 'map' ? 'map' : queryArea === 'calibration' ? 'calibration' : 'account'
   const validAccountSections = ['student', 'driver', 'admin']
-  const currentSection = searchParams.get('section')
-  const defaultSection = area === 'rides' ? 'create' : (area === 'map' || area === 'calibration') ? 'manage' : (currentSection && validAccountSections.includes(currentSection) ? currentSection : 'student')
-  const section = searchParams.get('section') || defaultSection
+  const initialSection = searchParams.get('section')
+  const defaultSection = area === 'rides' ? 'create' : (area === 'map' || area === 'calibration') ? 'manage' : (initialSection && validAccountSections.includes(initialSection) ? initialSection : 'student')
+  const section = initialSection || defaultSection
   const { mode } = useCampusThemeStore()
   const [counts, setCounts] = useState({
     student: '10',
@@ -407,7 +407,39 @@ export default function TestPage() {
         <div style={{ ...s.contentGrid, pointerEvents: 'auto' }}>
           <div style={s.contentCol}>
             
-            {area !== 'map' && (
+            {/* Main Area Navigation */}
+            <div style={premiumStyles.mainNav}>
+              <button 
+                style={premiumStyles.mainNavTab(area === 'account')} 
+                onClick={() => setArea('account')}
+              >
+                <Users size={16} />
+                <span>Account</span>
+              </button>
+              <button 
+                style={premiumStyles.mainNavTab(area === 'rides')} 
+                onClick={() => setArea('rides')}
+              >
+                <Bus size={16} />
+                <span>Rides</span>
+              </button>
+              <button 
+                style={premiumStyles.mainNavTab(area === 'map')} 
+                onClick={() => setArea('map')}
+              >
+                <MapPin size={16} />
+                <span>Map</span>
+              </button>
+              <button 
+                style={premiumStyles.mainNavTab(area === 'calibration')} 
+                onClick={() => setArea('calibration')}
+              >
+                <Settings size={16} />
+                <span>Calibration</span>
+              </button>
+            </div>
+            
+            {area !== 'map' && area !== 'calibration' && (
 
               <div style={s.stats}>
                 <Stat label="Campus" value={summary?.campus || 'Unavailable'} />
@@ -1577,6 +1609,32 @@ const s: Record<string, CSSProperties> = {
 
 // Premium Styles
 const premiumStyles: Record<string, CSSProperties> = {
+  // Main Navigation
+  mainNav: {
+    display: 'flex',
+    gap: 2,
+    background: T.bgInput,
+    padding: 4,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  mainNavTab: (active: boolean): CSSProperties => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '12px 20px',
+    fontSize: 13,
+    fontWeight: 600,
+    fontFamily: T.fontFamily,
+    cursor: 'pointer',
+    color: active ? T.textPrimary : T.textMuted,
+    background: active ? T.bgCard : 'transparent',
+    border: 'none',
+    borderRadius: 8,
+    transition: 'all 0.2s ease',
+    boxShadow: active ? `0 2px 8px rgba(168,85,247,0.15)` : 'none',
+  }),
+
   // Account Tabs
   accountTabs: {
     display: 'flex',
