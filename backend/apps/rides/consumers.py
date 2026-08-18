@@ -72,6 +72,11 @@ class CampusAdminRidesConsumer(AsyncWebsocketConsumer):
     async def disconnect(self, code):
         if hasattr(self, 'group_name'):
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
+        # Ensure the thread-pool connection used during connect() is released
+        from django.db import close_old_connections
+        close_old_connections()
+        logger.info('ws_campus_admin_disconnected user_id=%s code=%s',
+                    str(getattr(self, 'user', {}) and self.user.id), code)
 
     async def receive(self, text_data=None, bytes_data=None):
         """Handle messages from the client (e.g., ping/refresh requests)."""

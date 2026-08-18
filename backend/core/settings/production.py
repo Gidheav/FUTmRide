@@ -34,8 +34,40 @@ DATABASE_URL = env('DATABASE_URL', default=None)
 if not DATABASE_URL:
     raise ImproperlyConfigured('DATABASE_URL is required in production')
 
+# ── Supabase connection-pooler mode ──────────────────────────────────────
+# Supabase offers two pooler modes:
+#   Port 5432 → Session mode   (max 15 concurrent connections on free plan)
+#   Port 6543 → Transaction mode (effectively unlimited; connection released after each statement)
+#
+# We MUST use transaction mode (port 6543) because:
+#   • WebSocket consumers each hold a connection open
+#   • Multiple components may open WS simultaneously
+#   • Session mode gets exhausted at just 15 clients (root cause of EMAXCONNSESSION)
+#
+# CONN_MAX_AGE must be 0 with transaction mode — Django must not keep a
+# persistent connection because pgBouncer (the pooler) handles pooling.
+_db_config = env.db('DATABASE_URL')
+_db_host = _db_config.get('HOST', '')
+_db_port = str(_db_config.get('PORT', '5432'))
+
+# Rewrite port 5432 → 6543 (session → transaction mode) for Supabase pooler
+if _db_port == '5432' and 'pooler.supabase.com' in _db_host:
+    _db_config['PORT'] = 6543
+
 DATABASES = {
-    'default': env.db('DATABASE_URL'),
+    'default': {
+        **_db_config,
+        # Release connection back to pool immediately after each request/statement.
+        # Required for transaction-mode pooling. Set a small value (30) for
+        # non-WS workers to reduce overhead, but WS consumers should use 0.
+        'CONN_MAX_AGE': env.int('DB_CONN_MAX_AGE', default=0),
+        # Verify connection is alive before using it (avoids stale connection errors)
+        'CONN_HEALTH_CHECKS': True,
+        'OPTIONS': {
+            # Disable server-side cursors (not supported in transaction mode)
+            'cursor_factory': None,
+        },
+    }
 }
 
 # Redis Configuration (required in production)

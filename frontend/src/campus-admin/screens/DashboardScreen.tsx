@@ -684,21 +684,28 @@ export default function DashboardPage() {
     let pingInterval: ReturnType<typeof setInterval> | null = null
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null
     let isMounted = true
+    let reconnectDelay = 3000  // starts at 3s, backs off exponentially to 30s
 
     const connect = () => {
       if (!isMounted) return
+
+      // Clear any stale ping interval from a previous connection cycle
+      if (pingInterval) { clearInterval(pingInterval); pingInterval = null }
+
       setWsStatus('connecting')
       ws = createAuthenticatedWebSocket('/ws/campus-admin/rides/')
       if (!ws) {
         setWsStatus('disconnected')
-        // Retry in 5s if token was missing (user might still be logging in)
-        reconnectTimer = setTimeout(connect, 5000)
+        // Retry with backoff if token was missing (user might still be logging in)
+        reconnectTimer = setTimeout(connect, reconnectDelay)
+        reconnectDelay = Math.min(reconnectDelay * 2, 30_000)
         return
       }
 
       ws.onopen = () => {
         if (!isMounted) return
         setWsStatus('connected')
+        reconnectDelay = 3000  // reset backoff on successful connection
         console.log('[Dashboard WS] Connected')
       }
 
@@ -741,9 +748,10 @@ export default function DashboardPage() {
       ws.onclose = (ev) => {
         if (!isMounted) return
         setWsStatus('disconnected')
-        console.warn('[Dashboard WS] Closed', ev.code, ev.reason)
-        // Auto-reconnect after 3s (unless component unmounted)
-        reconnectTimer = setTimeout(connect, 3000)
+        console.warn('[Dashboard WS] Closed', ev.code, ev.reason, `— retrying in ${reconnectDelay / 1000}s`)
+        // Auto-reconnect with exponential backoff
+        reconnectTimer = setTimeout(connect, reconnectDelay)
+        reconnectDelay = Math.min(reconnectDelay * 2, 30_000)
       }
 
       ws.onerror = () => {

@@ -16,6 +16,23 @@ import {
   Map as MapIcon,
   Globe,
   MapPin,
+  Settings,
+  Database,
+  Zap,
+  Crown,
+  GraduationCap,
+  Car,
+  Layers,
+  Activity,
+  TrendingUp,
+  Clock,
+  Calendar,
+  Globe2,
+  CreditCard,
+  Shield,
+  Users2,
+  Wrench,
+  BarChart3,
 } from 'lucide-react'
 import { GoogleMap, useJsApiLoader, Marker, Circle } from '@react-google-maps/api'
 import apiService from '../../services/api.service'
@@ -98,7 +115,9 @@ export default function TestPage() {
   const queryClient = useQueryClient()
   const queryArea = searchParams.get('area')
   const area = queryArea === 'rides' ? 'rides' : queryArea === 'map' ? 'map' : queryArea === 'calibration' ? 'calibration' : 'account'
-  const defaultSection = area === 'rides' ? 'create' : (area === 'map' || area === 'calibration') ? 'manage' : 'student'
+  const validAccountSections = ['student', 'driver', 'admin']
+  const currentSection = searchParams.get('section')
+  const defaultSection = area === 'rides' ? 'create' : (area === 'map' || area === 'calibration') ? 'manage' : (currentSection && validAccountSections.includes(currentSection) ? currentSection : 'student')
   const section = searchParams.get('section') || defaultSection
   const { mode } = useCampusThemeStore()
   const [counts, setCounts] = useState({
@@ -212,7 +231,9 @@ export default function TestPage() {
   const setArea = (nextArea: 'account' | 'rides' | 'map' | 'calibration') => {
     const params = new URLSearchParams()
     params.set('area', nextArea)
-    params.set('section', nextArea === 'rides' ? 'create' : (nextArea === 'map' || nextArea === 'calibration') ? 'manage' : 'student')
+    const currentSection = searchParams.get('section')
+    const validAccountSections = ['student', 'driver', 'admin']
+    params.set('section', nextArea === 'rides' ? 'create' : (nextArea === 'map' || nextArea === 'calibration') ? 'manage' : (currentSection && validAccountSections.includes(currentSection) ? currentSection : 'student'))
     setSearchParams(params)
   }
 
@@ -728,211 +749,196 @@ export default function TestPage() {
                 </>
               ) : area === 'account' ? (
                 <>
-                  <div style={s.subTabs}>
-                    <button style={subTabStyle(section === 'student')} onClick={() => switchSection('student')}>Student</button>
-                    <button style={subTabStyle(section === 'driver')} onClick={() => switchSection('driver')}>Driver</button>
+                  <div style={premiumStyles.accountTabs}>
+                    <button 
+                      style={premiumStyles.accountTab(section === 'student')} 
+                      onClick={() => switchSection('student')}
+                    >
+                      <GraduationCap size={16} />
+                      <span>Students</span>
+                    </button>
+                    <button 
+                      style={premiumStyles.accountTab(section === 'driver')} 
+                      onClick={() => switchSection('driver')}
+                    >
+                      <ShieldCheck size={16} />
+                      <span>Drivers</span>
+                    </button>
+                    <button 
+                      style={premiumStyles.accountTab(section === 'admin')} 
+                      onClick={() => switchSection('admin')}
+                    >
+                      <UserCog size={16} />
+                      <span>Admins</span>
+                    </button>
                   </div>
+                  
                   {section === 'driver' ? (
-                    <ActionPanel
-                      icon={<ShieldCheck size={16} />}
-                      title="Drivers"
+                    <PremiumAccountPanel
+                      icon={<ShieldCheck size={24} />}
+                      title="Driver Management"
+                      description="Create and manage verified driver accounts for testing"
                       count={counts.driver}
                       setCount={(value) => setCounts((prev) => ({ ...prev, driver: value }))}
-                      primaryLabel="Create verified drivers"
-                      dangerLabel="Delete random drivers"
+                      primaryLabel="Create Verified Drivers"
+                      primaryIcon={<Car size={16} />}
+                      dangerLabel="Delete Random Drivers"
+                      dangerIcon={<Trash2 size={16} />}
                       onPrimary={() => runAction.mutate('createDrivers')}
                       onDanger={() => runAction.mutate('deleteDrivers')}
                       busy={busy}
+                      stats={[
+                        { label: 'Total Drivers', value: summary?.counts.drivers ?? 0, icon: <Users2 size={14} /> },
+                        { label: 'Active Status', value: 'Verified', icon: <Shield size={14} /> },
+                      ]}
+                    />
+                  ) : section === 'admin' ? (
+                    <PremiumAccountPanel
+                      icon={<UserCog size={24} />}
+                      title="Admin Management"
+                      description="Create and manage campus administrator accounts"
+                      count={counts.admin}
+                      setCount={(value) => setCounts((prev) => ({ ...prev, admin: value }))}
+                      primaryLabel="Create Admins"
+                      primaryIcon={<Crown size={16} />}
+                      dangerLabel="Delete Random Admins"
+                      dangerIcon={<Trash2 size={16} />}
+                      onPrimary={() => runAction.mutate('createAdmins')}
+                      onDanger={() => runAction.mutate('deleteAdmins')}
+                      busy={busy}
+                      stats={[
+                        { label: 'Total Admins', value: summary?.counts.admins ?? 0, icon: <Crown size={14} /> },
+                        { label: 'Campus Access', value: 'Full', icon: <Shield size={14} /> },
+                      ]}
                     />
                   ) : (
-                    <ActionPanel
-                      icon={<Users size={16} />}
-                      title="Students"
+                    <PremiumAccountPanel
+                      icon={<GraduationCap size={24} />}
+                      title="Student Management"
+                      description="Create and manage student accounts for ride testing"
                       count={counts.student}
                       setCount={(value) => setCounts((prev) => ({ ...prev, student: value }))}
-                      primaryLabel="Create students"
-                      dangerLabel="Delete random students"
+                      primaryLabel="Create Students"
+                      primaryIcon={<UserPlus size={16} />}
+                      dangerLabel="Delete Random Students"
+                      dangerIcon={<Trash2 size={16} />}
                       onPrimary={() => runAction.mutate('createStudents')}
                       onDanger={() => runAction.mutate('deleteStudents')}
                       busy={busy}
+                      stats={[
+                        { label: 'Total Students', value: summary?.counts.students ?? 0, icon: <Users2 size={14} /> },
+                        { label: 'Wallet Status', value: 'Active', icon: <CreditCard size={14} /> },
+                      ]}
                     />
                   )}
                 </>
               ) : (
                 <>
-                  <div style={s.subTabs}>
-                    <button style={subTabStyle(section === 'create')} onClick={() => switchSection('create')}>Scheduled</button>
-                    <button style={subTabStyle(section === 'on-demand')} onClick={() => switchSection('on-demand')}>On-Demand</button>
-                    <button style={subTabStyle(section === 'join')} onClick={() => switchSection('join')}>Join</button>
-                    <button style={subTabStyle(section === 'verify')} onClick={() => switchSection('verify')}>Verify</button>
+                  <div style={premiumStyles.rideTabs}>
+                    <button 
+                      style={premiumStyles.rideTab(section === 'create')} 
+                      onClick={() => switchSection('create')}
+                    >
+                      <Calendar size={16} />
+                      <span>Scheduled</span>
+                    </button>
+                    <button 
+                      style={premiumStyles.rideTab(section === 'on-demand')} 
+                      onClick={() => switchSection('on-demand')}
+                    >
+                      <Zap size={16} />
+                      <span>On-Demand</span>
+                    </button>
+                    <button 
+                      style={premiumStyles.rideTab(section === 'join')} 
+                      onClick={() => switchSection('join')}
+                    >
+                      <UserPlus size={16} />
+                      <span>Join</span>
+                    </button>
+                    <button 
+                      style={premiumStyles.rideTab(section === 'verify')} 
+                      onClick={() => switchSection('verify')}
+                    >
+                      <CheckCircle2 size={16} />
+                      <span>Verify</span>
+                    </button>
                   </div>
+                  
                   {section === 'on-demand' ? (
-                    <div style={campusPanel.cardBody}>
-                      <PanelTitle icon={<Bus size={16} />} title="On-Demand Requests" />
-                      <div style={s.formGrid}>
-                        <NumberField
-                          label="Create"
-                          value={counts.ondemandRides}
-                          onChange={(value) => setCounts((prev) => ({ ...prev, ondemandRides: value }))}
-                        />
-                        <NumberField
-                          label="Delete"
-                          value={counts.deleteOnDemand}
-                          onChange={(value) => setCounts((prev) => ({ ...prev, deleteOnDemand: value }))}
-                        />
-                      </div>
-                      <div style={s.buttonRow}>
-                        <button style={campusPanel.btnPrimary} onClick={() => runAction.mutate('createOnDemand')} disabled={busy}>
-                          {busy ? <Loader2 size={13} style={s.spin} /> : <Bus size={13} />}
-                          Create available requests
-                        </button>
-                        <button style={s.dangerButton} onClick={() => runAction.mutate('deleteOnDemand')} disabled={busy}>
-                          <Trash2 size={13} />
-                          Delete random requests
-                        </button>
-                        <button style={{ ...s.dangerButton, marginLeft: 'auto' }} onClick={() => runAction.mutate('flushOnDemand')} disabled={busy}>
-                          <RefreshCcw size={13} />
-                          Clear all on-demand
-                        </button>
-                      </div>
-                    </div>
+                    <PremiumRidePanel
+                      icon={<Zap size={24} />}
+                      title="On-Demand Ride Management"
+                      description="Create and manage instant ride requests for testing"
+                      primaryLabel="Create Available Requests"
+                      primaryIcon={<Bus size={16} />}
+                      dangerLabel="Delete Random Requests"
+                      dangerIcon={<Trash2 size={16} />}
+                      flushLabel="Clear All On-Demand"
+                      flushIcon={<RefreshCcw size={16} />}
+                      onCreate={() => runAction.mutate('createOnDemand')}
+                      onDelete={() => runAction.mutate('deleteOnDemand')}
+                      onFlush={() => runAction.mutate('flushOnDemand')}
+                      busy={busy}
+                      fields={[
+                        { label: 'Create Count', value: counts.ondemandRides, onChange: (value) => setCounts((prev) => ({ ...prev, ondemandRides: value })) },
+                        { label: 'Delete Count', value: counts.deleteOnDemand, onChange: (value) => setCounts((prev) => ({ ...prev, deleteOnDemand: value })) },
+                      ]}
+                      stats={[
+                        { label: 'Total Requests', value: summary?.counts.ondemand_rides ?? 0, icon: <Activity size={14} /> },
+                        { label: 'Status', value: 'Available', icon: <TrendingUp size={14} /> },
+                      ]}
+                    />
                   ) : section === 'join' ? (
-                    <div style={campusPanel.cardBody}>
-                      <PanelTitle icon={<UserPlus size={16} />} title="Join scheduled ride" />
-                      <div style={s.formGrid}>
-                        <label style={s.field}>
-                          <span style={s.label}>Ride</span>
-                          <select
-                            style={s.input}
-                            value={selectedRide?.id || ''}
-                            onChange={(event) => setSelectedRideId(event.target.value)}
-                          >
-                            {rides.map((ride) => (
-                              <option key={ride.id} value={ride.id}>
-                                {ride.reference} - {ride.route}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <NumberField
-                          label="Students"
-                          value={counts.join}
-                          onChange={(value) => setCounts((prev) => ({ ...prev, join: value }))}
-                        />
-                      </div>
-                      <div style={s.buttonRow}>
-                        <button style={campusPanel.btnPrimary} onClick={() => runAction.mutate('joinRide')} disabled={busy || !selectedRide}>
-                          {busy ? <Loader2 size={13} style={s.spin} /> : <UserPlus size={13} />}
-                          Join students
-                        </button>
-                      </div>
-                    </div>
+                    <PremiumJoinPanel
+                      icon={<UserPlus size={24} />}
+                      title="Join Scheduled Ride"
+                      description="Add students to existing scheduled rides for testing"
+                      selectedRide={selectedRide}
+                      rides={rides}
+                      selectedRideId={selectedRideId}
+                      setSelectedRideId={setSelectedRideId}
+                      count={counts.join}
+                      setCount={(value) => setCounts((prev) => ({ ...prev, join: value }))}
+                      onJoin={() => runAction.mutate('joinRide')}
+                      busy={busy}
+                    />
                   ) : section === 'verify' ? (
-                    <div style={{ ...campusPanel.cardBody, padding: 0 }}>
-                      <div style={{ padding: '16px 20px', borderBottom: `1px solid ${T.border}` }}>
-                        <PanelTitle icon={<CheckCircle2 size={16} />} title="Generated ride records" />
-                      </div>
-                      <div style={{ overflowX: 'auto' }}>
-                        <table style={s.table}>
-                          <thead>
-                            <tr>
-                              <th style={s.th}>Ref</th>
-                              <th style={s.th}>Route</th>
-                              <th style={s.th}>Date</th>
-                              <th style={s.th}>Vehicle</th>
-                              <th style={s.th}>Passengers</th>
-                              <th style={s.th}>Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {rides.map((ride) => (
-                              <tr key={ride.id}>
-                                <td style={s.td}>{ride.reference}</td>
-                                <td style={s.td}>{ride.route}</td>
-                                <td style={s.td}>{ride.departure_date} {ride.window}</td>
-                                <td style={s.td}>{ride.vehicle_size}</td>
-                                <td style={s.td}>{ride.passenger_count}</td>
-                                <td style={s.td}>{ride.status}</td>
-                              </tr>
-                            ))}
-                            {!rides.length && (
-                              <tr>
-                                <td style={s.emptyCell} colSpan={6}>No generated scheduled rides yet.</td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      <div style={{ padding: '16px 20px', borderBottom: `1px solid ${T.border}`, borderTop: `1px solid ${T.border}` }}>
-                        <PanelTitle icon={<CheckCircle2 size={16} />} title="Generated on-demand records" />
-                      </div>
-                      <div style={{ overflowX: 'auto' }}>
-                        <table style={s.table}>
-                          <thead>
-                            <tr>
-                              <th style={s.th}>Ref</th>
-                              <th style={s.th}>Route</th>
-                              <th style={s.th}>Student</th>
-                              <th style={s.th}>Vehicle</th>
-                              <th style={s.th}>Passengers</th>
-                              <th style={s.th}>Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {ondemandRides.map((ride) => (
-                              <tr key={ride.id}>
-                                <td style={s.td}>{ride.reference}</td>
-                                <td style={s.td}>{ride.route}</td>
-                                <td style={s.td}>{ride.student}</td>
-                                <td style={s.td}>{ride.vehicle_type}</td>
-                                <td style={s.td}>{ride.passenger_count}</td>
-                                <td style={s.td}>{ride.status}</td>
-                              </tr>
-                            ))}
-                            {!ondemandRides.length && (
-                              <tr>
-                                <td style={s.emptyCell} colSpan={6}>No generated on-demand rides yet.</td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
+                    <PremiumVerifyPanel
+                      icon={<CheckCircle2 size={24} />}
+                      title="Ride Verification"
+                      description="View and verify generated ride records"
+                      rides={rides}
+                      ondemandRides={ondemandRides}
+                    />
                   ) : (
-                    <div style={campusPanel.cardBody}>
-                      <PanelTitle icon={<Bus size={16} />} title="Scheduled rides" />
-                      <div style={s.formGrid}>
-                        <NumberField
-                          label="Create"
-                          value={counts.rides}
-                          onChange={(value) => setCounts((prev) => ({ ...prev, rides: value }))}
-                        />
-                        <NumberField
-                          label="Delete"
-                          value={counts.deleteRides}
-                          onChange={(value) => setCounts((prev) => ({ ...prev, deleteRides: value }))}
-                        />
-                      </div>
-                      <div style={s.buttonRow}>
-                        <button style={campusPanel.btnPrimary} onClick={() => runAction.mutate('createRides')} disabled={busy}>
-                          {busy ? <Loader2 size={13} style={s.spin} /> : <Bus size={13} />}
-                          Create ride schedules
-                        </button>
-                        <button style={s.dangerButton} onClick={() => runAction.mutate('deleteRides')} disabled={busy}>
-                          <Trash2 size={13} />
-                          Delete random schedules
-                        </button>
-                        <button style={{ ...s.dangerButton, backgroundColor: '#7f1d1d' }} onClick={() => {
-                          if (window.confirm("Are you sure you want to FLUSH ALL scheduled rides? This deletes everything!")) {
-                            runAction.mutate('flushRides')
-                          }
-                        }} disabled={busy}>
-                          <AlertTriangle size={13} />
-                          Flush All
-                        </button>
-                      </div>
-                    </div>
+                    <PremiumRidePanel
+                      icon={<Calendar size={24} />}
+                      title="Scheduled Ride Management"
+                      description="Create and manage scheduled ride routes for testing"
+                      primaryLabel="Create Ride Schedules"
+                      primaryIcon={<Bus size={16} />}
+                      dangerLabel="Delete Random Schedules"
+                      dangerIcon={<Trash2 size={16} />}
+                      flushLabel="Flush All Scheduled"
+                      flushIcon={<AlertTriangle size={16} />}
+                      onCreate={() => runAction.mutate('createRides')}
+                      onDelete={() => runAction.mutate('deleteRides')}
+                      onFlush={() => {
+                        if (window.confirm("Are you sure you want to FLUSH ALL scheduled rides? This deletes everything!")) {
+                          runAction.mutate('flushRides')
+                        }
+                      }}
+                      busy={busy}
+                      fields={[
+                        { label: 'Create Count', value: counts.rides, onChange: (value) => setCounts((prev) => ({ ...prev, rides: value })) },
+                        { label: 'Delete Count', value: counts.deleteRides, onChange: (value) => setCounts((prev) => ({ ...prev, deleteRides: value })) },
+                      ]}
+                      stats={[
+                        { label: 'Total Rides', value: summary?.counts.scheduled_rides ?? 0, icon: <Calendar size={14} /> },
+                        { label: 'Active Routes', value: rides.length, icon: <Layers size={14} /> },
+                      ]}
+                    />
                   )}
                 </>
               )}
@@ -1037,6 +1043,412 @@ function ActionPanel({
           <Trash2 size={13} />
           {dangerLabel}
         </button>
+      </div>
+    </div>
+  )
+}
+
+// Premium Components
+function PremiumAccountPanel({
+  icon,
+  title,
+  description,
+  count,
+  setCount,
+  primaryLabel,
+  primaryIcon,
+  dangerLabel,
+  dangerIcon,
+  onPrimary,
+  onDanger,
+  busy,
+  stats,
+}: {
+  icon: ReactNode
+  title: string
+  description: string
+  count: string
+  setCount: (value: string) => void
+  primaryLabel: string
+  primaryIcon: ReactNode
+  dangerLabel: string
+  dangerIcon: ReactNode
+  onPrimary: () => void
+  onDanger: () => void
+  busy: boolean
+  stats: Array<{ label: string; value: string | number; icon: ReactNode }>
+}) {
+  return (
+    <div style={premiumStyles.premiumPanel}>
+      <div style={premiumStyles.panelHeader}>
+        <div style={premiumStyles.panelIconWrapper}>{icon}</div>
+        <div style={premiumStyles.panelHeaderContent}>
+          <h2 style={premiumStyles.panelTitle}>{title}</h2>
+          <p style={premiumStyles.panelDescription}>{description}</p>
+        </div>
+      </div>
+
+      <div style={premiumStyles.statsGrid}>
+        {stats.map((stat, idx) => (
+          <div key={idx} style={premiumStyles.statCard}>
+            <div style={premiumStyles.statIcon}>{stat.icon}</div>
+            <div style={premiumStyles.statContent}>
+              <div style={premiumStyles.statValue}>{stat.value}</div>
+              <div style={premiumStyles.statLabel}>{stat.label}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={premiumStyles.actionSection}>
+        <div style={premiumStyles.inputGroup}>
+          <label style={premiumStyles.inputLabel}>Account Count</label>
+          <input
+            style={premiumStyles.premiumInput}
+            type="number"
+            min={1}
+            max={2000}
+            value={count}
+            onChange={(e) => setCount(e.target.value)}
+          />
+        </div>
+
+        <div style={premiumStyles.buttonGroup}>
+          <button 
+            style={premiumStyles.primaryButton} 
+            onClick={onPrimary} 
+            disabled={busy}
+          >
+            {busy ? <Loader2 size={16} style={premiumStyles.spin} /> : primaryIcon}
+            <span>{primaryLabel}</span>
+          </button>
+          <button 
+            style={premiumStyles.dangerButton} 
+            onClick={onDanger} 
+            disabled={busy}
+          >
+            {dangerIcon}
+            <span>{dangerLabel}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PremiumRidePanel({
+  icon,
+  title,
+  description,
+  primaryLabel,
+  primaryIcon,
+  dangerLabel,
+  dangerIcon,
+  flushLabel,
+  flushIcon,
+  onCreate,
+  onDelete,
+  onFlush,
+  busy,
+  fields,
+  stats,
+}: {
+  icon: ReactNode
+  title: string
+  description: string
+  primaryLabel: string
+  primaryIcon: ReactNode
+  dangerLabel: string
+  dangerIcon: ReactNode
+  flushLabel: string
+  flushIcon: ReactNode
+  onCreate: () => void
+  onDelete: () => void
+  onFlush: () => void
+  busy: boolean
+  fields: Array<{ label: string; value: string; onChange: (value: string) => void }>
+  stats: Array<{ label: string; value: string | number; icon: ReactNode }>
+}) {
+  return (
+    <div style={premiumStyles.premiumPanel}>
+      <div style={premiumStyles.panelHeader}>
+        <div style={premiumStyles.panelIconWrapper}>{icon}</div>
+        <div style={premiumStyles.panelHeaderContent}>
+          <h2 style={premiumStyles.panelTitle}>{title}</h2>
+          <p style={premiumStyles.panelDescription}>{description}</p>
+        </div>
+      </div>
+
+      <div style={premiumStyles.statsGrid}>
+        {stats.map((stat, idx) => (
+          <div key={idx} style={premiumStyles.statCard}>
+            <div style={premiumStyles.statIcon}>{stat.icon}</div>
+            <div style={premiumStyles.statContent}>
+              <div style={premiumStyles.statValue}>{stat.value}</div>
+              <div style={premiumStyles.statLabel}>{stat.label}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={premiumStyles.actionSection}>
+        <div style={premiumStyles.fieldsGrid}>
+          {fields.map((field, idx) => (
+            <div key={idx} style={premiumStyles.inputGroup}>
+              <label style={premiumStyles.inputLabel}>{field.label}</label>
+              <input
+                style={premiumStyles.premiumInput}
+                type="number"
+                min={1}
+                max={2000}
+                value={field.value}
+                onChange={(e) => field.onChange(e.target.value)}
+              />
+            </div>
+          ))}
+        </div>
+
+        <div style={premiumStyles.buttonGroup}>
+          <button 
+            style={premiumStyles.primaryButton} 
+            onClick={onCreate} 
+            disabled={busy}
+          >
+            {busy ? <Loader2 size={16} style={premiumStyles.spin} /> : primaryIcon}
+            <span>{primaryLabel}</span>
+          </button>
+          <button 
+            style={premiumStyles.dangerButton} 
+            onClick={onDelete} 
+            disabled={busy}
+          >
+            {dangerIcon}
+            <span>{dangerLabel}</span>
+          </button>
+          <button 
+            style={premiumStyles.flushButton} 
+            onClick={onFlush} 
+            disabled={busy}
+          >
+            {flushIcon}
+            <span>{flushLabel}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PremiumJoinPanel({
+  icon,
+  title,
+  description,
+  selectedRide,
+  rides,
+  selectedRideId,
+  setSelectedRideId,
+  count,
+  setCount,
+  onJoin,
+  busy,
+}: {
+  icon: ReactNode
+  title: string
+  description: string
+  selectedRide: TestRide | undefined
+  rides: TestRide[]
+  selectedRideId: string
+  setSelectedRideId: (id: string) => void
+  count: string
+  setCount: (value: string) => void
+  onJoin: () => void
+  busy: boolean
+}) {
+  return (
+    <div style={premiumStyles.premiumPanel}>
+      <div style={premiumStyles.panelHeader}>
+        <div style={premiumStyles.panelIconWrapper}>{icon}</div>
+        <div style={premiumStyles.panelHeaderContent}>
+          <h2 style={premiumStyles.panelTitle}>{title}</h2>
+          <p style={premiumStyles.panelDescription}>{description}</p>
+        </div>
+      </div>
+
+      <div style={premiumStyles.actionSection}>
+        <div style={premiumStyles.fieldsGrid}>
+          <div style={premiumStyles.inputGroup}>
+            <label style={premiumStyles.inputLabel}>Select Ride</label>
+            <select
+              style={premiumStyles.premiumSelect}
+              value={selectedRide?.id || ''}
+              onChange={(e) => setSelectedRideId(e.target.value)}
+            >
+              {rides.map((ride) => (
+                <option key={ride.id} value={ride.id}>
+                  {ride.reference} - {ride.route}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div style={premiumStyles.inputGroup}>
+            <label style={premiumStyles.inputLabel}>Student Count</label>
+            <input
+              style={premiumStyles.premiumInput}
+              type="number"
+              min={1}
+              max={2000}
+              value={count}
+              onChange={(e) => setCount(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div style={premiumStyles.buttonGroup}>
+          <button 
+            style={premiumStyles.primaryButton} 
+            onClick={onJoin} 
+            disabled={busy || !selectedRide}
+          >
+            {busy ? <Loader2 size={16} style={premiumStyles.spin} /> : <UserPlus size={16} />}
+            <span>Join Students to Ride</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PremiumVerifyPanel({
+  icon,
+  title,
+  description,
+  rides,
+  ondemandRides,
+}: {
+  icon: ReactNode
+  title: string
+  description: string
+  rides: TestRide[]
+  ondemandRides: TestRide[]
+}) {
+  return (
+    <div style={premiumStyles.premiumPanel}>
+      <div style={premiumStyles.panelHeader}>
+        <div style={premiumStyles.panelIconWrapper}>{icon}</div>
+        <div style={premiumStyles.panelHeaderContent}>
+          <h2 style={premiumStyles.panelTitle}>{title}</h2>
+          <p style={premiumStyles.panelDescription}>{description}</p>
+        </div>
+      </div>
+
+      <div style={premiumStyles.verifySection}>
+        <div style={premiumStyles.verifyHeader}>
+          <div style={premiumStyles.verifyTitle}>
+            <Calendar size={16} />
+            <span>Scheduled Rides</span>
+          </div>
+          <span style={premiumStyles.verifyCount}>{rides.length} records</span>
+        </div>
+        
+        {rides.length === 0 ? (
+          <div style={premiumStyles.emptyState}>
+            <Calendar size={32} style={{ opacity: 0.3 }} />
+            <span>No scheduled rides generated yet</span>
+          </div>
+        ) : (
+          <div style={premiumStyles.tableContainer}>
+            <table style={premiumStyles.premiumTable}>
+              <thead>
+                <tr>
+                  <th style={premiumStyles.th}>Reference</th>
+                  <th style={premiumStyles.th}>Route</th>
+                  <th style={premiumStyles.th}>Date</th>
+                  <th style={premiumStyles.th}>Vehicle</th>
+                  <th style={premiumStyles.th}>Passengers</th>
+                  <th style={premiumStyles.th}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rides.map((ride) => (
+                  <tr key={ride.id}>
+                    <td style={premiumStyles.td}>{ride.reference}</td>
+                    <td style={premiumStyles.td}>{ride.route}</td>
+                    <td style={premiumStyles.td}>{ride.departure_date} {ride.window}</td>
+                    <td style={premiumStyles.td}>{ride.vehicle_size}</td>
+                    <td style={premiumStyles.td}>{ride.passenger_count}</td>
+                    <td style={premiumStyles.td}>
+                      <span style={{
+                        ...premiumStyles.statusBadge,
+                        background: ride.status === 'scheduled' ? 'rgba(168,85,247,0.1)' : 
+                                   ride.status === 'completed' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
+                        color: ride.status === 'scheduled' ? '#a855f7' : 
+                               ride.status === 'completed' ? '#10b981' : '#f59e0b',
+                        borderColor: ride.status === 'scheduled' ? 'rgba(168,85,247,0.3)' : 
+                                    ride.status === 'completed' ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)',
+                      }}>
+                        {ride.status.toUpperCase()}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div style={premiumStyles.verifyHeader}>
+          <div style={premiumStyles.verifyTitle}>
+            <Zap size={16} />
+            <span>On-Demand Rides</span>
+          </div>
+          <span style={premiumStyles.verifyCount}>{ondemandRides.length} records</span>
+        </div>
+        
+        {ondemandRides.length === 0 ? (
+          <div style={premiumStyles.emptyState}>
+            <Zap size={32} style={{ opacity: 0.3 }} />
+            <span>No on-demand rides generated yet</span>
+          </div>
+        ) : (
+          <div style={premiumStyles.tableContainer}>
+            <table style={premiumStyles.premiumTable}>
+              <thead>
+                <tr>
+                  <th style={premiumStyles.th}>Reference</th>
+                  <th style={premiumStyles.th}>Route</th>
+                  <th style={premiumStyles.th}>Student</th>
+                  <th style={premiumStyles.th}>Vehicle</th>
+                  <th style={premiumStyles.th}>Passengers</th>
+                  <th style={premiumStyles.th}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ondemandRides.map((ride) => (
+                  <tr key={ride.id}>
+                    <td style={premiumStyles.td}>{ride.reference}</td>
+                    <td style={premiumStyles.td}>{ride.route}</td>
+                    <td style={premiumStyles.td}>{ride.student}</td>
+                    <td style={premiumStyles.td}>{ride.vehicle_type}</td>
+                    <td style={premiumStyles.td}>{ride.passenger_count}</td>
+                    <td style={premiumStyles.td}>
+                      <span style={{
+                        ...premiumStyles.statusBadge,
+                        background: ride.status === 'available' ? 'rgba(16,185,129,0.1)' : 
+                                   ride.status === 'completed' ? 'rgba(168,85,247,0.1)' : 'rgba(245,158,11,0.1)',
+                        color: ride.status === 'available' ? '#10b981' : 
+                               ride.status === 'completed' ? '#a855f7' : '#f59e0b',
+                        borderColor: ride.status === 'available' ? 'rgba(16,185,129,0.3)' : 
+                                    ride.status === 'completed' ? 'rgba(168,85,247,0.3)' : 'rgba(245,158,11,0.3)',
+                      }}>
+                        {ride.status.toUpperCase()}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -1161,4 +1573,339 @@ const s: Record<string, CSSProperties> = {
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
   },
   spin: { animation: 'test-spin 0.8s linear infinite' },
+}
+
+// Premium Styles
+const premiumStyles: Record<string, CSSProperties> = {
+  // Account Tabs
+  accountTabs: {
+    display: 'flex',
+    gap: 2,
+    background: T.bgInput,
+    padding: 4,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  accountTab: (active: boolean): CSSProperties => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '12px 20px',
+    fontSize: 13,
+    fontWeight: 600,
+    fontFamily: T.fontFamily,
+    cursor: 'pointer',
+    color: active ? T.textPrimary : T.textMuted,
+    background: active ? T.bgCard : 'transparent',
+    border: 'none',
+    borderRadius: 8,
+    transition: 'all 0.2s ease',
+    boxShadow: active ? `0 2px 8px rgba(168,85,247,0.15)` : 'none',
+  }),
+
+  // Ride Tabs
+  rideTabs: {
+    display: 'flex',
+    gap: 2,
+    background: T.bgInput,
+    padding: 4,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  rideTab: (active: boolean): CSSProperties => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '12px 20px',
+    fontSize: 13,
+    fontWeight: 600,
+    fontFamily: T.fontFamily,
+    cursor: 'pointer',
+    color: active ? T.textPrimary : T.textMuted,
+    background: active ? T.bgCard : 'transparent',
+    border: 'none',
+    borderRadius: 8,
+    transition: 'all 0.2s ease',
+    boxShadow: active ? `0 2px 8px rgba(168,85,247,0.15)` : 'none',
+  }),
+
+  // Premium Panel
+  premiumPanel: {
+    background: T.bgCard,
+    border: `1px solid ${T.border}`,
+    borderRadius: 16,
+    padding: 24,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 24,
+    boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+  },
+
+  // Panel Header
+  panelHeader: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 16,
+    paddingBottom: 20,
+    borderBottom: `1px solid ${T.border}`,
+  },
+  panelIconWrapper: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    background: 'linear-gradient(135deg, rgba(168,85,247,0.1), rgba(168,85,247,0.05))',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#a855f7',
+    flexShrink: 0,
+  },
+  panelHeaderContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+  panelTitle: {
+    margin: 0,
+    fontSize: 18,
+    fontWeight: 700,
+    color: T.textPrimary,
+    letterSpacing: -0.3,
+    marginBottom: 4,
+  },
+  panelDescription: {
+    margin: 0,
+    fontSize: 13,
+    color: T.textMuted,
+    lineHeight: 1.5,
+  },
+
+  // Stats Grid
+  statsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+    gap: 16,
+  },
+  statCard: {
+    background: T.bgPanel,
+    border: `1px solid ${T.border}`,
+    borderRadius: 12,
+    padding: 16,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    transition: 'all 0.2s ease',
+  },
+  statIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    background: 'rgba(168,85,247,0.1)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#a855f7',
+    flexShrink: 0,
+  },
+  statContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: 700,
+    color: T.textPrimary,
+    marginBottom: 2,
+  },
+  statLabel: {
+    fontSize: 11,
+    color: T.textMuted,
+    fontWeight: 600,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+
+  // Action Section
+  actionSection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 20,
+  },
+  fieldsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+    gap: 16,
+  },
+  inputGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: T.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  premiumInput: {
+    background: T.bgInput,
+    border: `1px solid ${T.border}`,
+    color: T.textPrimary,
+    borderRadius: 10,
+    padding: '12px 16px',
+    fontSize: 14,
+    outline: 'none',
+    width: '100%',
+    fontFamily: T.fontFamily,
+    boxSizing: 'border-box',
+    transition: 'all 0.2s ease',
+  },
+  premiumSelect: {
+    background: T.bgInput,
+    border: `1px solid ${T.border}`,
+    color: T.textPrimary,
+    borderRadius: 10,
+    padding: '12px 16px',
+    fontSize: 14,
+    outline: 'none',
+    width: '100%',
+    fontFamily: T.fontFamily,
+    boxSizing: 'border-box',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+
+  // Button Group
+  buttonGroup: {
+    display: 'flex',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  primaryButton: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    background: 'linear-gradient(135deg, #a855f7, #9333ea)',
+    color: '#ffffff',
+    border: 'none',
+    padding: '12px 24px',
+    borderRadius: 10,
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
+    fontFamily: T.fontFamily,
+    transition: 'all 0.2s ease',
+    boxShadow: '0 4px 12px rgba(168,85,247,0.3)',
+  },
+  dangerButton: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    background: 'rgba(239, 68, 68, 0.1)',
+    color: '#ef4444',
+    border: `1px solid rgba(239, 68, 68, 0.3)`,
+    padding: '12px 24px',
+    borderRadius: 10,
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
+    fontFamily: T.fontFamily,
+    transition: 'all 0.2s ease',
+  },
+  flushButton: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    background: 'rgba(234, 179, 8, 0.1)',
+    color: '#eab308',
+    border: `1px solid rgba(234, 179, 8, 0.3)`,
+    padding: '12px 24px',
+    borderRadius: 10,
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
+    fontFamily: T.fontFamily,
+    transition: 'all 0.2s ease',
+  },
+
+  // Verify Section
+  verifySection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 24,
+  },
+  verifyHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '16px 20px',
+    background: T.bgPanel,
+    borderRadius: 12,
+    border: `1px solid ${T.border}`,
+  },
+  verifyTitle: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 14,
+    fontWeight: 600,
+    color: T.textPrimary,
+  },
+  verifyCount: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: '#a855f7',
+    background: 'rgba(168,85,247,0.1)',
+    padding: '4px 12px',
+    borderRadius: 6,
+  },
+  emptyState: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    padding: 40,
+    color: T.textMuted,
+    fontSize: 14,
+    background: T.bgPanel,
+    borderRadius: 12,
+    border: `2px dashed ${T.border}`,
+  },
+  tableContainer: {
+    background: T.bgPanel,
+    borderRadius: 12,
+    border: `1px solid ${T.border}`,
+    overflow: 'hidden',
+  },
+  premiumTable: {
+    width: '100%',
+    borderCollapse: 'collapse',
+  },
+  th: {
+    textAlign: 'left',
+    padding: '16px 20px',
+    fontSize: 11,
+    fontWeight: 700,
+    color: T.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    borderBottom: `1px solid ${T.border}`,
+    background: T.bgInput,
+  },
+  td: {
+    padding: '16px 20px',
+    fontSize: 13,
+    color: T.textPrimary,
+    borderBottom: `1px solid ${T.border}`,
+  },
+  statusBadge: {
+    padding: '4px 12px',
+    borderRadius: 6,
+    fontSize: 11,
+    fontWeight: 700,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    border: '1px solid',
+  },
 }

@@ -1,4 +1,4 @@
-﻿import json
+import json
 import logging
 from datetime import timedelta
 from channels.generic.websocket import AsyncWebsocketConsumer
@@ -25,6 +25,8 @@ class DriverLocationConsumer(AsyncWebsocketConsumer):
     async def disconnect(self, code):
         if hasattr(self, 'group_name'):
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
+        from django.db import close_old_connections
+        close_old_connections()
 
     async def receive(self, text_data=None, bytes_data=None):
         try:
@@ -175,6 +177,8 @@ class RideTrackingConsumer(AsyncWebsocketConsumer):
     async def disconnect(self, code):
         if hasattr(self, 'group_name'):
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
+        from django.db import close_old_connections
+        close_old_connections()
 
     async def receive(self, text_data=None, bytes_data=None):
         try:
@@ -233,6 +237,8 @@ class CampusAdminFleetConsumer(AsyncWebsocketConsumer):
     async def disconnect(self, code):
         if hasattr(self, 'group_name'):
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
+        from django.db import close_old_connections
+        close_old_connections()
 
     async def receive(self, text_data=None, bytes_data=None):
         try:
@@ -342,6 +348,8 @@ class CampusAdminIncidentConsumer(AsyncWebsocketConsumer):
     async def disconnect(self, code):
         if hasattr(self, 'group_name'):
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
+        from django.db import close_old_connections
+        close_old_connections()
 
     async def receive(self, text_data=None, bytes_data=None):
         try:
