@@ -634,7 +634,7 @@ class AdminInterestedDriversView(APIView):
 
     def get(self, request, ride_id):
         ride = _get_scoped_ride(request.user, ride_id)
-        interests = ScheduledRideDriverInterest.objects.filter(ride=ride, status='interested')
+        interests = ScheduledRideDriverInterest.objects.filter(ride=ride, status='interested').select_related('driver', 'driver__driver_profile')
         
         # Return a list of drivers formatted for the frontend dropdown
         data = []
@@ -649,7 +649,8 @@ class AdminInterestedDriversView(APIView):
                 vehicle_seats = profile.vehicle_seats
                 plate_number = profile.plate_number
                 is_online = profile.is_online
-            except Exception:
+            except Exception as e:
+                print(f"Error accessing driver profile for {driver.email}: {e}")
                 vehicle_type = None
                 vehicle_make = None
                 vehicle_model = None
@@ -673,5 +674,6 @@ class AdminInterestedDriversView(APIView):
                 'interest_id': str(interest.id),
                 'created_at': interest.created_at,
             })
-            
+        
+        print(f"Returning {len(data)} interested drivers for ride {ride_id}")
         return Response(data)

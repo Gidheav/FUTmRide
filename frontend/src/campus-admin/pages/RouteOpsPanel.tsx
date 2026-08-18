@@ -57,7 +57,7 @@ interface FleetDriver {
   plate_number?: string; vehicle_type?: string; vehicle_make?: string
   vehicle_model?: string; vehicle_color?: string; vehicle_seats?: number
   name?: string; phone?: string; is_online?: boolean
-  created_at?: string
+  created_at?: string; email?: string; interest_id?: string
 }
 
 interface ActivityLogEntry {
@@ -223,8 +223,12 @@ export default function RouteOpsPanel() {
       return
     }
     apiService.getInterestedDrivers(selectedRideId).then(data => {
+      console.log('Interested drivers data:', data)
       setInterestedDrivers(data)
-    }).catch(() => {})
+    }).catch((error) => {
+      console.error('Error fetching interested drivers:', error)
+      setInterestedDrivers([])
+    })
   }, [selectedRideId])
 
   // ── Load persistent activity log from DB when ride selected ──
@@ -294,8 +298,7 @@ export default function RouteOpsPanel() {
         
         // Auto-generate bus label
         const driverName = driver.name || driver.user?.full_name || 'Driver'
-        const vehicleLabel = vehicleLabel(driver.vehicle_type)
-        const busLabel = `${driverName.split(' ')[0]}'s ${vehicleLabel}`
+        const busLabel = `${driverName.split(' ')[0]}'s ${vehicleLabel(driver.vehicle_type)}`
 
         try {
           await apiService.createBusAssignment(selectedRideId, {
@@ -716,7 +719,7 @@ export default function RouteOpsPanel() {
                                 <div style={s.driverCardHeader}>
                                   <div style={s.driverCardTitle}>
                                     <div style={{ width: 8, height: 8, borderRadius: 4, background: canSelect ? '#10b981' : '#f59e0b', marginRight: 8 }} />
-                                    <span style={{ fontWeight: 600, fontSize: 12, color: T.textPrimary }}>{driver.name}</span>
+                                    <span style={{ fontWeight: 600, fontSize: 12, color: T.textPrimary }}>{driver.name || driver.user?.full_name || 'Unknown Driver'}</span>
                                   </div>
                                   {isSelected && (
                                     <div style={s.selectedBadge}>
