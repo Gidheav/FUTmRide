@@ -143,7 +143,7 @@ class ScheduledRideListView(generics.ListAPIView):
             from django.utils import timezone
             cutoff_date = timezone.now().date() - datetime.timedelta(days=1)
             qs = qs.filter(departure_date__gte=cutoff_date).exclude(
-                status__in=[ScheduledRideStatus.COMPLETED, ScheduledRideStatus.CANCELLED]
+                status__in=[ScheduledRideStatus.COMPLETED]
             )
         else:
             if status_filter:

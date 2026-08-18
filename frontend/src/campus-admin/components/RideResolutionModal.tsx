@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { X, AlertTriangle, ArrowRight, CheckCircle2, UserX, Bus } from 'lucide-react'
 import { apiService } from '../../services/api.service'
-import { theme } from '../../theme'
-
-const T = theme.colors
+import { T } from '../theme'
 
 interface RideResolutionModalProps {
   ride: any
@@ -57,7 +55,7 @@ export default function RideResolutionModal({ ride, onClose, onResolved }: RideR
   }
 
   const handleCancel = async () => {
-    if (confirmRef !== ride.reference) {
+    if (impact?.total_passengers > 0 && confirmRef !== ride.reference) {
       setError('Reference does not match.')
       return
     }
@@ -91,7 +89,7 @@ export default function RideResolutionModal({ ride, onClose, onResolved }: RideR
       <div style={modalContentStyle}>
         {/* Header */}
         <div style={{ padding: '20px 24px', borderBottom: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ margin: 0, fontSize: 18, color: T.text, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <h2 style={{ margin: 0, fontSize: 18, color: T.textPrimary, display: 'flex', alignItems: 'center', gap: 8 }}>
             <AlertTriangle color="#ef4444" size={20} />
             Resolve Ride: {ride.reference}
           </h2>
@@ -117,13 +115,13 @@ export default function RideResolutionModal({ ride, onClose, onResolved }: RideR
               </p>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
-                <div style={{ padding: 16, background: T.bgMain, borderRadius: 8, border: `1px solid ${T.border}` }}>
-                  <div style={{ fontSize: 24, fontWeight: 600, color: T.text, marginBottom: 4 }}>{impact?.total_passengers || 0}</div>
+                <div style={{ padding: 16, background: T.bg, borderRadius: 8, border: `1px solid ${T.border}` }}>
+                  <div style={{ fontSize: 24, fontWeight: 600, color: T.textPrimary, marginBottom: 4 }}>{impact?.total_passengers || 0}</div>
                   <div style={{ fontSize: 13, color: T.textSecondary }}>Students Affected</div>
                   <div style={{ fontSize: 12, color: '#ef4444', marginTop: 4 }}>NGN {impact?.total_refund_amount} total refund liability</div>
                 </div>
-                <div style={{ padding: 16, background: T.bgMain, borderRadius: 8, border: `1px solid ${T.border}` }}>
-                  <div style={{ fontSize: 24, fontWeight: 600, color: T.text, marginBottom: 4 }}>{impact?.assigned_drivers || 0}</div>
+                <div style={{ padding: 16, background: T.bg, borderRadius: 8, border: `1px solid ${T.border}` }}>
+                  <div style={{ fontSize: 24, fontWeight: 600, color: T.textPrimary, marginBottom: 4 }}>{impact?.assigned_drivers || 0}</div>
                   <div style={{ fontSize: 13, color: T.textSecondary }}>Drivers Assigned</div>
                   <div style={{ fontSize: 12, color: '#eab308', marginTop: 4 }}>Will be released to pool</div>
                 </div>
@@ -148,7 +146,7 @@ export default function RideResolutionModal({ ride, onClose, onResolved }: RideR
                   {impact.total_passengers > 0 && compatibleRides.length > 0 && (
                     <button 
                       onClick={() => setStep('MIGRATE')}
-                      style={{ flex: 1, padding: '12px', background: T.primary, color: 'white', border: 'none', borderRadius: 8, fontWeight: 600, cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}
+                      style={{ flex: 1, padding: '12px', background: T.accent, color: 'white', border: 'none', borderRadius: 8, fontWeight: 600, cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}
                     >
                       <ArrowRight size={16} /> Migrate Students
                     </button>
@@ -173,7 +171,7 @@ export default function RideResolutionModal({ ride, onClose, onResolved }: RideR
               >
                 ← Back
               </button>
-              <h3 style={{ margin: '0 0 16px 0', color: T.text, fontSize: 16 }}>Select Destination Ride</h3>
+              <h3 style={{ margin: '0 0 16px 0', color: T.textPrimary, fontSize: 16 }}>Select Destination Ride</h3>
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
                 {compatibleRides.map(r => (
@@ -182,14 +180,14 @@ export default function RideResolutionModal({ ride, onClose, onResolved }: RideR
                     onClick={() => setSelectedRideId(r.id)}
                     style={{ 
                       padding: 16, 
-                      border: `2px solid ${selectedRideId === r.id ? T.primary : T.border}`,
+                      border: `2px solid ${selectedRideId === r.id ? T.accent : T.border}`,
                       borderRadius: 8,
-                      background: T.bgMain,
+                      background: T.bg,
                       cursor: 'pointer'
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                      <span style={{ fontWeight: 600, color: T.text }}>{r.reference}</span>
+                      <span style={{ fontWeight: 600, color: T.textPrimary }}>{r.reference}</span>
                       <span style={{ color: T.textSecondary, fontSize: 14 }}>{r.window_start} - {r.window_end}</span>
                     </div>
                     <div style={{ fontSize: 13, color: T.textSecondary, display: 'flex', gap: 16 }}>
@@ -206,7 +204,7 @@ export default function RideResolutionModal({ ride, onClose, onResolved }: RideR
                 <button 
                   onClick={handleMigrate}
                   disabled={!selectedRideId || processing}
-                  style={{ padding: '10px 24px', background: T.primary, color: 'white', border: 'none', borderRadius: 8, fontWeight: 600, cursor: selectedRideId ? 'pointer' : 'not-allowed', opacity: selectedRideId ? 1 : 0.5 }}
+                  style={{ padding: '10px 24px', background: T.accent, color: 'white', border: 'none', borderRadius: 8, fontWeight: 600, cursor: selectedRideId ? 'pointer' : 'not-allowed', opacity: selectedRideId ? 1 : 0.5 }}
                 >
                   {processing ? 'Migrating...' : 'Confirm Migration'}
                 </button>
@@ -238,7 +236,7 @@ export default function RideResolutionModal({ ride, onClose, onResolved }: RideR
                   value={confirmRef}
                   onChange={e => setConfirmRef(e.target.value)}
                   placeholder={ride.reference}
-                  style={{ width: '100%', padding: '10px 12px', background: T.bgMain, border: `1px solid ${T.border}`, borderRadius: 6, color: T.text }}
+                  style={{ width: '100%', padding: '10px 12px', background: T.bg, border: `1px solid ${T.border}`, borderRadius: 6, color: T.textPrimary }}
                 />
               </div>
 
@@ -257,7 +255,7 @@ export default function RideResolutionModal({ ride, onClose, onResolved }: RideR
           {step === 'SUCCESS' && (
             <div style={{ textAlign: 'center', padding: '20px 0' }}>
               <CheckCircle2 color="#10b981" size={48} style={{ marginBottom: 16 }} />
-              <h3 style={{ margin: '0 0 16px 0', color: T.text, fontSize: 20 }}>Resolution Complete</h3>
+              <h3 style={{ margin: '0 0 16px 0', color: T.textPrimary, fontSize: 20 }}>Resolution Complete</h3>
               
               {successResult.type === 'migrate' ? (
                 <div style={{ fontSize: 15, color: T.textSecondary, lineHeight: 1.6 }}>
@@ -275,7 +273,7 @@ export default function RideResolutionModal({ ride, onClose, onResolved }: RideR
 
               <button 
                 onClick={() => { onClose(); onResolved(); }}
-                style={{ marginTop: 32, padding: '10px 32px', background: T.primary, color: 'white', border: 'none', borderRadius: 8, fontWeight: 600, cursor: 'pointer' }}
+                style={{ marginTop: 32, padding: '10px 32px', background: T.accent, color: 'white', border: 'none', borderRadius: 8, fontWeight: 600, cursor: 'pointer' }}
               >
                 Close
               </button>
