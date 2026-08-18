@@ -122,6 +122,27 @@ class BusAssignmentUpdateView(APIView):
         serializer.save()
         return Response(BusAssignmentReadSerializer(bus).data)
 
+    def delete(self, request, ride_id, bus_id):
+        ride = _get_scoped_ride(request.user, ride_id)
+        bus = _get_bus(ride, bus_id)
+        
+        if bus.status != BusStatus.ASSIGNED:
+            return Response({'error': 'Cannot unassign a bus that has already departed.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if bus.driver:
+            # Revert driver interest to 'interested'
+            ScheduledRideDriverInterest.objects.filter(
+                ride=ride,
+                driver=bus.driver,
+                status='assigned'
+            ).update(status='interested')
+            
+        # Reassign seated passengers to unassigned
+        ScheduledRidePassenger.objects.filter(bus_assignment=bus).update(bus_assignment=None, seat_type=None)
+        
+        bus.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 # ── Bus Lifecycle Transitions ─────────────────────────────────────────────────
 

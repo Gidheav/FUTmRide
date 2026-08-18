@@ -460,6 +460,10 @@ class ApiService {
     return this.patch(`rides/scheduled/${rideId}/buses/${busId}/`, data)
   }
 
+  async unassignBus(rideId: string, busId: string): Promise<any> {
+    return this.delete(`rides/scheduled/${rideId}/buses/${busId}/`)
+  }
+
   async allocateBus(rideId: string, busId: string): Promise<any> {
     return this.post(`rides/scheduled/${rideId}/buses/${busId}/allocate/`)
   }

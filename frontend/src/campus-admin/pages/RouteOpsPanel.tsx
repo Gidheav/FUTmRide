@@ -4,7 +4,7 @@ import {
   Bus, Users, CalendarClock, Clock, MapPin, Navigation, ChevronDown, ChevronUp,
   Plus, Play, Square, CheckCircle2, AlertTriangle, ArrowRight, RefreshCw,
   UserCheck, UserX, ArrowRightLeft, Zap, X, Search, Filter, Eye, Truck,
-  CircleDot, Timer, TrendingUp, BarChart3, Activity, Package
+  CircleDot, Timer, TrendingUp, BarChart3, Activity, Package, Eject
 } from 'lucide-react'
 import { T } from '../theme'
 import { apiService } from '../../services/api.service'
@@ -152,6 +152,7 @@ export default function RouteOpsPanel() {
   const [now, setNow] = useState(Date.now())
   const [statusFilter, setStatusFilter] = useState('all')
   const [sortOption, setSortOption] = useState('time_asc')
+  const [routeSearch, setRouteSearch] = useState('')
   const [paxFilter, setPaxFilter] = useState<'all' | 'unassigned' | 'checked_in' | 'no_show'>('all')
   const [paxSearch, setPaxSearch] = useState('')
   const [showAddBus, setShowAddBus] = useState(false)
@@ -159,6 +160,7 @@ export default function RouteOpsPanel() {
   const [selectedDriverIds, setSelectedDriverIds] = useState<Set<string>>(new Set())
   const [hoveredDriverId, setHoveredDriverId] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [unassignConfirmBusId, setUnassignConfirmBusId] = useState<string | null>(null)
   const logEndRef = useRef<HTMLDivElement>(null)
   const [visiblePax, setVisiblePax] = useState(50)
 
@@ -377,8 +379,23 @@ export default function RouteOpsPanel() {
       await fetchRideDetails(selectedRideId)
       fetchRides(true)
     } catch (e: any) {
-      addLog(`Bus action "${action}" failed: ${e?.message || 'Error'}`, 'error')
+      addLog(`Failed to ${action} vehicle: ${e?.message || 'Error'}`, 'error')
     } finally { setActionLoading(null) }
+  }
+
+  const handleUnassignBus = async (busId: string) => {
+    if (!selectedRideId) return
+    try {
+      setActionLoading('unassign')
+      await apiService.unassignBus(selectedRideId, busId)
+      addLog(`Vehicle unassigned from route`, 'warning')
+      await fetchRideDetails(selectedRideId)
+    } catch (e: any) {
+      addLog(`Failed to unassign vehicle: ${e?.message || 'Error'}`, 'error')
+    } finally {
+      setActionLoading(null)
+      setUnassignConfirmBusId(null)
+    }
   }
 
   const handleCheckIn = async (paxId: string) => {
@@ -410,6 +427,18 @@ export default function RouteOpsPanel() {
   const filteredRides = useMemo(() => {
     let filtered = statusFilter === 'all' ? rides : rides.filter(r => r.status === statusFilter)
     
+    if (routeSearch.trim()) {
+      const q = routeSearch.toLowerCase().trim()
+      filtered = filtered.filter(r => 
+        (r.reference && r.reference.toLowerCase().includes(q)) || 
+        (r.id && r.id.toLowerCase().includes(q)) ||
+        (r.origin_name && r.origin_name.toLowerCase().includes(q)) ||
+        (r.destination_name && r.destination_name.toLowerCase().includes(q)) ||
+        (r.origin_address && r.origin_address.toLowerCase().includes(q)) ||
+        (r.destination_address && r.destination_address.toLowerCase().includes(q))
+      )
+    }
+    
     // Sort
     filtered = [...filtered].sort((a, b) => {
       // window_start is "HH:MM:SS" — compare as strings (lexicographic is correct for time)
@@ -422,7 +451,7 @@ export default function RouteOpsPanel() {
     })
 
     return filtered
-  }, [rides, statusFilter, sortOption])
+  }, [rides, statusFilter, sortOption, routeSearch])
   const totalPax = rides.reduce((a, r) => a + r.passenger_count, 0)
   const totalBuses = buses.length
   const busesEnRoute = buses.filter(b => ['departed', 'en_route'].includes(b.status)).length
@@ -502,10 +531,32 @@ export default function RouteOpsPanel() {
           {/* ── SECTION 2: Active Rides Feed ──────────────────────────── */}
           <div style={s.section}>
             <div style={s.sectionHeader}>
-              <div style={s.sectionTitleRow}>
-                <CalendarClock size={15} />
-                <span style={s.sectionTitle}>Active Routes</span>
-                <span style={s.badge}>{filteredRides.length}</span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: 1, gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: T.textWhite }}>
+                  <CalendarClock size={15} />
+                  <span style={s.sectionTitle}>Scheduled</span>
+                  <span style={s.badge}>{filteredRides.length}</span>
+                </div>
+                <div style={{ position: 'relative', width: 140 }}>
+                  <Search size={12} color={T.textMuted} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)' }} />
+                  <input
+                    type="text"
+                    placeholder="Search routes..."
+                    value={routeSearch}
+                    onChange={e => setRouteSearch(e.target.value)}
+                    style={{
+                      width: '100%',
+                      backgroundColor: T.bgInput,
+                      border: `1px solid ${T.border}`,
+                      borderRadius: 4,
+                      padding: '4px 8px 4px 26px',
+                      color: T.textWhite,
+                      fontFamily: 'inherit',
+                      fontSize: 11,
+                      outline: 'none',
+                    }}
+                  />
+                </div>
               </div>
               <div style={s.filterRow}>
                 <div style={s.premiumSelectWrap}>
@@ -638,26 +689,39 @@ export default function RouteOpsPanel() {
                     <span style={s.badge}>{buses.length}</span>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button style={s.actionBtn} onClick={handleAutoAllocate} disabled={actionLoading === 'auto'}>
+                    <button style={s.actionBtn} onClick={handleAutoAllocate} disabled={actionLoading === 'auto' || showAddBus}>
                       <Zap size={13} /> {actionLoading === 'auto' ? 'Allocating...' : 'Auto-Allocate All'}
                     </button>
-                    <button style={{ ...s.actionBtn, background: '#a855f7', color: '#fff' }} onClick={() => setShowAddBus(true)}>
-                      <Plus size={13} /> Add Vehicle
-                    </button>
+                    {showAddBus ? (
+                      <>
+                        <button style={s.actionBtn} onClick={() => { setShowAddBus(false); setSelectedDriverIds(new Set()) }}>
+                          Cancel
+                        </button>
+                        <button 
+                          style={{ ...s.actionBtn, background: selectedDriverIds.size > 0 ? '#10b981' : '#64748b', color: '#fff' }} 
+                          onClick={() => {
+                            if (selectedDriverIds.size > 0) {
+                              handleBulkAssign(Array.from(selectedDriverIds))
+                            } else {
+                              setShowAddBus(false)
+                            }
+                          }}
+                          disabled={actionLoading === 'bulk_assign'}
+                        >
+                          {actionLoading === 'bulk_assign' ? 'Adding...' : selectedDriverIds.size > 0 ? `Add Selected (${selectedDriverIds.size})` : 'Close'}
+                        </button>
+                      </>
+                    ) : (
+                      <button style={{ ...s.actionBtn, background: '#a855f7', color: '#fff' }} onClick={() => setShowAddBus(true)}>
+                        <Plus size={13} /> Add Vehicle
+                      </button>
+                    )}
                   </div>
                 </div>
 
                 {/* Add Vehicle Panel */}
                 {showAddBus && (
-                  <div style={s.addVehiclePanel}>
-                    <div style={s.addVehicleHeader}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontWeight: 700, fontSize: 13, color: T.textWhite }}>Select Vehicle(s)</span>
-                        <span style={s.vehicleCountBadge}>{interestedDrivers.length}</span>
-                      </div>
-                      <button style={s.closeBtn} onClick={() => { setShowAddBus(false); setSelectedDriverIds(new Set()) }}><X size={14} /></button>
-                    </div>
-                    
+                  <div style={{ paddingBottom: 16, borderBottom: `1px dashed ${T.border}`, marginBottom: 16 }}>
                     {interestedDrivers.length === 0 ? (
                       <div style={s.emptyDriverState}>
                         <Bus size={32} style={{ opacity: 0.3 }} />
@@ -685,35 +749,22 @@ export default function RouteOpsPanel() {
                                 onMouseEnter={() => canSelect && setHoveredDriverId(driver.id)}
                                 onMouseLeave={() => setHoveredDriverId(null)}
                               >
-                                <div style={s.driverCardHeader}>
-                                  <div style={s.driverCardTitle}>
-                                    <div style={{ width: 8, height: 8, borderRadius: 4, background: canSelect ? '#10b981' : '#f59e0b', marginRight: 8 }} />
-                                    <span style={{ fontWeight: 600, fontSize: 12, color: T.textPrimary }}>{driver.name || driver.user?.full_name || 'Unknown Driver'}</span>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                                    <span style={{ fontWeight: 800, fontSize: 13, color: T.textWhite }}>{driver.name || driver.user?.full_name || 'Unknown Driver'}</span>
                                   </div>
-                                  {isSelected && (
-                                    <div style={s.selectedBadge}>
-                                      <CheckCircle2 size={12} color="#fff" />
-                                    </div>
-                                  )}
+                                  {isSelected && <CheckCircle2 size={14} color="#10b981" />}
                                 </div>
                                 
-                                <div style={s.driverCardVehicle}>
-                                  <span style={{ fontSize: 11, color: T.textSecondary }}>
-                                    {vehicleLabel(driver.vehicle_type || 'Unknown')} · {driver.vehicle_make || ''} {driver.vehicle_model || ''} · {driver.plate_number || 'No Plate'}
-                                  </span>
+                                <div style={{ fontSize: 11, color: T.textSecondary, marginBottom: 2 }}>
+                                  {vehicleLabel(driver.vehicle_type || 'Unknown')} · {driver.vehicle_make || ''} {driver.vehicle_model || ''} · {driver.plate_number || 'No Plate'}
                                 </div>
                                 
-                                <div style={s.driverCardCapacity}>
-                                  <span style={{ fontSize: 10, color: T.textMuted }}>Seats: {driver.vehicle_seats || 'N/A'}</span>
-                                  {driver.vehicle_type === 'coach' && (
-                                    <span style={{ fontSize: 10, color: T.textMuted }}> · Standing: {driver.vehicle_seats ? Math.round(driver.vehicle_seats * 0.4) : 'N/A'}</span>
-                                  )}
-                                </div>
-                                
-                                <div style={s.driverCardMeta}>
-                                  <span style={{ fontSize: 10, color: T.textMuted }}>
-                                    Interested: {fmtRelativeTime(driver.created_at)}
-                                  </span>
+                                <div style={{ fontSize: 10, color: T.textMuted }}>
+                                  Seats: {driver.vehicle_seats || 'N/A'}
+                                  {driver.vehicle_type === 'coach' && ` · Standing: ${driver.vehicle_seats ? Math.round(driver.vehicle_seats * 0.4) : 'N/A'}`}
+                                  <span style={{ margin: '0 4px' }}>|</span>
+                                  Interested: {fmtRelativeTime(driver.created_at)}
                                 </div>
                                 
                                 {!hasVehicleProfile && (
@@ -725,24 +776,6 @@ export default function RouteOpsPanel() {
                               </div>
                             )
                           })}
-                        </div>
-                        
-                        <div style={s.addVehicleFooter}>
-                          <span style={{ fontSize: 11, color: T.textMuted }}>
-                            {selectedDriverIds.size} vehicle(s) selected
-                          </span>
-                          <button
-                            style={{
-                              ...s.actionBtn,
-                              background: selectedDriverIds.size > 0 ? '#a855f7' : T.border,
-                              color: selectedDriverIds.size > 0 ? '#fff' : T.textMuted,
-                              cursor: selectedDriverIds.size > 0 ? 'pointer' : 'not-allowed'
-                            }}
-                            onClick={() => handleBulkAssign(Array.from(selectedDriverIds))}
-                            disabled={selectedDriverIds.size === 0 || actionLoading === 'bulk_assign'}
-                          >
-                            {actionLoading === 'bulk_assign' ? 'Adding...' : 'Add Selected →'}
-                          </button>
                         </div>
                       </>
                     )}
@@ -765,76 +798,91 @@ export default function RouteOpsPanel() {
                     const disableDispatch = !isBoardingComplete || !!actionLoading
                     const seatedPct = bus.seated_capacity > 0 ? Math.round((bus.seated_count / bus.seated_capacity) * 100) : 0
                     return (
-                      <div key={bus.id} style={{ ...s.busCard, borderLeftColor: sc.color, cursor: 'pointer' }} onClick={() => setExpandedBus(isExpanded ? null : bus.id)}>
-                        <div style={s.busCardTop}>
-                          <div>
-                            <div style={s.busLabel}>{bus.bus_label}</div>
-                            <div style={s.busMeta}>
-                              {bus.driver_name || 'No driver'} {bus.plate_number ? `• ${bus.plate_number}` : ''}
-                            </div>
+                      <div key={bus.id} style={{ ...s.busCard, padding: 12, gap: 6, borderLeftColor: sc.color, cursor: 'pointer' }} onClick={() => setExpandedBus(isExpanded ? null : bus.id)}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 13, fontWeight: 800, color: T.textWhite }}>{bus.bus_label}</span>
+                            <span style={{ padding: '2px 4px', borderRadius: 2, fontSize: 8, fontWeight: 700, background: sc.bg, color: sc.color, borderColor: sc.border, border: '1px solid', textTransform: 'uppercase' }}>
+                              {bus.status.replace('_', ' ').toUpperCase()}
+                            </span>
                           </div>
-                          <span style={{ ...s.statusBadge, background: sc.bg, color: sc.color, borderColor: sc.border, fontSize: 9 }}>
-                            {bus.status.replace('_', ' ').toUpperCase()}
+                          <span style={{ fontSize: 10, color: T.textMuted, display: 'flex', alignItems: 'center', gap: 3, fontWeight: 600 }}>
+                            <Users size={10} /> {busPax.length}
                           </span>
                         </div>
 
-                        {/* Capacity bars */}
-                        <div style={s.capRow}>
-                          <div style={s.capInfo}>
-                            <span style={s.capLabel}>Seated</span>
-                            <span style={s.capVal}>{bus.seated_count}/{bus.seated_capacity}</span>
-                          </div>
-                          <div style={s.capBarBg}>
-                            <div style={{ ...s.capBarFill, width: `${seatedPct}%`, background: seatedPct >= 100 ? '#10b981' : '#a855f7' }} />
-                          </div>
+                        <div style={{ fontSize: 10, color: T.textMuted, marginTop: -2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {bus.driver_name || 'No driver'} {bus.plate_number ? `• ${bus.plate_number}` : ''}
                         </div>
-                        {bus.standing_capacity > 0 && (
-                          <div style={s.capRow}>
-                            <div style={s.capInfo}>
-                              <span style={s.capLabel}>Standing</span>
-                              <span style={s.capVal}>{bus.standing_count}/{bus.standing_capacity}</span>
+
+                        {/* Capacity bars - compact */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <div style={{ flex: 1, height: 4, background: T.border, borderRadius: 2, overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${Math.min(100, seatedPct)}%`, background: seatedPct >= 100 ? '#10b981' : '#a855f7' }} />
                             </div>
-                            <div style={s.capBarBg}>
-                              <div style={{ ...s.capBarFill, width: `${bus.standing_capacity > 0 ? Math.round((bus.standing_count / bus.standing_capacity) * 100) : 0}%`, background: '#f59e0b' }} />
-                            </div>
+                            <span style={{ fontSize: 9, color: T.textSecondary, width: 28, textAlign: 'right' }}>{bus.seated_count}/{bus.seated_capacity}</span>
+                            <UserCheck size={10} color={bus.checked_in_count > 0 ? '#10b981' : T.textMuted} />
+                            <span style={{ fontSize: 9, color: T.textSecondary, width: 12 }}>{bus.checked_in_count}</span>
                           </div>
-                        )}
-                        <div style={s.busCheckIn}>
-                          <UserCheck size={12} color='#10b981' />
-                          <span>{bus.checked_in_count} checked in</span>
+                          
+                          {bus.standing_capacity > 0 && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <div style={{ flex: 1, height: 4, background: T.border, borderRadius: 2, overflow: 'hidden' }}>
+                                <div style={{ height: '100%', width: `${Math.min(100, Math.round((bus.standing_count / bus.standing_capacity) * 100))}%`, background: '#f59e0b' }} />
+                              </div>
+                              <span style={{ fontSize: 9, color: T.textSecondary, width: 28, textAlign: 'right' }}>{bus.standing_count}/{bus.standing_capacity}</span>
+                              <div style={{ width: 10 }} />
+                              <div style={{ width: 12 }} />
+                            </div>
+                          )}
                         </div>
 
                         {/* Bus Actions */}
-                        <div style={s.busActions} onClick={e => e.stopPropagation()}>
-                          {bus.status === 'assigned' && (
-                            <button style={{ ...s.busActionBtn, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', opacity: disableDispatch ? 0.5 : 1, cursor: disableDispatch ? 'not-allowed' : 'pointer' }}
-                              onClick={() => handleBusAction(bus.id, 'depart')} disabled={disableDispatch}>
-                              <Play size={12} /> Board / Depart
-                            </button>
-                          )}
-                          {bus.status === 'boarding' && (
-                            <button style={{ ...s.busActionBtn, color: '#10b981', background: 'rgba(16,185,129,0.1)', opacity: disableDispatch ? 0.5 : 1, cursor: disableDispatch ? 'not-allowed' : 'pointer' }}
-                              onClick={() => handleBusAction(bus.id, 'depart')} disabled={disableDispatch}>
-                              <Navigation size={12} /> Depart
-                            </button>
-                          )}
-                          {(bus.status === 'departed' || bus.status === 'en_route') && (
-                            <button style={{ ...s.busActionBtn, color: '#6366f1', background: 'rgba(99,102,241,0.1)' }}
-                              onClick={() => handleBusAction(bus.id, 'arrive')} disabled={!!actionLoading}>
-                              <MapPin size={12} /> Mark Arrived
-                            </button>
-                          )}
-                          {bus.status === 'arrived' && (
-                            <button style={{ ...s.busActionBtn, color: '#64748b', background: 'rgba(100,116,139,0.1)' }}
-                              onClick={() => handleBusAction(bus.id, 'complete')} disabled={!!actionLoading}>
-                              <CheckCircle2 size={12} /> Complete
-                            </button>
-                          )}
-                          <span style={{ ...s.busActionBtn, color: T.textMuted, background: 'transparent', border: 'none', pointerEvents: 'none' }}>
-                            <Users size={12} />
-                            {busPax.length} pax
-                          </span>
-                        </div>
+                        {(bus.status !== 'completed' || isExpanded) && (
+                          <div style={{ display: 'flex', gap: 4, borderTop: `1px solid ${T.border}`, paddingTop: 8, marginTop: 2 }} onClick={e => e.stopPropagation()}>
+                            {bus.status === 'assigned' && (
+                              <>
+                                <button 
+                                  style={{ ...s.busActionBtn, flex: 0, padding: '6px 8px', color: unassignConfirmBusId === bus.id ? '#ef4444' : T.textMuted, background: unassignConfirmBusId === bus.id ? 'rgba(239,68,68,0.1)' : 'transparent' }}
+                                  onClick={() => setUnassignConfirmBusId(prev => prev === bus.id ? null : bus.id)}
+                                >
+                                  <Eject size={11} />
+                                </button>
+                                
+                                {unassignConfirmBusId === bus.id ? (
+                                  <button style={{ ...s.busActionBtn, flex: 1, justifyContent: 'center', color: '#ef4444', background: 'rgba(239,68,68,0.1)' }}
+                                    onClick={() => handleUnassignBus(bus.id)} disabled={!!actionLoading}>
+                                    Unassign
+                                  </button>
+                                ) : (
+                                  <button style={{ ...s.busActionBtn, flex: 1, justifyContent: 'center', color: '#f59e0b', background: 'rgba(245,158,11,0.1)', opacity: disableDispatch ? 0.5 : 1, cursor: disableDispatch ? 'not-allowed' : 'pointer' }}
+                                    onClick={() => handleBusAction(bus.id, 'depart')} disabled={disableDispatch}>
+                                    <Play size={11} /> Board / Depart
+                                  </button>
+                                )}
+                              </>
+                            )}
+                            {bus.status === 'boarding' && (
+                              <button style={{ ...s.busActionBtn, flex: 1, justifyContent: 'center', color: '#10b981', background: 'rgba(16,185,129,0.1)', opacity: disableDispatch ? 0.5 : 1, cursor: disableDispatch ? 'not-allowed' : 'pointer' }}
+                                onClick={() => handleBusAction(bus.id, 'depart')} disabled={disableDispatch}>
+                                <Navigation size={11} /> Depart
+                              </button>
+                            )}
+                            {(bus.status === 'departed' || bus.status === 'en_route') && (
+                              <button style={{ ...s.busActionBtn, flex: 1, justifyContent: 'center', color: '#6366f1', background: 'rgba(99,102,241,0.1)' }}
+                                onClick={() => handleBusAction(bus.id, 'arrive')} disabled={!!actionLoading}>
+                                <MapPin size={11} /> Mark Arrived
+                              </button>
+                            )}
+                            {bus.status === 'arrived' && (
+                              <button style={{ ...s.busActionBtn, flex: 1, justifyContent: 'center', color: '#64748b', background: 'rgba(100,116,139,0.1)' }}
+                                onClick={() => handleBusAction(bus.id, 'complete')} disabled={!!actionLoading}>
+                                <CheckCircle2 size={11} /> Complete
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )
                   })}
@@ -1131,7 +1179,7 @@ const s: Record<string, CSSProperties> = {
   overviewKpiLbl: { fontSize: 9, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center', width: '100%' },
 
   // ── Bus Cards ──
-  busGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 8 },
+  busGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 8 },
   busCard: { background: T.bgPanel, border: `1px solid ${T.border}`, borderLeft: '3px solid', borderRadius: 0, padding: 16, display: 'flex', flexDirection: 'column', gap: 8 },
   busCardTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' },
   busLabel: { fontSize: 14, fontWeight: 800, color: T.textWhite },
@@ -1155,16 +1203,15 @@ const s: Record<string, CSSProperties> = {
   busPaxActions: { display: 'flex', gap: 4, alignItems: 'center' },
   miniBtn: { width: 26, height: 26, borderRadius: 0, border: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: 'transparent', padding: 0, fontFamily: T.fontFamily },
 
-  // ── Add Vehicle Panel ──
   addVehiclePanel: { background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 0, padding: 16, display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 500 },
   addVehicleHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   vehicleCountBadge: { fontSize: 10, fontWeight: 700, background: 'rgba(168,85,247,0.15)', color: '#a855f7', borderRadius: 4, padding: '2px 8px' },
   emptyDriverState: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 32, color: T.textMuted, fontSize: 12 },
-  driverCardGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, overflowY: 'auto', maxHeight: 350, paddingRight: 4 },
-  driverCard: { background: T.bgPanel, border: `1px solid ${T.border}`, borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 6, transition: 'all 0.15s', position: 'relative' },
+  driverCardGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 8, overflowY: 'auto', maxHeight: 350, paddingRight: 4 },
+  driverCard: { background: T.bgPanel, border: `1px solid ${T.border}`, borderLeft: '3px solid #64748b', borderRadius: 0, padding: 12, display: 'flex', flexDirection: 'column', transition: 'all 0.15s', position: 'relative' },
   driverCardSelectable: { cursor: 'pointer' },
-  driverCardDisabled: { opacity: 0.6, cursor: 'not-allowed' },
-  driverCardSelected: { borderColor: '#a855f7', background: 'rgba(168,85,247,0.08)', borderWidth: 2 },
+  driverCardDisabled: { opacity: 0.6, cursor: 'not-allowed', borderLeftColor: '#ef4444' },
+  driverCardSelected: { borderLeftColor: '#10b981', borderColor: '#10b981', background: 'rgba(16,185,129,0.05)' },
   driverCardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   driverCardTitle: { display: 'flex', alignItems: 'center' },
   selectedBadge: { width: 20, height: 20, borderRadius: 10, background: '#a855f7', display: 'flex', alignItems: 'center', justifyContent: 'center' },
