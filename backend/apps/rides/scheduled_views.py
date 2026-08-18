@@ -287,23 +287,67 @@ class ScheduledRideStopsUpdateView(APIView):
         return scope_admin_queryset(user, qs).filter(id=ride_id).first()
 
 
+class CancellationImpactView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
+
+    def get(self, request, ride_id):
+        ride = self._get_scoped_ride(request.user, ride_id)
+        return Response(ride.cancellation_impact)
+
+    def _get_scoped_ride(self, user, ride_id):
+        qs = scope_admin_queryset(user, ScheduledRide.objects.all())
+        try:
+            return qs.get(id=ride_id)
+        except ScheduledRide.DoesNotExist:
+            raise NotFound('Ride not found.')
+
 class ScheduledRideCancelView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
 
     @transaction.atomic
     def post(self, request, ride_id):
         ride = self._get_scoped_ride(request.user, ride_id, for_update=True)
+        
+        if not ride.can_cancel:
+            return Response({'detail': 'Cannot cancel this ride. Vehicles have already departed.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        boarded = ride.passengers.filter(status=PassengerStatus.BOARDED).count()
+        if boarded > 0:
+            return Response({'detail': f'{boarded} passengers have already boarded. Unboard them first or complete the ride.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        # Process confirmed passengers
+        passengers = list(ride.passengers.select_related('student').exclude(status__in=[PassengerStatus.CANCELLED, PassengerStatus.NO_SHOW]))
+        for passenger in passengers:
+            refund_passenger(passenger, 'Scheduled ride cancelled')
+            passenger.status = PassengerStatus.CANCELLED
+            passenger.save(update_fields=['status'])
+
+        # Process bus assignments
+        buses = ride.bus_assignments.filter(status__in=[BusAssignmentStatus.ASSIGNED, BusAssignmentStatus.BOARDING, BusAssignmentStatus.LOADING])
+        for bus in buses:
+            if bus.driver:
+                from .scheduled_models import ScheduledRideDriverInterest
+                ScheduledRideDriverInterest.objects.filter(
+                    ride=ride,
+                    driver=bus.driver,
+                    status='assigned'
+                ).update(status='interested')
+            bus.delete()
+
         try:
             ride.transition_to(ScheduledRideStatus.CANCELLED)
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         ride.save(update_fields=['status', 'updated_at'])
-        passengers = list(ride.passengers.select_related('student').exclude(status=PassengerStatus.CANCELLED))
-        for passenger in passengers:
-            refund_passenger(passenger, 'Scheduled ride cancelled')
-            passenger.status = PassengerStatus.CANCELLED
-            passenger.save(update_fields=['status'])
+
+        # Log Activity
+        from .scheduled_models import ScheduledRideActivityLog
+        ScheduledRideActivityLog.objects.create(
+            ride=ride,
+            message=f"Ride cancelled by admin. {len(passengers)} passengers refunded. {len(buses)} bus assignments removed.",
+            log_type='warning'
+        )
 
         return Response(ScheduledRideDetailSerializer(ride, context={'request': request}).data)
 
@@ -316,6 +360,23 @@ class ScheduledRideCancelView(APIView):
             return qs.get(id=ride_id)
         except ScheduledRide.DoesNotExist:
             raise NotFound('Ride not found.')
+
+class ScheduledRideHardDeleteView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
+
+    @transaction.atomic
+    def delete(self, request, ride_id):
+        qs = scope_admin_queryset(request.user, ScheduledRide.objects.all())
+        try:
+            ride = qs.get(id=ride_id)
+        except ScheduledRide.DoesNotExist:
+            raise NotFound('Ride not found.')
+            
+        if not ride.can_hard_delete:
+            return Response({'detail': 'This ride cannot be permanently deleted. Financial records or active assignments exist.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        ride.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class ScheduledRideDepartView(APIView):

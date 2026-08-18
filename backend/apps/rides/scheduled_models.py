@@ -158,6 +158,61 @@ class ScheduledRide(models.Model):
             PricingTier.FREIGHT: self.freight_price,
         }.get(tier)
 
+    @property
+    def can_cancel(self):
+        """Whether this ride can be cancelled at all."""
+        if self.status in [ScheduledRideStatus.DEPARTED, ScheduledRideStatus.COMPLETED, ScheduledRideStatus.CANCELLED]:
+            return False
+        # If any bus has departed, block cancellation
+        if self.bus_assignments.filter(
+            status__in=[BusAssignmentStatus.DEPARTED, BusAssignmentStatus.EN_ROUTE,
+                        BusAssignmentStatus.ARRIVED, BusAssignmentStatus.COMPLETED]
+        ).exists():
+            return False
+        return True
+
+    @property
+    def can_hard_delete(self):
+        """Whether this ride can be permanently deleted."""
+        if self.status not in [ScheduledRideStatus.SCHEDULED, ScheduledRideStatus.CANCELLED]:
+            return False
+        if self.passengers.exclude(status=PassengerStatus.CANCELLED).exists():
+            return False
+        if self.bus_assignments.exists() and self.status != ScheduledRideStatus.CANCELLED:
+            return False
+        # Check if any wallet transactions reference this ride
+        from apps.payments.models import WalletTransaction
+        if WalletTransaction.objects.filter(
+            metadata__scheduled_ride_id=str(self.id)
+        ).exists():
+            return False
+        return True
+
+    @property
+    def cancellation_impact(self):
+        """Returns a dict summarizing what would happen if this ride is cancelled."""
+        active_passengers = self.passengers.exclude(
+            status__in=[PassengerStatus.CANCELLED, PassengerStatus.NO_SHOW]
+        )
+        boarded = active_passengers.filter(status=PassengerStatus.BOARDED)
+        confirmed = active_passengers.filter(status=PassengerStatus.CONFIRMED)
+        buses = self.bus_assignments.all()
+        assigned_drivers = buses.exclude(driver__isnull=True).count()
+        total_refund = sum(p.amount_paid for p in active_passengers)
+
+        return {
+            'can_cancel': self.can_cancel,
+            'total_passengers': active_passengers.count(),
+            'boarded_passengers': boarded.count(),
+            'confirmed_passengers': confirmed.count(),
+            'assigned_drivers': assigned_drivers,
+            'total_refund_amount': str(total_refund),
+            'has_departed_buses': buses.filter(
+                status__in=[BusAssignmentStatus.DEPARTED, BusAssignmentStatus.EN_ROUTE,
+                            BusAssignmentStatus.ARRIVED, BusAssignmentStatus.COMPLETED]
+            ).exists(),
+        }
+
     def transition_to(self, new_status):
         valid_transitions = {
             ScheduledRideStatus.SCHEDULED: [
@@ -174,6 +229,10 @@ class ScheduledRide(models.Model):
         allowed = valid_transitions.get(self.status, [])
         if new_status not in allowed:
             raise ValueError(f'Invalid transition: {self.status} -> {new_status}. Allowed: {allowed}')
+            
+        if new_status == ScheduledRideStatus.CANCELLED and not self.can_cancel:
+            raise ValueError('Cannot cancel this ride. Vehicles have already departed.')
+
         self.status = new_status
 
 

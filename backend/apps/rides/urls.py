@@ -39,6 +39,8 @@ from .scheduled_views import (
     ScheduledRideListView,
     ScheduledRideDetailView,
     ScheduledRideCancelView,
+    CancellationImpactView,
+    ScheduledRideHardDeleteView,
     ScheduledRideStopsUpdateView,
     ScheduledRideDepartView,
     ScheduledRideCompleteView,
@@ -48,6 +50,10 @@ from .scheduled_views import (
     StudentLeaveScheduledRideView,
     DispatchedBusListView,
     ScheduledRideActivityLogView,
+)
+from .migrate_views import (
+    CompatibleRidesView,
+    MigrateRideView,
 )
 from .scheduled_bus_views import (
     BusAssignmentListView,
@@ -146,8 +152,14 @@ urlpatterns = [
     path('scheduled/<uuid:ride_id>/', ScheduledRideDetailView.as_view(), name='scheduled-ride-detail'),
     path('scheduled/<uuid:ride_id>/stops/', ScheduledRideStopsUpdateView.as_view(), name='scheduled-ride-stops-update'),
     path('scheduled/<uuid:ride_id>/cancel/', ScheduledRideCancelView.as_view(), name='scheduled-ride-cancel'),
+    path('scheduled/<uuid:ride_id>/cancellation-impact/', CancellationImpactView.as_view(), name='scheduled-ride-cancellation-impact'),
+    path('scheduled/<uuid:ride_id>/delete/', ScheduledRideHardDeleteView.as_view(), name='scheduled-ride-delete'),
     path('scheduled/<uuid:ride_id>/depart/', ScheduledRideDepartView.as_view(), name='scheduled-ride-depart'),
     path('scheduled/<uuid:ride_id>/complete/', ScheduledRideCompleteView.as_view(), name='scheduled-ride-complete'),
+    
+    # ── Migration (Campus Admin) ─────────────────────────────────────────────
+    path('scheduled/<uuid:ride_id>/compatible-rides/', CompatibleRidesView.as_view(), name='compatible-rides'),
+    path('scheduled/<uuid:ride_id>/migrate/', MigrateRideView.as_view(), name='migrate-ride'),
     path('scheduled/dispatched-buses/', DispatchedBusListView.as_view(), name='dispatched-bus-list'),
     path('scheduled/<uuid:ride_id>/logs/', ScheduledRideActivityLogView.as_view(), name='scheduled-ride-logs'),
 

@@ -10,6 +10,7 @@ import { T } from '../../../theme'
 import { apiService } from '../../../../services/api.service'
 import { useDispatchStore } from '../../../dispatchStore'
 import { routeEndpointLabel } from '../../../shared/routeDisplay'
+import RideResolutionModal from '../../../components/RideResolutionModal'
 
 /* ─────────────────────────── Types ─────────────────────────────── */
 
@@ -82,6 +83,7 @@ export const RoutesTab: React.FC<RoutesTabProps> = ({ search }) => {
   // ── Which ride/sheet is active inside a group ─────────────────────
   const [activeRideId, setActiveRideId] = useState<string | null>(null)
   const [activeRideDetail, setActiveRideDetail] = useState<any>(null)
+  const [resolvingRide, setResolvingRide] = useState<ScheduledRide | null>(null)
 
   useEffect(() => {
     if (activeRideId) {
@@ -486,15 +488,30 @@ export const RoutesTab: React.FC<RoutesTabProps> = ({ search }) => {
                         onClick={() => { setOpenMenuId(null); handleEditInAdmin(activeRide) }}>
                         <Copy size={12} /> Duplicate in Admin
                       </button>
-                      <button style={{ width: '100%', padding: '10px 14px', background: 'none', border: 'none', color: '#ef4444', fontSize: 12, cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8 }}
-                        onClick={() => {
-                          setOpenMenuId(null)
-                          if (window.confirm(`Cancel ride ${activeRide.reference}? This cannot be undone.`)) {
-                            apiService.cancelScheduledRide(activeRide.id).then(fetchRoutes).catch(console.error)
-                          }
-                        }}>
-                        <Trash2 size={12} /> Cancel Ride
-                      </button>
+                      {activeRide.status === 'cancelled' ? (
+                        <button style={{ width: '100%', padding: '10px 14px', background: 'none', border: 'none', color: '#ef4444', fontSize: 12, cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8 }}
+                          onClick={() => {
+                            setOpenMenuId(null)
+                            if (window.confirm(`Permanently delete ${activeRide.reference}? This cannot be undone.`)) {
+                              apiService.hardDeleteScheduledRide(activeRide.id)
+                                .then(() => {
+                                  fetchRoutes();
+                                  setActiveRideId(null);
+                                })
+                                .catch(err => alert(err.response?.data?.detail || 'Cannot delete this ride.'))
+                            }
+                          }}>
+                          <Trash2 size={12} /> Delete Permanently
+                        </button>
+                      ) : (
+                        <button style={{ width: '100%', padding: '10px 14px', background: 'none', border: 'none', color: '#ef4444', fontSize: 12, cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8 }}
+                          onClick={() => {
+                            setOpenMenuId(null)
+                            setResolvingRide(activeRide)
+                          }}>
+                          <Trash2 size={12} /> {activeRide.passenger_count > 0 ? 'Resolve Ride' : 'Cancel Ride'}
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1018,6 +1035,18 @@ export const RoutesTab: React.FC<RoutesTabProps> = ({ search }) => {
 
       {openMenuId && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setOpenMenuId(null)} />
+      )}
+
+      {resolvingRide && (
+        <RideResolutionModal 
+          ride={resolvingRide}
+          onClose={() => setResolvingRide(null)}
+          onResolved={() => {
+            setResolvingRide(null)
+            fetchRoutes()
+            setActiveRideId(null)
+          }}
+        />
       )}
     </>
   )

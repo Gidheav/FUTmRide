@@ -437,6 +437,22 @@ class ApiService {
     return this.post(`rides/scheduled/${id}/cancel/`)
   }
 
+  async getCancellationImpact(id: string): Promise<any> {
+    return this.get(`rides/scheduled/${id}/cancellation-impact/`)
+  }
+
+  async hardDeleteScheduledRide(id: string): Promise<any> {
+    return this.delete(`rides/scheduled/${id}/delete/`)
+  }
+
+  async getCompatibleRides(id: string): Promise<any[]> {
+    return this.get(`rides/scheduled/${id}/compatible-rides/`)
+  }
+
+  async migrateRide(id: string, targetRideId: string): Promise<any> {
+    return this.post(`rides/scheduled/${id}/migrate/`, { target_ride_id: targetRideId })
+  }
+
   async departScheduledRide(id: string): Promise<any> {
     return this.post(`rides/scheduled/${id}/depart/`)
   }

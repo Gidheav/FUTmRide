@@ -529,8 +529,8 @@ export default function RouteOpsPanel() {
         {/* ── LEFT: Ride Feed + Convoy ────────────────────────────────── */}
         <div style={s.leftCol} className="hide-scrollbar">
           {/* ── SECTION 2: Active Rides Feed ──────────────────────────── */}
-          <div style={{ ...s.section, padding: 0 }}>
-            <div style={{ position: 'sticky', top: 0, zIndex: 10, background: T.bgPanel, padding: '20px 24px 12px 24px', borderBottom: `1px solid ${T.border}` }}>
+          <div style={{ ...s.section, padding: 0, flex: 1, minHeight: 0 }}>
+            <div style={{ position: 'sticky', top: 0, zIndex: 10, background: T.bgPanel, padding: '12px 16px 8px 16px', borderBottom: `1px solid ${T.border}` }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <div style={{ position: 'relative', flex: 1 }}>
                   <Search size={14} color={T.textMuted} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
@@ -587,7 +587,7 @@ export default function RouteOpsPanel() {
               </div>
             </div>
 
-            <div style={{ ...s.rideGrid, padding: '12px 24px 20px 24px' }}>
+            <div style={{ ...s.rideGrid, padding: '8px 16px 12px 16px' }}>
               {loading ? (
                 <div style={s.emptyState}>Loading routes...</div>
               ) : filteredRides.length === 0 ? (
@@ -1112,7 +1112,7 @@ export default function RouteOpsPanel() {
 /* ══════════════════════════════════════════════════════════════════════════ */
 
 const s: Record<string, CSSProperties> = {
-  root: { display: 'flex', flexDirection: 'column', flex: 1, width: '100%', height: '100%', overflow: 'hidden', fontFamily: T.fontFamily, background: T.bg, padding: 4, gap: 2, boxSizing: 'border-box' },
+  root: { display: 'flex', flexDirection: 'column', flex: 1, width: '100%', height: '100%', overflow: 'hidden', fontFamily: T.fontFamily, background: T.bg, padding: 2, gap: 2, boxSizing: 'border-box' },
 
   // ── Command Header ──
   cmdHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: T.bgPanel, border: `1px solid ${T.border}`, borderRadius: 0, flexShrink: 0 },
@@ -1130,8 +1130,8 @@ const s: Record<string, CSSProperties> = {
 
   // ── Main Layout ──
   mainLayout: { display: 'flex', flex: 1, overflow: 'hidden', gap: 2 },
-  leftCol: { width: 340, display: 'flex', flexDirection: 'column', overflow: 'auto', gap: 2, flexShrink: 0 },
-  midCol: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto', gap: 2, minWidth: 0 },
+  leftCol: { width: 340, display: 'flex', flexDirection: 'column', overflow: 'auto', gap: 2, flexShrink: 0, minHeight: 0 },
+  midCol: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto', gap: 2, minWidth: 0, border: `1px solid ${T.border}` },
   rightCol: { width: 300, display: 'flex', flexDirection: 'column', overflow: 'hidden', gap: 2, flexShrink: 0 },
 
   // ── Sections ──
@@ -1150,7 +1150,7 @@ const s: Record<string, CSSProperties> = {
 
   // ── Ride Cards ──
   rideGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 8 },
-  rideCard: { background: T.bgCard, border: `1px solid ${T.border}`, borderLeft: '3px solid', borderRadius: 0, padding: 12, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 6, transition: 'all 0.15s' },
+  rideCard: { background: T.bgCard, border: `1px solid ${T.border}`, borderLeft: '3px solid', borderRadius: 0, padding: 10, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 5, transition: 'all 0.15s' },
   rideCardSelected: { borderColor: '#a855f7', background: 'rgba(168,85,247,0.06)' },
   rideCardTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   rideRef: { fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: T.textWhite },
