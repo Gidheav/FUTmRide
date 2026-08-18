@@ -47,6 +47,7 @@ from .scheduled_views import (
     StudentJoinScheduledRideView,
     StudentLeaveScheduledRideView,
     DispatchedBusListView,
+    ScheduledRideActivityLogView,
 )
 from .scheduled_bus_views import (
     BusAssignmentListView,
@@ -148,6 +149,7 @@ urlpatterns = [
     path('scheduled/<uuid:ride_id>/depart/', ScheduledRideDepartView.as_view(), name='scheduled-ride-depart'),
     path('scheduled/<uuid:ride_id>/complete/', ScheduledRideCompleteView.as_view(), name='scheduled-ride-complete'),
     path('scheduled/dispatched-buses/', DispatchedBusListView.as_view(), name='dispatched-bus-list'),
+    path('scheduled/<uuid:ride_id>/logs/', ScheduledRideActivityLogView.as_view(), name='scheduled-ride-logs'),
 
     # ── Bus Assignment & Passenger Management (Route Ops) ────────────────────
     path('scheduled/<uuid:ride_id>/buses/', BusAssignmentListView.as_view(), name='bus-assignment-list'),

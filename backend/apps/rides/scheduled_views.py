@@ -453,3 +453,38 @@ class StudentLeaveScheduledRideView(APIView):
         passenger.status = PassengerStatus.CANCELLED
         passenger.save(update_fields=['status'])
         return Response(ScheduledRidePassengerReadSerializer(passenger, context={'request': request}).data)
+
+
+class ScheduledRideActivityLogView(APIView):
+    """GET/POST activity logs for a scheduled ride."""
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
+
+    def get_ride(self, ride_id, user):
+        try:
+            qs = ScheduledRide.objects.all()
+            qs = scope_admin_queryset(user, qs)
+            return qs.get(id=ride_id)
+        except ScheduledRide.DoesNotExist:
+            raise NotFound('Ride not found.')
+
+    def get(self, request, ride_id):
+        from .scheduled_models import ScheduledRideActivityLog
+        from .scheduled_serializers import ScheduledRideActivityLogSerializer
+        self.get_ride(ride_id, request.user)
+        logs = ScheduledRideActivityLog.objects.filter(ride_id=ride_id).order_by('-created_at')[:200]
+        serializer = ScheduledRideActivityLogSerializer(logs, many=True)
+        return Response(serializer.data)
+
+    def post(self, request, ride_id):
+        from .scheduled_models import ScheduledRideActivityLog
+        from .scheduled_serializers import ScheduledRideActivityLogSerializer
+        self.get_ride(ride_id, request.user)
+        data = {
+            'ride': str(ride_id),
+            'message': request.data.get('message', ''),
+            'log_type': request.data.get('log_type', 'info'),
+        }
+        serializer = ScheduledRideActivityLogSerializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)

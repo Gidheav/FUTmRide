@@ -841,3 +841,11 @@ class DispatchedBusListSerializer(serializers.ModelSerializer):
 
     def get_driver_name(self, obj):
         return obj.driver.full_name if obj.driver else 'Unassigned'
+
+
+class ScheduledRideActivityLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        from .scheduled_models import ScheduledRideActivityLog
+        model = ScheduledRideActivityLog
+        fields = ['id', 'ride', 'message', 'log_type', 'created_at']
+        read_only_fields = ['id', 'created_at']

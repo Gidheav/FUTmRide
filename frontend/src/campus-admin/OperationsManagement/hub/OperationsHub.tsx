@@ -177,7 +177,7 @@ export default function OperationsHub() {
         </div>
       </div>
 
-      <div style={{ ...campusPanel.scrollMain, ...campusPanel.thinScroll }}>
+      <div style={{ ...campusPanel.scrollMain, ...campusPanel.thinScroll, position: 'relative' }}>
         {activeTab === 'departures' && <DeparturesTab key={refreshKey} search={search} />}
         {activeTab === 'routes' && <RoutesTab key={refreshKey} search={search} />}
         {activeTab === 'fleet' && <FleetTab key={refreshKey} search={search} />}

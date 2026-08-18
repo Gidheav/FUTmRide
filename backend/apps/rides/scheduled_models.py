@@ -389,3 +389,22 @@ class ScheduledRideDriverInterest(models.Model):
 
     def __str__(self):
         return f'Interest({self.driver.email} -> {self.ride.reference} [{self.status}])'
+
+
+class ScheduledRideActivityLog(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    ride = models.ForeignKey(ScheduledRide, on_delete=models.CASCADE, related_name='activity_logs')
+    message = models.TextField()
+    log_type = models.CharField(
+        max_length=20, 
+        choices=[('info', 'Info'), ('success', 'Success'), ('warning', 'Warning'), ('error', 'Error')], 
+        default='info'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'scheduled_ride_activity_logs'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Log({self.ride.reference} - {self.log_type})'

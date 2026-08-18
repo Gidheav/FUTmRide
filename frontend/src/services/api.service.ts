@@ -383,8 +383,50 @@ class ApiService {
     return this.get(`rides/scheduled/${id}/`)
   }
 
-  async updateScheduledRide(id: string, data: Partial<{ window_start: string; window_end: string; status: string }>): Promise<any> {
+  async updateScheduledRide(id: string, data: Partial<{
+    window_start: string
+    window_end: string
+    status: string
+    departure_date: string
+    allowed_vehicle_types: string[]
+    vehicle_size: string
+    notes: string
+  }>): Promise<any> {
     return this.patch(`rides/scheduled/${id}/`, data)
+  }
+
+  async duplicateScheduledRide(id: string, overrides: Partial<{
+    departure_date: string
+    window_start: string
+    window_end: string
+    allowed_vehicle_types: string[]
+    notes: string
+  }> = {}): Promise<any> {
+    const detail = await this.getScheduledRideDetail(id)
+    const payload: any = {
+      origin_address: detail.origin_address,
+      origin_name: detail.origin_name,
+      origin_latitude: detail.origin_latitude,
+      origin_longitude: detail.origin_longitude,
+      destination_address: detail.destination_address,
+      destination_name: detail.destination_name,
+      destination_latitude: detail.destination_latitude,
+      destination_longitude: detail.destination_longitude,
+      departure_date: overrides.departure_date || detail.departure_date,
+      window_start: overrides.window_start !== undefined ? (overrides.window_start && overrides.window_start.length === 5 ? overrides.window_start + ':00' : overrides.window_start) : detail.window_start,
+      window_end: overrides.window_end !== undefined ? (overrides.window_end && overrides.window_end.length === 5 ? overrides.window_end + ':00' : overrides.window_end) : detail.window_end,
+      vehicle_size: detail.vehicle_size,
+      allowed_vehicle_types: overrides.allowed_vehicle_types || detail.allowed_vehicle_types,
+      notes: overrides.notes !== undefined ? overrides.notes : detail.notes,
+      stops: (detail.stops || []).map((s: any, i: number) => ({
+        name: s.name,
+        address: s.address,
+        latitude: s.latitude,
+        longitude: s.longitude,
+        order: i + 1,
+      })),
+    }
+    return this.post('rides/scheduled/create/', payload)
   }
 
   async updateScheduledRideStops(id: string, stops: any[]): Promise<any> {
@@ -463,6 +505,16 @@ class ApiService {
 
   async autoAllocatePassengers(rideId: string): Promise<any> {
     return this.post(`rides/scheduled/${rideId}/auto-allocate/`)
+  }
+
+  // ── Activity Logs ──────────────────────────────────────────────────────────
+
+  async getScheduledRideLogs(rideId: string): Promise<any[]> {
+    return this.get<any[]>(`rides/scheduled/${rideId}/logs/`)
+  }
+
+  async addScheduledRideLog(rideId: string, message: string, logType: string = 'info'): Promise<any> {
+    return this.post(`rides/scheduled/${rideId}/logs/`, { message, log_type: logType })
   }
 
   async getTestToolsSummary(): Promise<any> {

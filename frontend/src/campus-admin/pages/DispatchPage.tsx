@@ -518,24 +518,27 @@ function LiveFleetPanel() {
             placeholder="Search ride, driver, or location..."
             style={s.searchInput}
           />
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={s.fleetFilterLabel}>Fleet filter</span>
+            {['all', 'idle', 'on_trip'].map((key) => (
+              <button
+                key={key}
+                style={{
+                  ...s.fleetFilterChip,
+                  background: fleetFilter === key ? T.heatTeal : 'transparent',
+                  color: fleetFilter === key ? '#fff' : T.textSecondary,
+                  borderColor: fleetFilter === key ? T.heatTeal : T.border,
+                }}
+                onClick={() => setFleetFilter(key as 'all' | 'idle' | 'on_trip')}
+              >
+                {key.replaceAll('_', ' ')}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div style={s.fleetFilterBar}>
-          <span style={s.fleetFilterLabel}>Fleet filter</span>
-          {['all', 'idle', 'on_trip'].map((key) => (
-            <button
-              key={key}
-              style={{
-                ...s.fleetFilterChip,
-                background: fleetFilter === key ? T.heatTeal : 'transparent',
-                color: fleetFilter === key ? '#fff' : T.textSecondary,
-                borderColor: fleetFilter === key ? T.heatTeal : T.border,
-              }}
-              onClick={() => setFleetFilter(key as 'all' | 'idle' | 'on_trip')}
-            >
-              {key.replaceAll('_', ' ')}
-            </button>
-          ))}
+          {/* Left empty for now, we will bring in more tools */}
         </div>
 
         <div style={s.mapArea}>
@@ -550,8 +553,9 @@ function LiveFleetPanel() {
               onLoad={(map) => { mapRef.current = map }}
               onZoomChanged={() => setMapZoom(mapRef.current?.getZoom() ?? DEFAULT_ZOOM)}
               options={{
+                mapTypeId: adminMapType,
                 disableDefaultUI: true,
-                zoomControl: true,
+                zoomControl: false,
                 streetViewControl: false,
                 clickableIcons: false,
                 gestureHandling: 'greedy',
@@ -920,7 +924,7 @@ function LiveFleetPanel() {
         </div>
       ) : (
         <div style={{ ...s.rightPanel, width: 36, alignItems: 'center', cursor: 'pointer', boxShadow: 'none' }} onClick={() => setIsRightPanelOpen(true)}>
-          <div style={{ padding: '10px 0', borderBottom: `1px solid ${T.border}`, width: '100%', display: 'flex', justifyContent: 'center' }}>
+          <div style={{ height: 44, borderBottom: `1px solid ${T.border}`, width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
             <ChevronLeft size={16} color={T.textMuted} />
           </div>
           <div style={{ writingMode: 'vertical-rl', padding: '16px 0', fontSize: 11, fontWeight: 600, color: T.textSecondary, letterSpacing: 1 }}>
@@ -934,8 +938,8 @@ function LiveFleetPanel() {
 
 const s: Record<string, CSSProperties> = {
   content: { flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' },
-  centerPanel: { flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, paddingRight: 36, boxSizing: 'border-box' },
-  mapToolbar: { height: 44, background: T.bgPanel, display: 'flex', alignItems: 'center', position: 'relative', padding: '0 12px', borderBottom: `1px solid ${T.border}`, flexShrink: 0 },
+  centerPanel: { flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, paddingRight: 0, boxSizing: 'border-box' },
+  mapToolbar: { height: 44, background: T.bgPanel, display: 'flex', alignItems: 'center', padding: '0 12px', borderBottom: `1px solid ${T.border}`, flexShrink: 0 },
   fleetFilterBar: { height: 34, background: T.bgPanel, display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', borderBottom: `1px solid ${T.border}`, flexShrink: 0 },
   fleetFilterLabel: { fontSize: 10, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.6 },
   fleetFilterChip: { borderRadius: 999, border: `1px solid ${T.border}`, padding: '3px 10px', fontSize: 10, fontWeight: 700, cursor: 'pointer' },
@@ -944,12 +948,10 @@ const s: Record<string, CSSProperties> = {
   rightPanel: {
     width: 310, background: T.bgPanel, borderLeft: `1px solid ${T.border}`,
     display: 'flex', flexDirection: 'column', flexShrink: 0, overflowY: 'auto',
-    position: 'absolute', top: 0, bottom: 0, right: 0, zIndex: 40,
-    boxShadow: '-2px 0 12px rgba(0,0,0,0.5)',
   },
   rpHeader: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-    padding: '10px 12px', borderBottom: `1px solid ${T.border}`,
+    height: 44, padding: '0 12px', borderBottom: `1px solid ${T.border}`, flexShrink: 0
   },
   wsBadge: {
     display: 'flex', alignItems: 'center', gap: 6,
@@ -965,7 +967,7 @@ const s: Record<string, CSSProperties> = {
 
   filterGroup: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   filterChip: { borderRadius: 4, border: `1px solid ${T.border}`, padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: T.fontFamily },
-  searchInput: { position: 'absolute', left: '50%', transform: 'translateX(-50%)', width: 300, background: T.bgCard, border: `1px solid ${T.border}`, color: T.textPrimary, borderRadius: 6, padding: '6px 12px', fontSize: 11, fontFamily: T.fontFamily, boxSizing: 'border-box' },
+  searchInput: { position: 'absolute', left: '50%', top: 22, transform: 'translate(-50%, -50%)', width: 300, background: T.bgCard, border: `1px solid ${T.border}`, color: T.textPrimary, borderRadius: 6, padding: '6px 12px', fontSize: 11, fontFamily: T.fontFamily, boxSizing: 'border-box', zIndex: 10 },
   
   mapPlaceholder: { width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.textMuted },
   heatOverlay: { position: 'absolute', inset: 0, background: 'radial-gradient(circle at 20% 20%, rgba(168,85,247,0.25), transparent 45%), radial-gradient(circle at 70% 50%, rgba(245,158,11,0.22), transparent 50%), radial-gradient(circle at 50% 80%, rgba(20,184,166,0.25), transparent 55%)', pointerEvents: 'none' },
@@ -1019,9 +1021,14 @@ const s: Record<string, CSSProperties> = {
 export default function DispatchPage() {
   const { activeTab: dispatchTab } = useDispatchStore()
   
-  if (dispatchTab === 'route_ops') {
-    return <RouteOpsPanel />
-  }
-  
-  return <LiveFleetPanel />
+  return (
+    <>
+      <div style={{ display: dispatchTab === 'route_ops' ? 'flex' : 'none', flex: 1, overflow: 'hidden' }}>
+        <RouteOpsPanel />
+      </div>
+      <div style={{ display: dispatchTab === 'live_fleet' ? 'flex' : 'none', flex: 1, overflow: 'hidden' }}>
+        <LiveFleetPanel />
+      </div>
+    </>
+  )
 }

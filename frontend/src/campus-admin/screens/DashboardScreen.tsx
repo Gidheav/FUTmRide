@@ -242,6 +242,9 @@ export default function DashboardPage() {
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(false)
   const [isDataFeedOpen, setIsDataFeedOpen] = useState(false)
 
+  const [selectedRequestId, setSelectedRequestId] = useState<string | number | null>(null)
+  const [selectedRequestPath, setSelectedRequestPath] = useState<google.maps.LatLngLiteral[]>([])
+
 
   const setOpenRequestsPanel = (open: boolean) => {
     setIsLeftPanelOpen(open)
@@ -669,9 +672,9 @@ export default function DashboardPage() {
   // Load via REST immediately on mount
   useEffect(() => { fetchRidesViaREST() }, [fetchRidesViaREST])
 
-  // Safety-net: re-fetch via REST every 30s to catch anything WS missed
+  // Safety-net: re-fetch via REST every 10s to catch anything WS missed
   useEffect(() => {
-    const interval = setInterval(fetchRidesViaREST, 30_000)
+    const interval = setInterval(fetchRidesViaREST, 10_000)
     return () => clearInterval(interval)
   }, [fetchRidesViaREST])
 
@@ -1401,7 +1404,32 @@ export default function DashboardPage() {
     }
   }, [measureRoutes, selectedMeasureRouteIndex, toolVisibility.measure, measurePoints.length, formatRouteStatus])
 
+  /* ── Custom Polyline Manager for Selected Request Route ─────────────────────── */
+  useEffect(() => {
+    if (!mapRef.current || !window.google || selectedRequestPath.length < 2) return
+
+    const p = new google.maps.Polyline({
+      path: selectedRequestPath,
+      strokeColor: '#0ea5e9',
+      strokeOpacity: 1,
+      strokeWeight: 4,
+      zIndex: 100,
+      map: mapRef.current,
+    })
+
+    return () => {
+      try { p.setMap(null) } catch (e) {}
+    }
+  }, [selectedRequestPath])
+
   /* ────────────────────────────────────────────────────────────────────────── */
+
+  // Calculate dynamic spacing to avoid UI overlays being covered by sliding absolute panels
+  const leftOffset = !isFullscreen ? (isLeftPanelOpen ? 298 : 36) : 0
+  const rightOffset = !isFullscreen ? (isRightPanelOpen ? 331 : 36) : 0
+  const overlayLeft = leftOffset + 10
+  const overlayRight = rightOffset + 10
+  const centerShift = (leftOffset - rightOffset) / 2
 
   return (
     <>
@@ -1447,11 +1475,27 @@ export default function DashboardPage() {
                   const isNew = newRideIds.has(req.id)
 
                   return (
-                    <div key={req.id} style={{
+                    <div key={req.id} onClick={async () => {
+                      if (selectedRequestId === req.id) {
+                        setSelectedRequestId(null)
+                        setSelectedRequestPath([])
+                      } else {
+                        setSelectedRequestId(req.id)
+                        setSelectedRequestPath([])
+                        try {
+                          const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${req.origin_longitude},${req.origin_latitude};${req.destination_longitude},${req.destination_latitude}?overview=full&geometries=geojson`)
+                          const data = await res.json()
+                          if (data.routes?.[0]?.geometry?.coordinates) {
+                            setSelectedRequestPath(data.routes[0].geometry.coordinates.map((c: number[]) => ({ lat: c[1], lng: c[0] })))
+                          }
+                        } catch(e) {}
+                      }
+                    }} style={{
                       ...s.reqCard,
-                      borderColor: isNew ? T.accent : undefined,
+                      background: selectedRequestId === req.id ? 'rgba(14, 165, 233, 0.1)' : undefined,
+                      borderColor: selectedRequestId === req.id ? T.accent : (isNew ? T.accent : undefined),
                       boxShadow: isNew ? `0 0 0 2px ${T.accent}44` : undefined,
-                      transition: 'border-color 0.4s, box-shadow 0.4s',
+                      transition: 'background 0.2s, border-color 0.4s, box-shadow 0.4s',
                     }}>
                       {/* Badge row */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
@@ -1516,11 +1560,27 @@ export default function DashboardPage() {
                   }
 
                   return (
-                    <div key={req.id} style={{
+                    <div key={req.id} onClick={async () => {
+                      if (selectedRequestId === req.id) {
+                        setSelectedRequestId(null)
+                        setSelectedRequestPath([])
+                      } else {
+                        setSelectedRequestId(req.id)
+                        setSelectedRequestPath([])
+                        try {
+                          const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${req.pickup_longitude},${req.pickup_latitude};${req.dropoff_longitude},${req.dropoff_latitude}?overview=full&geometries=geojson`)
+                          const data = await res.json()
+                          if (data.routes?.[0]?.geometry?.coordinates) {
+                            setSelectedRequestPath(data.routes[0].geometry.coordinates.map((c: number[]) => ({ lat: c[1], lng: c[0] })))
+                          }
+                        } catch(e) {}
+                      }
+                    }} style={{
                       ...s.reqCard,
-                      borderColor: isNew ? '#f59e0b' : undefined,
+                      background: selectedRequestId === req.id ? 'rgba(14, 165, 233, 0.1)' : undefined,
+                      borderColor: selectedRequestId === req.id ? '#0ea5e9' : (isNew ? '#f59e0b' : undefined),
                       boxShadow: isNew ? '0 0 0 2px #f59e0b44' : undefined,
-                      transition: 'border-color 0.4s, box-shadow 0.4s',
+                      transition: 'background 0.2s, border-color 0.4s, box-shadow 0.4s',
                     }}>
                       {/* Badge row */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
@@ -1565,7 +1625,7 @@ export default function DashboardPage() {
                       </div>
                       <div style={s.reqMatchRow}>
                         <span style={s.reqLabel}>Distance:</span>
-                        <span style={{ ...s.matchBadge, background: '#0891b2' }}>{distanceKm.toFixed(1)} km</span>
+                        <span style={s.reqValue}>{distanceKm.toFixed(1)} km</span>
                         <span style={s.reqCoord}>{estTimeMin} min est.</span>
                       </div>
                     </div>
@@ -1583,12 +1643,17 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div style={{ ...s.leftPanel, width: 36, alignItems: 'center', cursor: 'pointer' }} onClick={() => setOpenRequestsPanel(true)}>
-
               <div style={{ padding: '10px 0', borderBottom: `1px solid ${T.border}`, width: '100%', display: 'flex', justifyContent: 'center' }}>
                 <ChevronRight size={16} color={T.textMuted} />
               </div>
-              <div style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', padding: '16px 0', fontSize: 11, fontWeight: 600, color: T.textSecondary, letterSpacing: 1 }}>
+              <div style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', padding: '16px 0', fontSize: 11, fontWeight: 600, color: T.textSecondary, letterSpacing: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
                 Open Requests
+                {/* WS Connection Status in collapsed state */}
+                <div style={{ 
+                  width: 6, height: 6, borderRadius: '50%',
+                  background: wsStatus === 'connected' ? '#10b981' : wsStatus === 'connecting' ? '#f59e0b' : '#ef4444',
+                  boxShadow: wsStatus === 'connected' ? '0 0 6px #10b981' : 'none'
+                }} title={`Live Updates: ${wsStatus}`} />
               </div>
             </div>
           )
@@ -1597,7 +1662,7 @@ export default function DashboardPage() {
         {/* ────────────────── CENTER: Map + Data Feed ─────────────────── */}
         <div style={s.centerPanel}>
           {/* Map toolbar */}
-          <div style={s.mapToolbar}>
+          <div style={{ ...s.mapToolbar, paddingLeft: overlayLeft, paddingRight: overlayRight }}>
             <div style={s.toolbarLeft}>
               {measureDist && toolVisibility.measure && (
                 <span style={{ ...s.searchPill, background: T.accent, color: '#fff', borderColor: T.accent }}>
@@ -1791,6 +1856,19 @@ export default function DashboardPage() {
                     />
                   )}
 
+                  {selectedRequestPath.length >= 2 && (
+                    <Marker
+                      position={selectedRequestPath[0]}
+                      icon={{ path: google.maps.SymbolPath.CIRCLE, scale: 6, fillColor: '#10b981', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 }}
+                    />
+                  )}
+                  {selectedRequestPath.length >= 2 && (
+                    <Marker
+                      position={selectedRequestPath[selectedRequestPath.length - 1]}
+                      icon={{ path: google.maps.SymbolPath.CIRCLE, scale: 6, fillColor: '#ef4444', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 }}
+                    />
+                  )}
+
                   {waypoints.map((point, idx) => (
                     point.latitude != null && point.longitude != null ? (
                       <Fragment key={`route-stop-${idx}`}>
@@ -1863,7 +1941,7 @@ export default function DashboardPage() {
           {/* Dummy flex element to fill the space in centerPanel left by absolute mapArea. We put the overlays here so they are bounded by centerPanel. */}
           <div style={{ flex: 1, position: 'relative', pointerEvents: 'none' }}>
             {toolVisibility.measure && measureRoutes.length > 0 && (
-              <div style={s.measureRoutesPanel}>
+              <div style={{ ...s.measureRoutesPanel, right: overlayRight }}>
                 <div style={s.measureRoutesPanelTitle}>
                   📍 Route Analysis — {measureRoutes.length} route{measureRoutes.length > 1 ? 's' : ''} found
                 </div>
@@ -1927,7 +2005,7 @@ export default function DashboardPage() {
             )}
 
             {/* Map overlay panel: Traffic Layers — live mode only */}
-            {true && <div style={s.mapOverlayPanel}>
+            {true && <div style={{ ...s.mapOverlayPanel, left: overlayLeft }}>
               <div style={s.overlaySection}>
                 <button style={s.overlaySectionHeader} onClick={() => setTrafficOpen(!trafficOpen)}>
                   <span>Traffic Layers</span>
@@ -2011,7 +2089,7 @@ export default function DashboardPage() {
             </div>}
 
             {/* Map zoom controls */}
-            <div style={s.mapZoom}>
+            <div style={{ ...s.mapZoom, right: overlayRight }}>
               <button style={s.zoomBtn} onClick={handleZoomIn} title="Zoom In"><ZoomIn size={14} /></button>
               <button style={s.zoomBtn} onClick={handleZoomOut} title="Zoom Out"><ZoomOut size={14} /></button>
               <button style={s.zoomBtn} onClick={handleRecenter} title="Recenter"><Crosshair size={14} /></button>
@@ -2020,7 +2098,7 @@ export default function DashboardPage() {
 
             {/* Bottom bar inside map — live mode only */}
             {true && (
-              <div style={s.mapBottomBar}>
+              <div style={{ ...s.mapBottomBar, marginLeft: centerShift }}>
                 <button style={s.mapBottomBtn}>Measure</button>
                 <button style={s.mapBottomBtn}>Measure</button>
                 <button style={{ ...s.mapBottomBtn, background: 'transparent', border: `1px solid ${T.border}` }}>
@@ -2032,7 +2110,7 @@ export default function DashboardPage() {
 
           {/* Data feed */}
           {!isFullscreen && (
-            <div style={{ ...s.dataFeed, height: isDataFeedOpen ? 110 : 33 }}>
+            <div style={{ ...s.dataFeed, height: isDataFeedOpen ? 165 : 33, marginLeft: leftOffset, marginRight: rightOffset }}>
               <button
                 style={{ ...s.dataFeedHeader, background: 'none', border: 'none', width: '100%', textAlign: 'left', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                 onClick={() => setIsDataFeedOpen(!isDataFeedOpen)}
@@ -2282,9 +2360,9 @@ const s: Record<string, CSSProperties> = {
 
   /* Left panel */
   leftPanel: {
-    width: 230, background: T.bgPanel, borderRight: `1px solid ${T.border}`,
+    width: 298, background: T.bgPanel, borderRight: `1px solid ${T.border}`,
     display: 'flex', flexDirection: 'column', flexShrink: 0, pointerEvents: 'auto',
-    position: 'relative', zIndex: 20,
+    position: 'absolute', top: 0, bottom: 0, left: 0, zIndex: 20,
   },
   panelHeader: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -2316,9 +2394,13 @@ const s: Record<string, CSSProperties> = {
   },
   reqCoord: { fontSize: 9, color: T.textMuted, marginLeft: 'auto' },
 
-  /* Center panel */
+  /* Center Panel */
   centerPanel: {
-    flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, pointerEvents: 'none', zIndex: 10,
+    flex: 1, position: 'relative', display: 'flex', flexDirection: 'column',
+    overflow: 'hidden', width: '100%', height: '100%',
+  },
+  mapContainer: {
+    position: 'relative', flex: 1,
   },
   mapToolbar: {
     height: 36, background: T.bgPanel, display: 'flex', alignItems: 'center',
@@ -2471,10 +2553,10 @@ const s: Record<string, CSSProperties> = {
 
   /* Right panel */
   rightPanel: {
-    width: 276, background: T.bgPanel, borderLeft: `1px solid ${T.border}`,
+    width: 331, background: T.bgPanel, borderLeft: `1px solid ${T.border}`,
     display: 'flex', flexDirection: 'column', flexShrink: 0,
     overflowY: 'auto', pointerEvents: 'auto',
-    position: 'relative', zIndex: 20,
+    position: 'absolute', top: 0, bottom: 0, right: 0, zIndex: 20,
   },
   rpHeader: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',

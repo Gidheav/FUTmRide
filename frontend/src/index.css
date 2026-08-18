@@ -218,16 +218,17 @@ a:hover {
 /* ── Scrollbar ──────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--gray-300);
+  background: rgba(156, 163, 175, 0.4);
   border-radius: var(--radius-full);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--gray-400);
+  background: rgba(156, 163, 175, 0.6);
 }
 
 /* Hide Google Maps branding */

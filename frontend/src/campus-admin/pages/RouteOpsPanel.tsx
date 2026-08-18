@@ -57,6 +57,7 @@ interface FleetDriver {
   plate_number?: string; vehicle_type?: string; vehicle_make?: string
   vehicle_model?: string; vehicle_color?: string; vehicle_seats?: number
   name?: string; phone?: string; is_online?: boolean
+  created_at?: string
 }
 
 interface ActivityLogEntry {
@@ -114,6 +115,21 @@ const fmtCountdown = (ms: number) => {
   return `${m}m`
 }
 
+const fmtRelativeTime = (dateString?: string) => {
+  if (!dateString) return 'Recently'
+  const now = Date.now()
+  const then = new Date(dateString).getTime()
+  const diffMs = now - then
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMins / 60)
+  const diffDays = Math.floor(diffHours / 24)
+  
+  if (diffMins < 1) return 'Just now'
+  if (diffMins < 60) return `${diffMins}m ago`
+  if (diffHours < 24) return `${diffHours}h ago`
+  return `${diffDays}d ago`
+}
+
 let _logId = 0
 const mkLog = (msg: string, type: ActivityLogEntry['type'] = 'info'): ActivityLogEntry => ({
   id: String(++_logId), time: new Date(), message: msg, type,
@@ -140,7 +156,8 @@ export default function RouteOpsPanel() {
   const [paxSearch, setPaxSearch] = useState('')
   const [showAddBus, setShowAddBus] = useState(false)
   const [expandedBus, setExpandedBus] = useState<string | null>(null)
-  const [busForm, setBusForm] = useState({ driver: '', bus_label: '', seated_capacity: 50, standing_capacity: 0 })
+  const [selectedDriverIds, setSelectedDriverIds] = useState<Set<string>>(new Set())
+  const [hoveredDriverId, setHoveredDriverId] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const logEndRef = useRef<HTMLDivElement>(null)
   const [visiblePax, setVisiblePax] = useState(50)
@@ -210,49 +227,120 @@ export default function RouteOpsPanel() {
     }).catch(() => {})
   }, [selectedRideId])
 
+  // ── Load persistent activity log from DB when ride selected ──
+  useEffect(() => {
+    if (!selectedRideId) {
+      setActivityLog([])
+      return
+    }
+    apiService.getScheduledRideLogs(selectedRideId).then(data => {
+      const mapped: ActivityLogEntry[] = (Array.isArray(data) ? data : []).map((l: any) => ({
+        id: l.id,
+        time: new Date(l.created_at),
+        message: l.message,
+        type: l.log_type as ActivityLogEntry['type'],
+      }))
+      // Backend returns newest first, reverse for chronological order in log
+      setActivityLog(mapped.reverse())
+    }).catch(() => {})
+  }, [selectedRideId])
+
   // ── Scroll log to bottom ──
   useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [activityLog])
 
-  const addLog = (msg: string, type: ActivityLogEntry['type'] = 'info') =>
-    setActivityLog(prev => [...prev.slice(-99), mkLog(msg, type)])
-
-  // ── Actions ──
-  const handleAssignBus = async () => {
-    if (!selectedRideId) return
-    setActionLoading('assign')
-    try {
-      await apiService.createBusAssignment(selectedRideId, busForm)
-      addLog(`Bus "${busForm.bus_label}" assigned${busForm.driver ? '' : ' (no driver)'}`, 'success')
-      setShowAddBus(false)
-      setBusForm({ driver: '', bus_label: '', seated_capacity: 50, standing_capacity: 0 })
-      await fetchRideDetails(selectedRideId)
-      // Refresh interested drivers list after assignment
-      apiService.getInterestedDrivers(selectedRideId).then(setInterestedDrivers).catch(() => {})
-    } catch (e: any) {
-      addLog(`Failed to assign bus: ${e?.message || 'Error'}`, 'error')
-    } finally { setActionLoading(null) }
+  const addLog = (msg: string, type: ActivityLogEntry['type'] = 'info') => {
+    const entry = mkLog(msg, type)
+    setActivityLog(prev => [...prev.slice(-99), entry])
+    // Persist to DB fire-and-forget (non-blocking)
+    if (selectedRideId) {
+      apiService.addScheduledRideLog(selectedRideId, msg, type).catch(() => {})
+    }
   }
 
-  const handleDriverSelect = (driverId: string) => {
-    const driver = interestedDrivers.find(d => d.id === driverId)
-    if (!driver) {
-      setBusForm(p => ({ ...p, driver: driverId }))
-      return
+  // ── Actions ──
+  const handleBulkAssign = async (driverIds: string[]) => {
+    if (!selectedRideId || driverIds.length === 0) return
+    setActionLoading('bulk_assign')
+    
+    try {
+      // Get capacity defaults
+      const seatedDefaults: Record<string, number> = {
+        coach: 50, minibus: 18, mpv: 7, sedan: 4, tricycle: 3, motorbike: 1,
+      }
+      const standingDefaults: Record<string, number> = {
+        coach: 20, minibus: 10, mpv: 0, sedan: 0, tricycle: 0, motorbike: 0,
+      }
+
+      let successCount = 0
+      let failCount = 0
+
+      for (const driverId of driverIds) {
+        const driver = interestedDrivers.find(d => d.id === driverId)
+        if (!driver) {
+          failCount++
+          continue
+        }
+
+        // Skip drivers without vehicle profiles
+        if (!driver.vehicle_type || !driver.vehicle_seats) {
+          addLog(`Skipped ${driver.name}: Missing vehicle profile`, 'warning')
+          failCount++
+          continue
+        }
+
+        const vt = driver.vehicle_type.toLowerCase()
+        const seated = driver.vehicle_seats ?? seatedDefaults[vt] ?? 4
+        const standing = standingDefaults[vt] ?? 0
+        
+        // Auto-generate bus label
+        const driverName = driver.name || driver.user?.full_name || 'Driver'
+        const vehicleLabel = vehicleLabel(driver.vehicle_type)
+        const busLabel = `${driverName.split(' ')[0]}'s ${vehicleLabel}`
+
+        try {
+          await apiService.createBusAssignment(selectedRideId, {
+            driver: driverId,
+            bus_label: busLabel,
+            seated_capacity: seated,
+            standing_capacity: standing,
+          })
+          successCount++
+          addLog(`Vehicle "${busLabel}" assigned to ${driverName}`, 'success')
+        } catch (e: any) {
+          failCount++
+          addLog(`Failed to assign ${driverName}: ${e?.message || 'Error'}`, 'error')
+        }
+      }
+
+      // Refresh data
+      await fetchRideDetails(selectedRideId)
+      apiService.getInterestedDrivers(selectedRideId).then(setInterestedDrivers).catch(() => {})
+      
+      // Close panel and clear selection
+      setShowAddBus(false)
+      setSelectedDriverIds(new Set())
+      
+      // Summary log
+      if (successCount > 0) {
+        addLog(`Bulk assignment complete: ${successCount} vehicle(s) added${failCount > 0 ? `, ${failCount} failed` : ''}`, successCount === driverIds.length ? 'success' : 'warning')
+      }
+    } catch (e: any) {
+      addLog(`Bulk assignment failed: ${e?.message || 'Error'}`, 'error')
+    } finally {
+      setActionLoading(null)
     }
-    // Use driver's actual vehicle_seats from profile as primary; fall back to type defaults
-    const vt = (driver.vehicle_type || '').toLowerCase()
-    const seatedDefaults: Record<string, number> = {
-      coach: 50, minibus: 18, mpv: 7, sedan: 4, tricycle: 3, motorbike: 1,
-    }
-    const standingDefaults: Record<string, number> = {
-      coach: 20, minibus: 10, mpv: 0, sedan: 0, tricycle: 0, motorbike: 0,
-    }
-    const seated = driver.vehicle_seats ?? seatedDefaults[vt] ?? 4
-    const standing = standingDefaults[vt] ?? 0
-    // Auto label from driver name if blank
-    const driverName = driver.name || driver.user?.full_name || 'Driver'
-    const label = busForm.bus_label || `${driverName.split(' ')[0]}'s Bus`
-    setBusForm(p => ({ ...p, driver: driverId, seated_capacity: seated, standing_capacity: standing, bus_label: label }))
+  }
+
+  const toggleDriverSelection = (driverId: string) => {
+    setSelectedDriverIds(prev => {
+      const next = new Set(prev)
+      if (next.has(driverId)) {
+        next.delete(driverId)
+      } else {
+        next.add(driverId)
+      }
+      return next
+    })
   }
 
   const handleAutoAllocate = async () => {
@@ -334,8 +422,9 @@ export default function RouteOpsPanel() {
     
     // Sort
     filtered = [...filtered].sort((a, b) => {
-      if (sortOption === 'time_asc') return new Date(a.window_start).getTime() - new Date(b.window_start).getTime()
-      if (sortOption === 'time_desc') return new Date(b.window_start).getTime() - new Date(a.window_start).getTime()
+      // window_start is "HH:MM:SS" — compare as strings (lexicographic is correct for time)
+      if (sortOption === 'time_asc') return (a.window_start || '').localeCompare(b.window_start || '')
+      if (sortOption === 'time_desc') return (b.window_start || '').localeCompare(a.window_start || '')
       if (sortOption === 'alpha_asc') return a.reference.localeCompare(b.reference)
       if (sortOption === 'alpha_desc') return b.reference.localeCompare(a.reference)
       if (sortOption === 'pax_desc') return b.passenger_count - a.passenger_count
@@ -380,6 +469,16 @@ export default function RouteOpsPanel() {
 
   return (
     <div style={s.root}>
+      <style>{`\
+        .hide-scrollbar {\
+          -ms-overflow-style: none;\
+          scrollbar-width: none;\
+        }\
+\
+        .hide-scrollbar::-webkit-scrollbar {\
+          display: none;\
+        }\
+      `}</style>
       {/* ── SECTION 1: Command Header ────────────────────────────────── */}
       <div style={s.cmdHeader}>
         <div style={s.cmdLeft}>
@@ -395,7 +494,7 @@ export default function RouteOpsPanel() {
           {selectedRideId && (
             <>
               <div style={s.cmdDivider} />
-              <div style={s.cmdStat}><span style={{ ...s.cmdStatVal, color: '#a855f7' }}>{totalBuses}</span><span style={s.cmdStatLbl}>Buses</span></div>
+              <div style={s.cmdStat}><span style={{ ...s.cmdStatVal, color: '#a855f7' }}>{totalBuses}</span><span style={s.cmdStatLbl}>Vehicles</span></div>
               <div style={s.cmdStat}><span style={{ ...s.cmdStatVal, color: '#10b981' }}>{busesEnRoute}</span><span style={s.cmdStatLbl}>En Route</span></div>
               <div style={s.cmdStat}><span style={{ ...s.cmdStatVal, color: '#64748b' }}>{busesCompleted}</span><span style={s.cmdStatLbl}>Done</span></div>
               <div style={s.cmdStat}><span style={{ ...s.cmdStatVal, color: '#f59e0b' }}>{unassignedPax}</span><span style={s.cmdStatLbl}>Unassigned</span></div>
@@ -409,7 +508,7 @@ export default function RouteOpsPanel() {
 
       <div style={s.mainLayout}>
         {/* ── LEFT: Ride Feed + Convoy ────────────────────────────────── */}
-        <div style={s.leftCol}>
+        <div style={s.leftCol} className="hide-scrollbar">
           {/* ── SECTION 2: Active Rides Feed ──────────────────────────── */}
           <div style={s.section}>
             <div style={s.sectionHeader}>
@@ -479,9 +578,17 @@ export default function RouteOpsPanel() {
                     }}>
                     <div style={s.rideCardTop}>
                       <span style={s.rideRef}>{ride.reference}</span>
-                      <span style={{ ...s.statusBadge, background: sc.bg, color: sc.color, borderColor: sc.border }}>
-                        {ride.status.toUpperCase()}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ fontSize: 10, color: T.textMuted, display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <CalendarClock size={10} />
+                          {ride.departure_date ? new Date(ride.departure_date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : 'Date N/A'}
+                        </div>
+                        {ride.status !== 'scheduled' && (
+                          <span style={{ ...s.statusBadge, background: sc.bg, color: sc.color, borderColor: sc.border }}>
+                            {ride.status.toUpperCase()}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div style={s.rideRoute}>
                       <div style={s.routeDot}><div style={{ ...s.dot, background: T.textPrimary }} /></div>
@@ -514,7 +621,7 @@ export default function RouteOpsPanel() {
         </div>
 
         {/* ── MIDDLE: Convoy Command Center ─────────────────────── */}
-        <div style={s.midCol}>
+        <div style={s.midCol} className="hide-scrollbar">
           {selectedRide ? (
             <div style={{ ...s.section, flex: 1 }}>
               {/* 3A: Ride Overview Strip */}
@@ -550,12 +657,12 @@ export default function RouteOpsPanel() {
                 </div>
               </div>
 
-              {/* 3B: Bus Assignment Grid */}
+              {/* 3B: Vehicle Assignment Grid */}
               <div style={s.subsection}>
                 <div style={s.subsectionHeader}>
                   <div style={s.sectionTitleRow}>
                     <Bus size={15} />
-                    <span style={s.sectionTitle}>Bus Assignments</span>
+                    <span style={s.sectionTitle}>Vehicle Assignments</span>
                     <span style={s.badge}>{buses.length}</span>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
@@ -563,82 +670,119 @@ export default function RouteOpsPanel() {
                       <Zap size={13} /> {actionLoading === 'auto' ? 'Allocating...' : 'Auto-Allocate All'}
                     </button>
                     <button style={{ ...s.actionBtn, background: '#a855f7', color: '#fff' }} onClick={() => setShowAddBus(true)}>
-                      <Plus size={13} /> Add Bus
+                      <Plus size={13} /> Add Vehicle
                     </button>
                   </div>
                 </div>
 
-                {/* Add Bus Modal */}
+                {/* Add Vehicle Panel */}
                 {showAddBus && (
-                  <div style={s.addBusPanel}>
-                    <div style={s.addBusHeader}>
-                      <span style={{ fontWeight: 700, fontSize: 13, color: T.textWhite }}>Assign New Bus</span>
-                      <button style={s.closeBtn} onClick={() => setShowAddBus(false)}><X size={14} /></button>
-                    </div>
-                    <div style={s.formGrid}>
-                      <div style={s.formGroup}>
-                        <label style={s.formLabel}>Select Driver (Available)</label>
-                        <select style={s.formInput} value={busForm.driver}
-                          onChange={e => handleDriverSelect(e.target.value)}>
-                          <option value="">-- No Driver --</option>
-                          {interestedDrivers.map(d => (
-                            <option key={d.id} value={d.id}>
-                              {d.name} · {d.vehicle_make || d.vehicle_type || 'Vehicle'} {d.vehicle_model || ''} · {d.plate_number || 'No Plate'}
-                            </option>
-                          ))}
-                        </select>
-                        {interestedDrivers.length === 0 && (
-                          <span style={{ fontSize: 11, color: '#f59e0b', marginTop: 4, display: 'block' }}>No drivers have expressed interest yet</span>
-                        )}
+                  <div style={s.addVehiclePanel}>
+                    <div style={s.addVehicleHeader}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontWeight: 700, fontSize: 13, color: T.textWhite }}>Select Vehicle(s)</span>
+                        <span style={s.vehicleCountBadge}>{interestedDrivers.length}</span>
                       </div>
-                      {/* Show selected driver info card */}
-                      {busForm.driver && (() => {
-                        const d = interestedDrivers.find(x => x.id === busForm.driver)
-                        if (!d) return null
-                        return (
-                          <div style={{ gridColumn: '1/-1', background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.2)', borderRadius: 8, padding: '8px 12px', display: 'flex', gap: 16, alignItems: 'center' }}>
-                            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(168,85,247,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <Bus size={16} color="#a855f7" />
-                            </div>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: 12, fontWeight: 600, color: T.textPrimary }}>{d.name}</div>
-                              <div style={{ fontSize: 11, color: T.textMuted }}>
-                                {d.vehicle_make || d.vehicle_type || 'Vehicle'} {d.vehicle_model || ''} · {d.vehicle_seats || 'N/A'} pax · {d.plate_number || 'No Plate'} · {d.phone}
+                      <button style={s.closeBtn} onClick={() => { setShowAddBus(false); setSelectedDriverIds(new Set()) }}><X size={14} /></button>
+                    </div>
+                    
+                    {interestedDrivers.length === 0 ? (
+                      <div style={s.emptyDriverState}>
+                        <Bus size={32} style={{ opacity: 0.3 }} />
+                        <span>No drivers have expressed interest in this ride yet.</span>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={s.driverCardGrid}>
+                          {interestedDrivers.map(driver => {
+                            const isSelected = selectedDriverIds.has(driver.id)
+                            const hasVehicleProfile = driver.vehicle_type && driver.vehicle_seats
+                            const canSelect = hasVehicleProfile
+                            
+                            return (
+                              <div
+                                key={driver.id}
+                                style={{
+                                  ...s.driverCard,
+                                  ...(isSelected ? s.driverCardSelected : {}),
+                                  ...(canSelect ? s.driverCardSelectable : s.driverCardDisabled),
+                                  ...(canSelect && !isSelected && hoveredDriverId === driver.id ? { borderColor: 'rgba(168,85,247,0.5)', background: 'rgba(168,85,247,0.04)' } : {}),
+                                  cursor: canSelect ? 'pointer' : 'not-allowed'
+                                }}
+                                onClick={() => canSelect && toggleDriverSelection(driver.id)}
+                                onMouseEnter={() => canSelect && setHoveredDriverId(driver.id)}
+                                onMouseLeave={() => setHoveredDriverId(null)}
+                              >
+                                <div style={s.driverCardHeader}>
+                                  <div style={s.driverCardTitle}>
+                                    <div style={{ width: 8, height: 8, borderRadius: 4, background: canSelect ? '#10b981' : '#f59e0b', marginRight: 8 }} />
+                                    <span style={{ fontWeight: 600, fontSize: 12, color: T.textPrimary }}>{driver.name}</span>
+                                  </div>
+                                  {isSelected && (
+                                    <div style={s.selectedBadge}>
+                                      <CheckCircle2 size={12} color="#fff" />
+                                    </div>
+                                  )}
+                                </div>
+                                
+                                <div style={s.driverCardVehicle}>
+                                  <span style={{ fontSize: 11, color: T.textSecondary }}>
+                                    {vehicleLabel(driver.vehicle_type || 'Unknown')} · {driver.vehicle_make || ''} {driver.vehicle_model || ''} · {driver.plate_number || 'No Plate'}
+                                  </span>
+                                </div>
+                                
+                                <div style={s.driverCardCapacity}>
+                                  <span style={{ fontSize: 10, color: T.textMuted }}>Seats: {driver.vehicle_seats || 'N/A'}</span>
+                                  {driver.vehicle_type === 'coach' && (
+                                    <span style={{ fontSize: 10, color: T.textMuted }}> · Standing: {driver.vehicle_seats ? Math.round(driver.vehicle_seats * 0.4) : 'N/A'}</span>
+                                  )}
+                                </div>
+                                
+                                <div style={s.driverCardMeta}>
+                                  <span style={{ fontSize: 10, color: T.textMuted }}>
+                                    Interested: {fmtRelativeTime(driver.created_at)}
+                                  </span>
+                                </div>
+                                
+                                {!hasVehicleProfile && (
+                                  <div style={s.warningBadge}>
+                                    <AlertTriangle size={10} />
+                                    <span>No vehicle profile</span>
+                                  </div>
+                                )}
                               </div>
-                            </div>
-                            <span style={{ fontSize: 10, background: 'rgba(16,185,129,0.15)', color: '#10b981', padding: '2px 8px', borderRadius: 4, border: '1px solid rgba(16,185,129,0.3)' }}>Interested</span>
-                          </div>
-                        )
-                      })()}
-                      <div style={s.formGroup}>
-                        <label style={s.formLabel}>Bus Label</label>
-                        <input style={s.formInput} placeholder="e.g. Bus A" value={busForm.bus_label}
-                          onChange={e => setBusForm(p => ({ ...p, bus_label: e.target.value }))} />
-                      </div>
-                      <div style={s.formGroup}>
-                        <label style={s.formLabel}>Seated Capacity</label>
-                        <input style={s.formInput} type="number" value={busForm.seated_capacity}
-                          onChange={e => setBusForm(p => ({ ...p, seated_capacity: Number(e.target.value) }))} />
-                      </div>
-                      <div style={s.formGroup}>
-                        <label style={s.formLabel}>Standing Capacity</label>
-                        <input style={s.formInput} type="number" value={busForm.standing_capacity}
-                          onChange={e => setBusForm(p => ({ ...p, standing_capacity: Number(e.target.value) }))} />
-                      </div>
-                    </div>
-                    <button style={{ ...s.actionBtn, background: '#a855f7', color: '#fff', width: '100%', justifyContent: 'center', marginTop: 8 }}
-                      onClick={handleAssignBus} disabled={actionLoading === 'assign' || !busForm.bus_label}>
-                      {actionLoading === 'assign' ? 'Assigning...' : 'Assign Bus'}
-                    </button>
+                            )
+                          })}
+                        </div>
+                        
+                        <div style={s.addVehicleFooter}>
+                          <span style={{ fontSize: 11, color: T.textMuted }}>
+                            {selectedDriverIds.size} vehicle(s) selected
+                          </span>
+                          <button
+                            style={{
+                              ...s.actionBtn,
+                              background: selectedDriverIds.size > 0 ? '#a855f7' : T.border,
+                              color: selectedDriverIds.size > 0 ? '#fff' : T.textMuted,
+                              cursor: selectedDriverIds.size > 0 ? 'pointer' : 'not-allowed'
+                            }}
+                            onClick={() => handleBulkAssign(Array.from(selectedDriverIds))}
+                            disabled={selectedDriverIds.size === 0 || actionLoading === 'bulk_assign'}
+                          >
+                            {actionLoading === 'bulk_assign' ? 'Adding...' : 'Add Selected →'}
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
 
-                {/* Bus Cards */}
+                {/* Vehicle Cards */}
                 <div style={s.busGrid}>
                   {buses.length === 0 ? (
                     <div style={{ ...s.emptyState, gridColumn: '1 / -1' }}>
                       <Bus size={28} style={{ opacity: 0.3 }} />
-                      <span>No buses assigned yet. Click "Add Bus" to begin.</span>
+                      <span>No vehicles assigned yet. Click "Add Vehicle" to begin.</span>
                     </div>
                   ) : buses.map(bus => {
                     const sc = STATUS_COLORS[bus.status] || STATUS_COLORS.assigned
@@ -859,7 +1003,7 @@ export default function RouteOpsPanel() {
               <TrendingUp size={14} />
               <span style={s.sectionTitle}>Route Analytics</span>
             </div>
-            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', minHeight: 0 }} className="hide-scrollbar">
               {selectedRide ? (
                 <div style={s.analyticsGrid}>
                 <div style={s.analyticTile}>
@@ -868,7 +1012,7 @@ export default function RouteOpsPanel() {
                 </div>
                 <div style={s.analyticTile}>
                   <span style={s.analyticVal}>{busesCompleted}/{buses.length}</span>
-                  <span style={s.analyticLbl}>Buses Done</span>
+                  <span style={s.analyticLbl}>Vehicles Done</span>
                 </div>
                 <div style={s.analyticTile}>
                   <span style={{ ...s.analyticVal, color: '#10b981' }}>{fmtCurrency(totalRevenue)}</span>
@@ -1010,9 +1154,9 @@ const s: Record<string, CSSProperties> = {
   overviewRoute: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   overviewNode: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: T.textPrimary, fontWeight: 500 },
   overviewStats: { display: 'flex', gap: 16, flexWrap: 'wrap' },
-  overviewKpi: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 70 },
-  overviewKpiVal: { fontSize: 18, fontWeight: 800, color: T.textWhite, lineHeight: 1 },
-  overviewKpiLbl: { fontSize: 9, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  overviewKpi: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, width: 80, flexShrink: 0 },
+  overviewKpiVal: { fontSize: 18, fontWeight: 800, color: T.textWhite, lineHeight: 1, textAlign: 'center', width: '100%' },
+  overviewKpiLbl: { fontSize: 9, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center', width: '100%' },
 
   // ── Bus Cards ──
   busGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 8 },
@@ -1039,14 +1183,25 @@ const s: Record<string, CSSProperties> = {
   busPaxActions: { display: 'flex', gap: 4, alignItems: 'center' },
   miniBtn: { width: 26, height: 26, borderRadius: 0, border: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: 'transparent', padding: 0, fontFamily: T.fontFamily },
 
-  // ── Add Bus Panel ──
-  addBusPanel: { background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 0, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 },
-  addBusHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  // ── Add Vehicle Panel ──
+  addVehiclePanel: { background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 0, padding: 16, display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 500 },
+  addVehicleHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  vehicleCountBadge: { fontSize: 10, fontWeight: 700, background: 'rgba(168,85,247,0.15)', color: '#a855f7', borderRadius: 4, padding: '2px 8px' },
+  emptyDriverState: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 32, color: T.textMuted, fontSize: 12 },
+  driverCardGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, overflowY: 'auto', maxHeight: 350, paddingRight: 4 },
+  driverCard: { background: T.bgPanel, border: `1px solid ${T.border}`, borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 6, transition: 'all 0.15s', position: 'relative' },
+  driverCardSelectable: { cursor: 'pointer' },
+  driverCardDisabled: { opacity: 0.6, cursor: 'not-allowed' },
+  driverCardSelected: { borderColor: '#a855f7', background: 'rgba(168,85,247,0.08)', borderWidth: 2 },
+  driverCardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  driverCardTitle: { display: 'flex', alignItems: 'center' },
+  selectedBadge: { width: 20, height: 20, borderRadius: 10, background: '#a855f7', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  driverCardVehicle: { fontSize: 11, color: T.textSecondary },
+  driverCardCapacity: { display: 'flex', gap: 8, fontSize: 10, color: T.textMuted },
+  driverCardMeta: { fontSize: 10, color: T.textMuted },
+  warningBadge: { display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', padding: '4px 8px', borderRadius: 4, marginTop: 4 },
+  addVehicleFooter: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0 0', borderTop: `1px solid ${T.border}`, marginTop: 8 },
   closeBtn: { width: 24, height: 24, borderRadius: 0, border: 'none', background: 'transparent', color: T.textMuted, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  formGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
-  formGroup: { display: 'flex', flexDirection: 'column', gap: 4 },
-  formLabel: { fontSize: 10, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.4 },
-  formInput: { background: T.bgInput, border: `1px solid ${T.border}`, borderRadius: 0, padding: '8px 12px', color: T.textPrimary, fontSize: 12, fontFamily: T.fontFamily, outline: 'none' },
   actionBtn: { display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 0, border: `1px solid ${T.border}`, background: T.bgCard, color: T.textSecondary, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: T.fontFamily },
 
   // ── Timeline ──

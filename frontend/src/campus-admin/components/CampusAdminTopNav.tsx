@@ -4,8 +4,9 @@ import {
   LogOut, User as UserIcon, Sun, Moon,
   Download, Megaphone, UserPlus,
   ArrowLeft, ChevronRight, History, ShieldAlert, UserX,
+  Navigation, RadioTower, Users,
   Radio, Crosshair, Activity, Zap, Route, Monitor, Bell, Sliders, ShieldCheck,
-  Wrench, Ticket, Plug, Flag, LifeBuoy, Banknote, Calculator, FlaskConical, Map, FolderOpen, Smartphone, Car
+  Wrench, Ticket, Plug, Flag, LifeBuoy, Banknote, Calculator, FlaskConical, Map, FolderOpen, Smartphone, Car, BookOpen
 } from 'lucide-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { CSSProperties } from 'react'
@@ -49,7 +50,7 @@ export default function CampusAdminTopNav() {
   const { clearAuth } = useAuthStore()
   const { mode, toggleMode } = useCampusThemeStore()
 
-  const { activeTab: dispatchTab, setActiveTab: setDispatchTab, wsConnected, showTraffic, setShowTraffic, showHeat, setShowHeat, showRoutes, setShowRoutes, triggerRecenter } = useDispatchStore()
+  const { activeTab: dispatchTab, setActiveTab: setDispatchTab, wsConnected, showTraffic, setShowTraffic, showHeat, setShowHeat, showRoutes, setShowRoutes, triggerRecenter, mapLayerConfig, applyMapLayerConfig } = useDispatchStore()
   const { activeTab: settingsTab, setActiveTab: setSettingsTab } = useSettingsStore()
   const { activeTab: analyticsTab, setActiveTab: setAnalyticsTab } = useAnalyticsStore()
   const { activeTab: financeTab, setActiveTab: setFinanceTab } = useFinancialStore()
@@ -125,7 +126,8 @@ export default function CampusAdminTopNav() {
       <div style={s.topLeft}>
         {location.pathname === '/users' ? (
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Users size={16} color={T.accent} />
               User Management
             </div>
             <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
@@ -180,8 +182,8 @@ export default function CampusAdminTopNav() {
         ) : location.pathname === '/dispatch' ? (
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3, display: 'flex', alignItems: 'center' }}>
-              <Radio size={16} color={wsConnected ? T.heatTeal : T.warn} style={{ marginRight: 8 }} />
-              Dispatch Control Center
+              <Navigation size={16} color={wsConnected ? T.heatTeal : T.warn} style={{ marginRight: 8 }} />
+              Live Dispatch
               <span style={{ fontSize: 9, marginLeft: 10, color: wsConnected ? T.heatTeal : T.warn, border: `1px solid ${wsConnected ? 'rgba(20,184,166,0.4)' : 'rgba(245,158,11,0.4)'}`, borderRadius: 999, padding: '2px 8px', fontWeight: 700, textTransform: 'uppercase' }}>
                 {wsConnected ? 'Live' : 'Connecting'}
               </span>
@@ -223,7 +225,7 @@ export default function CampusAdminTopNav() {
         ) : location.pathname === '/operations' ? (
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3, display: 'flex', alignItems: 'center' }}>
-              <Radio size={16} color={T.accent} style={{ marginRight: 8 }} />
+              <RadioTower size={16} color={T.accent} style={{ marginRight: 8 }} />
               Operations Hub
             </div>
             <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
@@ -252,7 +254,10 @@ export default function CampusAdminTopNav() {
           </div>
         ) : location.pathname === '/docs' ? (
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3 }}>Documentation</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <BookOpen size={16} color={T.accent} />
+              Documentation
+            </div>
             <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
               Technical architecture and workflows
             </div>
@@ -269,11 +274,12 @@ export default function CampusAdminTopNav() {
           </div>
         ) : (
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3 }}>
-              FutmRide Control Center
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <LayoutDashboard size={16} color={T.accent} />
+              Operations Overview
             </div>
             <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
-              Regulated ride operations and dispatch
+              Platform health, live rides, and key metrics at a glance
             </div>
           </div>
         )}
@@ -347,6 +353,19 @@ export default function CampusAdminTopNav() {
                 <Route size={13} strokeWidth={1.8} />
                 <span>Routes</span>
               </button>
+              <div style={{ width: 1, height: 16, background: T.border, margin: '0 8px' }} />
+              <select
+                value={mapLayerConfig.default_map_type || 'hybrid'}
+                onChange={e => {
+                  const next = e.target.value as 'roadmap' | 'hybrid'
+                  applyMapLayerConfig({ default_map_type: next })
+                  localStorage.setItem('lr_ride_default_map_type', next)
+                }}
+                style={{ ...s.topNavBtn, width: 'auto', padding: '0 8px', fontSize: 11, cursor: 'pointer', appearance: 'auto', background: 'transparent', border: `1px solid ${T.border}`, borderRadius: 4, height: 26, color: T.textSecondary }}
+              >
+                <option value="roadmap" style={{ color: T.textPrimary, background: T.bgPanel }}>Roadmap</option>
+                <option value="hybrid" style={{ color: T.textPrimary, background: T.bgPanel }}>Hybrid</option>
+              </select>
             </>
           )}
         </nav>
