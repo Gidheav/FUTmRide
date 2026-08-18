@@ -529,16 +529,11 @@ export default function RouteOpsPanel() {
         {/* ── LEFT: Ride Feed + Convoy ────────────────────────────────── */}
         <div style={s.leftCol} className="hide-scrollbar">
           {/* ── SECTION 2: Active Rides Feed ──────────────────────────── */}
-          <div style={s.section}>
-            <div style={s.sectionHeader}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: 1, gap: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: T.textWhite }}>
-                  <CalendarClock size={15} />
-                  <span style={s.sectionTitle}>Scheduled</span>
-                  <span style={s.badge}>{filteredRides.length}</span>
-                </div>
-                <div style={{ position: 'relative', width: 140 }}>
-                  <Search size={12} color={T.textMuted} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)' }} />
+          <div style={{ ...s.section, padding: 0 }}>
+            <div style={{ position: 'sticky', top: 0, zIndex: 10, background: T.bgPanel, padding: '20px 24px 12px 24px', borderBottom: `1px solid ${T.border}` }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <Search size={14} color={T.textMuted} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
                   <input
                     type="text"
                     placeholder="Search routes..."
@@ -549,20 +544,20 @@ export default function RouteOpsPanel() {
                       backgroundColor: T.bgInput,
                       border: `1px solid ${T.border}`,
                       borderRadius: 4,
-                      padding: '4px 8px 4px 26px',
+                      padding: '8px 8px 8px 32px',
                       color: T.textWhite,
                       fontFamily: 'inherit',
-                      fontSize: 11,
+                      fontSize: 12,
                       outline: 'none',
+                      boxSizing: 'border-box'
                     }}
                   />
                 </div>
-              </div>
-              <div style={s.filterRow}>
-                <div style={s.premiumSelectWrap}>
-                  <Filter size={12} color={T.textMuted} style={s.premiumSelectIcon} />
+                
+                <div style={{ position: 'relative', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', background: T.bgInput, border: `1px solid ${T.border}`, borderRadius: 4, cursor: 'pointer', flexShrink: 0 }}>
+                  <Filter size={16} color={statusFilter !== 'all' ? '#a855f7' : T.textMuted} />
                   <select 
-                    style={s.premiumSelect} 
+                    style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', direction: 'rtl' }} 
                     value={statusFilter} 
                     onChange={e => setStatusFilter(e.target.value)}
                   >
@@ -573,13 +568,12 @@ export default function RouteOpsPanel() {
                     <option value="completed">Completed</option>
                     <option value="cancelled">Cancelled</option>
                   </select>
-                  <ChevronDown size={12} color={T.textMuted} style={s.premiumSelectArrow} />
                 </div>
                 
-                <div style={s.premiumSelectWrap}>
-                  <ArrowRightLeft size={12} color={T.textMuted} style={{...s.premiumSelectIcon, transform: 'translateY(-50%) rotate(90deg)'}} />
+                <div style={{ position: 'relative', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', background: T.bgInput, border: `1px solid ${T.border}`, borderRadius: 4, cursor: 'pointer', flexShrink: 0 }}>
+                  <ArrowRightLeft size={16} color={sortOption !== 'time_asc' ? '#a855f7' : T.textMuted} style={{ transform: 'rotate(90deg)' }} />
                   <select 
-                    style={s.premiumSelect} 
+                    style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', direction: 'rtl' }} 
                     value={sortOption} 
                     onChange={e => setSortOption(e.target.value)}
                   >
@@ -589,12 +583,11 @@ export default function RouteOpsPanel() {
                     <option value="alpha_desc">Route (Z-A)</option>
                     <option value="pax_desc">Passengers (High-Low)</option>
                   </select>
-                  <ChevronDown size={12} color={T.textMuted} style={s.premiumSelectArrow} />
                 </div>
               </div>
             </div>
 
-            <div style={s.rideGrid}>
+            <div style={{ ...s.rideGrid, padding: '12px 24px 20px 24px' }}>
               {loading ? (
                 <div style={s.emptyState}>Loading routes...</div>
               ) : filteredRides.length === 0 ? (

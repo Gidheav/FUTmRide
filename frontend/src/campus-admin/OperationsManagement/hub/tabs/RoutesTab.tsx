@@ -120,13 +120,24 @@ export const RoutesTab: React.FC<RoutesTabProps> = ({ search }) => {
   const saveInlineEdit = async (ride: ScheduledRide) => {
     setInlineSaving(true)
     try {
-      await apiService.updateScheduledRide(ride.id, {
-        // don't change departure_date — backend rejects on active/completed rides
-        window_start: inlineForm.window_start ? inlineForm.window_start + ':00' : undefined,
-        window_end: inlineForm.window_end ? inlineForm.window_end + ':00' : undefined,
+      const payload: Record<string, any> = {
         allowed_vehicle_types: inlineForm.allowed_vehicle_types,
         notes: inlineForm.notes,
-      })
+      }
+
+      // Only send time fields if the ride is still in 'scheduled' status
+      // (not yet boarding/departed/etc.) AND the admin actually changed them.
+      const isPreActive = ride.status === 'scheduled'
+      if (isPreActive) {
+        if (inlineForm.window_start && inlineForm.window_start !== ride.window_start?.slice(0, 5)) {
+          payload.window_start = inlineForm.window_start + ':00'
+        }
+        if (inlineForm.window_end && inlineForm.window_end !== ride.window_end?.slice(0, 5)) {
+          payload.window_end = inlineForm.window_end + ':00'
+        }
+      }
+
+      await apiService.updateScheduledRide(ride.id, payload)
       await fetchRoutes()
       setInlineEdit(false)
     } catch (e: any) {
@@ -585,14 +596,24 @@ export const RoutesTab: React.FC<RoutesTabProps> = ({ search }) => {
 
             {/* Allowed vehicles */}
             <div style={{ padding: '14px 18px', borderBottom: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 9, color: T.textMuted, textTransform: 'uppercase', fontWeight: 600, letterSpacing: 0.6, flexShrink: 0 }}>Allowed Vehicles</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
+                <span style={{ fontSize: 9, color: T.textMuted, textTransform: 'uppercase', fontWeight: 600, letterSpacing: 0.6 }}>Allowed Vehicles</span>
+                {inlineEdit && activeRide.status !== 'scheduled' && (
+                  <span style={{ fontSize: 9, color: '#f59e0b', fontStyle: 'italic' }}>You can add types, but not remove from an active ride</span>
+                )}
+              </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {VEHICLE_OPTIONS.map(v => {
                   const allowed = inlineEdit
                     ? inlineForm.allowed_vehicle_types.includes(v)
                     : activeRide.allowed_vehicle_types?.includes(v)
+                  // For active (non-scheduled) rides: types already in the original list are locked — cannot be removed
+                  const isOriginallyAllowed = activeRide.allowed_vehicle_types?.includes(v) ?? false
+                  const isLockedFromRemoval = inlineEdit && activeRide.status !== 'scheduled' && isOriginallyAllowed && allowed
                   const toggleVehicle = () => {
                     if (!inlineEdit) return
+                    // Block removal of existing types on active rides
+                    if (isLockedFromRemoval) return
                     setInlineForm(f => ({
                       ...f,
                       allowed_vehicle_types: allowed
@@ -604,6 +625,7 @@ export const RoutesTab: React.FC<RoutesTabProps> = ({ search }) => {
                     <span
                       key={v}
                       onClick={toggleVehicle}
+                      title={isLockedFromRemoval ? 'Cannot remove vehicle type from an active ride' : undefined}
                       style={{
                         fontSize: 11, padding: '3px 10px',
                         background: allowed ? `${T.accent}12` : 'transparent',
@@ -611,12 +633,12 @@ export const RoutesTab: React.FC<RoutesTabProps> = ({ search }) => {
                         color: allowed ? T.accent : T.textMuted,
                         fontWeight: allowed ? 600 : 400,
                         opacity: allowed ? 1 : 0.6,
-                        cursor: inlineEdit ? 'pointer' : 'default',
+                        cursor: inlineEdit ? (isLockedFromRemoval ? 'not-allowed' : 'pointer') : 'default',
                         transition: 'all 0.15s',
                         userSelect: 'none',
                       }}
                     >
-                      {inlineEdit && <span style={{ marginRight: 4 }}>{allowed ? '✓' : '○'}</span>}
+                      {inlineEdit && <span style={{ marginRight: 4 }}>{allowed ? (isLockedFromRemoval ? '🔒' : '✓') : '○'}</span>}
                       {VEHICLE_LABELS[v] || v}
                     </span>
                   )

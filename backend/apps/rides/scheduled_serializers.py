@@ -639,13 +639,16 @@ class ScheduledRideUpdateSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         attrs = super().validate(attrs)
 
-        # Only validate window ordering when times are actually being changed.
-        # Never re-check whether departure_date is in the future — that guard
-        # is exclusively for ride *creation*, not editing an existing ride.
-        window_start = attrs.get('window_start', self.instance.window_start if self.instance else None)
-        window_end = attrs.get('window_end', self.instance.window_end if self.instance else None)
+        # Only validate window ordering/duration when both times are
+        # explicitly included in this PATCH request.
+        # We must NOT fall back to self.instance values here — if the admin
+        # is just editing allowed_vehicle_types on an active ride whose existing
+        # window is < 30 min, we must not block the save.
+        window_start = attrs.get('window_start')
+        window_end = attrs.get('window_end')
 
         if window_start and window_end:
+            # Both times are being explicitly changed — validate them.
             if window_end <= window_start:
                 raise serializers.ValidationError({'window_end': 'Departure window end must be after start.'})
             start_dt = datetime.datetime.combine(datetime.date.today(), window_start)
@@ -655,8 +658,19 @@ class ScheduledRideUpdateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({'window_end': 'Departure window must be at least 30 minutes.'})
             if diff > datetime.timedelta(hours=12):
                 raise serializers.ValidationError({'window_end': 'Departure window cannot exceed 12 hours.'})
+        elif window_start and not window_end:
+            # Only start is changing — compare against the existing end
+            existing_end = self.instance.window_end if self.instance else None
+            if existing_end and existing_end <= window_start:
+                raise serializers.ValidationError({'window_start': 'Departure window start must be before end.'})
+        elif window_end and not window_start:
+            # Only end is changing — compare against the existing start
+            existing_start = self.instance.window_start if self.instance else None
+            if existing_start and window_end <= existing_start:
+                raise serializers.ValidationError({'window_end': 'Departure window end must be after start.'})
 
         return attrs
+
 
 
 class ScheduledRidePassengerReadSerializer(serializers.ModelSerializer):
