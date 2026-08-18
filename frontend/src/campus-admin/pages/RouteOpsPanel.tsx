@@ -613,7 +613,7 @@ export default function RouteOpsPanel() {
         {/* ── MIDDLE: Convoy Command Center ─────────────────────── */}
         <div style={s.midCol} className="hide-scrollbar">
           {selectedRide ? (
-            <div style={{ ...s.section, flex: 1 }}>
+            <div style={{ ...s.section, flex: 1, padding: '12px 8px' }}>
               {/* 3A: Ride Overview Strip */}
               <div style={s.overviewStrip}>
                 <div style={s.overviewRoute}>
