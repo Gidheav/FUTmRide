@@ -664,7 +664,7 @@ class AdminInterestedDriversView(APIView):
                 'id': str(driver.id),
                 'name': driver.full_name,
                 'email': driver.email,
-                'phone': driver.phone_number,
+                'phone': str(driver.phone_number) if driver.phone_number else None,
                 'vehicle_type': vehicle_type,
                 'vehicle_make': vehicle_make,
                 'vehicle_model': vehicle_model,

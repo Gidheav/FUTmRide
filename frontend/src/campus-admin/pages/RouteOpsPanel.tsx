@@ -613,7 +613,7 @@ export default function RouteOpsPanel() {
         {/* ── MIDDLE: Convoy Command Center ─────────────────────── */}
         <div style={s.midCol} className="hide-scrollbar">
           {selectedRide ? (
-            <div style={{ ...s.section, flex: 1, padding: '12px 8px' }}>
+            <div style={{ ...s.section, flex: 1, padding: '20px 12px' }}>
               {/* 3A: Ride Overview Strip */}
               <div style={s.overviewStrip}>
                 <div style={s.overviewRoute}>
@@ -626,24 +626,6 @@ export default function RouteOpsPanel() {
                   )}
                   <ArrowRight size={14} color={T.textMuted} />
                   <div style={s.overviewNode}><Navigation size={14} color='#a855f7' /><span>{routeEndpointLabel(selectedRide, 'destination')}</span></div>
-                </div>
-                <div style={s.overviewStats}>
-                  <div style={s.overviewKpi}>
-                    <span style={s.overviewKpiVal}>{passengers.length}</span>
-                    <span style={s.overviewKpiLbl}>Total Pax</span>
-                  </div>
-                  <div style={s.overviewKpi}>
-                    <span style={s.overviewKpiVal}>{buses.length}</span>
-                    <span style={s.overviewKpiLbl}>Buses</span>
-                  </div>
-                  <div style={s.overviewKpi}>
-                    <span style={{ ...s.overviewKpiVal, color: '#10b981' }}>{fmtCurrency(totalRevenue)}</span>
-                    <span style={s.overviewKpiLbl}>Revenue</span>
-                  </div>
-                  <div style={s.overviewKpi}>
-                    <span style={{ ...s.overviewKpiVal, color: '#ef4444' }}>{noShowCount}</span>
-                    <span style={s.overviewKpiLbl}>No-Shows</span>
-                  </div>
                 </div>
               </div>
 
@@ -1110,7 +1092,7 @@ const s: Record<string, CSSProperties> = {
 
   // ── Sections ──
   section: { background: T.bgPanel, border: `1px solid ${T.border}`, padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12, borderRadius: 0 },
-  subsection: { background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 0, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12, margin: '0 16px 16px' },
+  subsection: { background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 0, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12, margin: '0 8px 16px' },
   sectionHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
   subsectionHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
   sectionTitleRow: { display: 'flex', alignItems: 'center', gap: 8, color: T.textWhite, fontWeight: 700, fontSize: 14 },
@@ -1140,7 +1122,7 @@ const s: Record<string, CSSProperties> = {
   statusBadge: { padding: '3px 8px', borderRadius: 0, fontSize: 10, fontWeight: 700, border: '1px solid', textTransform: 'uppercase', letterSpacing: 0.4 },
 
   // ── Overview Strip ──
-  overviewStrip: { background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 0, padding: '16px 20px', margin: '0 16px', display: 'flex', flexDirection: 'column', gap: 12 },
+  overviewStrip: { background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 0, padding: '16px 20px', margin: '0 8px', display: 'flex', flexDirection: 'column', gap: 12 },
   overviewRoute: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   overviewNode: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: T.textPrimary, fontWeight: 500 },
   overviewStats: { display: 'flex', gap: 16, flexWrap: 'wrap' },
