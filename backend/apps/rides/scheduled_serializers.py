@@ -600,19 +600,51 @@ class ScheduledRideListSerializer(serializers.ModelSerializer):
 
 
 class ScheduledRideUpdateSerializer(serializers.ModelSerializer):
+    # Accept 'notes' as an alias for admin_notes so the frontend doesn't need
+    # to know about the internal field name.
+    notes = serializers.CharField(
+        source='admin_notes', required=False, allow_blank=True
+    )
+
     class Meta:
         model = ScheduledRide
         fields = [
             'window_start', 'window_end', 'join_deadline',
-            'status', 'admin_notes'
+            'status', 'admin_notes', 'notes', 'allowed_vehicle_types',
         ]
+        # admin_notes can be set directly or via the 'notes' alias
+        extra_kwargs = {
+            'admin_notes': {'required': False},
+            'allowed_vehicle_types': {'required': False},
+            'window_start': {'required': False},
+            'window_end': {'required': False},
+            'join_deadline': {'required': False},
+            'status': {'required': False},
+        }
+
+    def validate_allowed_vehicle_types(self, value):
+        if value is not None:
+            DISALLOWED_SCHEDULED = {'motorbike', 'tricycle'}
+            invalid = set(value) & DISALLOWED_SCHEDULED
+            if invalid:
+                raise serializers.ValidationError(
+                    'Motorbike and Tricycle are not allowed for scheduled rides.'
+                )
+            if not value:
+                raise serializers.ValidationError(
+                    'At least one vehicle type must be allowed.'
+                )
+        return value
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
-        
+
+        # Only validate window ordering when times are actually being changed.
+        # Never re-check whether departure_date is in the future — that guard
+        # is exclusively for ride *creation*, not editing an existing ride.
         window_start = attrs.get('window_start', self.instance.window_start if self.instance else None)
         window_end = attrs.get('window_end', self.instance.window_end if self.instance else None)
-        
+
         if window_start and window_end:
             if window_end <= window_start:
                 raise serializers.ValidationError({'window_end': 'Departure window end must be after start.'})
@@ -623,7 +655,7 @@ class ScheduledRideUpdateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({'window_end': 'Departure window must be at least 30 minutes.'})
             if diff > datetime.timedelta(hours=12):
                 raise serializers.ValidationError({'window_end': 'Departure window cannot exceed 12 hours.'})
-                
+
         return attrs
 
 
