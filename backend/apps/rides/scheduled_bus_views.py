@@ -126,7 +126,7 @@ class BusAssignmentUpdateView(APIView):
         ride = _get_scoped_ride(request.user, ride_id)
         bus = _get_bus(ride, bus_id)
         
-        if bus.status != BusStatus.ASSIGNED:
+        if bus.status != BusAssignmentStatus.ASSIGNED:
             return Response({'error': 'Cannot unassign a bus that has already departed.'}, status=status.HTTP_400_BAD_REQUEST)
         
         if bus.driver:

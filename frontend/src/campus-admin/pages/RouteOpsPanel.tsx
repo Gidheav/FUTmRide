@@ -4,7 +4,7 @@ import {
   Bus, Users, CalendarClock, Clock, MapPin, Navigation, ChevronDown, ChevronUp,
   Plus, Play, Square, CheckCircle2, AlertTriangle, ArrowRight, RefreshCw,
   UserCheck, UserX, ArrowRightLeft, Zap, X, Search, Filter, Eye, Truck,
-  CircleDot, Timer, TrendingUp, BarChart3, Activity, Package, Eject
+  CircleDot, Timer, TrendingUp, BarChart3, Activity, Package, UserMinus
 } from 'lucide-react'
 import { T } from '../theme'
 import { apiService } from '../../services/api.service'
@@ -843,11 +843,11 @@ export default function RouteOpsPanel() {
                           <div style={{ display: 'flex', gap: 4, borderTop: `1px solid ${T.border}`, paddingTop: 8, marginTop: 2 }} onClick={e => e.stopPropagation()}>
                             {bus.status === 'assigned' && (
                               <>
-                                <button 
+                                  <button 
                                   style={{ ...s.busActionBtn, flex: 0, padding: '6px 8px', color: unassignConfirmBusId === bus.id ? '#ef4444' : T.textMuted, background: unassignConfirmBusId === bus.id ? 'rgba(239,68,68,0.1)' : 'transparent' }}
                                   onClick={() => setUnassignConfirmBusId(prev => prev === bus.id ? null : bus.id)}
                                 >
-                                  <Eject size={11} />
+                                  <UserMinus size={11} />
                                 </button>
                                 
                                 {unassignConfirmBusId === bus.id ? (
