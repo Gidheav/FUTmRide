@@ -193,15 +193,17 @@ export default function RouteOpsPanel() {
     return () => clearInterval(t)
   }, [fetchRides])
 
-  // ── Fetch buses + passengers when ride selected ──
+  // ── Fetch buses + passengers + interested drivers when ride selected ──
   const fetchRideDetails = useCallback(async (rideId: string) => {
     try {
-      const [b, p] = await Promise.all([
+      const [b, p, d] = await Promise.all([
         apiService.getBusAssignments(rideId),
         apiService.getRidePassengers(rideId),
+        apiService.getInterestedDrivers(rideId),
       ])
       setBuses(b)
       setPassengers(p)
+      setInterestedDrivers(d)
     } catch { /* silent */ }
   }, [])
 
@@ -215,21 +217,6 @@ export default function RouteOpsPanel() {
     const t = setInterval(() => fetchRideDetails(selectedRideId), 8000)
     return () => clearInterval(t)
   }, [selectedRideId, fetchRideDetails])
-
-  // ── Load interested drivers for this ride ──
-  useEffect(() => {
-    if (!selectedRideId) {
-      setInterestedDrivers([])
-      return
-    }
-    apiService.getInterestedDrivers(selectedRideId).then(data => {
-      console.log('Interested drivers data:', data)
-      setInterestedDrivers(data)
-    }).catch((error) => {
-      console.error('Error fetching interested drivers:', error)
-      setInterestedDrivers([])
-    })
-  }, [selectedRideId])
 
   // ── Load persistent activity log from DB when ride selected ──
   useEffect(() => {
@@ -1228,9 +1215,9 @@ const s: Record<string, CSSProperties> = {
   searchInput: { background: T.bgInput, border: `1px solid ${T.border}`, borderRadius: 0, padding: '6px 8px 6px 28px', color: T.textPrimary, fontSize: 11, fontFamily: T.fontFamily, outline: 'none', width: 140 },
 
   // ── Right Column ──
-  rightSection: { background: T.bgPanel, border: `1px solid ${T.border}`, padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12, borderRadius: 0 },
-  analyticsGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 },
-  analyticTile: { background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 0, padding: '16px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 },
+  rightSection: { background: T.bgPanel, border: `1px solid ${T.border}`, padding: '16px 16px', display: 'flex', flexDirection: 'column', gap: 12, borderRadius: 0 },
+  analyticsGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 },
+  analyticTile: { background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 0, padding: '16px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 0 },
   analyticVal: { fontSize: 16, fontWeight: 800, color: T.textWhite, lineHeight: 1 },
   analyticLbl: { fontSize: 8, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.4 },
   tierRow: { display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: `1px solid ${T.border}`, fontSize: 11 },

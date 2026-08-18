@@ -526,9 +526,10 @@ class DriverAvailableScheduledRidesView(generics.ListAPIView):
         if not profile:
             return ScheduledRide.objects.none()
 
+        from django.db.models import Q
         return ScheduledRide.objects.filter(
+            Q(allowed_vehicle_types__contains=[profile.vehicle_type]) | Q(allowed_vehicle_types=[]) | Q(allowed_vehicle_types__isnull=True),
             status=ScheduledRideStatus.SCHEDULED,
-            allowed_vehicle_types__contains=[profile.vehicle_type]
         ).exclude(
             bus_assignments__driver=self.request.user,
         ).order_by('departure_date', 'window_start')
@@ -583,7 +584,7 @@ class DriverExpressInterestView(APIView):
                 {'error': 'Your driver account is not yet approved.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if not profile or profile.vehicle_type not in ride.allowed_vehicle_types:
+        if not profile or (ride.allowed_vehicle_types and profile.vehicle_type not in ride.allowed_vehicle_types):
             return Response({'error': 'This ride requires a different vehicle type.'}, status=status.HTTP_400_BAD_REQUEST)
             
         interest, created = ScheduledRideDriverInterest.objects.get_or_create(
