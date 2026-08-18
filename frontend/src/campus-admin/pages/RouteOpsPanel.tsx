@@ -715,6 +715,9 @@ export default function RouteOpsPanel() {
                 {/* Add Vehicle Panel */}
                 {showAddBus && (
                   <div style={{ paddingBottom: 16, borderBottom: `1px dashed ${T.border}`, marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: T.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Users size={12} /> Available Interested Drivers
+                    </div>
                     {interestedDrivers.length === 0 ? (
                       <div style={s.emptyDriverState}>
                         <Bus size={32} style={{ opacity: 0.3 }} />

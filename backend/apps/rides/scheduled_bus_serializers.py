@@ -95,6 +95,11 @@ class BusAssignmentCreateSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         ride = self.context['ride']
+        driver = attrs.get('driver')
+
+        if driver and ScheduledRideBusAssignment.objects.filter(ride=ride, driver=driver).exists():
+            raise serializers.ValidationError({'driver': 'This driver is already assigned to this ride.'})
+
         order = attrs.get('order', 1)
         if ScheduledRideBusAssignment.objects.filter(ride=ride, order=order).exists():
             max_order = ScheduledRideBusAssignment.objects.filter(ride=ride).count()
