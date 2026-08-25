@@ -176,7 +176,7 @@ export default function OperationsHub() {
           />
           <input
             type="text"
-            placeholder="Search schedules, routes, fleet..."
+            placeholder={activeTab === 'log' ? 'Search student, driver, reference, location...' : 'Search schedules, routes, fleet...'}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ ...campusPanel.input, paddingLeft: 32, paddingRight: search ? 28 : 12 }}

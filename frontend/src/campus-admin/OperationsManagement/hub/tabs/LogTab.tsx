@@ -103,16 +103,16 @@ export const LogTab: React.FC<LogTabProps> = ({
       {/* Table — scrollable container so IntersectionObserver sentinel works */}
       <div style={{ border: `1px solid ${T.border}`, flex: 1, display: 'flex', flexDirection: 'column', background: T.bgPanel, overflowY: 'auto', minHeight: 0 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 13 }}>
-          <thead style={{ background: T.bgInput, borderBottom: `1px solid ${T.border}`, position: 'sticky', top: 0, zIndex: 10 }}>
+          <thead style={{ zIndex: 10 }}>
             <tr>
-              <th style={{ padding: '12px 16px', fontWeight: 600, color: T.textMuted }}>Timestamp</th>
-              <th style={{ padding: '12px 16px', fontWeight: 600, color: T.textMuted }}>Event</th>
-              <th style={{ padding: '12px 16px', fontWeight: 600, color: T.textMuted }}>Type</th>
-              <th style={{ padding: '12px 16px', fontWeight: 600, color: T.textMuted }}>Ref</th>
-              <th style={{ padding: '12px 16px', fontWeight: 600, color: T.textMuted }}>Student</th>
-              <th style={{ padding: '12px 16px', fontWeight: 600, color: T.textMuted }}>Driver</th>
-              <th style={{ padding: '12px 16px', fontWeight: 600, color: T.textMuted }}>Route</th>
-              <th style={{ padding: '12px 16px', fontWeight: 600, color: T.textMuted }}>Amount</th>
+              <th style={{ padding: '12px 16px', fontWeight: 600, color: T.textMuted, position: 'sticky', top: 0, background: T.bgInput, borderBottom: `1px solid ${T.border}` }}>Timestamp</th>
+              <th style={{ padding: '12px 16px', fontWeight: 600, color: T.textMuted, position: 'sticky', top: 0, background: T.bgInput, borderBottom: `1px solid ${T.border}` }}>Event</th>
+              <th style={{ padding: '12px 16px', fontWeight: 600, color: T.textMuted, position: 'sticky', top: 0, background: T.bgInput, borderBottom: `1px solid ${T.border}` }}>Type</th>
+              <th style={{ padding: '12px 16px', fontWeight: 600, color: T.textMuted, position: 'sticky', top: 0, background: T.bgInput, borderBottom: `1px solid ${T.border}` }}>Ref</th>
+              <th style={{ padding: '12px 16px', fontWeight: 600, color: T.textMuted, position: 'sticky', top: 0, background: T.bgInput, borderBottom: `1px solid ${T.border}` }}>Student</th>
+              <th style={{ padding: '12px 16px', fontWeight: 600, color: T.textMuted, position: 'sticky', top: 0, background: T.bgInput, borderBottom: `1px solid ${T.border}` }}>Driver</th>
+              <th style={{ padding: '12px 16px', fontWeight: 600, color: T.textMuted, position: 'sticky', top: 0, background: T.bgInput, borderBottom: `1px solid ${T.border}` }}>Route</th>
+              <th style={{ padding: '12px 16px', fontWeight: 600, color: T.textMuted, position: 'sticky', top: 0, background: T.bgInput, borderBottom: `1px solid ${T.border}` }}>Amount</th>
             </tr>
           </thead>
           <tbody>

@@ -111,7 +111,8 @@ class AdminRideActivityLogView(APIView):
     def get(self, request):
         params = request.query_params
         cursor = params.get('cursor')
-        page_size = int(params.get('page_size', 50))
+        page_size = int(params.get('page_size', 500)) # Default to 500 for a healthy Hot Cache
+        is_archive_search = params.get('is_archive_search') == 'true'
         
         # Filters
         ride_type = params.get('ride_type')
@@ -119,7 +120,14 @@ class AdminRideActivityLogView(APIView):
         event_filter = params.get('event')
         date_from = params.get('date_from')
         date_to = params.get('date_to')
-        search_query = params.get('search')
+        search_query = params.get('search', '').strip()
+        
+        # Only apply database search if it's explicitly an archive search
+        if not is_archive_search:
+            search_query = None
+        else:
+            # Minimum 2 chars to avoid full-table scans on single keystrokes
+            search_query = search_query if len(search_query) >= 2 else None
         
         cursor_dt = None
         cursor_id = None
@@ -147,7 +155,9 @@ class AdminRideActivityLogView(APIView):
                     Q(student__last_name__icontains=search_query) |
                     Q(driver__first_name__icontains=search_query) |
                     Q(driver__last_name__icontains=search_query) |
-                    Q(reference__icontains=search_query)
+                    Q(reference__icontains=search_query) |
+                    Q(pickup_address__icontains=search_query) |
+                    Q(dropoff_address__icontains=search_query)
                 )
             
             if cursor_dt:
@@ -184,7 +194,11 @@ class AdminRideActivityLogView(APIView):
                     Q(student__last_name__icontains=search_query) |
                     Q(ride__assigned_driver__first_name__icontains=search_query) |
                     Q(ride__assigned_driver__last_name__icontains=search_query) |
-                    Q(ride__reference__icontains=search_query)
+                    Q(ride__reference__icontains=search_query) |
+                    Q(boarding_stop__name__icontains=search_query) |
+                    Q(alighting_stop__name__icontains=search_query) |
+                    Q(ride__origin_address__icontains=search_query) |
+                    Q(ride__destination_address__icontains=search_query)
                 )
             
             if cursor_dt:
@@ -220,7 +234,9 @@ class AdminRideActivityLogView(APIView):
                     Q(student__last_name__icontains=search_query) |
                     Q(garage_ride__driver__first_name__icontains=search_query) |
                     Q(garage_ride__driver__last_name__icontains=search_query) |
-                    Q(garage_ride__reference__icontains=search_query)
+                    Q(garage_ride__reference__icontains=search_query) |
+                    Q(garage_ride__origin_address__icontains=search_query) |
+                    Q(garage_ride__destination_address__icontains=search_query)
                 )
             
             if cursor_dt:
@@ -254,7 +270,9 @@ class AdminRideActivityLogView(APIView):
                 gq = gq.filter(
                     Q(driver__first_name__icontains=search_query) |
                     Q(driver__last_name__icontains=search_query) |
-                    Q(reference__icontains=search_query)
+                    Q(reference__icontains=search_query) |
+                    Q(origin_address__icontains=search_query) |
+                    Q(destination_address__icontains=search_query)
                 )
 
             if cursor_dt:

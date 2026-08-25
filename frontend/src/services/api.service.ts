@@ -618,6 +618,7 @@ class ApiService {
     date_to?: string
     search?: string
     page_size?: number
+    is_archive_search?: boolean
   }): Promise<any> {
     return this.get('rides/operations/activity-log/', { params })
   }
