@@ -21,6 +21,11 @@ export default function OperationsHub() {
   const [verifyLoading, setVerifyLoading] = useState(false)
   const [verifyError, setVerifyError] = useState('')
 
+  // Log Tab Filters
+  const [logType, setLogType] = useState('on_demand,scheduled,garage')
+  const [logDateFrom, setLogDateFrom] = useState('')
+  const [logDateTo, setLogDateTo] = useState('')
+
   const handleRefresh = () => {
     setRefreshKey((k) => k + 1)
   }
@@ -41,6 +46,50 @@ export default function OperationsHub() {
           </p>
         </div>
       ))}
+    </div>
+  )
+
+  const logFiltersStrip = (
+    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', height: '100%' }}>
+      <select
+        value={logType}
+        onChange={e => setLogType(e.target.value)}
+        style={{ ...campusPanel.input, width: 130 }}
+      >
+        <option value="on_demand,scheduled,garage">All Types</option>
+        <option value="on_demand">On-Demand</option>
+        <option value="scheduled">Scheduled</option>
+        <option value="garage">Garage</option>
+      </select>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontSize: 13, color: T.textMuted }}>From:</span>
+        <input
+          type="date"
+          value={logDateFrom}
+          onChange={e => setLogDateFrom(e.target.value)}
+          style={{ ...campusPanel.input, width: 150 }}
+        />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontSize: 13, color: T.textMuted }}>To:</span>
+        <input
+          type="date"
+          value={logDateTo}
+          onChange={e => setLogDateTo(e.target.value)}
+          style={{ ...campusPanel.input, width: 150 }}
+        />
+      </div>
+      <button 
+        onClick={() => {
+          setSearch('')
+          setLogType('on_demand,scheduled,garage')
+          setLogDateFrom('')
+          setLogDateTo('')
+        }}
+        style={campusPanel.btnSecondary}
+      >
+        Clear
+      </button>
     </div>
   )
 
@@ -147,7 +196,7 @@ export default function OperationsHub() {
         </div>
 
         <div style={{ marginLeft: 'auto', display: 'flex', justifyContent: 'flex-start' }}>
-          {kpiStrip}
+          {activeTab === 'log' ? logFiltersStrip : kpiStrip}
         </div>
 
         <div style={{ display: 'flex', gap: 8, flexShrink: 0, marginLeft: 16 }}>
@@ -163,17 +212,21 @@ export default function OperationsHub() {
           {activeTab === 'passengers' && (
             <button type="button" style={campusPanel.btnSecondary}>Issue Ticket</button>
           )}
-          <button type="button" style={campusPanel.btnSecondary}>
-            <Download size={13} />
-            Export
-          </button>
-          <button 
-            type="button" 
-            style={{ ...campusPanel.btnPrimary, background: T.accentBg, color: T.accent, borderColor: T.accent }}
-            onClick={() => { setTicketInput(''); setVerifyResult(null); setVerifyError(''); setShowVerifyModal(true); }}
-          >
-            <Ticket size={13} /> Quick Ver
-          </button>
+          {activeTab !== 'log' && (
+            <button type="button" style={campusPanel.btnSecondary}>
+              <Download size={13} />
+              Export
+            </button>
+          )}
+          {activeTab !== 'log' && (
+            <button 
+              type="button" 
+              style={{ ...campusPanel.btnPrimary, background: T.accentBg, color: T.accent, borderColor: T.accent }}
+              onClick={() => { setTicketInput(''); setVerifyResult(null); setVerifyError(''); setShowVerifyModal(true); }}
+            >
+              <Ticket size={13} /> Quick Ver
+            </button>
+          )}
           {refreshButton}
         </div>
       </div>
@@ -183,7 +236,15 @@ export default function OperationsHub() {
         {activeTab === 'routes' && <RoutesTab key={refreshKey} search={search} />}
         {activeTab === 'fleet' && <FleetTab key={refreshKey} search={search} />}
         {activeTab === 'passengers' && <PassengersTab key={refreshKey} search={search} />}
-        {activeTab === 'log' && <LogTab key={refreshKey} search={search} />}
+        {activeTab === 'log' && (
+          <LogTab 
+            key={refreshKey} 
+            search={search}
+            rideType={logType}
+            dateFrom={logDateFrom}
+            dateTo={logDateTo}
+          />
+        )}
       </div>
     </div>
   )

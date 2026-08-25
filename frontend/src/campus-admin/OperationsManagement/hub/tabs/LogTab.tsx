@@ -3,7 +3,7 @@ import { apiService } from '../../../../services/api.service'
 import { campusPanel } from '../../../shared/campusPanelStyles'
 import { T } from '../../../theme'
 import { format, parseISO } from 'date-fns'
-import { MapPin, Filter, Search, ChevronDown, CheckCircle2, Clock, AlertCircle } from 'lucide-react'
+import { AlertCircle } from 'lucide-react'
 
 interface LogEvent {
   id: string
@@ -22,21 +22,21 @@ interface LogEvent {
 
 interface LogTabProps {
   search: string
+  rideType: string
+  dateFrom: string
+  dateTo: string
 }
 
-export const LogTab: React.FC<LogTabProps> = ({ search: globalSearch }) => {
+export const LogTab: React.FC<LogTabProps> = ({ 
+  search: globalSearch,
+  rideType,
+  dateFrom,
+  dateTo
+}) => {
   const [events, setEvents] = useState<LogEvent[]>([])
   const [loading, setLoading] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined)
-  
-  // Filters
-  const [studentSearch, setStudentSearch] = useState('')
-  const [driverSearch, setDriverSearch] = useState('')
-  const [referenceSearch, setReferenceSearch] = useState('')
-  const [rideType, setRideType] = useState('on_demand,scheduled,garage')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
   
   const observer = useRef<IntersectionObserver | null>(null)
   const lastElementRef = useCallback((node: HTMLDivElement) => {
@@ -59,9 +59,7 @@ export const LogTab: React.FC<LogTabProps> = ({ search: globalSearch }) => {
         cursor,
         page_size: 50,
         ride_type: rideType,
-        student: studentSearch || globalSearch,
-        driver: driverSearch,
-        reference: referenceSearch,
+        search: globalSearch,
         date_from: dateFrom,
         date_to: dateTo
       })
@@ -82,7 +80,7 @@ export const LogTab: React.FC<LogTabProps> = ({ search: globalSearch }) => {
       fetchLogs(undefined, true)
     }, 500)
     return () => clearTimeout(delayDebounceFn)
-  }, [studentSearch, driverSearch, referenceSearch, rideType, dateFrom, dateTo, globalSearch])
+  }, [globalSearch, rideType, dateFrom, dateTo])
 
   const getTypeColor = (type: string) => {
     if (type === 'on_demand') return { bg: '#e0f2fe', text: '#0369a1', label: 'On-Demand' }
@@ -100,88 +98,12 @@ export const LogTab: React.FC<LogTabProps> = ({ search: globalSearch }) => {
   }
 
   return (
-    <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16, height: '100%', boxSizing: 'border-box' }}>
+    <div style={{ padding: 0, marginTop: 4, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       
-      {/* Filter Bar */}
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', background: T.bgPanel, padding: 16, borderRadius: 8, border: `1px solid ${T.border}` }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: T.textMuted, fontSize: 13, fontWeight: 500 }}>
-          <Filter size={16} /> Filters
-        </div>
-        
-        <input
-          type="text"
-          placeholder="Student Name"
-          value={studentSearch}
-          onChange={e => setStudentSearch(e.target.value)}
-          style={{ ...campusPanel.input, width: 160 }}
-        />
-        
-        <input
-          type="text"
-          placeholder="Driver Name"
-          value={driverSearch}
-          onChange={e => setDriverSearch(e.target.value)}
-          style={{ ...campusPanel.input, width: 160 }}
-        />
-        
-        <input
-          type="text"
-          placeholder="Ride Ref"
-          value={referenceSearch}
-          onChange={e => setReferenceSearch(e.target.value)}
-          style={{ ...campusPanel.input, width: 130 }}
-        />
-        
-        <select
-          value={rideType}
-          onChange={e => setRideType(e.target.value)}
-          style={{ ...campusPanel.input, width: 150 }}
-        >
-          <option value="on_demand,scheduled,garage">All Types</option>
-          <option value="on_demand">On-Demand</option>
-          <option value="scheduled">Scheduled</option>
-          <option value="garage">Garage</option>
-        </select>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 13, color: T.textMuted }}>From:</span>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={e => setDateFrom(e.target.value)}
-            style={campusPanel.input}
-          />
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 13, color: T.textMuted }}>To:</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={e => setDateTo(e.target.value)}
-            style={campusPanel.input}
-          />
-        </div>
-        
-        <button 
-          onClick={() => {
-            setStudentSearch('')
-            setDriverSearch('')
-            setReferenceSearch('')
-            setRideType('on_demand,scheduled,garage')
-            setDateFrom('')
-            setDateTo('')
-          }}
-          style={{ ...campusPanel.btnSecondary, marginLeft: 'auto' }}
-        >
-          Clear
-        </button>
-      </div>
-
-      {/* Table */}
-      <div style={{ ...campusPanel.card, flex: 1, display: 'flex', flexDirection: 'column' }}>
+      {/* Table — scrollable container so IntersectionObserver sentinel works */}
+      <div style={{ border: `1px solid ${T.border}`, flex: 1, display: 'flex', flexDirection: 'column', background: T.bgPanel, overflowY: 'auto', minHeight: 0 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 13 }}>
-          <thead style={{ background: '#f8fafc', borderBottom: `1px solid ${T.border}`, position: 'sticky', top: 0, zIndex: 10 }}>
+          <thead style={{ background: T.bgInput, borderBottom: `1px solid ${T.border}`, position: 'sticky', top: 0, zIndex: 10 }}>
             <tr>
               <th style={{ padding: '12px 16px', fontWeight: 600, color: T.textMuted }}>Timestamp</th>
               <th style={{ padding: '12px 16px', fontWeight: 600, color: T.textMuted }}>Event</th>
@@ -264,6 +186,33 @@ export const LogTab: React.FC<LogTabProps> = ({ search: globalSearch }) => {
             <AlertCircle size={32} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
             <div style={{ fontSize: 15, fontWeight: 500, color: T.textPrimary }}>No activity found</div>
             <div style={{ fontSize: 13, marginTop: 4 }}>Try adjusting your filters</div>
+          </div>
+        )}
+
+        {/* Load More button — visible fallback when there are more records */}
+        {hasMore && !loading && events.length > 0 && (
+          <div style={{ padding: '16px', textAlign: 'center', borderTop: `1px solid ${T.border}` }}>
+            <button
+              onClick={() => fetchLogs(nextCursor)}
+              style={{
+                padding: '8px 24px',
+                background: T.accent,
+                color: '#fff',
+                border: 'none',
+                borderRadius: 6,
+                fontWeight: 600,
+                fontSize: 13,
+                cursor: 'pointer'
+              }}
+            >
+              Load More ({events.length} loaded so far)
+            </button>
+          </div>
+        )}
+
+        {!hasMore && events.length > 0 && (
+          <div style={{ padding: '12px', textAlign: 'center', color: T.textMuted, fontSize: 12 }}>
+            All {events.length} records loaded
           </div>
         )}
 

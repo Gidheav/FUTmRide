@@ -616,9 +616,7 @@ class ApiService {
     event?: string
     date_from?: string
     date_to?: string
-    student?: string
-    driver?: string
-    reference?: string
+    search?: string
     page_size?: number
   }): Promise<any> {
     return this.get('rides/operations/activity-log/', { params })

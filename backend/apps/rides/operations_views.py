@@ -4,9 +4,9 @@ from rest_framework.views import APIView
 from django.utils import timezone
 from apps.accounts.permissions import IsAdminOrCampusAdmin
 from apps.rides.models import Ride
-from apps.rides.scheduled_models import ScheduledRidePassenger
-from apps.rides.garage_models import GarageRidePassenger
-from apps.rides.garage_models import GarageRidePassenger
+from apps.rides.scheduled_models import ScheduledRidePassenger, ScheduledRide
+from apps.rides.garage_models import GarageRidePassenger, GarageRide
+from django.db.models import Q
 from dateutil.parser import parse as parse_date
 import json
 class AdminLivePassengersView(APIView):
@@ -119,9 +119,7 @@ class AdminRideActivityLogView(APIView):
         event_filter = params.get('event')
         date_from = params.get('date_from')
         date_to = params.get('date_to')
-        student = params.get('student')
-        driver = params.get('driver')
-        reference = params.get('reference')
+        search_query = params.get('search')
         
         cursor_dt = None
         cursor_id = None
@@ -143,9 +141,14 @@ class AdminRideActivityLogView(APIView):
             if date_from: q = q.filter(updated_at__gte=parse_date(date_from))
             if date_to: q = q.filter(updated_at__lte=parse_date(date_to))
             if status_filter: q = q.filter(status__in=status_filter.split(','))
-            if student: q = q.filter(student__first_name__icontains=student) | q.filter(student__last_name__icontains=student)
-            if driver: q = q.filter(driver__first_name__icontains=driver) | q.filter(driver__last_name__icontains=driver)
-            if reference: q = q.filter(reference__icontains=reference)
+            if search_query:
+                q = q.filter(
+                    Q(student__first_name__icontains=search_query) |
+                    Q(student__last_name__icontains=search_query) |
+                    Q(driver__first_name__icontains=search_query) |
+                    Q(driver__last_name__icontains=search_query) |
+                    Q(reference__icontains=search_query)
+                )
             
             if cursor_dt:
                 q = q.filter(updated_at__lte=cursor_dt).exclude(updated_at=cursor_dt, id__gte=cursor_id)
@@ -175,9 +178,14 @@ class AdminRideActivityLogView(APIView):
             if date_from: q = q.filter(joined_at__gte=parse_date(date_from))
             if date_to: q = q.filter(joined_at__lte=parse_date(date_to))
             if status_filter: q = q.filter(status__in=status_filter.split(','))
-            if student: q = q.filter(student__first_name__icontains=student) | q.filter(student__last_name__icontains=student)
-            if driver: q = q.filter(ride__assigned_driver__first_name__icontains=driver) | q.filter(ride__assigned_driver__last_name__icontains=driver)
-            if reference: q = q.filter(ride__reference__icontains=reference)
+            if search_query:
+                q = q.filter(
+                    Q(student__first_name__icontains=search_query) |
+                    Q(student__last_name__icontains=search_query) |
+                    Q(ride__assigned_driver__first_name__icontains=search_query) |
+                    Q(ride__assigned_driver__last_name__icontains=search_query) |
+                    Q(ride__reference__icontains=search_query)
+                )
             
             if cursor_dt:
                 q = q.filter(joined_at__lte=cursor_dt).exclude(joined_at=cursor_dt, id__gte=cursor_id)
@@ -206,10 +214,14 @@ class AdminRideActivityLogView(APIView):
             
             if date_from: q = q.filter(boarded_at__gte=parse_date(date_from))
             if date_to: q = q.filter(boarded_at__lte=parse_date(date_to))
-            
-            if student: q = q.filter(student__first_name__icontains=student) | q.filter(student__last_name__icontains=student)
-            if driver: q = q.filter(garage_ride__driver__first_name__icontains=driver) | q.filter(garage_ride__driver__last_name__icontains=driver)
-            if reference: q = q.filter(garage_ride__reference__icontains=reference)
+            if search_query:
+                q = q.filter(
+                    Q(student__first_name__icontains=search_query) |
+                    Q(student__last_name__icontains=search_query) |
+                    Q(garage_ride__driver__first_name__icontains=search_query) |
+                    Q(garage_ride__driver__last_name__icontains=search_query) |
+                    Q(garage_ride__reference__icontains=search_query)
+                )
             
             if cursor_dt:
                 q = q.filter(boarded_at__lte=cursor_dt).exclude(boarded_at=cursor_dt, id__gte=cursor_id)
@@ -230,6 +242,76 @@ class AdminRideActivityLogView(APIView):
                     'amount': str(r.amount_paid or 0),
                     'status': r.garage_ride.status,
                     'ride_id': str(r.garage_ride.id)
+                })
+
+        # 4. Garage Ride Creations (driver-initiated rides)
+        if 'garage' in allowed_types:
+            gq = GarageRide.objects.select_related('driver')
+
+            if date_from: gq = gq.filter(created_at__gte=parse_date(date_from))
+            if date_to: gq = gq.filter(created_at__lte=parse_date(date_to))
+            if search_query:
+                gq = gq.filter(
+                    Q(driver__first_name__icontains=search_query) |
+                    Q(driver__last_name__icontains=search_query) |
+                    Q(reference__icontains=search_query)
+                )
+
+            if cursor_dt:
+                gq = gq.filter(created_at__lte=cursor_dt).exclude(created_at=cursor_dt, id__gte=cursor_id)
+
+            gq = gq.order_by('-created_at')[:page_size]
+
+            for r in gq:
+                events.append({
+                    'id': f"gr-{r.id}",
+                    'timestamp': r.created_at.isoformat(),
+                    'event': r.status,
+                    'event_label': f"Ride {r.get_status_display()}",
+                    'ride_type': 'garage',
+                    'reference': r.reference,
+                    'student_name': '-',
+                    'driver_name': r.driver.full_name if r.driver else '',
+                    'route': f"{r.origin_address} → {r.destination_address}",
+                    'amount': str(r.fare_per_seat or 0),
+                    'status': r.status,
+                    'ride_id': str(r.id)
+                })
+
+        # 5. Scheduled Ride Creations (admin-initiated rides)
+        if 'scheduled' in allowed_types:
+            sq = ScheduledRide.objects.select_related('assigned_driver', 'created_by')
+
+            if date_from: sq = sq.filter(created_at__gte=parse_date(date_from))
+            if date_to: sq = sq.filter(created_at__lte=parse_date(date_to))
+            if search_query:
+                sq = sq.filter(
+                    Q(assigned_driver__first_name__icontains=search_query) |
+                    Q(assigned_driver__last_name__icontains=search_query) |
+                    Q(reference__icontains=search_query) |
+                    Q(origin_address__icontains=search_query) |
+                    Q(destination_address__icontains=search_query)
+                )
+
+            if cursor_dt:
+                sq = sq.filter(created_at__lte=cursor_dt).exclude(created_at=cursor_dt, id__gte=cursor_id)
+
+            sq = sq.order_by('-created_at')[:page_size]
+
+            for r in sq:
+                events.append({
+                    'id': f"sr-{r.id}",
+                    'timestamp': r.created_at.isoformat(),
+                    'event': r.status,
+                    'event_label': f"Scheduled {r.get_status_display()}",
+                    'ride_type': 'scheduled',
+                    'reference': r.reference,
+                    'student_name': '-',
+                    'driver_name': r.assigned_driver.full_name if r.assigned_driver else 'Unassigned',
+                    'route': f"{r.origin_address} → {r.destination_address}",
+                    'amount': '0',
+                    'status': r.status,
+                    'ride_id': str(r.id)
                 })
 
         # Sort combined events by timestamp desc
