@@ -33,6 +33,19 @@ import {
   Users2,
   Wrench,
   BarChart3,
+  ChevronDown,
+  ChevronUp,
+  Plus,
+  Play,
+  Square,
+  ArrowRight,
+  Search,
+  Filter,
+  Eye,
+  CircleDot,
+  Timer,
+  Package,
+  UserMinus,
 } from 'lucide-react'
 import { GoogleMap, useJsApiLoader, Marker, Circle } from '@react-google-maps/api'
 import apiService from '../../services/api.service'
@@ -117,7 +130,7 @@ export default function TestPage() {
   const area = queryArea === 'rides' ? 'rides' : queryArea === 'map' ? 'map' : queryArea === 'calibration' ? 'calibration' : 'account'
   const validAccountSections = ['student', 'driver', 'admin']
   const initialSection = searchParams.get('section')
-  const defaultSection = area === 'rides' ? 'create' : (area === 'map' || area === 'calibration') ? 'manage' : (initialSection && validAccountSections.includes(initialSection) ? initialSection : 'student')
+  const defaultSection = area === 'rides' ? 'create' : (area === 'map' || (area as any) === 'calibration') ? 'manage' : (initialSection && validAccountSections.includes(initialSection) ? initialSection : 'student')
   const section = initialSection || defaultSection
   const { mode } = useCampusThemeStore()
   const [counts, setCounts] = useState({
@@ -399,12 +412,12 @@ export default function TestPage() {
 
       <div style={{ ...campusPanel.scrollMain, ...campusPanel.thinScroll, padding: 0, position: 'relative', zIndex: 1, pointerEvents: 'none' }}>
         {/* ── Calibration Lab: full-bleed, bypasses stats/sidebar ── */}
-        {area === 'calibration' ? (
+        {(area as any) === 'calibration' ? (
           <div style={{ pointerEvents: 'auto', width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
             <CalibrationTab settings={settings} />
           </div>
         ) : (
-        <div style={{ ...s.contentGrid, pointerEvents: 'auto' }}>
+        <div style={area === 'map' ? { ...s.contentGrid, pointerEvents: 'auto' } : { ...s.labPage, pointerEvents: 'auto' }}>
           <div style={s.contentCol}>
             
             {/* Main Area Navigation */}
@@ -431,7 +444,7 @@ export default function TestPage() {
                 <span>Map</span>
               </button>
               <button 
-                style={premiumStyles.mainNavTab(area === 'calibration')} 
+                style={premiumStyles.mainNavTab((area as any) === 'calibration')} 
                 onClick={() => setArea('calibration')}
               >
                 <Settings size={16} />
@@ -977,8 +990,7 @@ export default function TestPage() {
             </div>
           </div>
 
-          <aside style={s.sidebar}>
-          </aside>
+          {area === 'map' && <aside style={s.sidebar}></aside>}
         </div>
         )}
       </div>
@@ -1512,7 +1524,7 @@ const subTabStyle = (active: boolean): CSSProperties => ({
   marginBottom: -1,
 })
 
-const s: Record<string, CSSProperties> = {
+const s: Record<string, any> = {
   contentGrid: { 
     position: 'absolute',
     top: 5,
@@ -1524,6 +1536,16 @@ const s: Record<string, CSSProperties> = {
     flexDirection: 'column', 
     gap: 16, 
     alignItems: 'stretch'
+  },
+  labPage: {
+    position: 'relative',
+    width: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+    alignItems: 'stretch',
+    minHeight: '100%',
+    padding: '0 0 20px 0',
   },
   contentCol: { display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 },
   sidebar: { display: 'flex', flexDirection: 'column', gap: 16 },
@@ -1608,23 +1630,23 @@ const s: Record<string, CSSProperties> = {
 }
 
 // Premium Styles
-const premiumStyles: Record<string, CSSProperties> = {
+const premiumStyles: Record<string, any> = {
   // Main Navigation
   mainNav: {
     display: 'flex',
     gap: 2,
     background: T.bgInput,
-    padding: 4,
-    borderRadius: 12,
-    marginBottom: 20,
+    padding: 3,
+    borderRadius: 10,
+    marginBottom: 16,
   },
   mainNavTab: (active: boolean): CSSProperties => ({
     display: 'flex',
     alignItems: 'center',
     gap: 8,
-    padding: '12px 20px',
-    fontSize: 13,
-    fontWeight: 600,
+    padding: '10px 16px',
+    fontSize: 12,
+    fontWeight: 700,
     fontFamily: T.fontFamily,
     cursor: 'pointer',
     color: active ? T.textPrimary : T.textMuted,
@@ -1632,7 +1654,7 @@ const premiumStyles: Record<string, CSSProperties> = {
     border: 'none',
     borderRadius: 8,
     transition: 'all 0.2s ease',
-    boxShadow: active ? `0 2px 8px rgba(168,85,247,0.15)` : 'none',
+    boxShadow: active ? `0 1px 4px rgba(0,0,0,0.08)` : 'none',
   }),
 
   // Account Tabs
@@ -1640,17 +1662,17 @@ const premiumStyles: Record<string, CSSProperties> = {
     display: 'flex',
     gap: 2,
     background: T.bgInput,
-    padding: 4,
-    borderRadius: 12,
-    marginBottom: 20,
+    padding: 3,
+    borderRadius: 10,
+    marginBottom: 16,
   },
   accountTab: (active: boolean): CSSProperties => ({
     display: 'flex',
     alignItems: 'center',
     gap: 8,
-    padding: '12px 20px',
-    fontSize: 13,
-    fontWeight: 600,
+    padding: '10px 16px',
+    fontSize: 12,
+    fontWeight: 700,
     fontFamily: T.fontFamily,
     cursor: 'pointer',
     color: active ? T.textPrimary : T.textMuted,
@@ -1658,7 +1680,7 @@ const premiumStyles: Record<string, CSSProperties> = {
     border: 'none',
     borderRadius: 8,
     transition: 'all 0.2s ease',
-    boxShadow: active ? `0 2px 8px rgba(168,85,247,0.15)` : 'none',
+    boxShadow: active ? `0 1px 4px rgba(0,0,0,0.08)` : 'none',
   }),
 
   // Ride Tabs
@@ -1666,17 +1688,17 @@ const premiumStyles: Record<string, CSSProperties> = {
     display: 'flex',
     gap: 2,
     background: T.bgInput,
-    padding: 4,
-    borderRadius: 12,
-    marginBottom: 20,
+    padding: 3,
+    borderRadius: 10,
+    marginBottom: 16,
   },
   rideTab: (active: boolean): CSSProperties => ({
     display: 'flex',
     alignItems: 'center',
     gap: 8,
-    padding: '12px 20px',
-    fontSize: 13,
-    fontWeight: 600,
+    padding: '10px 16px',
+    fontSize: 12,
+    fontWeight: 700,
     fontFamily: T.fontFamily,
     cursor: 'pointer',
     color: active ? T.textPrimary : T.textMuted,
@@ -1684,19 +1706,19 @@ const premiumStyles: Record<string, CSSProperties> = {
     border: 'none',
     borderRadius: 8,
     transition: 'all 0.2s ease',
-    boxShadow: active ? `0 2px 8px rgba(168,85,247,0.15)` : 'none',
+    boxShadow: active ? `0 1px 4px rgba(0,0,0,0.08)` : 'none',
   }),
 
   // Premium Panel
   premiumPanel: {
     background: T.bgCard,
     border: `1px solid ${T.border}`,
-    borderRadius: 16,
-    padding: 24,
+    borderRadius: 12,
+    padding: 20,
     display: 'flex',
     flexDirection: 'column',
-    gap: 24,
-    boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+    gap: 20,
+    boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
   },
 
   // Panel Header
@@ -1704,14 +1726,14 @@ const premiumStyles: Record<string, CSSProperties> = {
     display: 'flex',
     alignItems: 'flex-start',
     gap: 16,
-    paddingBottom: 20,
+    paddingBottom: 16,
     borderBottom: `1px solid ${T.border}`,
   },
   panelIconWrapper: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    background: 'linear-gradient(135deg, rgba(168,85,247,0.1), rgba(168,85,247,0.05))',
+    width: 52,
+    height: 52,
+    borderRadius: 10,
+    background: T.accentBg,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1725,14 +1747,14 @@ const premiumStyles: Record<string, CSSProperties> = {
   panelTitle: {
     margin: 0,
     fontSize: 18,
-    fontWeight: 700,
+    fontWeight: 800,
     color: T.textPrimary,
     letterSpacing: -0.3,
     marginBottom: 4,
   },
   panelDescription: {
     margin: 0,
-    fontSize: 13,
+    fontSize: 12,
     color: T.textMuted,
     lineHeight: 1.5,
   },
@@ -1740,24 +1762,24 @@ const premiumStyles: Record<string, CSSProperties> = {
   // Stats Grid
   statsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: 16,
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+    gap: 12,
   },
   statCard: {
     background: T.bgPanel,
     border: `1px solid ${T.border}`,
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 10,
+    padding: 14,
     display: 'flex',
     alignItems: 'center',
     gap: 12,
     transition: 'all 0.2s ease',
   },
   statIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    background: 'rgba(168,85,247,0.1)',
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    background: T.accentBg,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1769,13 +1791,13 @@ const premiumStyles: Record<string, CSSProperties> = {
     minWidth: 0,
   },
   statValue: {
-    fontSize: 20,
-    fontWeight: 700,
+    fontSize: 18,
+    fontWeight: 800,
     color: T.textPrimary,
     marginBottom: 2,
   },
   statLabel: {
-    fontSize: 11,
+    fontSize: 10,
     color: T.textMuted,
     fontWeight: 600,
     textTransform: 'uppercase',
@@ -1786,12 +1808,12 @@ const premiumStyles: Record<string, CSSProperties> = {
   actionSection: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 20,
+    gap: 16,
   },
   fieldsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: 16,
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+    gap: 12,
   },
   inputGroup: {
     display: 'flex',
@@ -1799,8 +1821,8 @@ const premiumStyles: Record<string, CSSProperties> = {
     gap: 8,
   },
   inputLabel: {
-    fontSize: 12,
-    fontWeight: 600,
+    fontSize: 10,
+    fontWeight: 700,
     color: T.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -1809,9 +1831,9 @@ const premiumStyles: Record<string, CSSProperties> = {
     background: T.bgInput,
     border: `1px solid ${T.border}`,
     color: T.textPrimary,
-    borderRadius: 10,
-    padding: '12px 16px',
-    fontSize: 14,
+    borderRadius: 8,
+    padding: '10px 12px',
+    fontSize: 13,
     outline: 'none',
     width: '100%',
     fontFamily: T.fontFamily,
@@ -1822,9 +1844,9 @@ const premiumStyles: Record<string, CSSProperties> = {
     background: T.bgInput,
     border: `1px solid ${T.border}`,
     color: T.textPrimary,
-    borderRadius: 10,
-    padding: '12px 16px',
-    fontSize: 14,
+    borderRadius: 8,
+    padding: '10px 12px',
+    fontSize: 13,
     outline: 'none',
     width: '100%',
     fontFamily: T.fontFamily,
@@ -1836,7 +1858,7 @@ const premiumStyles: Record<string, CSSProperties> = {
   // Button Group
   buttonGroup: {
     display: 'flex',
-    gap: 12,
+    gap: 10,
     flexWrap: 'wrap',
   },
   primaryButton: {
@@ -1846,10 +1868,10 @@ const premiumStyles: Record<string, CSSProperties> = {
     background: 'linear-gradient(135deg, #a855f7, #9333ea)',
     color: '#ffffff',
     border: 'none',
-    padding: '12px 24px',
-    borderRadius: 10,
-    fontSize: 14,
-    fontWeight: 600,
+    padding: '10px 16px',
+    borderRadius: 8,
+    fontSize: 12,
+    fontWeight: 700,
     cursor: 'pointer',
     fontFamily: T.fontFamily,
     transition: 'all 0.2s ease',
@@ -1862,10 +1884,10 @@ const premiumStyles: Record<string, CSSProperties> = {
     background: 'rgba(239, 68, 68, 0.1)',
     color: '#ef4444',
     border: `1px solid rgba(239, 68, 68, 0.3)`,
-    padding: '12px 24px',
-    borderRadius: 10,
-    fontSize: 14,
-    fontWeight: 600,
+    padding: '10px 16px',
+    borderRadius: 8,
+    fontSize: 12,
+    fontWeight: 700,
     cursor: 'pointer',
     fontFamily: T.fontFamily,
     transition: 'all 0.2s ease',
@@ -1877,10 +1899,10 @@ const premiumStyles: Record<string, CSSProperties> = {
     background: 'rgba(234, 179, 8, 0.1)',
     color: '#eab308',
     border: `1px solid rgba(234, 179, 8, 0.3)`,
-    padding: '12px 24px',
-    borderRadius: 10,
-    fontSize: 14,
-    fontWeight: 600,
+    padding: '10px 16px',
+    borderRadius: 8,
+    fontSize: 12,
+    fontWeight: 700,
     cursor: 'pointer',
     fontFamily: T.fontFamily,
     transition: 'all 0.2s ease',

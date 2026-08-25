@@ -115,7 +115,7 @@ function LiveFleetPanel() {
   const [fleetFilter, setFleetFilter] = useState<'all' | 'idle' | 'on_trip'>('all')
 
   const { mode } = useCampusThemeStore()
-  const { showTraffic, showHeat, showRoutes, setWsConnected, recenterTrigger, mapLayerConfig, applyMapLayerConfig } = useDispatchStore()
+  const { showTraffic, showHeat, showRoutes, setWsConnected, mapLayerConfig, applyMapLayerConfig } = useDispatchStore()
   const adminMapType = normalizeAdminMapType(mapLayerConfig.default_map_type)
   const [mapZoom, setMapZoom] = useState(DEFAULT_ZOOM)
 
@@ -449,18 +449,6 @@ function LiveFleetPanel() {
   }, [mergedIncidents])
 
   const activeDriver = activeDriverId ? fleetDrivers[activeDriverId] : null
-
-  const handleRecenter = useCallback(() => {
-    if (!mapRef.current) return
-    mapRef.current.panTo(MAP_CENTER)
-    mapRef.current.setZoom(DEFAULT_ZOOM)
-  }, [])
-
-  useEffect(() => {
-    if (recenterTrigger > 0) {
-      handleRecenter()
-    }
-  }, [recenterTrigger, handleRecenter])
 
   const handleSelectRide = useCallback((rideId: string) => {
     setSelectedRideId(rideId)

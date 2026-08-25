@@ -4,12 +4,12 @@ import {
   LogOut, User as UserIcon, Sun, Moon,
   Download, Megaphone, UserPlus,
   ArrowLeft, ChevronRight, History, ShieldAlert, UserX,
-  Navigation, RadioTower, Users,
   Radio, Crosshair, Activity, Zap, Route, Monitor, Bell, Sliders, ShieldCheck,
-  Wrench, Ticket, Plug, Flag, LifeBuoy, Banknote, Calculator, FlaskConical, Map, FolderOpen, Smartphone, Car, BookOpen
+  Wrench, Ticket, Plug, Flag, LifeBuoy, Banknote, Calculator, FlaskConical, Map, FolderOpen, Smartphone, Car
 } from 'lucide-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { CSSProperties } from 'react'
+import toast from 'react-hot-toast'
 import api from '../../core/api'
 import { useAuthStore } from '../../core/authStore'
 import { getRefreshToken } from '../../core/tokenStorage'
@@ -27,6 +27,7 @@ const OPERATIONS_NAV_ITEMS: Array<{ label: string; tab: OperationsTab }> = [
   { label: 'ROUTES', tab: 'routes' },
   { label: 'FLEET', tab: 'fleet' },
   { label: 'PASSENGERS', tab: 'passengers' },
+  { label: 'LOG', tab: 'log' },
 ]
 
 const NAV_ITEMS = [
@@ -50,7 +51,7 @@ export default function CampusAdminTopNav() {
   const { clearAuth } = useAuthStore()
   const { mode, toggleMode } = useCampusThemeStore()
 
-  const { activeTab: dispatchTab, setActiveTab: setDispatchTab, wsConnected, showTraffic, setShowTraffic, showHeat, setShowHeat, showRoutes, setShowRoutes, triggerRecenter, mapLayerConfig, applyMapLayerConfig } = useDispatchStore()
+  const { activeTab: dispatchTab, setActiveTab: setDispatchTab, wsConnected, showTraffic, setShowTraffic, showHeat, setShowHeat, showRoutes, setShowRoutes, mapLayerConfig, applyMapLayerConfig } = useDispatchStore()
   const { activeTab: settingsTab, setActiveTab: setSettingsTab } = useSettingsStore()
   const { activeTab: analyticsTab, setActiveTab: setAnalyticsTab } = useAnalyticsStore()
   const { activeTab: financeTab, setActiveTab: setFinanceTab } = useFinancialStore()
@@ -121,13 +122,16 @@ export default function CampusAdminTopNav() {
     },
   })
 
+  const handleLiveFleetClick = () => {
+    toast('Live Fleet is temporarily unavailable right now.')
+  }
+
   return (
     <header style={s.topBar}>
       <div style={s.topLeft}>
         {location.pathname === '/users' ? (
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Users size={16} color={T.accent} />
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3 }}>
               User Management
             </div>
             <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
@@ -182,8 +186,8 @@ export default function CampusAdminTopNav() {
         ) : location.pathname === '/dispatch' ? (
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3, display: 'flex', alignItems: 'center' }}>
-              <Navigation size={16} color={wsConnected ? T.heatTeal : T.warn} style={{ marginRight: 8 }} />
-              Live Dispatch
+              <Radio size={16} color={wsConnected ? T.heatTeal : T.warn} style={{ marginRight: 8 }} />
+              Dispatch Control Center
               <span style={{ fontSize: 9, marginLeft: 10, color: wsConnected ? T.heatTeal : T.warn, border: `1px solid ${wsConnected ? 'rgba(20,184,166,0.4)' : 'rgba(245,158,11,0.4)'}`, borderRadius: 999, padding: '2px 8px', fontWeight: 700, textTransform: 'uppercase' }}>
                 {wsConnected ? 'Live' : 'Connecting'}
               </span>
@@ -225,7 +229,7 @@ export default function CampusAdminTopNav() {
         ) : location.pathname === '/operations' ? (
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3, display: 'flex', alignItems: 'center' }}>
-              <RadioTower size={16} color={T.accent} style={{ marginRight: 8 }} />
+              <Radio size={16} color={T.accent} style={{ marginRight: 8 }} />
               Operations Hub
             </div>
             <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
@@ -254,10 +258,7 @@ export default function CampusAdminTopNav() {
           </div>
         ) : location.pathname === '/docs' ? (
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <BookOpen size={16} color={T.accent} />
-              Documentation
-            </div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3 }}>Documentation</div>
             <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
               Technical architecture and workflows
             </div>
@@ -274,12 +275,11 @@ export default function CampusAdminTopNav() {
           </div>
         ) : (
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <LayoutDashboard size={16} color={T.accent} />
-              Operations Overview
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.textWhite, letterSpacing: -0.3 }}>
+              FUTMRIDE Control Center
             </div>
             <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
-              Platform health, live rides, and key metrics at a glance
+              Regulated ride operations and dispatch
             </div>
           </div>
         )}
@@ -330,17 +330,21 @@ export default function CampusAdminTopNav() {
             <CalendarClock size={13} strokeWidth={1.8} />
             <span>Route Ops</span>
           </button>
-          <button style={{ ...s.topNavBtn, color: dispatchTab === 'live_fleet' ? T.accent : T.textSecondary, background: dispatchTab === 'live_fleet' ? T.accentBg : 'transparent' }} onClick={() => setDispatchTab('live_fleet')}>
+          <button
+            style={{
+              ...s.topNavBtn,
+              color: T.textMuted,
+              background: 'transparent',
+              opacity: 0.8,
+            }}
+            onClick={handleLiveFleetClick}
+            title="Live Fleet is temporarily unavailable"
+          >
             <Radio size={13} strokeWidth={1.8} />
             <span>Live Fleet</span>
           </button>
           {dispatchTab === 'live_fleet' && (
             <>
-              <div style={{ width: 1, height: 16, background: T.border, margin: '0 8px' }} />
-              <button style={{ ...s.topNavBtn, color: T.textSecondary, background: 'transparent' }} onClick={triggerRecenter} title="Recenter map">
-                <Crosshair size={13} strokeWidth={1.8} />
-                <span>Recenter</span>
-              </button>
               <button style={{ ...s.topNavBtn, color: showTraffic ? T.heatTeal : T.textSecondary, background: showTraffic ? `${T.heatTeal}15` : 'transparent' }} onClick={() => setShowTraffic(p => !p)}>
                 <Activity size={13} strokeWidth={1.8} />
                 <span>Traffic</span>
@@ -361,10 +365,10 @@ export default function CampusAdminTopNav() {
                   applyMapLayerConfig({ default_map_type: next })
                   localStorage.setItem('lr_ride_default_map_type', next)
                 }}
-                style={{ ...s.topNavBtn, width: 'auto', padding: '0 8px', fontSize: 11, cursor: 'pointer', appearance: 'auto', background: 'transparent', border: `1px solid ${T.border}`, borderRadius: 4, height: 26, color: T.textSecondary }}
+                style={{ ...s.topNavBtn, width: 'auto', padding: '0 8px', fontSize: 11, cursor: 'pointer', appearance: 'auto', background: 'transparent', border: `1px solid ${T.border}`, borderRadius: 4, height: 26 }}
               >
-                <option value="roadmap" style={{ color: T.textPrimary, background: T.bgPanel }}>Roadmap</option>
-                <option value="hybrid" style={{ color: T.textPrimary, background: T.bgPanel }}>Hybrid</option>
+                <option value="roadmap" style={{ color: '#000' }}>Roadmap</option>
+                <option value="hybrid" style={{ color: '#000' }}>Hybrid</option>
               </select>
             </>
           )}

@@ -7,6 +7,7 @@ import { DeparturesTab } from './tabs/DeparturesTab'
 import { RoutesTab } from './tabs/RoutesTab'
 import { FleetTab } from './tabs/FleetTab'
 import { PassengersTab } from './tabs/PassengersTab'
+import { LogTab } from './tabs/LogTab'
 import api from '../../../core/api'
 
 export default function OperationsHub() {
@@ -182,6 +183,7 @@ export default function OperationsHub() {
         {activeTab === 'routes' && <RoutesTab key={refreshKey} search={search} />}
         {activeTab === 'fleet' && <FleetTab key={refreshKey} search={search} />}
         {activeTab === 'passengers' && <PassengersTab key={refreshKey} search={search} />}
+        {activeTab === 'log' && <LogTab key={refreshKey} search={search} />}
       </div>
     </div>
   )

@@ -1,47 +1,139 @@
 import type { CSSProperties } from 'react'
 import {
-  Calculator, AlertTriangle, Save, RotateCcw, Activity, ChevronDown, Zap,
+  Activity,
+  AlertTriangle,
+  Calculator,
+  CheckCircle2,
+  ChevronDown,
+  Clock3,
+  RotateCcw,
+  Save,
+  ShieldCheck,
+  Zap,
 } from 'lucide-react'
 import { campusPanel } from '../../shared/campusPanelStyles'
 import { T } from '../../theme'
-import { VEHICLE_TYPES, EFFECTIVE_DELAY_OPTIONS } from '../constants'
+import { EFFECTIVE_DELAY_OPTIONS, VEHICLE_TYPES } from '../constants'
 import type { FareConfig, FareDraft } from '../types'
 
-const fieldLabel: CSSProperties = {
-  fontSize: 11,
-  fontWeight: 600,
-  color: T.textMuted,
-  display: 'flex',
-  justifyContent: 'space-between',
-  textTransform: 'uppercase',
-  letterSpacing: 0.5,
-  marginBottom: 8,
+const money = (value: number) => `NGN ${Number(value || 0).toLocaleString()}`
+
+const previewFare = (draft: FareDraft, distance: number, surge: number) => {
+  const subtotal = Number(draft.base_fare || 0)
+    + (Number(draft.per_km_rate || 0) * distance)
+    + Number(draft.booking_fee || 0)
+  const cappedSurge = draft.surge_enabled ? Math.min(surge, Number(draft.max_surge_multiplier || 1)) : 1
+  return Math.max(Number(draft.minimum_fare || 0), Math.round(subtotal * cappedSurge))
 }
 
 const inputStyle: CSSProperties = {
   background: T.bgInput,
   border: `1px solid ${T.border}`,
   color: T.textPrimary,
-  padding: '12px 14px',
-  borderRadius: 6,
+  padding: '9px 10px',
   fontSize: 13,
   fontFamily: 'monospace',
   outline: 'none',
   width: '100%',
   boxSizing: 'border-box',
-  transition: 'all 0.2s ease',
+  borderRadius: 0,
 }
 
 const selectStyle: CSSProperties = {
   ...inputStyle,
   fontFamily: T.fontFamily,
   cursor: 'pointer',
+  appearance: 'none',
 }
 
-const formFieldContainer: CSSProperties = {
+const labelStyle: CSSProperties = {
+  fontSize: 9,
+  fontWeight: 700,
+  color: T.textMuted,
+  textTransform: 'uppercase',
+  letterSpacing: 0.5,
+}
+
+const sectionHeader: CSSProperties = {
+  padding: '12px 16px',
+  borderBottom: `1px solid ${T.border}`,
+  background: T.bgCard,
   display: 'flex',
-  flexDirection: 'column',
-  gap: 8,
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 12,
+}
+
+function StatusBadge({
+  isNewConfig,
+  isDraftDirty,
+}: {
+  isNewConfig: boolean
+  isDraftDirty: boolean
+}) {
+  const meta = isNewConfig
+    ? { label: 'No live tariff', color: T.warn, bg: T.warnBg, icon: AlertTriangle }
+    : isDraftDirty
+      ? { label: 'Unsaved draft', color: T.warn, bg: T.warnBg, icon: Clock3 }
+      : { label: 'Live matches draft', color: '#10b981', bg: 'rgba(16,185,129,0.12)', icon: CheckCircle2 }
+  const Icon = meta.icon
+
+  return (
+    <span style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 6,
+      color: meta.color,
+      background: meta.bg,
+      border: `1px solid ${meta.color}35`,
+      padding: '5px 9px',
+      fontSize: 10,
+      fontWeight: 700,
+      textTransform: 'uppercase',
+      whiteSpace: 'nowrap',
+    }}>
+      <Icon size={12} />
+      {meta.label}
+    </span>
+  )
+}
+
+function FieldCard({
+  label,
+  hint,
+  value,
+  unit,
+  step,
+  onChange,
+}: {
+  label: string
+  hint: string
+  value: number
+  unit: string
+  step: number
+  onChange: (value: number) => void
+}) {
+  return (
+    <div style={s.fieldCard}>
+      <div>
+        <div style={labelStyle}>{label}</div>
+        <div style={{ fontSize: 11, color: T.textMuted, marginTop: 4 }}>{hint}</div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ width: 38, fontSize: 11, fontWeight: 700, color: T.textMuted, textAlign: 'right' }}>
+          {unit}
+        </span>
+        <input
+          type="number"
+          min={0}
+          step={step}
+          value={value}
+          onChange={(event) => onChange(Number(event.target.value))}
+          style={inputStyle}
+        />
+      </div>
+    </div>
+  )
 }
 
 export function TariffsTab({
@@ -77,295 +169,499 @@ export function TariffsTab({
   onSave: () => void
   onRevert: () => void
 }) {
+  const activeVehicleLabel = VEHICLE_TYPES.find((vehicle) => vehicle.id === activeVehicle)?.label ?? activeVehicle
+  const canRevert = isDraftDirty || isNewConfig
+  const canSave = !savingConfig && canRevert
+  const standardPreview = previewFare(draft, 10, 1)
+  const peakPreview = previewFare(draft, 10, 1.5)
+  const liveDraft = liveConfig
+    ? {
+        base_fare: Number(liveConfig.base_fare),
+        per_km_rate: Number(liveConfig.per_km_rate),
+        minimum_fare: Number(liveConfig.minimum_fare),
+        booking_fee: Number(liveConfig.booking_fee),
+        surge_enabled: liveConfig.surge_enabled,
+        max_surge_multiplier: Number(liveConfig.max_surge_multiplier),
+      }
+    : null
+  const livePreview = liveDraft ? previewFare(liveDraft, 10, 1) : null
+  const previewDelta = livePreview == null ? null : standardPreview - livePreview
+  const checks = [
+    ['Base >= 0', draft.base_fare >= 0],
+    ['Per-km >= 0', draft.per_km_rate >= 0],
+    ['Minimum covers base', draft.minimum_fare >= draft.base_fare],
+    ['Surge cap >= 1x', !draft.surge_enabled || draft.max_surge_multiplier >= 1],
+  ] as const
+
+  const updateDraft = (key: keyof FareDraft, value: number | boolean) => {
+    setDraft({ ...draft, [key]: value })
+  }
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, padding: '8px' }}>
-      {/* ── Header ─────────────────────────────── */}
-      <div>
-        <h2 style={{ fontSize: 24, fontWeight: 800, color: T.textWhite, margin: '0 0 8px 0', letterSpacing: -0.5 }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Calculator size={28} color={T.accent} />
-            Vehicle Class Tariffs
-          </span>
-        </h2>
-        <p style={{ fontSize: 13, color: T.textSecondary, margin: 0 }}>
-          Configure pricing rules for each vehicle type. Changes take effect immediately when deployed.
-        </p>
-      </div>
-
-      {/* ── Vehicle Selector Pills ─────────────────────────────── */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>Select Vehicle</span>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {VEHICLE_TYPES.map((vt) => (
-            <button
-              key={vt.id}
-              type="button"
-              onClick={() => setActiveVehicle(vt.id)}
-              style={{
-                padding: '8px 16px',
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: 'pointer',
-                border: `1.5px solid ${activeVehicle === vt.id ? T.accent : T.border}`,
-                background: activeVehicle === vt.id ? `${T.accent}20` : 'transparent',
-                color: activeVehicle === vt.id ? T.accent : T.textSecondary,
-                borderRadius: 6,
-                transition: 'all 0.2s ease',
-              }}
-              onMouseEnter={(e) => {
-                if (activeVehicle !== vt.id) {
-                  (e.currentTarget).style.borderColor = T.accent
-                  (e.currentTarget).style.background = `${T.accent}10`
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (activeVehicle !== vt.id) {
-                  (e.currentTarget).style.borderColor = T.border
-                  (e.currentTarget).style.background = 'transparent'
-                }
-              }}
-            >
-              {vt.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Scheduled Config Alert ─────────────────────────────── */}
-      {scheduledConfig && (
-        <div style={{
-          background: 'rgba(245, 158, 11, 0.08)',
-          border: `1px solid rgba(245, 158, 11, 0.3)`,
-          borderRadius: 8,
-          padding: '14px 16px',
-          display: 'flex',
-          gap: 12,
-          alignItems: 'flex-start',
-        }}>
-          <AlertTriangle size={18} color={T.warn} style={{ flexShrink: 0, marginTop: 2 }} />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: T.warn }}>Scheduled Update Pending</span>
-            <span style={{ fontSize: 12, color: T.textMuted }}>
-              A new tariff is scheduled to deploy on {new Date(scheduledConfig.effective_from).toLocaleString()}. Simulations will use the live tariff until then.
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* ── Tariff Fields Grid ─────────────────────────────── */}
-      <div style={{
-        background: T.bgCard,
-        border: `1px solid ${T.border}`,
-        borderRadius: 8,
-        padding: '28px 24px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 24,
-      }}>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-          gap: 20,
-        }}>
-          {([
-            ['base_fare', 'Base Fare', '₦', 'Starting charge per ride'],
-            ['per_km_rate', 'Per-Km Rate', '₦', 'Distance-based pricing'],
-            ['minimum_fare', 'Minimum Fare', '₦', 'Lowest possible fare'],
-            ['booking_fee', 'Booking Fee', '₦', 'Fixed booking charge'],
-            ['max_surge_multiplier', 'Max Surge', '×', 'Surge pricing cap'],
-          ] as const).map(([key, label, unit, hint]) => (
-            <div key={key} style={formFieldContainer}>
-              <div>
-                <label style={fieldLabel}>{label}</label>
-                <span style={{ fontSize: 11, color: T.textMuted, marginBottom: 8, display: 'block' }}>{hint}</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 14, fontSize: 13, fontWeight: 600, color: T.textMuted, pointerEvents: 'none' }}>
-                  {unit}
-                </span>
-                <input
-                  type="number"
-                  style={{ ...inputStyle, paddingLeft: '32px' }}
-                  value={draft[key]}
-                  min={0}
-                  step={key === 'max_surge_multiplier' ? 0.1 : 1}
-                  onChange={(e) => setDraft({ ...draft, [key]: Number(e.target.value) })}
-                  onFocus={(e) => {
-                    (e.target).style.borderColor = T.accent
-                    (e.target).style.boxShadow = `0 0 0 3px rgba(168, 85, 247, 0.1)`
-                  }}
-                  onBlur={(e) => {
-                    (e.target).style.borderColor = T.border
-                    (e.target).style.boxShadow = 'none'
-                  }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* ── Deployment Settings ─────────────────────────────── */}
-        <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: 24 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 20 }}>
-            <div style={formFieldContainer}>
-              <label style={fieldLabel}>Deploy Timing</label>
-              <div style={{ position: 'relative' }}>
-                <select
-                  style={selectStyle as any}
-                  value={effectiveDelay}
-                  onChange={(e) => setEffectiveDelay(e.target.value)}
-                  onFocus={(e) => {
-                    (e.target as any).style.borderColor = T.accent
-                  }}
-                  onBlur={(e) => {
-                    (e.target as any).style.borderColor = T.border
-                  }}
-                >
-                  {EFFECTIVE_DELAY_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value} disabled={o.value === 'existing' && !liveConfig}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={14} color={T.textMuted} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-              </div>
-              {effectiveDelay === 'existing' && liveConfig && (
-                <span style={{ fontSize: 11, color: T.textMuted, fontFamily: 'monospace' }}>
-                  ✓ Active since {new Date(liveConfig.effective_from).toLocaleString()}
-                </span>
-              )}
-            </div>
-
-            {effectiveDelay === 'custom' && (
-              <div style={formFieldContainer}>
-                <label style={fieldLabel}>Deployment Date & Time</label>
-                <input
-                  type="datetime-local"
-                  style={selectStyle as any}
-                  value={customEffective}
-                  onChange={(e) => setCustomEffective(e.target.value)}
-                  onFocus={(e) => {
-                    (e.target as any).style.borderColor = T.accent
-                  }}
-                  onBlur={(e) => {
-                    (e.target as any).style.borderColor = T.border
-                  }}
-                />
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* ── Surge Enable Checkbox ─────────────────────────────── */}
-        <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', paddingTop: 12 }}>
-          <input
-            type="checkbox"
-            checked={draft.surge_enabled}
-            onChange={(e) => setDraft({ ...draft, surge_enabled: e.target.checked })}
-            style={{ accentColor: T.accent, width: 18, height: 18, cursor: 'pointer' }}
-          />
-          <div>
-            <span style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Zap size={14} color={T.accent} />
-              Enable Surge Pricing Guardrails
-            </span>
-            <span style={{ fontSize: 11, color: T.textMuted, display: 'block', marginTop: 2 }}>
-              Limit fare multipliers during peak demand periods
-            </span>
-          </div>
-        </label>
-      </div>
-
-      {/* ── Status & Actions ─────────────────────────────── */}
-      <div style={{
-        background: T.bgCard,
-        border: `1px solid ${T.border}`,
-        borderRadius: 8,
-        padding: '20px 24px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: 16,
-      }}>
-        <div style={{ fontSize: 12, color: T.textMuted, fontStyle: 'italic' }}>
-          {isNewConfig ? '⚡ No live config — defaults apply until deployed' : isDraftDirty ? '✏️ Unsaved changes — preview in simulation' : '✓ Matches live tariff in database'}
-        </div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            onClick={onRevert}
-            disabled={!isDraftDirty && !isNewConfig}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '10px 18px',
-              borderRadius: 6,
-              border: `1.5px solid ${T.border}`,
-              background: 'transparent',
-              color: T.textSecondary,
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: (!isDraftDirty && !isNewConfig) ? 'not-allowed' : 'pointer',
-              fontFamily: T.fontFamily,
-              opacity: (!isDraftDirty && !isNewConfig) ? 0.5 : 1,
-              transition: 'all 0.2s ease',
-            }}
-            onMouseEnter={(e) => {
-              if (!(!isDraftDirty && !isNewConfig)) {
-                (e.currentTarget).style.borderColor = T.accent
-                (e.currentTarget).style.color = T.accent
-              }
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget).style.borderColor = T.border
-              (e.currentTarget).style.color = T.textSecondary
-            }}
-          >
-            <RotateCcw size={16} />
-            Revert
-          </button>
-          <button
-            type="button"
-            onClick={onSave}
-            disabled={savingConfig || (!isDraftDirty && !isNewConfig)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '10px 20px',
-              borderRadius: 6,
-              border: 'none',
-              background: (savingConfig || (!isDraftDirty && !isNewConfig)) ? `${T.accent}50` : T.accent,
-              color: '#fff',
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: (savingConfig || (!isDraftDirty && !isNewConfig)) ? 'not-allowed' : 'pointer',
-              fontFamily: T.fontFamily,
-              transition: 'all 0.2s ease',
-            }}
-            onMouseEnter={(e) => {
-              if (!(savingConfig || (!isDraftDirty && !isNewConfig))) {
-                (e.currentTarget).style.opacity = '0.9'
-              }
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget).style.opacity = '1'
-            }}
-          >
-            {savingConfig ? <Activity size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={16} />}
-            Deploy Tariff
-          </button>
-        </div>
-      </div>
-
+    <>
       <style>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
+        .engine-tariff-shell {
+          display: grid;
+          grid-template-columns: 288px minmax(0, 1fr);
+          gap: 2px;
+          min-height: 100%;
+          align-items: start;
+        }
+        .engine-tariff-fields {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+          gap: 2px;
+        }
+        .engine-tariff-deploy {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+          gap: 2px;
+        }
+        .engine-tariff-insights {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 320px;
+          gap: 2px;
+        }
+        @media (max-width: 920px) {
+          .engine-tariff-shell { grid-template-columns: 1fr; }
+          .engine-tariff-insights { grid-template-columns: 1fr; }
         }
       `}</style>
-    </div>
+
+      <div className="engine-tariff-shell">
+        <aside style={s.rail}>
+          <section style={campusPanel.card}>
+            <div style={sectionHeader}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Calculator size={14} color={T.textMuted} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: T.textWhite }}>Vehicle Tariffs</span>
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: 2 }}>
+              {VEHICLE_TYPES.map((vehicle) => {
+                const isActive = activeVehicle === vehicle.id
+                return (
+                  <button
+                    key={vehicle.id}
+                    type="button"
+                    onClick={() => setActiveVehicle(vehicle.id)}
+                    style={{
+                      ...s.vehicleButton,
+                      borderColor: isActive ? T.borderLight : T.border,
+                      background: isActive ? T.bgCard : T.bgPanel,
+                    }}
+                  >
+                    <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: 0 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary }}>
+                        {vehicle.label}
+                      </span>
+                      <span style={{ fontSize: 10, color: T.textMuted, marginTop: 3 }}>
+                        {vehicle.id === activeVehicle && liveConfig ? `${money(liveConfig.base_fare)} live base` : 'Vehicle class'}
+                      </span>
+                    </span>
+                    {isActive && <CheckCircle2 size={13} color={T.textSecondary} />}
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+
+          <section style={campusPanel.card}>
+            <div style={sectionHeader}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <ShieldCheck size={14} color={T.textMuted} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: T.textWhite }}>Live Snapshot</span>
+              </div>
+            </div>
+            <div style={s.snapshotList}>
+              {[
+                ['Base', liveConfig ? money(liveConfig.base_fare) : '-'],
+                ['Per km', liveConfig ? money(liveConfig.per_km_rate) : '-'],
+                ['Minimum', liveConfig ? money(liveConfig.minimum_fare) : '-'],
+                ['Booking', liveConfig ? money(liveConfig.booking_fee) : '-'],
+                ['Surge cap', liveConfig?.surge_enabled ? `${liveConfig.max_surge_multiplier}x` : 'Off'],
+              ].map(([label, value]) => (
+                <div key={label} style={s.snapshotRow}>
+                  <span style={labelStyle}>{label}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary, fontFamily: 'monospace' }}>{value}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </aside>
+
+        <main style={s.editor}>
+          <section style={campusPanel.card}>
+            <div style={{ ...sectionHeader, flexWrap: 'wrap' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: T.textWhite }}>{activeVehicleLabel}</span>
+                  <StatusBadge isNewConfig={isNewConfig} isDraftDirty={isDraftDirty} />
+                </div>
+                <div style={{ marginTop: 4, fontSize: 10, color: T.textMuted }}>
+                  Edit the active vehicle tariff, then deploy it with a controlled effective time.
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginLeft: 'auto' }}>
+                <button
+                  type="button"
+                  onClick={onRevert}
+                  disabled={!canRevert}
+                  style={{
+                    ...campusPanel.btnSecondary,
+                    opacity: canRevert ? 1 : 0.5,
+                    cursor: canRevert ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  <RotateCcw size={13} />
+                  Revert
+                </button>
+                <button
+                  type="button"
+                  onClick={onSave}
+                  disabled={!canSave}
+                  style={{
+                    ...campusPanel.btnPrimary,
+                    background: '#334155',
+                    opacity: canSave ? 1 : 0.55,
+                    cursor: canSave ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  {savingConfig ? <Activity size={13} /> : <Save size={13} />}
+                  Deploy tariff
+                </button>
+              </div>
+            </div>
+
+            {scheduledConfig && (
+              <div style={s.pendingBar}>
+                <AlertTriangle size={14} color={T.warn} />
+                <span>
+                  Scheduled deploy: {new Date(scheduledConfig.effective_from).toLocaleString()}
+                </span>
+              </div>
+            )}
+
+            <div className="engine-tariff-fields">
+              <FieldCard
+                label="Base fare"
+                hint="Starting charge"
+                unit="NGN"
+                value={draft.base_fare}
+                step={1}
+                onChange={(value) => updateDraft('base_fare', value)}
+              />
+              <FieldCard
+                label="Per-km rate"
+                hint="Distance pricing"
+                unit="NGN"
+                value={draft.per_km_rate}
+                step={1}
+                onChange={(value) => updateDraft('per_km_rate', value)}
+              />
+              <FieldCard
+                label="Minimum fare"
+                hint="Fare floor"
+                unit="NGN"
+                value={draft.minimum_fare}
+                step={1}
+                onChange={(value) => updateDraft('minimum_fare', value)}
+              />
+              <FieldCard
+                label="Booking fee"
+                hint="Fixed rider fee"
+                unit="NGN"
+                value={draft.booking_fee}
+                step={1}
+                onChange={(value) => updateDraft('booking_fee', value)}
+              />
+              <FieldCard
+                label="Max surge"
+                hint="Multiplier cap"
+                unit="x"
+                value={draft.max_surge_multiplier}
+                step={0.1}
+                onChange={(value) => updateDraft('max_surge_multiplier', value)}
+              />
+            </div>
+          </section>
+
+          <section style={campusPanel.card}>
+            <div style={sectionHeader}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Clock3 size={14} color={T.textMuted} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: T.textWhite }}>Deployment</span>
+              </div>
+            </div>
+            <div className="engine-tariff-deploy" style={{ padding: 2 }}>
+              <div style={s.deployPanel}>
+                <label style={labelStyle}>Effective time</label>
+                <div style={{ position: 'relative', marginTop: 8 }}>
+                  <select
+                    value={effectiveDelay}
+                    onChange={(event) => setEffectiveDelay(event.target.value)}
+                    style={selectStyle}
+                  >
+                    {EFFECTIVE_DELAY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value} disabled={option.value === 'existing' && !liveConfig}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={13} color={T.textMuted} style={s.selectIcon} />
+                </div>
+                {effectiveDelay === 'existing' && liveConfig && (
+                  <div style={{ fontSize: 10, color: T.textMuted, marginTop: 7 }}>
+                    Active since {new Date(liveConfig.effective_from).toLocaleString()}
+                  </div>
+                )}
+              </div>
+
+              {effectiveDelay === 'custom' && (
+                <div style={s.deployPanel}>
+                  <label style={labelStyle}>Custom deploy date</label>
+                  <input
+                    type="datetime-local"
+                    value={customEffective}
+                    onChange={(event) => setCustomEffective(event.target.value)}
+                    style={{ ...inputStyle, marginTop: 8, fontFamily: T.fontFamily }}
+                  />
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => updateDraft('surge_enabled', !draft.surge_enabled)}
+                style={{
+                  ...s.surgePanel,
+                  borderColor: draft.surge_enabled ? T.borderLight : T.border,
+                  background: draft.surge_enabled ? T.bgCard : T.bgPanel,
+                }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Zap size={14} color={draft.surge_enabled ? T.textPrimary : T.textMuted} />
+                  <span style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary }}>Surge guardrail</span>
+                </span>
+                <span style={{ fontSize: 10, color: draft.surge_enabled ? T.textPrimary : T.textMuted, fontWeight: 700, textTransform: 'uppercase' }}>
+                  {draft.surge_enabled ? 'enabled' : 'disabled'}
+                </span>
+              </button>
+            </div>
+          </section>
+
+          <div className="engine-tariff-insights">
+            <section style={campusPanel.card}>
+              <div style={sectionHeader}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Calculator size={14} color={T.textMuted} />
+                  <span style={{ fontSize: 12, fontWeight: 700, color: T.textWhite }}>Draft Preview</span>
+                </div>
+                <span style={labelStyle}>10 km sample</span>
+              </div>
+              <div style={s.previewGrid}>
+                {[
+                  ['Standard', standardPreview, '1x surge'],
+                  ['Peak', peakPreview, draft.surge_enabled ? '1.5x requested' : 'Surge off'],
+                  ['Live delta', previewDelta, livePreview == null ? 'No live tariff' : 'vs current live'],
+                ].map(([label, value, hint]) => (
+                  <div key={label as string} style={s.previewCard}>
+                    <div style={labelStyle}>{label}</div>
+                    <div style={{ marginTop: 8, fontSize: 20, lineHeight: 1, fontFamily: 'monospace', fontWeight: 800, color: value == null ? T.textMuted : T.textPrimary }}>
+                      {value == null ? '-' : `${Number(value) >= 0 && label === 'Live delta' ? '+' : ''}${money(Number(value))}`}
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 10, color: T.textMuted }}>{hint}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section style={campusPanel.card}>
+              <div style={sectionHeader}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <ShieldCheck size={14} color={T.textMuted} />
+                  <span style={{ fontSize: 12, fontWeight: 700, color: T.textWhite }}>Validation</span>
+                </div>
+              </div>
+              <div style={s.validationList}>
+                {checks.map(([label, ok]) => (
+                  <div key={label} style={s.validationRow}>
+                    <span style={labelStyle}>{label}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: ok ? T.textPrimary : T.warn }}>
+                      {ok ? 'Pass' : 'Check'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+
+          <section style={{ ...campusPanel.card, minHeight: 160 }}>
+            <div style={sectionHeader}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Clock3 size={14} color={T.textMuted} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: T.textWhite }}>Live vs Draft</span>
+              </div>
+              <span style={labelStyle}>{activeVehicleLabel}</span>
+            </div>
+            <div style={s.compareGrid}>
+              {([
+                ['Base fare', liveConfig?.base_fare, draft.base_fare],
+                ['Per-km rate', liveConfig?.per_km_rate, draft.per_km_rate],
+                ['Minimum fare', liveConfig?.minimum_fare, draft.minimum_fare],
+                ['Booking fee', liveConfig?.booking_fee, draft.booking_fee],
+                ['Max surge', liveConfig?.max_surge_multiplier, draft.max_surge_multiplier],
+              ] as const).map(([label, liveValue, draftValue]) => {
+                const changed = liveValue != null && Number(liveValue) !== Number(draftValue)
+                return (
+                  <div key={label} style={s.compareRow}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary }}>{label}</span>
+                    <span style={s.compareValue}>{liveValue == null ? '-' : label === 'Max surge' ? `${liveValue}x` : money(Number(liveValue))}</span>
+                    <span style={{ ...s.compareValue, color: changed ? T.warn : T.textPrimary }}>{label === 'Max surge' ? `${draftValue}x` : money(Number(draftValue))}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+        </main>
+      </div>
+    </>
   )
+}
+
+const s: Record<string, CSSProperties> = {
+  rail: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+    minWidth: 0,
+  },
+  editor: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+    minWidth: 0,
+  },
+  vehicleButton: {
+    width: '100%',
+    border: `1px solid ${T.border}`,
+    color: T.textPrimary,
+    cursor: 'pointer',
+    padding: '12px 14px',
+    fontFamily: T.fontFamily,
+    textAlign: 'left',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  snapshotList: {
+    padding: 12,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+  },
+  snapshotRow: {
+    background: T.bgInput,
+    border: `1px solid ${T.border}`,
+    padding: '9px 10px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  pendingBar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '9px 16px',
+    borderBottom: `1px solid ${T.border}`,
+    background: 'rgba(245,158,11,0.08)',
+    color: T.warn,
+    fontSize: 11,
+    fontWeight: 700,
+  },
+  fieldCard: {
+    background: T.bgPanel,
+    border: `1px solid ${T.border}`,
+    padding: 14,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+    minHeight: 116,
+  },
+  deployPanel: {
+    background: T.bgPanel,
+    border: `1px solid ${T.border}`,
+    padding: 14,
+    minHeight: 90,
+  },
+  surgePanel: {
+    border: `1px solid ${T.border}`,
+    padding: 14,
+    minHeight: 90,
+    color: T.textPrimary,
+    fontFamily: T.fontFamily,
+    cursor: 'pointer',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+    textAlign: 'left',
+  },
+  selectIcon: {
+    position: 'absolute',
+    right: 10,
+    top: '50%',
+    transform: 'translateY(-50%)',
+    pointerEvents: 'none',
+  },
+  previewGrid: {
+    padding: 2,
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+    gap: 2,
+  },
+  previewCard: {
+    background: T.bgPanel,
+    border: `1px solid ${T.border}`,
+    padding: 14,
+    minHeight: 94,
+  },
+  validationList: {
+    padding: 12,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+  },
+  validationRow: {
+    background: T.bgInput,
+    border: `1px solid ${T.border}`,
+    padding: '10px 12px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  compareGrid: {
+    padding: 2,
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+    gap: 2,
+  },
+  compareRow: {
+    background: T.bgPanel,
+    border: `1px solid ${T.border}`,
+    padding: 14,
+    display: 'grid',
+    gridTemplateColumns: '1fr auto auto',
+    gap: 14,
+    alignItems: 'center',
+    minHeight: 58,
+  },
+  compareValue: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: T.textPrimary,
+    fontFamily: 'monospace',
+    whiteSpace: 'nowrap',
+  },
 }

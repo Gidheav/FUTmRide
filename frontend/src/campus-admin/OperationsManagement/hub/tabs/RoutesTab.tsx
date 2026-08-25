@@ -626,11 +626,12 @@ export const RoutesTab: React.FC<RoutesTabProps> = ({ search }) => {
                     : activeRide.allowed_vehicle_types?.includes(v)
                   // For active (non-scheduled) rides: types already in the original list are locked — cannot be removed
                   const isOriginallyAllowed = activeRide.allowed_vehicle_types?.includes(v) ?? false
-                  const isLockedFromRemoval = inlineEdit && activeRide.status !== 'scheduled' && isOriginallyAllowed && allowed
+                  const isCancelled = activeRide.status === 'cancelled'
+                  const isLockedFromRemoval = inlineEdit && (isCancelled || (activeRide.status !== 'scheduled' && isOriginallyAllowed && allowed))
                   const toggleVehicle = () => {
                     if (!inlineEdit) return
-                    // Block removal of existing types on active rides
-                    if (isLockedFromRemoval) return
+                    // Block removal of existing types on active rides, and block anything if cancelled
+                    if (isLockedFromRemoval || isCancelled) return
                     setInlineForm(f => ({
                       ...f,
                       allowed_vehicle_types: allowed
@@ -642,7 +643,7 @@ export const RoutesTab: React.FC<RoutesTabProps> = ({ search }) => {
                     <span
                       key={v}
                       onClick={toggleVehicle}
-                      title={isLockedFromRemoval ? 'Cannot remove vehicle type from an active ride' : undefined}
+                      title={isCancelled ? 'Cannot edit cancelled rides' : (isLockedFromRemoval ? 'Cannot remove vehicle type from an active ride' : undefined)}
                       style={{
                         fontSize: 11, padding: '3px 10px',
                         background: allowed ? `${T.accent}12` : 'transparent',
@@ -650,7 +651,7 @@ export const RoutesTab: React.FC<RoutesTabProps> = ({ search }) => {
                         color: allowed ? T.accent : T.textMuted,
                         fontWeight: allowed ? 600 : 400,
                         opacity: allowed ? 1 : 0.6,
-                        cursor: inlineEdit ? (isLockedFromRemoval ? 'not-allowed' : 'pointer') : 'default',
+                        cursor: inlineEdit ? (isCancelled || isLockedFromRemoval ? 'not-allowed' : 'pointer') : 'default',
                         transition: 'all 0.15s',
                         userSelect: 'none',
                       }}

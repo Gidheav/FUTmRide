@@ -26,7 +26,7 @@ import CampusAdminEngine from "../campus-admin/pages/EngineCalculationPage"
 import CampusAdminDocs from "../campus-admin/pages/DocsPage"
 import CampusAdminFinancialHub from "../campus-admin/FinancialManagement/hub/FinancialHub"
 import CampusAdminLayout from "../campus-admin/layout/CampusAdminLayout"
-import CampusAdminTestPage from "../campus-admin/pages/TestPage"
+import CampusAdminTestPage from "../campus-admin/pages/TestPagePremium"
 
 
 

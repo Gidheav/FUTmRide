@@ -609,6 +609,20 @@ class ApiService {
   async getLocationsSnapshot(): Promise<any> {
     return this.get('locations/download/')
   }
+  async getRideActivityLog(params: {
+    cursor?: string
+    ride_type?: string
+    status?: string
+    event?: string
+    date_from?: string
+    date_to?: string
+    student?: string
+    driver?: string
+    reference?: string
+    page_size?: number
+  }): Promise<any> {
+    return this.get('rides/operations/activity-log/', { params })
+  }
 }
 
 export const apiService = new ApiService()

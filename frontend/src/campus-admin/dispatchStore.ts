@@ -44,8 +44,6 @@ export const useDispatchStore = create<{
   setWsConnected: (val: boolean) => void
   mapLayerConfig: MapLayerConfig
   applyMapLayerConfig: (config: Partial<MapLayerConfig>) => void
-  recenterTrigger: number
-  triggerRecenter: () => void
   rideCreationDraft: RideCreationDraft | null
   setRideCreationDraft: (draft: RideCreationDraft | null) => void
 }>((set) => ({
@@ -75,8 +73,6 @@ export const useDispatchStore = create<{
       showHeat: next.demand_heatmaps_enabled,
     }
   }),
-  recenterTrigger: 0,
-  triggerRecenter: () => set((state) => ({ recenterTrigger: state.recenterTrigger + 1 })),
   rideCreationDraft: null,
   setRideCreationDraft: (draft) => set({ rideCreationDraft: draft }),
 }))

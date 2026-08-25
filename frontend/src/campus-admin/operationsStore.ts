@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type OperationsTab = 'departures' | 'routes' | 'fleet' | 'passengers'
+export type OperationsTab = 'departures' | 'routes' | 'fleet' | 'passengers' | 'log'
 
 interface OperationsState {
   activeTab: OperationsTab
