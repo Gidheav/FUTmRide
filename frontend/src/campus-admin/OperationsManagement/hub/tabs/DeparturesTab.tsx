@@ -5,6 +5,7 @@ import { T } from '../../../theme'
 import { apiService } from '../../../../services/api.service'
 import { formatDistanceToNow, isPast, parseISO } from 'date-fns'
 import { routeEndpointLabel } from '../../../shared/routeDisplay'
+import { useOperationsStore } from '../../../operationsStore'
 
 interface DispatchedBus {
   id: string
@@ -31,8 +32,9 @@ interface DeparturesTabProps {
 }
 
 export const DeparturesTab: React.FC<DeparturesTabProps> = ({ search }) => {
-  const [rides, setRides] = useState<DispatchedBus[]>([])
-  const [loading, setLoading] = useState(true)
+  const { departuresCache, setDeparturesCache, tabInitialized, setTabInitialized, refreshSeq } = useOperationsStore()
+  const rides = departuresCache as DispatchedBus[]
+  const [loading, setLoading] = useState(!tabInitialized.departures)
   const [now, setNow] = useState(new Date())
 
   // Force re-render every minute for live countdowns
@@ -45,7 +47,8 @@ export const DeparturesTab: React.FC<DeparturesTabProps> = ({ search }) => {
     try {
       setLoading(true)
       const data = await apiService.getDispatchedBuses()
-      setRides(data)
+      setDeparturesCache(data)
+      setTabInitialized('departures', true)
     } catch (e) {
       console.error('Failed to fetch dispatched buses', e)
     } finally {
@@ -53,9 +56,15 @@ export const DeparturesTab: React.FC<DeparturesTabProps> = ({ search }) => {
     }
   }
 
+  // Fetch once on first mount; skip if already cached
   useEffect(() => {
-    fetchRides()
+    if (!tabInitialized.departures) fetchRides()
   }, [])
+
+  // Refresh when Refresh button is pressed
+  useEffect(() => {
+    if (refreshSeq > 0) fetchRides()
+  }, [refreshSeq])
 
   const handleBusAction = async (busId: string, rideId: string, action: 'cancel' | 'complete') => {
     if (!window.confirm(`Are you sure you want to mark this as ${action}?`)) return

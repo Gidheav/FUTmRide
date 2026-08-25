@@ -11,6 +11,7 @@ import { apiService } from '../../../../services/api.service'
 import { useDispatchStore } from '../../../dispatchStore'
 import { routeEndpointLabel } from '../../../shared/routeDisplay'
 import RideResolutionModal from '../../../components/RideResolutionModal'
+import { useOperationsStore } from '../../../operationsStore'
 
 /* ─────────────────────────── Types ─────────────────────────────── */
 
@@ -73,9 +74,10 @@ const groupRouteKey = (r: ScheduledRide) => {
 export const RoutesTab: React.FC<RoutesTabProps> = ({ search }) => {
   const navigate = useNavigate()
   const { setRideCreationDraft } = useDispatchStore()
+  const { routesCache, setRoutesCache, tabInitialized, setTabInitialized, refreshSeq } = useOperationsStore()
 
-  const [routes, setRoutes] = useState<ScheduledRide[]>([])
-  const [loading, setLoading] = useState(true)
+  const [routes, setRoutes] = useState<ScheduledRide[]>(routesCache as ScheduledRide[])
+  const [loading, setLoading] = useState(!tabInitialized.routes)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
 
   // ── View state: null = group list, string = inside a group ────────
@@ -199,6 +201,8 @@ export const RoutesTab: React.FC<RoutesTabProps> = ({ search }) => {
       setLoading(true)
       const data = await apiService.getScheduledRides()
       setRoutes(data)
+      setRoutesCache(data)
+      setTabInitialized('routes', true)
     } catch (error) {
       console.error('Failed to fetch routes', error)
     } finally {
@@ -206,7 +210,11 @@ export const RoutesTab: React.FC<RoutesTabProps> = ({ search }) => {
     }
   }
 
-  useEffect(() => { fetchRoutes() }, [])
+  // Fetch once on first mount; skip if already cached
+  useEffect(() => { if (!tabInitialized.routes) fetchRoutes() }, [])
+
+  // Refresh when Refresh button is pressed
+  useEffect(() => { if (refreshSeq > 0) fetchRoutes() }, [refreshSeq])
 
   /* ── Filtered + Grouped ── */
   const filteredRoutes = useMemo(() =>

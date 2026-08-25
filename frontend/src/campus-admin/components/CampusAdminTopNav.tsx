@@ -1,7 +1,8 @@
+import React from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, CalendarClock, BarChart3, Settings,
-  LogOut, User as UserIcon, Sun, Moon,
+  LogOut, User as UserIcon,
   Download, Megaphone, UserPlus,
   ArrowLeft, ChevronRight, History, ShieldAlert, UserX,
   Radio, Crosshair, Activity, Zap, Route, Monitor, Bell, Sliders, ShieldCheck,
@@ -49,7 +50,10 @@ export default function CampusAdminTopNav() {
   const location = useLocation()
   const navigate = useNavigate()
   const { clearAuth } = useAuthStore()
-  const { mode, toggleMode } = useCampusThemeStore()
+  const { setMode } = useCampusThemeStore()
+
+  // Permanently lock to dark mode
+  React.useEffect(() => { setMode('dark') }, [])
 
   const { activeTab: dispatchTab, setActiveTab: setDispatchTab, wsConnected, showTraffic, setShowTraffic, showHeat, setShowHeat, showRoutes, setShowRoutes, mapLayerConfig, applyMapLayerConfig } = useDispatchStore()
   const { activeTab: settingsTab, setActiveTab: setSettingsTab } = useSettingsStore()
@@ -605,9 +609,6 @@ export default function CampusAdminTopNav() {
           </button>
         ) : (
           <>
-            <button style={s.topIconBtn} onClick={toggleMode}>
-              {mode === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
-            </button>
             {/* Bell Notification Badge */}
             <button
               style={{ ...s.topIconBtn, position: 'relative' }}

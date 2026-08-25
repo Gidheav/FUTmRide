@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Download, RefreshCw, Search, X, Ticket, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Download, RefreshCw, Search, X, Ticket, CheckCircle2, AlertCircle, Database } from 'lucide-react'
 import { campusPanel } from '../../shared/campusPanelStyles'
 import { T } from '../../theme'
 import { useOperationsStore } from '../../operationsStore'
@@ -9,12 +9,12 @@ import { FleetTab } from './tabs/FleetTab'
 import { PassengersTab } from './tabs/PassengersTab'
 import { LogTab } from './tabs/LogTab'
 import api from '../../../core/api'
+import { format } from 'date-fns'
 
 export default function OperationsHub() {
-  const { activeTab } = useOperationsStore()
+  const { activeTab, logLastSyncTime, bumpRefresh } = useOperationsStore()
   const [search, setSearch] = useState('')
-  const [refreshKey, setRefreshKey] = useState(0)
-  
+
   const [showVerifyModal, setShowVerifyModal] = useState(false)
   const [ticketInput, setTicketInput] = useState('')
   const [verifyResult, setVerifyResult] = useState<any>(null)
@@ -22,13 +22,14 @@ export default function OperationsHub() {
   const [verifyError, setVerifyError] = useState('')
 
   // Log Tab Filters
-  const [logType, setLogType] = useState('on_demand,scheduled,garage')
+  const [logType, setLogType] = useState('on_demand,scheduled,garage,shared')
   const [logDateFrom, setLogDateFrom] = useState('')
   const [logDateTo, setLogDateTo] = useState('')
 
-  const handleRefresh = () => {
-    setRefreshKey((k) => k + 1)
-  }
+  // Archive State
+  const [isArchiveMode, setIsArchiveMode] = useState(false)
+
+  const handleRefresh = () => bumpRefresh()
 
   const kpiStrip = (
     <div style={{ display: 'flex', alignItems: 'stretch', flexShrink: 0 }}>
@@ -56,10 +57,11 @@ export default function OperationsHub() {
         onChange={e => setLogType(e.target.value)}
         style={{ ...campusPanel.input, width: 130 }}
       >
-        <option value="on_demand,scheduled,garage">All Types</option>
+        <option value="on_demand,scheduled,garage,shared">All Types</option>
         <option value="on_demand">On-Demand</option>
         <option value="scheduled">Scheduled</option>
         <option value="garage">Garage</option>
+        <option value="shared">Shared</option>
       </select>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <span style={{ fontSize: 13, color: T.textMuted }}>From:</span>
@@ -169,17 +171,47 @@ export default function OperationsHub() {
 
       <div style={{ ...campusPanel.toolbar, flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
         
-        <div style={{ flex: 1, minWidth: 160, maxWidth: 320, position: 'relative' }}>
+        {activeTab === 'log' && (
+          <div 
+            onClick={(e) => {
+              if (e.detail === 5) setIsArchiveMode(true);
+              else if (e.detail === 1) setIsArchiveMode(false);
+            }}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer',
+              color: isArchiveMode ? T.accent : T.textMuted,
+              padding: '6px',
+              borderRadius: '6px',
+              background: isArchiveMode ? T.accentBg : 'transparent',
+              transition: 'all 0.2s'
+            }}
+            title="Click 5 times fast to open Deep Archive Search. Single-click to close."
+          >
+            <Database size={16} />
+          </div>
+        )}
+
+        <div style={{ flex: 1, minWidth: 160, maxWidth: 320, position: 'relative', display: 'flex', alignItems: 'center' }}>
           <Search
             size={14}
             style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: T.textMuted }}
           />
+          
           <input
             type="text"
-            placeholder={activeTab === 'log' ? 'Search student, driver, reference, location...' : 'Search schedules, routes, fleet...'}
+            placeholder={activeTab === 'log' 
+              ? (isArchiveMode ? 'Deep Archive Search...' : 'Search student, driver, reference, location...') 
+              : 'Search schedules, routes, fleet...'}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ ...campusPanel.input, paddingLeft: 32, paddingRight: search ? 28 : 12 }}
+            style={{ 
+              ...campusPanel.input, 
+              paddingLeft: 32, 
+              paddingRight: search ? 28 : 12,
+              width: '100%',
+              borderColor: isArchiveMode && activeTab === 'log' ? T.accent : T.border
+            }}
           />
           {search && (
             <button
@@ -194,6 +226,12 @@ export default function OperationsHub() {
             </button>
           )}
         </div>
+        
+        {activeTab === 'log' && logLastSyncTime && (
+           <div style={{ fontSize: 11, color: T.textMuted, marginLeft: 8 }}>
+             Last synced: {format(logLastSyncTime, 'h:mm:ss a')}
+           </div>
+        )}
 
         <div style={{ marginLeft: 'auto', display: 'flex', justifyContent: 'flex-start' }}>
           {activeTab === 'log' ? logFiltersStrip : kpiStrip}
@@ -231,20 +269,40 @@ export default function OperationsHub() {
         </div>
       </div>
 
-      <div style={{ ...campusPanel.scrollMain, ...campusPanel.thinScroll, position: 'relative' }}>
-        {activeTab === 'departures' && <DeparturesTab key={refreshKey} search={search} />}
-        {activeTab === 'routes' && <RoutesTab key={refreshKey} search={search} />}
-        {activeTab === 'fleet' && <FleetTab key={refreshKey} search={search} />}
-        {activeTab === 'passengers' && <PassengersTab key={refreshKey} search={search} />}
-        {activeTab === 'log' && (
+      {/* 
+        All tabs are always mounted — visibility toggled with display:none.
+        This eliminates mount/unmount cycles, flickers, and re-fetches on tab switch.
+        Each tab manages its own one-time initialization internally.
+      */}
+      <div style={{ 
+        ...campusPanel.scrollMain, 
+        ...campusPanel.thinScroll, 
+        position: 'relative',
+        display: 'flex',
+        flexDirection: 'column',
+        overflowY: activeTab === 'log' ? 'hidden' : 'auto'
+      }}>
+        <div style={{ display: activeTab === 'departures' ? 'block' : 'none', flex: 1, minHeight: 0 }}>
+          <DeparturesTab search={search} />
+        </div>
+        <div style={{ display: activeTab === 'routes' ? 'block' : 'none', flex: 1, minHeight: 0 }}>
+          <RoutesTab search={search} />
+        </div>
+        <div style={{ display: activeTab === 'fleet' ? 'block' : 'none', flex: 1, minHeight: 0 }}>
+          <FleetTab search={search} />
+        </div>
+        <div style={{ display: activeTab === 'passengers' ? 'block' : 'none', flex: 1, minHeight: 0 }}>
+          <PassengersTab search={search} />
+        </div>
+        <div style={{ display: activeTab === 'log' ? 'flex' : 'none', flex: 1, flexDirection: 'column', minHeight: 0 }}>
           <LogTab 
-            key={refreshKey} 
             search={search}
             rideType={logType}
             dateFrom={logDateFrom}
             dateTo={logDateTo}
+            isArchiveMode={isArchiveMode}
           />
-        )}
+        </div>
       </div>
     </div>
   )

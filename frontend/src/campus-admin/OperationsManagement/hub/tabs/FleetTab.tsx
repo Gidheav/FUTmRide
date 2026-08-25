@@ -3,6 +3,7 @@ import { Car, CheckCircle2, Clock3, Loader2, Route, WifiOff } from 'lucide-react
 import { campusPanel } from '../../../shared/campusPanelStyles'
 import { T } from '../../../theme'
 import { apiService } from '../../../../services/api.service'
+import { useOperationsStore } from '../../../operationsStore'
 
 interface FleetTabProps {
   search: string
@@ -68,23 +69,43 @@ const formatRouteLine = (assignment?: FleetRoute | null) => {
 }
 
 export const FleetTab: React.FC<FleetTabProps> = ({ search }) => {
-  const [fleet, setFleet] = useState<FleetDriver[]>([])
-  const [loading, setLoading] = useState(true)
+  const { fleetCache, setFleetCache, tabInitialized, setTabInitialized, refreshSeq } = useOperationsStore()
+  const fleet = fleetCache as FleetDriver[]
+  const [loading, setLoading] = useState(!tabInitialized.fleet)
 
   useEffect(() => {
     const fetchFleet = async () => {
       try {
         setLoading(true)
         const data = await apiService.getCampusFleet()
-        setFleet(data)
+        setFleetCache(data)
+        setTabInitialized('fleet', true)
       } catch (err) {
         console.error('Failed to fetch fleet data', err)
       } finally {
         setLoading(false)
       }
     }
-    fetchFleet()
+    // Fetch once on first mount; skip if already cached
+    if (!tabInitialized.fleet) fetchFleet()
   }, [])
+
+  // Refresh when Refresh button is pressed
+  useEffect(() => {
+    if (refreshSeq === 0) return
+    const fetchFleet = async () => {
+      try {
+        setLoading(true)
+        const data = await apiService.getCampusFleet()
+        setFleetCache(data)
+      } catch (err) {
+        console.error('Failed to refresh fleet', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchFleet()
+  }, [refreshSeq])
 
   const filteredFleet = fleet.filter(f => {
     const driverName = formatDriverName(f).toLowerCase()

@@ -2,21 +2,25 @@ import React from 'react'
 import { User, CreditCard, Ticket, CheckCircle2, XCircle } from 'lucide-react'
 import { campusPanel } from '../../../shared/campusPanelStyles'
 import { T } from '../../../theme'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '../../../../core/api'
+import { useOperationsStore } from '../../../operationsStore'
 
 interface PassengersTabProps {
   search: string
 }
 
 export const PassengersTab: React.FC<PassengersTabProps> = ({ search }) => {
+  const { refreshSeq } = useOperationsStore()
   const { data, isLoading, error } = useQuery({
-    queryKey: ['operations-live-passengers'],
+    queryKey: ['operations-live-passengers', refreshSeq],
     queryFn: async () => {
       const res = await api.get('/rides/operations/passengers/live/')
       return res.data.results
     },
-    staleTime: 30000,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   })
 
   const passengers = (data || []).filter((p: any) => 

@@ -3,9 +3,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.utils import timezone
 from apps.accounts.permissions import IsAdminOrCampusAdmin
-from apps.rides.models import Ride
+from apps.rides.models import Ride, DriverRideRequest
 from apps.rides.scheduled_models import ScheduledRidePassenger, ScheduledRide
 from apps.rides.garage_models import GarageRidePassenger, GarageRide
+from apps.rides.shared_models import SharedRide, SharedRideRider
 from django.db.models import Q
 from dateutil.parser import parse as parse_date
 import json
@@ -138,7 +139,7 @@ class AdminRideActivityLogView(APIView):
             except ValueError:
                 pass
                 
-        allowed_types = ride_type.split(',') if ride_type else ['on_demand', 'scheduled', 'garage']
+        allowed_types = ride_type.split(',') if ride_type else ['on_demand', 'scheduled', 'garage', 'shared']
         
         events = []
         
@@ -332,6 +333,16 @@ class AdminRideActivityLogView(APIView):
                     'ride_id': str(r.id)
                 })
 
+        # 6. Driver Interest Events (DriverRideRequest)
+        events.extend(self._get_driver_interest_events(
+            allowed_types, date_from, date_to, search_query, cursor_dt, cursor_id, page_size
+        ))
+
+        # 7. Shared Ride Events
+        events.extend(self._get_shared_ride_events(
+            allowed_types, date_from, date_to, search_query, cursor_dt, cursor_id, page_size
+        ))
+
         # Sort combined events by timestamp desc
         events.sort(key=lambda x: x['timestamp'], reverse=True)
         
@@ -349,3 +360,125 @@ class AdminRideActivityLogView(APIView):
             'next_cursor': next_cursor,
             'has_next': has_next
         })
+
+    def _get_driver_interest_events(self, allowed_types, date_from, date_to, search_query, cursor_dt, cursor_id, page_size):
+        """DriverRideRequest — driver accepted/declined/timed-out interest on on-demand rides."""
+        if 'on_demand' not in allowed_types:
+            return []
+        q = DriverRideRequest.objects.select_related('ride', 'ride__student', 'driver')
+        if date_from: q = q.filter(offered_at__gte=parse_date(date_from))
+        if date_to: q = q.filter(offered_at__lte=parse_date(date_to))
+        if search_query:
+            q = q.filter(
+                Q(driver__first_name__icontains=search_query) |
+                Q(driver__last_name__icontains=search_query) |
+                Q(ride__student__first_name__icontains=search_query) |
+                Q(ride__student__last_name__icontains=search_query) |
+                Q(ride__reference__icontains=search_query)
+            )
+        if cursor_dt:
+            q = q.filter(offered_at__lte=cursor_dt).exclude(offered_at=cursor_dt, id__gte=cursor_id)
+        q = q.order_by('-offered_at')[:page_size]
+        events = []
+        response_labels = {
+            'pending': 'Driver Pinged',
+            'accepted': 'Driver Accepted Ride',
+            'declined': 'Driver Declined Ride',
+            'timed_out': 'Driver Request Timed Out',
+        }
+        for r in q:
+            events.append({
+                'id': f"drr-{r.id}",
+                'timestamp': (r.responded_at or r.offered_at).isoformat(),
+                'event': r.response,
+                'event_label': response_labels.get(r.response, r.response),
+                'ride_type': 'on_demand',
+                'reference': r.ride.reference,
+                'student_name': r.ride.student.full_name,
+                'driver_name': r.driver.full_name,
+                'route': f"{r.ride.pickup_address} → {r.ride.dropoff_address}",
+                'amount': str(r.ride.total_fare or 0),
+                'status': r.response,
+                'ride_id': str(r.ride.id),
+            })
+        return events
+
+    def _get_shared_ride_events(self, allowed_types, date_from, date_to, search_query, cursor_dt, cursor_id, page_size):
+        """SharedRide creations and SharedRideRider joins."""
+        events = []
+        if 'shared' not in allowed_types and 'on_demand' not in allowed_types:
+            return events
+        # Shared ride creations
+        sq = SharedRide.objects.select_related('creator')
+        if date_from: sq = sq.filter(created_at__gte=parse_date(date_from))
+        if date_to: sq = sq.filter(created_at__lte=parse_date(date_to))
+        if search_query:
+            sq = sq.filter(
+                Q(creator__first_name__icontains=search_query) |
+                Q(creator__last_name__icontains=search_query) |
+                Q(reference__icontains=search_query) |
+                Q(dropoff_address__icontains=search_query)
+            )
+        if cursor_dt:
+            sq = sq.filter(created_at__lte=cursor_dt).exclude(created_at=cursor_dt, id__gte=cursor_id)
+        sq = sq.order_by('-created_at')[:page_size]
+        status_labels = {
+            'gathering': 'Shared Ride Opened',
+            'ready': 'Shared Ride Ready',
+            'matching': 'Matching Driver',
+            'matched': 'Driver Matched',
+            'in_progress': 'Shared Ride In Progress',
+            'completed': 'Shared Ride Completed',
+            'cancelled': 'Shared Ride Cancelled',
+            'expired': 'Shared Ride Expired',
+        }
+        for r in sq:
+            events.append({
+                'id': f"sh-{r.id}",
+                'timestamp': r.updated_at.isoformat(),
+                'event': r.status,
+                'event_label': status_labels.get(r.status, r.status),
+                'ride_type': 'shared',
+                'reference': r.reference,
+                'student_name': r.creator.full_name,
+                'driver_name': '-',
+                'route': f"→ {r.dropoff_address}",
+                'amount': str(r.total_collected or 0),
+                'status': r.status,
+                'ride_id': str(r.id),
+            })
+        # Shared ride riders joining
+        rq = SharedRideRider.objects.select_related('user', 'shared_ride', 'shared_ride__creator')
+        if date_from: rq = rq.filter(joined_at__gte=parse_date(date_from))
+        if date_to: rq = rq.filter(joined_at__lte=parse_date(date_to))
+        if search_query:
+            rq = rq.filter(
+                Q(user__first_name__icontains=search_query) |
+                Q(user__last_name__icontains=search_query) |
+                Q(shared_ride__reference__icontains=search_query)
+            )
+        if cursor_dt:
+            rq = rq.filter(joined_at__lte=cursor_dt)
+        rq = rq.exclude(joined_at__isnull=True).order_by('-joined_at')[:page_size]
+        rider_labels = {
+            'invited': 'Rider Invited',
+            'joined': 'Rider Joined',
+            'confirmed': 'Rider Confirmed',
+            'cancelled': 'Rider Cancelled',
+        }
+        for r in rq:
+            events.append({
+                'id': f"shr-{r.id}",
+                'timestamp': (r.confirmed_at or r.joined_at).isoformat(),
+                'event': r.status,
+                'event_label': rider_labels.get(r.status, r.status),
+                'ride_type': 'shared',
+                'reference': r.shared_ride.reference,
+                'student_name': r.user.full_name,
+                'driver_name': '-',
+                'route': f"→ {r.shared_ride.dropoff_address}",
+                'amount': str(r.fare_share or 0),
+                'status': r.status,
+                'ride_id': str(r.shared_ride.id),
+            })
+        return events
