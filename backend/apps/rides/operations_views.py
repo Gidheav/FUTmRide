@@ -7,6 +7,8 @@ from apps.rides.models import Ride, DriverRideRequest
 from apps.rides.scheduled_models import ScheduledRidePassenger, ScheduledRide
 from apps.rides.garage_models import GarageRidePassenger, GarageRide
 from apps.rides.shared_models import SharedRide, SharedRideRider
+from apps.payments.models import WalletTransaction, DriverWithdrawal
+from apps.ratings.models import Rating
 from django.db.models import Q
 from dateutil.parser import parse as parse_date
 import json
@@ -343,6 +345,12 @@ class AdminRideActivityLogView(APIView):
             allowed_types, date_from, date_to, search_query, cursor_dt, cursor_id, page_size
         ))
 
+        # Deep Archive Events
+        if is_archive_search:
+            events.extend(self._get_wallet_events(allowed_types, date_from, date_to, search_query, cursor_dt, cursor_id, page_size))
+            events.extend(self._get_withdrawal_events(allowed_types, date_from, date_to, search_query, cursor_dt, cursor_id, page_size))
+            events.extend(self._get_rating_events(allowed_types, date_from, date_to, search_query, cursor_dt, cursor_id, page_size))
+
         # Sort combined events by timestamp desc
         events.sort(key=lambda x: x['timestamp'], reverse=True)
         
@@ -480,5 +488,111 @@ class AdminRideActivityLogView(APIView):
                 'amount': str(r.fare_share or 0),
                 'status': r.status,
                 'ride_id': str(r.shared_ride.id),
+            })
+        return events
+
+    def _get_wallet_events(self, allowed_types, date_from, date_to, search_query, cursor_dt, cursor_id, page_size):
+        if 'payment' not in allowed_types and len(allowed_types) != 4: # Assuming 4 is default types len
+            pass # Keep it if we add 'payment' type
+            
+        q = WalletTransaction.objects.select_related('user', 'ride')
+        if date_from: q = q.filter(created_at__gte=parse_date(date_from))
+        if date_to: q = q.filter(created_at__lte=parse_date(date_to))
+        if search_query:
+            q = q.filter(
+                Q(user__first_name__icontains=search_query) |
+                Q(user__last_name__icontains=search_query) |
+                Q(reference__icontains=search_query) |
+                Q(narration__icontains=search_query)
+            )
+        if cursor_dt:
+            q = q.filter(created_at__lte=cursor_dt).exclude(created_at=cursor_dt, id__gte=cursor_id)
+        q = q.order_by('-created_at')[:page_size]
+
+        events = []
+        for r in q:
+            events.append({
+                'id': f"wt-{r.id}",
+                'timestamp': r.created_at.isoformat(),
+                'event': r.status,
+                'event_label': r.get_source_display(),
+                'ride_type': 'payment',
+                'reference': r.reference,
+                'student_name': r.user.full_name,
+                'driver_name': '-',
+                'route': r.narration,
+                'amount': str(r.amount),
+                'status': r.status,
+                'ride_id': str(r.ride.id) if r.ride else '',
+            })
+        return events
+
+    def _get_withdrawal_events(self, allowed_types, date_from, date_to, search_query, cursor_dt, cursor_id, page_size):
+        q = DriverWithdrawal.objects.select_related('user')
+        if date_from: q = q.filter(requested_at__gte=parse_date(date_from))
+        if date_to: q = q.filter(requested_at__lte=parse_date(date_to))
+        if search_query:
+            q = q.filter(
+                Q(user__first_name__icontains=search_query) |
+                Q(user__last_name__icontains=search_query) |
+                Q(reference__icontains=search_query) |
+                Q(bank_name__icontains=search_query)
+            )
+        if cursor_dt:
+            q = q.filter(requested_at__lte=cursor_dt).exclude(requested_at=cursor_dt, id__gte=cursor_id)
+        q = q.order_by('-requested_at')[:page_size]
+
+        events = []
+        for r in q:
+            events.append({
+                'id': f"dw-{r.id}",
+                'timestamp': r.requested_at.isoformat(),
+                'event': r.status,
+                'event_label': f"Withdrawal {r.get_status_display()}",
+                'ride_type': 'payout',
+                'reference': r.reference,
+                'student_name': '-',
+                'driver_name': r.user.full_name,
+                'route': f"{r.bank_name} - {r.account_number_last4}",
+                'amount': str(r.amount),
+                'status': r.status,
+                'ride_id': '',
+            })
+        return events
+
+    def _get_rating_events(self, allowed_types, date_from, date_to, search_query, cursor_dt, cursor_id, page_size):
+        q = Rating.objects.select_related('ride', 'rater', 'ratee')
+        if date_from: q = q.filter(created_at__gte=parse_date(date_from))
+        if date_to: q = q.filter(created_at__lte=parse_date(date_to))
+        if search_query:
+            q = q.filter(
+                Q(rater__first_name__icontains=search_query) |
+                Q(rater__last_name__icontains=search_query) |
+                Q(ratee__first_name__icontains=search_query) |
+                Q(ratee__last_name__icontains=search_query) |
+                Q(ride__reference__icontains=search_query) |
+                Q(comment__icontains=search_query)
+            )
+        if cursor_dt:
+            q = q.filter(created_at__lte=cursor_dt).exclude(created_at=cursor_dt, id__gte=cursor_id)
+        q = q.order_by('-created_at')[:page_size]
+
+        events = []
+        for r in q:
+            star_display = f"{'★' * r.score}{'☆' * (5 - r.score)} ({r.score}/5)"
+            events.append({
+                'id': f"rt-{r.id}",
+                'timestamp': r.created_at.isoformat(),
+                'event': 'completed',
+                'event_label': f"{r.get_rating_type_display()} {star_display}",
+                'ride_type': 'rating',
+                'reference': r.ride.reference,
+                'student_name': r.rater.full_name if r.rating_type == 'student_to_driver' else r.ratee.full_name,
+                'driver_name': r.ratee.full_name if r.rating_type == 'student_to_driver' else r.rater.full_name,
+                'route': r.comment or '-',
+                'amount': f"{r.score}",
+                'status': 'completed',
+                'ride_id': str(r.ride.id),
+                'meta': r.comment,
             })
         return events

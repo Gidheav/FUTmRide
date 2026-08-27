@@ -28,8 +28,20 @@ export default function OperationsHub() {
 
   // Archive State
   const [isArchiveMode, setIsArchiveMode] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
-  const handleRefresh = () => bumpRefresh()
+  // Reset to default types if leaving archive mode while a deep-only type is selected
+  useEffect(() => {
+    if (!isArchiveMode && ['payment', 'payout', 'rating'].includes(logType)) {
+      setLogType('on_demand,scheduled,garage,shared')
+    }
+  }, [isArchiveMode, logType])
+
+  const handleRefresh = () => {
+    setIsRefreshing(true)
+    bumpRefresh()
+    setTimeout(() => setIsRefreshing(false), 800)
+  }
 
   const kpiStrip = (
     <div style={{ display: 'flex', alignItems: 'stretch', flexShrink: 0 }}>
@@ -57,11 +69,18 @@ export default function OperationsHub() {
         onChange={e => setLogType(e.target.value)}
         style={{ ...campusPanel.input, width: 130 }}
       >
-        <option value="on_demand,scheduled,garage,shared">All Types</option>
+        <option value="on_demand,scheduled,garage,shared">All Rides</option>
         <option value="on_demand">On-Demand</option>
         <option value="scheduled">Scheduled</option>
         <option value="garage">Garage</option>
         <option value="shared">Shared</option>
+        {isArchiveMode && (
+          <>
+            <option value="payment">Payments</option>
+            <option value="payout">Payouts</option>
+            <option value="rating">Ratings</option>
+          </>
+        )}
       </select>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <span style={{ fontSize: 13, color: T.textMuted }}>From:</span>
@@ -96,9 +115,9 @@ export default function OperationsHub() {
   )
 
   const refreshButton = (
-    <button type="button" onClick={handleRefresh} style={campusPanel.btnPrimary}>
-      <RefreshCw size={13} />
-      Refresh
+    <button type="button" onClick={handleRefresh} style={campusPanel.btnPrimary} disabled={isRefreshing}>
+      <RefreshCw size={13} style={{ animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
+      {isRefreshing ? 'Updating...' : 'Refresh'}
     </button>
   )
 
@@ -186,7 +205,6 @@ export default function OperationsHub() {
               background: isArchiveMode ? T.accentBg : 'transparent',
               transition: 'all 0.2s'
             }}
-            title="Click 5 times fast to open Deep Archive Search. Single-click to close."
           >
             <Database size={16} />
           </div>
