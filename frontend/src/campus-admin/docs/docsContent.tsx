@@ -61,6 +61,57 @@ const Code = ({ children }: { children: React.ReactNode }) => (
   </code>
 );
 
+const CodeBlock = ({ children }: { children: React.ReactNode }) => (
+  <pre style={{ 
+    background: T.bgCard, 
+    padding: '16px', 
+    borderRadius: 8, 
+    color: T.textSecondary, 
+    fontSize: 13, 
+    fontFamily: 'monospace',
+    overflow: 'auto',
+    marginBottom: 16,
+    border: `1px solid ${T.border}`
+  }}>
+    {children}
+  </pre>
+);
+
+const Table = ({ children }: { children: React.ReactNode }) => (
+  <table style={{ 
+    width: '100%', 
+    borderCollapse: 'collapse', 
+    marginBottom: 16,
+    fontSize: 14,
+    color: T.textSecondary
+  }}>
+    {children}
+  </table>
+);
+
+const Th = ({ children }: { children: React.ReactNode }) => (
+  <th style={{ 
+    textAlign: 'left', 
+    padding: '12px', 
+    borderBottom: `2px solid ${T.border}`,
+    color: T.textWhite,
+    fontWeight: 600,
+    background: T.bgCard
+  }}>
+    {children}
+  </th>
+);
+
+const Td = ({ children }: { children: React.ReactNode }) => (
+  <td style={{ 
+    padding: '12px', 
+    borderBottom: `1px solid ${T.border}`,
+    background: T.bgCard
+  }}>
+    {children}
+  </td>
+);
+
 export const DOCS_CONTENT: Record<string, Record<string, React.ReactNode>> = {
   admin: {
     overview: (
@@ -86,15 +137,323 @@ export const DOCS_CONTENT: Record<string, Record<string, React.ReactNode>> = {
     ),
     auth: (
       <div>
-        <P>The authentication system secures all admin panel endpoints and maintains role-based access control (RBAC).</P>
-        <H2>JWT Flow</H2>
+        <P>The authentication system secures all admin panel endpoints and maintains role-based access control (RBAC) with enterprise-grade security measures, session management, and multi-factor authentication capabilities.</P>
+        
+        <H2>Architecture Overview</H2>
+        <Callout type="info" title="Core Components">
+          <Ul>
+            <Li><strong>Backend:</strong> Django REST Framework with JWT authentication via <Code>rest_framework_simplejwt</Code></Li>
+            <Li><strong>Frontend:</strong> React with Zustand state management and Axios interceptors</Li>
+            <Li><strong>Token Storage:</strong> SessionStorage for primary tokens with localStorage migration support</Li>
+            <Li><strong>WebSocket Auth:</strong> Custom middleware supporting both header and query-based token transmission</Li>
+            <Li><strong>Security Layers:</strong> Rate limiting, throttling, CSP headers, and IP-based restrictions</Li>
+          </Ul>
+        </Callout>
+
+        <H2>JWT Token Flow</H2>
+        <P>The authentication system uses a dual-token approach with automatic refresh capabilities:</P>
         <Ul>
-          <Li>On login, the server issues a short-lived <Code>accessToken</Code> and an HTTP-only <Code>refreshToken</Code>.</Li>
-          <Li>Axios interceptors automatically refresh the token when a 401 response is received.</Li>
-          <Li>Roles are encoded in the JWT payload to immediately hide unauthorized UI elements.</Li>
+          <Li><strong>Access Token:</strong> Short-lived (60 minutes) used for API requests</Li>
+          <Li><strong>Refresh Token:</strong> Long-lived (14 days) used to obtain new access tokens</Li>
+          <Li><strong>Automatic Refresh:</strong> Axios interceptors automatically refresh tokens on 401 responses</Li>
+          <Li><strong>Token Rotation:</strong> Refresh tokens rotate on each use with old tokens blacklisted</Li>
         </Ul>
+
+        <H3>Token Lifecycle</H3>
+        <Ul>
+          <Li>User submits credentials via <Code>POST /auth/login/</Code></Li>
+          <Li>Server validates credentials and checks 2FA status</Li>
+          <Li>System issues access and refresh tokens with user payload</Li>
+          <Li>Tokens stored in sessionStorage (primary) with localStorage fallback</Li>
+          <Li>API requests include Bearer token in Authorization header</Li>
+          <Li>On 401 response, interceptor automatically refreshes via <Code>POST /auth/token/refresh/</Code></Li>
+          <Li>Logout blacklists refresh token and clears storage</Li>
+        </Ul>
+
         <H2>Session Management</H2>
-        <P>If the refresh token expires or is revoked (e.g., account suspension), the user is forced to log out and redirected to the login screen.</P>
+        <Callout type="warning" title="Session Security">
+          <P>Sessions are enforced with a maximum age of 14 days. The system tracks <Code>session_started_at</Code> and <Code>last_refresh_at</Code> to enforce session limits. If a session exceeds the maximum age or the refresh token is revoked (e.g., account suspension), the user is forced to log out and redirected to the login screen.</P>
+        </Callout>
+
+        <H2>User Roles & Permissions</H2>
+        <P>The system implements a 4-tier role hierarchy with granular permission control:</P>
+        <Ul>
+          <Li><Badge color="#ef4444">Super Admin</Badge> Platform-wide management, billing, and campus admin creation</Li>
+          <Li><Badge color="#f59e0b">Campus Admin</Badge> Campus-specific operations, pricing, driver approvals</Li>
+          <Li><Badge color="#3b82f6">Driver</Badge> Vehicle operators accepting rides and managing availability</Li>
+          <Li><Badge color="#10b981">Student</Badge> Passengers requesting rides and managing payments</Li>
+        </Ul>
+
+        <H3>Permission Classes</H3>
+        <Ul>
+          <Li><Code>IsAdminUser</Code> - Super admin access only</Li>
+          <Li><Code>IsCampusAdminUser</Code> - Campus-specific admin access</Li>
+          <Li><Code>IsAdminOrCampusAdmin</Code> - Combined admin access</Li>
+          <Li><Code>IsDriverUser</Code> - Driver-specific functionality</Li>
+          <Li><Code>IsStudentUser</Code> - Student-specific functionality</Li>
+          <Li><Code>IsOwnerOrAdmin</Code> - Resource ownership + admin override</Li>
+          <Li><Code>IsPhoneVerified</Code> - Requires phone verification</Li>
+        </Ul>
+
+        <H2>Authentication Endpoints</H2>
+        <Table>
+          <thead>
+            <tr>
+              <Th>Endpoint</Th>
+              <Th>Method</Th>
+              <Th>Description</Th>
+              <Th>Auth Required</Th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <Td><Code>/auth/register/request-email-otp/</Code></Td>
+              <Td>POST</Td>
+              <Td>Student email verification</Td>
+              <Td>No</Td>
+            </tr>
+            <tr>
+              <Td><Code>/auth/register/verify-email-otp/</Code></Td>
+              <Td>POST</Td>
+              <Td>Email confirmation</Td>
+              <Td>No</Td>
+            </tr>
+            <tr>
+              <Td><Code>/auth/register/</Code></Td>
+              <Td>POST</Td>
+              <Td>User registration</Td>
+              <Td>No</Td>
+            </tr>
+            <tr>
+              <Td><Code>/auth/login/</Code></Td>
+              <Td>POST</Td>
+              <Td>User login</Td>
+              <Td>No</Td>
+            </tr>
+            <tr>
+              <Td><Code>/auth/otp/request/</Code></Td>
+              <Td>POST</Td>
+              <Td>OTP request</Td>
+              <Td>No</Td>
+            </tr>
+            <tr>
+              <Td><Code>/auth/otp/verify/</Code></Td>
+              <Td>POST</Td>
+              <Td>OTP verification</Td>
+              <Td>No</Td>
+            </tr>
+            <tr>
+              <Td><Code>/auth/password-reset/request/</Code></Td>
+              <Td>POST</Td>
+              <Td>Password reset request</Td>
+              <Td>No</Td>
+            </tr>
+            <tr>
+              <Td><Code>/auth/token/refresh/</Code></Td>
+              <Td>POST</Td>
+              <Td>Token refresh</Td>
+              <Td>No</Td>
+            </tr>
+            <tr>
+              <Td><Code>/auth/logout/</Code></Td>
+              <Td>POST</Td>
+              <Td>User logout</Td>
+              <Td>Yes</Td>
+            </tr>
+            <tr>
+              <Td><Code>/auth/change-password/</Code></Td>
+              <Td>POST</Td>
+              <Td>Password change</Td>
+              <Td>Yes</Td>
+            </tr>
+            <tr>
+              <Td><Code>/auth/settings/preferences/</Code></Td>
+              <Td>POST</Td>
+              <Td>User preferences</Td>
+              <Td>Yes</Td>
+            </tr>
+            <tr>
+              <Td><Code>/auth/settings/pin/set/</Code></Td>
+              <Td>POST</Td>
+              <Td>Transaction PIN setup</Td>
+              <Td>Yes</Td>
+            </tr>
+            <tr>
+              <Td><Code>/auth/settings/2fa/start/</Code></Td>
+              <Td>POST</Td>
+              <Td>2FA setup initiation</Td>
+              <Td>Yes</Td>
+            </tr>
+            <tr>
+              <Td><Code>/auth/settings/2fa/confirm/</Code></Td>
+              <Td>POST</Td>
+              <Td>2FA confirmation</Td>
+              <Td>Yes</Td>
+            </tr>
+            <tr>
+              <Td><Code>/auth/2fa/verify/</Code></Td>
+              <Td>POST</Td>
+              <Td>2FA challenge verification</Td>
+              <Td>Yes</Td>
+            </tr>
+          </tbody>
+        </Table>
+
+        <H2>Login Flow Implementation</H2>
+        <H3>Credential Validation</H3>
+        <Ul>
+          <Li>Students must use university email (<Code>name.m1234567@st.futminna.edu.ng</Code>)</Li>
+          <Li>Other roles use phone number authentication</Li>
+          <Li>Email validation regex enforced for students</Li>
+          <Li>Optimized user retrieval with <Code>select_related</Code> to prevent N+1 queries</Li>
+        </Ul>
+
+        <H3>Security Checks</H3>
+        <Ul>
+          <Li>Account lockout status check</Li>
+          <Li>Failed login attempt counter (5 attempts = 15 min lock)</Li>
+          <Li>Account activation status verification</Li>
+          <Li>Password verification with BCrypt/Argon2 hashing</Li>
+          <Li>Two-factor authentication enforcement when enabled</Li>
+        </Ul>
+
+        <H2>Security Features</H2>
+        <H3>Rate Limiting</H3>
+        <Callout type="info" title="Authentication-Specific Limits">
+          <Ul>
+            <Li><Code>/auth/login/</Code> - 120 requests per minute</Li>
+            <Li><Code>/auth/register/</Code> - 60 requests per 5 minutes</Li>
+            <Li><Code>/auth/otp/</Code> - 60 requests per 5 minutes</Li>
+            <Li><Code>/auth/otp/verify/</Code> - 120 requests per 5 minutes</Li>
+            <Li><Code>/auth/password-reset/</Code> - 60 requests per 5 minutes</Li>
+          </Ul>
+        </Callout>
+
+        <H3>Account Lockout</H3>
+        <P>Failed login attempts are tracked with automatic lockout after 5 failed attempts (15-minute lock duration). The system resets the counter on successful login.</P>
+
+        <H3>Password Security</H3>
+        <Ul>
+          <Li>Multiple hashing algorithms supported (BCrypt, PBKDF2, Argon2)</Li>
+          <Li>Configurable password complexity requirements</Li>
+          <Li>Secure password reset flow via OTP</Li>
+        </Ul>
+
+        <H2>Two-Factor Authentication (2FA)</H2>
+        <P>Optional 2FA support adds an additional security layer for sensitive operations:</P>
+        <Ul>
+          <Li>TOTP-based two-factor authentication</Li>
+          <Li>Configurable 2FA methods per user</Li>
+          <Li>Challenge flow during login when 2FA is enabled</Li>
+          <Li>Setup, confirmation, and disable workflows</Li>
+        </Ul>
+
+        <H2>OTP System</H2>
+        <P>One-Time Passwords are used for various verification purposes:</P>
+        <Ul>
+          <Li><Badge>Phone Verification</Badge> Initial phone number verification</Li>
+          <Li><Badge>Login</Badge> Alternative login method</Li>
+          <Li><Badge>Password Reset</Badge> Secure password recovery</Li>
+          <Li><Badge>Transaction PIN</Badge> Financial transaction authorization</Li>
+          <Li><Badge>Two-Factor</Badge> 2FA challenge verification</Li>
+        </Ul>
+
+        <H3>OTP Security Features</H3>
+        <Ul>
+          <Li>6-digit numeric codes with configurable expiration</Li>
+          <Li>Automatic invalidation of unused OTPs on new requests</Li>
+          <Li>Attempt limiting (3 attempts per OTP)</Li>
+          <Li>SMS delivery via Termii integration</Li>
+          <Li>Comprehensive logging for security monitoring</Li>
+        </Ul>
+
+        <H2>WebSocket Authentication</H2>
+        <P>Real-time features use JWT-based WebSocket authentication with multiple token transmission methods:</P>
+        <Ul>
+          <Li><strong>Authorization Header</strong> (Preferred): <Code>Bearer &lt;token&gt;</Code></Li>
+          <Li><strong>WebSocket Protocol:</strong> <Code>access_token.&lt;token&gt;</Code></Li>
+          <Li><strong>Query Parameter</strong> (Legacy): <Code>?token=&lt;token&gt;</Code></Li>
+        </Ul>
+
+        <H2>Audit Logging</H2>
+        <P>Comprehensive audit trail for security-sensitive events:</P>
+        <Ul>
+          <Li>Login/logout events with IP addresses</Li>
+          <Li>Password changes and role modifications</Li>
+          <Li>Financial transactions (wallet credits/debits)</Li>
+          <Li>Integration and configuration updates</Li>
+          <Li>User modifications and administrative actions</Li>
+        </Ul>
+
+        <H2>Frontend Integration</H2>
+        <H3>State Management</H3>
+        <P>Zustand-based authentication store with persistence handles user state, tokens, and authentication status across the application.</P>
+
+        <H3>Token Storage Strategy</H3>
+        <Callout type="success" title="Security Best Practice">
+          <P>Tokens are primarily stored in sessionStorage for security (cleared on tab close) with localStorage migration support for legacy sessions. The system automatically migrates tokens from localStorage to sessionStorage on load.</P>
+        </Callout>
+
+        <H3>Automatic Token Refresh</H3>
+        <P>Axios interceptors handle 401 responses by automatically refreshing tokens using the refresh token. If refresh fails, the system clears tokens and redirects to login.</P>
+
+        <H2>Configuration</H2>
+        <H3>Environment Variables</H3>
+        <Ul>
+          <Li><Code>SECRET_KEY</Code> - Core application secret</Li>
+          <Li><Code>JWT_SECRET_KEY</Code> - JWT signing key (falls back to SECRET_KEY)</Li>
+          <Li><Code>OTP_EXPIRY_MINUTES</Code> - OTP validity period (default: 10)</Li>
+          <Li><Code>SESSION_MAX_AGE_DAYS</Code> - Maximum session duration (default: 14)</Li>
+          <Li><Code>RATE_LIMIT_ENABLED</Code> - Enable/disable rate limiting</Li>
+          <Li><Code>TERMII_API_KEY</Code> - SMS provider integration</Li>
+        </Ul>
+
+        <H2>Security Best Practices</H2>
+        <Callout type="warning" title="Implemented Security Measures">
+          <Ul>
+            <Li>Short-lived access tokens (60 minutes)</Li>
+            <Li>Refresh token rotation with blacklisting</Li>
+            <Li>IP-based and identifier-based rate limiting</Li>
+            <Li>Failed login attempt tracking with lockout</Li>
+            <Li>Phone and email verification requirements</Li>
+            <Li>Maximum session age enforcement</Li>
+            <Li>Secure token storage (sessionStorage preference)</Li>
+            <Li>HTTPS enforcement in production</Li>
+            <Li>Content Security Policy headers</Li>
+            <Li>Permissions policy headers</Li>
+          </Ul>
+        </Callout>
+
+        <H2>Troubleshooting</H2>
+        <H3>Common Issues</H3>
+        <Ul>
+          <Li><strong>Token Refresh Failures:</strong> Check session age vs <Code>SESSION_MAX_AGE_DAYS</Code>, verify refresh token not blacklisted, ensure user account is active</Li>
+          <Li><strong>Authentication Loop:</strong> Verify token storage mechanism, check for localStorage/sessionStorage conflicts, review axios interceptor configuration</Li>
+          <Li><strong>Rate Limiting Issues:</strong> Check rate limit configuration, verify cache backend connectivity, review IP address detection</Li>
+          <Li><strong>2FA Problems:</strong> Verify TOTP secret generation, check time synchronization, review 2FA challenge token validity</Li>
+        </Ul>
+
+        <H2>API Integration Examples</H2>
+        <H3>Login Request</H3>
+        <CodeBlock>POST /api/v1/auth/login/
+Content-Type: application/json
+
+{
+  "phone_number": "+2348012345678",
+  "password": "securepassword123"
+}</CodeBlock>
+
+        <H3>Token Refresh Request</H3>
+        <CodeBlock>POST /api/v1/auth/token/refresh/
+Content-Type: application/json
+
+{
+  "refresh": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+}</CodeBlock>
+
+        <H3>Authenticated Request</H3>
+        <CodeBlock>GET /api/v1/users/me/
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...</CodeBlock>
       </div>
     ),
     dashboard: (

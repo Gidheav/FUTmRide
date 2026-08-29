@@ -10,11 +10,13 @@ function ChartBox({
   subtitle,
   children,
   height,
+  style,
 }: {
   title: string
   subtitle?: string
   children: ReactNode
   height?: number
+  style?: React.CSSProperties
 }) {
   return (
     <div style={{
@@ -24,6 +26,7 @@ function ChartBox({
       display: 'flex',
       flexDirection: 'column',
       minHeight: height ?? 0,
+      ...style,
     }}
     >
       <div style={{ marginBottom: 10 }}>
@@ -69,14 +72,14 @@ export function TotalsComparisonChart({
   const vbH = h + 32
 
   return (
-    <ChartBox title="Fare comparison" subtitle="Live production vs what-if totals">
-      <div style={{ width: '100%', height: vbH, overflow: 'hidden' }}>
+    <ChartBox title="Fare comparison" subtitle="Live production vs what-if totals" style={{ flex: 1, minHeight: 0 }}>
+      <div style={{ width: '100%', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <svg
         width="100%"
-        height={vbH}
+        height="100%"
         viewBox={`0 0 ${vbW} ${vbH}`}
         preserveAspectRatio="xMidYMid meet"
-        style={{ display: 'block', maxWidth: '100%' }}
+        style={{ display: 'block', maxWidth: '100%', flex: 1, minHeight: 0 }}
       >
         {rows.map((row, i) => {
           const x = 24 + i * 80
@@ -223,9 +226,9 @@ export function SensitivityLineChart({
   const yTicks = [0, 0.25, 0.5, 0.75, 1]
 
   return (
-    <ChartBox title="Distance sensitivity" subtitle="Animated fare curves — see live vs what-if rise and fall by trip length">
+    <ChartBox title="Distance sensitivity" subtitle="Animated fare curves — see live vs what-if rise and fall by trip length" style={{ flex: 1, minHeight: 0 }}>
       <style>{SENS_CHART_CSS}</style>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 8, flexShrink: 0 }}>
         <div style={{ display: 'flex', gap: 14, fontSize: 10, color: MUTED }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             <span style={{ width: 20, height: 3, background: LIVE, borderRadius: 1 }} />
@@ -383,8 +386,9 @@ export function ComponentSplitChart({
   const max = Math.max(...liveVals, ...whatVals, 1)
 
   return (
-    <ChartBox title="Fare composition" subtitle="What makes up the total · side by side">
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+    <ChartBox title="Fare composition" subtitle="Base, distance, booking, and surge split" style={{ flex: 1, minHeight: 0 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflowY: 'auto' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, flex: 1 }}>
         {[{ label: 'Live', vals: liveVals, accent: LIVE }, { label: 'What-if', vals: whatVals, accent: WHATIF }].map((col) => (
           <div key={col.label}>
             <div style={{ fontSize: 9, fontWeight: 700, color: col.accent, marginBottom: 8, textTransform: 'uppercase' }}>{col.label}</div>
@@ -409,6 +413,7 @@ export function ComponentSplitChart({
             {p}
           </span>
         ))}
+      </div>
       </div>
     </ChartBox>
   )

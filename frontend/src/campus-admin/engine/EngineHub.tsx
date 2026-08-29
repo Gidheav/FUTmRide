@@ -16,7 +16,6 @@ import type { FareConfig, FareDraft, PlatformSettings } from './types'
 import { OverviewTab } from './tabs/OverviewTab'
 import { TariffsTab } from './tabs/TariffsTab'
 import { SimulationTab } from './tabs/SimulationTab'
-import { CalibrationTab } from './tabs/CalibrationTab'
 import { GlobalTab } from './tabs/GlobalTab'
 import { HistoryTab } from './tabs/HistoryTab'
 
@@ -202,9 +201,6 @@ export default function EngineHub() {
             tariffsDraft={draft}
             tariffsVehicle={activeVehicle}
           />
-        )}
-        {activeTab === 'calibration' && (
-          <CalibrationTab settings={settings} />
         )}
         {activeTab === 'global' && (
           <GlobalTab

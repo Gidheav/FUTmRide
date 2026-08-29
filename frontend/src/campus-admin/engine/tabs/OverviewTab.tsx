@@ -161,7 +161,7 @@ export function OverviewTab({
           display: grid;
           grid-template-columns: minmax(0, 1fr) 300px;
           gap: 2px;
-          align-items: start;
+          align-items: stretch;
           min-height: 0;
         }
         @media (max-width: 980px) {
@@ -204,6 +204,21 @@ export function OverviewTab({
           icon={pendingCount ? AlertTriangle : Clock3}
           tone={pendingCount ? 'warn' : 'neutral'}
         />
+
+        {/* Engine Actions Card (moved from side stack) */}
+        <div style={{ ...campusPanel.card, borderTop: `2px solid ${T.accent}`, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 6, flex: 1, justifyContent: 'center' }}>
+            <div style={{ ...labelStyle, marginBottom: 2 }}>Engine Actions</div>
+            <button type="button" onClick={onGoTariffs} style={{ ...campusPanel.btnPrimary, justifyContent: 'center', padding: '6px 12px', minHeight: 28, fontSize: 11 }}>
+              <Calculator size={13} />
+              Edit tariffs
+            </button>
+            <button type="button" onClick={onGoSimulation} style={{ ...campusPanel.btnSecondary, justifyContent: 'center', padding: '6px 12px', minHeight: 28, fontSize: 11 }}>
+              <Terminal size={13} />
+              Run simulation
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="engine-overview-main">
@@ -260,7 +275,7 @@ export function OverviewTab({
         </section>
 
         <aside style={s.sideStack}>
-          <section style={campusPanel.card}>
+          <section style={{ ...campusPanel.card, flex: 1 }}>
             <div style={sectionHeader}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Gauge size={14} color={T.accent} />
@@ -280,25 +295,6 @@ export function OverviewTab({
                   <span style={{ fontSize: 12, color: T.textPrimary, fontWeight: 700 }}>{value}</span>
                 </div>
               ))}
-            </div>
-          </section>
-
-          <section style={campusPanel.card}>
-            <div style={sectionHeader}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Calculator size={14} color={T.accent} />
-                <span style={{ fontSize: 12, fontWeight: 700, color: T.textWhite }}>Engine Actions</span>
-              </div>
-            </div>
-            <div style={{ padding: 12, display: 'grid', gap: 8 }}>
-              <button type="button" onClick={onGoTariffs} style={{ ...campusPanel.btnPrimary, justifyContent: 'center', padding: '10px 12px' }}>
-                <Calculator size={13} />
-                Edit tariffs
-              </button>
-              <button type="button" onClick={onGoSimulation} style={{ ...campusPanel.btnSecondary, justifyContent: 'center', padding: '10px 12px' }}>
-                <Terminal size={13} />
-                Run simulation
-              </button>
             </div>
           </section>
         </aside>
