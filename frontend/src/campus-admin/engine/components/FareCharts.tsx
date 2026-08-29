@@ -40,7 +40,7 @@ function ChartBox({
   )
 }
 
-/** Grouped vertical bars — live vs what-if */
+/** Grouped horizontal bars — live vs simulated */
 export function TotalsComparisonChart({
   live,
   whatIf,
@@ -54,58 +54,47 @@ export function TotalsComparisonChart({
     { key: 'Driver', live: live?.driver ?? 0, whatIf: whatIf?.driver ?? 0 },
   ]
   const max = Math.max(...rows.flatMap((r) => [r.live, r.whatIf]), 1)
-  const h = 120
-  const barW = 22
-  const gap = 36
 
   if (!live && !whatIf) {
     return (
-      <ChartBox title="Fare comparison" subtitle="Run calculation to compare totals">
-        <div style={{ height: h, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.textMuted, fontSize: 11 }}>
+      <ChartBox title="Fare comparison" subtitle="Run calculation to compare totals" style={{ flex: 1, minHeight: 0 }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.textMuted, fontSize: 11 }}>
           No data yet
         </div>
       </ChartBox>
     )
   }
 
-  const vbW = rows.length * 80 + 40
-  const vbH = h + 32
-
   return (
-    <ChartBox title="Fare comparison" subtitle="Live production vs what-if totals" style={{ flex: 1, minHeight: 0 }}>
-      <div style={{ width: '100%', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <svg
-        width="100%"
-        height="100%"
-        viewBox={`0 0 ${vbW} ${vbH}`}
-        preserveAspectRatio="xMidYMid meet"
-        style={{ display: 'block', maxWidth: '100%', flex: 1, minHeight: 0 }}
-      >
-        {rows.map((row, i) => {
-          const x = 24 + i * 80
-          const liveH = (row.live / max) * h
-          const whatH = (row.whatIf / max) * h
-          return (
-            <g key={row.key}>
-              <rect x={x} y={h - liveH} width={barW} height={liveH} fill={LIVE} opacity={0.85} />
-              <rect x={x + barW + 6} y={h - whatH} width={barW} height={whatH} fill={WHATIF} opacity={0.85} />
-              <text x={x + barW + 3} y={h + 14} textAnchor="middle" fill={MUTED} fontSize={9} fontFamily="system-ui">
-                {row.key}
-              </text>
-              <text x={x + 6} y={h - liveH - 4} textAnchor="middle" fill={LIVE} fontSize={8} fontFamily="monospace">
-                {row.live > 0 ? `₦${Math.round(row.live)}` : ''}
-              </text>
-              <text x={x + barW + 12} y={h - whatH - 4} textAnchor="middle" fill={WHATIF} fontSize={8} fontFamily="monospace">
-                {row.whatIf > 0 ? `₦${Math.round(row.whatIf)}` : ''}
-              </text>
-            </g>
-          )
-        })}
-        <rect x={8} y={4} width={8} height={8} fill={LIVE} />
-        <text x={20} y={11} fill={MUTED} fontSize={9}>Live</text>
-        <rect x={52} y={4} width={8} height={8} fill={WHATIF} />
-        <text x={64} y={11} fill={MUTED} fontSize={9}>What-if</text>
-      </svg>
+    <ChartBox title="Fare comparison" subtitle="Live production vs simulated totals" style={{ flex: 1, minHeight: 0 }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-evenly', gap: 12, padding: '4px 0', overflowY: 'auto' }}>
+        {rows.map((row) => (
+          <div key={row.key} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.textPrimary, textTransform: 'uppercase', letterSpacing: 0.5 }}>{row.key}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {/* Live bar */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ width: 44, fontSize: 9, color: MUTED, textAlign: 'right' }}>Live</div>
+                <div style={{ flex: 1, height: 12, background: T.border, borderRadius: 2, overflow: 'hidden', display: 'flex' }}>
+                  <div style={{ width: `${(row.live / max) * 100}%`, background: LIVE, height: '100%', transition: 'width 0.3s ease', borderRadius: 2 }} />
+                </div>
+                <div style={{ width: 40, fontSize: 10, fontFamily: 'monospace', color: LIVE, fontWeight: 700, textAlign: 'right' }}>
+                  {row.live > 0 ? `₦${Math.round(row.live)}` : '—'}
+                </div>
+              </div>
+              {/* Simulated bar */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ width: 44, fontSize: 9, color: MUTED, textAlign: 'right' }}>Simulated</div>
+                <div style={{ flex: 1, height: 12, background: T.border, borderRadius: 2, overflow: 'hidden', display: 'flex' }}>
+                  <div style={{ width: `${(row.whatIf / max) * 100}%`, background: WHATIF, height: '100%', transition: 'width 0.3s ease', borderRadius: 2 }} />
+                </div>
+                <div style={{ width: 40, fontSize: 10, fontFamily: 'monospace', color: WHATIF, fontWeight: 700, textAlign: 'right' }}>
+                  {row.whatIf > 0 ? `₦${Math.round(row.whatIf)}` : '—'}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </ChartBox>
   )
@@ -179,7 +168,7 @@ const SENS_CHART_CSS = `
 }
 `
 
-/** Animated dual-line chart — fare growth vs distance (live vs what-if) */
+/** Animated dual-line chart — fare growth vs distance (live vs simulated) */
 export function SensitivityLineChart({
   rows,
   highlightKm,
@@ -226,7 +215,7 @@ export function SensitivityLineChart({
   const yTicks = [0, 0.25, 0.5, 0.75, 1]
 
   return (
-    <ChartBox title="Distance sensitivity" subtitle="Animated fare curves — see live vs what-if rise and fall by trip length" style={{ flex: 1, minHeight: 0 }}>
+    <ChartBox title="Distance sensitivity" subtitle="Animated fare curves — see live vs simulated rise and fall by trip length" style={{ flex: 1, minHeight: 0 }}>
       <style>{SENS_CHART_CSS}</style>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 8, flexShrink: 0 }}>
         <div style={{ display: 'flex', gap: 14, fontSize: 10, color: MUTED }}>
@@ -236,7 +225,7 @@ export function SensitivityLineChart({
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             <span style={{ width: 20, height: 0, borderTop: `2px dashed ${WHATIF}` }} />
-            What-if (sandbox)
+            Simulated (sandbox)
           </span>
         </div>
         <span style={{ fontSize: 9, color: T.textMuted }}>↗ longer trips · replay on Calculate</span>
@@ -389,7 +378,7 @@ export function ComponentSplitChart({
     <ChartBox title="Fare composition" subtitle="Base, distance, booking, and surge split" style={{ flex: 1, minHeight: 0 }}>
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflowY: 'auto' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, flex: 1 }}>
-        {[{ label: 'Live', vals: liveVals, accent: LIVE }, { label: 'What-if', vals: whatVals, accent: WHATIF }].map((col) => (
+        {[{ label: 'Live', vals: liveVals, accent: LIVE }, { label: 'Simulated', vals: whatVals, accent: WHATIF }].map((col) => (
           <div key={col.label}>
             <div style={{ fontSize: 9, fontWeight: 700, color: col.accent, marginBottom: 8, textTransform: 'uppercase' }}>{col.label}</div>
             {parts.map((p, i) => (

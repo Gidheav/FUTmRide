@@ -2,9 +2,10 @@ import { useState, useCallback, useMemo, useEffect, type CSSProperties, type Rea
 import {
   Play, Activity, Copy, RotateCcw, SlidersHorizontal, Shield,
   Bookmark, BookmarkCheck, TrendingUp, TrendingDown, Minus,
-  Users, Zap, AlertTriangle, CheckCircle2, Info,
+  Users, Zap, AlertTriangle, CheckCircle2, Info, XCircle,
   BarChart3, Target, Clock, Wallet,
 } from 'lucide-react'
+import axios from 'axios'
 import api from '../../../core/api'
 import { campusPanel } from '../../shared/campusPanelStyles'
 import { T } from '../../theme'
@@ -24,6 +25,28 @@ import type { FareConfig, FareDraft, PlatformSettings, SimulationResult } from '
 const ngn = (n: number) => `₦${Math.round(n).toLocaleString()}`
 const fmtPct = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`
 const r2 = (n: number) => Math.round(n * 100) / 100
+
+// ─── local storage hook ────────────────────────────────────────────────────────
+function useLocalStorage<T>(key: string, initialValue: T): [T, (val: T | ((v: T) => T)) => void] {
+  const [storedValue, setStoredValue] = useState<T>(() => {
+    try {
+      const item = window.localStorage.getItem(key)
+      return item ? JSON.parse(item) : initialValue
+    } catch {
+      return initialValue
+    }
+  })
+  const setValue = (value: T | ((val: T) => T)) => {
+    try {
+      const valueToStore = value instanceof Function ? value(storedValue) : value
+      setStoredValue(valueToStore)
+      window.localStorage.setItem(key, JSON.stringify(valueToStore))
+    } catch (error) {
+      console.error(error)
+    }
+  }
+  return [storedValue, setValue]
+}
 
 // ─── shared style primitives ──────────────────────────────────────────────────
 const inp: CSSProperties = {
@@ -172,20 +195,21 @@ export function SimulationTab({
   tariffsVehicle: string
 }) {
   const [vehicle, setVehicle] = useState(tariffsVehicle)
-  const [distance, setDistance] = useState(12.5)
-  const [surge, setSurge] = useState(1)
-  const [tripsPerDay, setTripsPerDay] = useState(8)
-  const [studentBudget, setStudentBudget] = useState(500)
-  const [activeView, setActiveView] = useState<'compare' | 'sensitivity' | 'fleet' | 'projections' | 'trace'>('compare')
+  const [distance, setDistance] = useLocalStorage('lr-sim-distance', 12.5)
+  const [surge, setSurge] = useLocalStorage('lr-sim-surge', 1)
+  const [tripsPerDay, setTripsPerDay] = useLocalStorage('lr-sim-trips', 8)
+  const [studentBudget, setStudentBudget] = useLocalStorage('lr-sim-budget', 500)
+  const [activeView, setActiveView] = useLocalStorage<'compare' | 'sensitivity' | 'fleet' | 'projections' | 'trace'>('lr-sim-view', 'compare')
 
   const [tariff, setTariff] = useState<FareDraft>(() =>
     liveConfigs[tariffsVehicle] ? configToDraft(liveConfigs[tariffsVehicle]) : defaultFareDraft(tariffsVehicle),
   )
   const [liveResult, setLiveResult] = useState<SimulationResult | null>(null)
   const [running, setRunning] = useState(false)
+  const [runError, setRunError] = useState<string | null>(null)
   const [chartAnimKey, setChartAnimKey] = useState(0)
-  const [activeTrace, setActiveTrace] = useState<'live' | 'whatif'>('whatif')
-  const [savedScenarios, setSavedScenarios] = useState<SavedScenario[]>([])
+  const [activeTrace, setActiveTrace] = useLocalStorage<'live' | 'whatif'>('lr-sim-trace', 'whatif')
+  const [savedScenarios, setSavedScenarios] = useLocalStorage<SavedScenario[]>('lr-sim-scenarios', [])
   const [saveName, setSaveName] = useState('')
   const [showSave, setShowSave] = useState(false)
 
@@ -207,7 +231,7 @@ export function SimulationTab({
     setTariff(c ? configToDraft(c) : defaultFareDraft(vehicle))
   }, [vehicle, tariffsVehicle, tariffsDraft, liveConfigs])
 
-  // what-if always live — no button needed
+  // simulated always live — no button needed
   const whatIfResult = useMemo(
     () => calculateFare(vehicle, distance, surge, settings, tariff, 'custom_sandbox'),
     [vehicle, distance, surge, settings, tariff],
@@ -241,12 +265,12 @@ export function SimulationTab({
     const baseDiff = tariff.base_fare - ld.base_fare
     const perKmDiff = tariff.per_km_rate - ld.per_km_rate
     if (perKmDiff === 0) {
-      return { km: null, note: baseDiff > 0 ? 'What-if always pricier' : baseDiff < 0 ? 'What-if always cheaper' : 'Identical tariffs' }
+      return { km: null, note: baseDiff > 0 ? 'Simulated always pricier' : baseDiff < 0 ? 'Simulated always cheaper' : 'Identical tariffs' }
     }
     const crossKm = r2(-baseDiff / perKmDiff)
     return {
       km: crossKm > 0 ? crossKm : null,
-      note: crossKm <= 0 ? (baseDiff < 0 ? 'What-if cheaper at all distances' : 'What-if pricier at all distances') : undefined,
+      note: crossKm <= 0 ? (baseDiff < 0 ? 'Simulated cheaper at all distances' : 'Simulated pricier at all distances') : undefined,
     }
   }, [vehicle, tariff, liveConfigs])
 
@@ -268,13 +292,40 @@ export function SimulationTab({
 
   const run = useCallback(async () => {
     setRunning(true)
+    setRunError(null)
     try {
-      const res = await api.post('/pricing/estimate/', { vehicle_type: vehicle, distance_km: distance, surge_multiplier: surge })
+      // Use a longer timeout (45s) to handle Render free-tier cold starts
+      const res = await api.post(
+        '/pricing/estimate/',
+        { vehicle_type: vehicle, distance_km: distance, surge_multiplier: surge },
+        { timeout: 45000 },
+      )
       setLiveResult(res.data)
+      setRunError(null)
       setChartAnimKey(k => k + 1)
-    } catch {
-      alert('Could not reach pricing API for live baseline.')
-    } finally { setRunning(false) }
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        const status = err.response?.status
+        const data = err.response?.data
+        const serverMsg =
+          typeof data === 'string'
+            ? data
+            : (data as Record<string, unknown>)?.detail as string
+              || (data as Record<string, unknown>)?.error as string
+              || JSON.stringify(data)
+        if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+          setRunError('Request timed out — the server may be waking up. Try again in a few seconds.')
+        } else if (!err.response) {
+          setRunError('Cannot reach the server. Check your internet connection or backend status.')
+        } else {
+          setRunError(`Server error ${status}: ${serverMsg || err.message}`)
+        }
+      } else {
+        setRunError('Unexpected error — could not fetch live baseline.')
+      }
+    } finally {
+      setRunning(false)
+    }
   }, [vehicle, distance, surge])
 
   const saveScenario = () => {
@@ -289,7 +340,7 @@ export function SimulationTab({
       'LR-Ride Fare Simulation',
       `${vehicleLabel} · ${distance} km · surge ${surge}×`,
       liveResult ? `Live: ${ngn(liveResult.total_fare)} (driver ${ngn(liveResult.driver_earnings)})` : 'Live: not fetched',
-      `What-if: ${ngn(whatIfResult.total_fare)} (driver ${ngn(whatIfResult.driver_earnings)})`,
+      `Simulated: ${ngn(whatIfResult.total_fare)} (driver ${ngn(whatIfResult.driver_earnings)})`,
       delta ? `Delta: ${delta.amount >= 0 ? '+' : ''}${ngn(delta.amount)} (${fmtPct(delta.pct)})` : '',
       `Driver est: ${ngn(projection.daily)}/day · ${ngn(projection.monthly)}/month`,
     ].filter(Boolean).join('\n'))
@@ -494,7 +545,7 @@ export function SimulationTab({
               icon={CheckCircle2}
             />
             <KpiTile
-              label="What-if fare"
+              label="Simulated fare"
               value={ngn(whatIfResult.total_fare)}
               sub={`Driver ${ngn(whatIfResult.driver_earnings)}`}
               accent={T.purple}
@@ -534,7 +585,7 @@ export function SimulationTab({
               <AffordGauge fare={whatIfResult.total_fare} budget={studentBudget} />
               <div style={{ padding: '0 14px 12px', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                 <div>
-                  <div style={upLabel}>What-if fare</div>
+                  <div style={upLabel}>Simulated fare</div>
                   <div style={{ fontSize: 14, fontWeight: 800, color: T.purple, fontFamily: 'monospace' }}>{ngn(whatIfResult.total_fare)}</div>
                 </div>
                 {hasLive && (
@@ -560,7 +611,7 @@ export function SimulationTab({
                   <DataRow label="Crossover at" value={breakEven.km != null ? `${breakEven.km} km` : '—'} note={breakEven.note} mono />
                   <DataRow label="Your test distance" value={`${distance} km`}
                     note={breakEven.km != null
-                      ? (distance >= breakEven.km ? 'What-if is more expensive here' : 'What-if is cheaper here')
+                      ? (distance >= breakEven.km ? 'Simulated is more expensive here' : 'Simulated is cheaper here')
                       : undefined} mono />
                   <DataRow
                     label="Base diff"
@@ -634,6 +685,26 @@ export function SimulationTab({
                   <Copy size={14} />
                 </button>
               </div>
+
+              {/* Running hint — server may be cold-starting */}
+              {running && (
+                <div style={{ fontSize: 9, color: T.textMuted, textAlign: 'center', padding: '4px 0' }}>
+                  Contacting server… this may take up to 45 s on first request.
+                </div>
+              )}
+
+              {/* Error strip */}
+              {runError && !running && (
+                <div style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 6,
+                  padding: '8px 10px', background: 'rgba(239,68,68,0.08)',
+                  border: '1px solid rgba(239,68,68,0.35)', fontSize: 10,
+                  color: T.error ?? '#ef4444', lineHeight: 1.4,
+                }}>
+                  <XCircle size={12} style={{ flexShrink: 0, marginTop: 1 }} />
+                  <span>{runError}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -719,7 +790,7 @@ export function SimulationTab({
                 <SecHead icon={Wallet} title="Batch Trip Estimator" sub="multi-ride totals" />
                 {/* Table header */}
                 <div className="sim-batch-row" style={{ background: T.bgCard }}>
-                  {['Trips', 'What-if', hasLive ? 'Live' : '(no live)', 'Driver net'].map(h => (
+                  {['Trips', 'Simulated', hasLive ? 'Live' : '(no live)', 'Driver net'].map(h => (
                     <div key={h} className="sim-batch-cell" style={{ fontSize: 9, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.4 }}>{h}</div>
                   ))}
                 </div>
@@ -748,7 +819,7 @@ export function SimulationTab({
                       color: activeTrace === t ? T.accent : T.textMuted, cursor: 'pointer',
                     }}
                     onClick={() => setActiveTrace(t)}>
-                    {t === 'live' ? 'Live detail' : 'What-if detail'}
+                    {t === 'live' ? 'Live detail' : 'Simulated detail'}
                   </button>
                 ))}
                 {!hasLive && activeTrace === 'live' && (
@@ -807,12 +878,12 @@ export function SimulationTab({
         </div>
 
         {/* ═══════════════════════════════════════════════════════════════════
-            RIGHT COLUMN — What-If Tariff, Scenarios, Actions
+            RIGHT COLUMN — Simulated Tariff, Scenarios, Actions
         ═══════════════════════════════════════════════════════════════════ */}
         <div className="sim-right-col">
-          {/* What-if tariff editor */}
+          {/* Simulated tariff editor */}
           <div style={{ ...campusPanel.card, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-            <SecHead icon={SlidersHorizontal} title="What-If Tariff" sub="auto-recalculates" />
+            <SecHead icon={SlidersHorizontal} title="Simulated Tariff" sub="auto-recalculates" />
             <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, flex: 1, overflowY: 'auto' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                 <button type="button" className="sim-chip" onClick={loadFromLive}><Copy size={10} /> From live</button>

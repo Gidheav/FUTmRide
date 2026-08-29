@@ -65,13 +65,17 @@ class FareConfigSerializer(serializers.ModelSerializer):
     def validate_effective_from(self, value):
         from django.utils import timezone
         now = timezone.now()
-        
-        # If updating an existing config, and the date hasn't changed, allow it.
-        if self.instance and self.instance.effective_from == value:
-            return value
-            
-        # For new configs or changed dates, ensure it's not backdated.
-        # Allow a 5-minute buffer for form filling/network delay.
+
+        # When updating an existing config, allow keeping the original effective_from
+        # even if it's in the past.  Compare with a 1-second tolerance to handle
+        # microsecond / timezone precision mismatches between the DB and JSON round-trip.
+        if self.instance:
+            delta = abs((self.instance.effective_from - value).total_seconds())
+            if delta < 1:
+                return value  # keeping the same date — allow it unconditionally
+
+        # For new configs or genuinely changed dates, reject past values.
+        # Allow a 5-minute buffer for form filling / network delay.
         if value < now - timezone.timedelta(minutes=5):
             raise serializers.ValidationError('Effective date cannot be set in the past.')
         return value

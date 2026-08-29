@@ -435,21 +435,21 @@ export const DOCS_CONTENT: Record<string, Record<string, React.ReactNode>> = {
 
         <H2>API Integration Examples</H2>
         <H3>Login Request</H3>
-        <CodeBlock>POST /api/v1/auth/login/
+        <CodeBlock>{`POST /api/v1/auth/login/
 Content-Type: application/json
 
 {
   "phone_number": "+2348012345678",
   "password": "securepassword123"
-}</CodeBlock>
+}`}</CodeBlock>
 
         <H3>Token Refresh Request</H3>
-        <CodeBlock>POST /api/v1/auth/token/refresh/
+        <CodeBlock>{`POST /api/v1/auth/token/refresh/
 Content-Type: application/json
 
 {
   "refresh": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
-}</CodeBlock>
+}`}</CodeBlock>
 
         <H3>Authenticated Request</H3>
         <CodeBlock>GET /api/v1/users/me/

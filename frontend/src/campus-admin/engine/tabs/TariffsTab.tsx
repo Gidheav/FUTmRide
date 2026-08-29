@@ -150,6 +150,8 @@ export function TariffsTab({
   isDraftDirty,
   isNewConfig,
   savingConfig,
+  canSaveConfig,
+  draftError,
   onSave,
   onRevert,
 }: {
@@ -166,12 +168,14 @@ export function TariffsTab({
   isDraftDirty: boolean
   isNewConfig: boolean
   savingConfig: boolean
+  canSaveConfig: boolean
+  draftError: string | null
   onSave: () => void
   onRevert: () => void
 }) {
   const activeVehicleLabel = VEHICLE_TYPES.find((vehicle) => vehicle.id === activeVehicle)?.label ?? activeVehicle
   const canRevert = isDraftDirty || isNewConfig
-  const canSave = !savingConfig && canRevert
+  const canSave = canSaveConfig
   const standardPreview = previewFare(draft, 10, 1)
   const peakPreview = previewFare(draft, 10, 1.5)
   const liveDraft = liveConfig
@@ -339,6 +343,13 @@ export function TariffsTab({
                 <span>
                   Scheduled deploy: {new Date(scheduledConfig.effective_from).toLocaleString()}
                 </span>
+              </div>
+            )}
+
+            {draftError && (
+              <div style={s.errorBar}>
+                <AlertTriangle size={14} color={T.error} />
+                <span>{draftError}</span>
               </div>
             )}
 
@@ -577,6 +588,17 @@ const s: Record<string, CSSProperties> = {
     borderBottom: `1px solid ${T.border}`,
     background: 'rgba(245,158,11,0.08)',
     color: T.warn,
+    fontSize: 11,
+    fontWeight: 700,
+  },
+  errorBar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '9px 16px',
+    borderBottom: `1px solid ${T.border}`,
+    background: 'rgba(239,68,68,0.08)',
+    color: T.error,
     fontSize: 11,
     fontWeight: 700,
   },
