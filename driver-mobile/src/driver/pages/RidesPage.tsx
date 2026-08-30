@@ -1389,7 +1389,15 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
       setDetailedScheduledRide(null);
       Alert.alert('Assignment Cancelled', 'Your assignment was cancelled and a fine has been applied.');
     } catch (err: any) {
-      Alert.alert('Error', err?.response?.data?.error || err?.message || 'Failed to cancel assignment.');
+      let errorMessage = 'Failed to cancel assignment.';
+      if (err?.response?.data?.error) {
+        errorMessage = typeof err.response.data.error === 'string' ? err.response.data.error : JSON.stringify(err.response.data.error);
+      } else if (err?.response?.data?.detail) {
+        errorMessage = typeof err.response.data.detail === 'string' ? err.response.data.detail : JSON.stringify(err.response.data.detail);
+      } else if (err?.message) {
+        errorMessage = err.message;
+      }
+      Alert.alert('Error', errorMessage);
     } finally {
       setCancellingAssignmentId(null);
     }

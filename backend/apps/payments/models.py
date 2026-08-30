@@ -20,6 +20,7 @@ class WalletTransaction(models.Model):
         DRIVER_WITHDRAWAL = 'driver_withdrawal', 'Driver Withdrawal'
         PLATFORM_COMMISSION = 'platform_commission', 'Platform Commission'
         PROMOTION = 'promotion', 'Promotional Credit'
+        DRIVER_PENALTY = 'driver_penalty', 'Driver Penalty'
         ADMIN_ADJUSTMENT = 'admin_adjustment', 'Admin Adjustment'
 
     class Status(models.TextChoices):
