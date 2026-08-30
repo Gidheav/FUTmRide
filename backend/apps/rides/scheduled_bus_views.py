@@ -724,8 +724,7 @@ class DriverCancelScheduledAssignmentView(APIView):
             amount=fine_amount,
             source=WalletTransaction.Source.DRIVER_PENALTY,
             narration=f'Penalty for cancelling assignment on ride {ride.reference}',
-            ride=None,
-            scheduled_ride_id=str(ride.id)
+            metadata={'scheduled_ride_id': str(ride.id)}
         )
 
         # Reassign seated passengers to unassigned
