@@ -88,6 +88,9 @@ class ScheduledRide(models.Model):
     freight_enabled = models.BooleanField(default=False)
     freight_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
+    reminder_60m_sent = models.BooleanField(default=False)
+    reminder_15m_sent = models.BooleanField(default=False)
+
     status = models.CharField(
         max_length=20,
         choices=ScheduledRideStatus.choices,
@@ -434,8 +437,13 @@ class ScheduledRideDriverInterest(models.Model):
     ride = models.ForeignKey(ScheduledRide, on_delete=models.CASCADE, related_name='interested_drivers')
     driver = models.ForeignKey(User, on_delete=models.CASCADE, related_name='scheduled_ride_interests')
     status = models.CharField(
-        max_length=20,
-        choices=[('interested', 'Interested'), ('assigned', 'Assigned'), ('declined', 'Declined')],
+        max_length=30,
+        choices=[
+            ('interested', 'Interested'), 
+            ('assigned', 'Assigned'), 
+            ('declined', 'Declined'),
+            ('withdrawn_with_fine', 'Withdrawn (Fine Applied)')
+        ],
         default='interested',
     )
     created_at = models.DateTimeField(auto_now_add=True)

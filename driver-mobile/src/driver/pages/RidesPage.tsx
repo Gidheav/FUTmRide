@@ -406,7 +406,8 @@ const ScheduledRideCard = React.memo(function ScheduledRideCard({
   onDetailsPress: () => void,
 }) {
   const date = new Date(`${ride.departure_date}T${ride.window_start}`);
-  const isInterested = ride.driver_interest_status === 'interested';
+  const isInterested = ride.driver_interest_status === 'interested' || ride.driver_interest_status === 'assigned';
+  const isAssigned = ride.driver_interest_status === 'assigned';
   
   return (
     <TouchableOpacity
@@ -418,7 +419,7 @@ const ScheduledRideCard = React.memo(function ScheduledRideCard({
       ]}
     >
       {/* Interest dot indicator */}
-      {isInterested && <View style={styles.scheduledInterestDot} />}
+      {isInterested && <View style={[styles.scheduledInterestDot, isAssigned && { backgroundColor: COLORS.primary }]} />}
 
       {/* Time column */}
       <View style={styles.scheduledCompactTime}>
@@ -1372,6 +1373,28 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
     }
   }, []);
 
+  const [cancelAssignmentModalVisible, setCancelAssignmentModalVisible] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancellingAssignmentId, setCancellingAssignmentId] = useState<string | null>(null);
+
+  const handleCancelAssignmentSubmit = async () => {
+    if (!cancellingAssignmentId || !cancelReason.trim()) return;
+    try {
+      await driverApi.cancelScheduledAssignment(cancellingAssignmentId, cancelReason);
+      setAvailableScheduledRides(prev => prev.map(r => 
+        r.id === cancellingAssignmentId ? { ...r, driver_interest_status: 'withdrawn_with_fine' } : r
+      ));
+      setCancelAssignmentModalVisible(false);
+      setCancelReason('');
+      setDetailedScheduledRide(null);
+      Alert.alert('Assignment Cancelled', 'Your assignment was cancelled and a fine has been applied.');
+    } catch (err: any) {
+      Alert.alert('Error', err?.response?.data?.error || err?.message || 'Failed to cancel assignment.');
+    } finally {
+      setCancellingAssignmentId(null);
+    }
+  };
+
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = async () => {
@@ -1874,6 +1897,8 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
             const ride = detailedScheduledRide;
             const date = new Date(`${ride.departure_date}T${ride.window_start}`);
             const isInterested = ride.driver_interest_status === 'interested';
+            const isAssigned = ride.driver_interest_status === 'assigned';
+            const isWithdrawn = ride.driver_interest_status === 'withdrawn_with_fine';
             const isExp = expressingInterestId === ride.id;
             const isCan = cancellingInterestId === ride.id;
             return (
@@ -1963,7 +1988,19 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
 
                 {/* Action buttons */}
                 <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
-                  {isInterested ? (
+                  {isAssigned ? (
+                    <TouchableOpacity
+                      style={[styles.mapSheetAcceptButton, { flex: 1, backgroundColor: COLORS.errorContainer, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' }]}
+                      onPress={() => { 
+                        setCancellingAssignmentId(ride.id);
+                        setCancelAssignmentModalVisible(true);
+                      }}
+                      activeOpacity={0.85}
+                    >
+                      <MaterialIcons name="close" size={20} color={COLORS.error} />
+                      <Text style={[FONTS.labelLg, { color: COLORS.error }]}>Not going</Text>
+                    </TouchableOpacity>
+                  ) : isInterested ? (
                     <TouchableOpacity
                       style={[styles.mapSheetAcceptButton, { flex: 1, backgroundColor: COLORS.errorContainer, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' }]}
                       onPress={() => { handleCancelInterest(ride.id); setDetailedScheduledRide(null); }}
@@ -1978,6 +2015,10 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
                           </>
                       }
                     </TouchableOpacity>
+                  ) : isWithdrawn ? (
+                    <View style={[styles.mapSheetAcceptButton, { flex: 1, backgroundColor: COLORS.surfaceContainer, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' }]}>
+                      <Text style={[FONTS.labelLg, { color: COLORS.onSurfaceVariant }]}>Interest Withdrawn</Text>
+                    </View>
                   ) : (
                     <TouchableOpacity
                       style={[styles.mapSheetAcceptButton, { flex: 1, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' }]}
@@ -2002,6 +2043,56 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
         </View>
       </Modal>
 
+      {/* Cancel Assignment Modal */}
+      <Modal visible={cancelAssignmentModalVisible} transparent animationType="fade">
+        <View style={styles.mapSheetOverlay}>
+          <View style={[styles.mapSheetContainer, { paddingBottom: 32 }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={[FONTS.titleLg, { color: COLORS.onSurface }]}>Cancel Assignment</Text>
+              <TouchableOpacity onPress={() => setCancelAssignmentModalVisible(false)} style={{ padding: 4 }}>
+                <MaterialIcons name="close" size={24} color={COLORS.onSurfaceVariant} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant }]}>
+              Please provide a reason for cancelling this assignment. A flat fine will be deducted from your wallet as a penalty.
+            </Text>
+            <TextInput
+              style={{
+                borderWidth: 1,
+                borderColor: COLORS.surfaceContainerHigh,
+                borderRadius: 12,
+                padding: 12,
+                minHeight: 80,
+                textAlignVertical: 'top',
+                backgroundColor: COLORS.surfaceContainerLowest,
+                ...FONTS.bodyMd,
+                color: COLORS.onSurface
+              }}
+              placeholder="e.g. Vehicle broke down"
+              placeholderTextColor={COLORS.onSurfaceVariant}
+              value={cancelReason}
+              onChangeText={setCancelReason}
+              multiline
+            />
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+              <TouchableOpacity
+                style={[styles.mapSheetAcceptButton, { flex: 1, backgroundColor: COLORS.surfaceContainerHigh, alignItems: 'center', justifyContent: 'center' }]}
+                onPress={() => setCancelAssignmentModalVisible(false)}
+              >
+                <Text style={[FONTS.labelLg, { color: COLORS.onSurface }]}>Go back</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.mapSheetAcceptButton, { flex: 1, backgroundColor: COLORS.error, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', opacity: cancelReason.trim() ? 1 : 0.5 }]}
+                onPress={handleCancelAssignmentSubmit}
+                disabled={!cancelReason.trim()}
+              >
+                <Text style={[FONTS.labelLg, { color: COLORS.onError }]}>Confirm Fine</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </View>
   );
 }
@@ -2020,6 +2111,8 @@ const RequestCard = React.memo(function RequestCard({
   onAccept,
   onCardPress,
   disabled,
+  isAssigned,
+  isInterested,
 }: {
   name: string;
   rating: string;
@@ -2033,6 +2126,8 @@ const RequestCard = React.memo(function RequestCard({
   onAccept: () => void;
   onCardPress: () => void;
   disabled?: boolean;
+  isAssigned?: boolean;
+  isInterested?: boolean;
 }) {
   const initials = name
     .split(' ')
@@ -2057,6 +2152,14 @@ const RequestCard = React.memo(function RequestCard({
           </View>
         </View>
         <View style={{ alignItems: 'flex-end', gap: 4 }}>
+          {(isInterested || isAssigned) && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <MaterialIcons name="check-circle" size={16} color={isAssigned ? COLORS.primary : COLORS.tertiary} />
+              <Text style={[FONTS.bodySm, { color: isAssigned ? COLORS.primary : COLORS.tertiary, fontWeight: '600' }]}>
+                {isAssigned ? "Assigned" : "Interest Expressed"}
+              </Text>
+            </View>
+          )}
           {distToPickup && (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <MaterialIcons name="near-me" size={14} color={COLORS.primary} />

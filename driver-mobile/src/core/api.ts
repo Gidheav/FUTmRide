@@ -261,6 +261,7 @@ export const driverApi = {
   getAvailableScheduledRides: (url?: string) => api.get(url || 'rides/scheduled/driver/available/'),
   expressInterestScheduledRide: (rideId: string) => api.post(`rides/scheduled/${rideId}/interest/`),
   cancelInterestScheduledRide: (rideId: string) => api.delete(`rides/scheduled/${rideId}/interest/`),
+  cancelScheduledAssignment: (rideId: string, reason: string) => api.post(`rides/scheduled/${rideId}/cancel-assignment/`, { reason }),
 }
 
 export const verificationApi = {

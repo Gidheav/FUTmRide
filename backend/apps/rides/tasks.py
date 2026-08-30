@@ -230,6 +230,71 @@ def auto_confirm_pending_ride(self, ride_id: str):
             logger.error('auto_confirm_pending_ride_error ref=%s err=%s', ride.reference, str(e))
 
 
+@shared_task(bind=True, name='rides.remind_scheduled_ride_passengers')
+def remind_scheduled_ride_passengers(self):
+    from django.utils import timezone
+    import datetime
+    from apps.rides.scheduled_models import ScheduledRide, ScheduledRideStatus, PassengerStatus
+    from apps.notifications.services import NotificationService
+    from apps.notifications.models import Notification
+    
+    now = timezone.now()
+    cutoff_60m = now + datetime.timedelta(minutes=60)
+    cutoff_15m = now + datetime.timedelta(minutes=15)
+    
+    # Needs a combined datetime for departure (using today since scheduled rides are typically daily or we check departure_date)
+    # The models use departure_date and window_start.
+    
+    rides = ScheduledRide.objects.filter(
+        status__in=[ScheduledRideStatus.SCHEDULED, ScheduledRideStatus.BOARDING],
+        departure_date=now.date()
+    )
+    
+    processed = 0
+    for ride in rides:
+        if not ride.window_start:
+            continue
+            
+        departure_dt = timezone.make_aware(
+            datetime.datetime.combine(ride.departure_date, ride.window_start),
+            timezone.get_current_timezone()
+        )
+        
+        # 60m reminder
+        if not ride.reminder_60m_sent and now <= departure_dt <= cutoff_60m:
+            passengers = ride.passengers.filter(status__in=[PassengerStatus.CONFIRMED, PassengerStatus.BOARDED])
+            for pax in passengers:
+                NotificationService.notify(
+                    user=pax.student,
+                    notification_type=Notification.NotificationType.GENERAL,
+                    title='Upcoming Ride Reminder',
+                    body=f'Your scheduled ride {ride.reference} is departing in about an hour.',
+                    data={'ride_id': str(ride.id)}
+                )
+            ride.reminder_60m_sent = True
+            ride.save(update_fields=['reminder_60m_sent'])
+            processed += 1
+            
+        # 15m reminder
+        if not ride.reminder_15m_sent and now <= departure_dt <= cutoff_15m:
+            passengers = ride.passengers.filter(status__in=[PassengerStatus.CONFIRMED, PassengerStatus.BOARDED])
+            for pax in passengers:
+                NotificationService.notify(
+                    user=pax.student,
+                    notification_type=Notification.NotificationType.GENERAL,
+                    title='Ride Departing Soon',
+                    body=f'Your scheduled ride {ride.reference} is departing in 15 minutes. Please be at your pickup point.',
+                    data={'ride_id': str(ride.id)}
+                )
+            ride.reminder_15m_sent = True
+            ride.save(update_fields=['reminder_15m_sent'])
+            processed += 1
+            
+    if processed:
+        logger.info('remind_scheduled_ride_passengers reminders_sent=%d', processed)
+    return processed
+
+
 @shared_task(bind=True, name='rides.auto_resolve_stale_scheduled_rides')
 def auto_resolve_stale_scheduled_rides(self):
     from django.utils import timezone

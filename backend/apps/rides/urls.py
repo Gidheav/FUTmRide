@@ -72,6 +72,7 @@ from .scheduled_bus_views import (
     RideAutoAllocateView,
     DriverAvailableScheduledRidesView,
     DriverExpressInterestView,
+    DriverCancelScheduledAssignmentView,
     AdminInterestedDriversView,
     DriverMyInterestedRidesView,
 )
@@ -189,6 +190,7 @@ urlpatterns = [
     path('scheduled/driver/available/', DriverAvailableScheduledRidesView.as_view(), name='driver-scheduled-available'),
     path('scheduled/driver/my-interests/', DriverMyInterestedRidesView.as_view(), name='driver-my-interests'),
     path('scheduled/<uuid:ride_id>/interest/', DriverExpressInterestView.as_view(), name='driver-scheduled-interest'),
+    path('scheduled/<uuid:ride_id>/cancel-assignment/', DriverCancelScheduledAssignmentView.as_view(), name='driver-cancel-assignment'),
     path('scheduled/<uuid:ride_id>/interested-drivers/', AdminInterestedDriversView.as_view(), name='admin-interested-drivers'),
 
     # Test-only bulk tools. Guarded by DEBUG or ENABLE_TEST_TOOLS.

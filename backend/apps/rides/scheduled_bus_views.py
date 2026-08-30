@@ -9,6 +9,8 @@ from rest_framework.views import APIView
 
 from apps.accounts.models import DriverProfile, User, UserRole
 from apps.accounts.permissions import IsAdminOrCampusAdmin
+from apps.notifications.services import NotificationService
+from apps.notifications.models import Notification
 from apps.payments.models import WalletTransaction
 from apps.payments.services import WalletService
 from .scheduled_models import (
@@ -130,6 +132,13 @@ class BusAssignmentCreateView(APIView):
                 driver=bus.driver,
                 status='interested',
             ).update(status='assigned')
+            NotificationService.notify(
+                user=bus.driver,
+                notification_type=Notification.NotificationType.DRIVER_ASSIGNED,
+                title='Ride Assigned',
+                body=f'You have been assigned to Scheduled Ride {ride.reference}.',
+                data={'ride_id': str(ride.id)},
+            )
 
         return Response(
             BusAssignmentReadSerializer(bus).data,
@@ -144,9 +153,31 @@ class BusAssignmentUpdateView(APIView):
     def patch(self, request, ride_id, bus_id):
         ride = _get_scoped_ride(request.user, ride_id)
         bus = _get_bus(ride, bus_id)
+        old_driver = bus.driver
         serializer = BusAssignmentUpdateSerializer(bus, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
+
+        if bus.driver and bus.driver != old_driver:
+            ScheduledRideDriverInterest.objects.filter(
+                ride=ride,
+                driver=bus.driver,
+                status='interested',
+            ).update(status='assigned')
+            NotificationService.notify(
+                user=bus.driver,
+                notification_type=Notification.NotificationType.DRIVER_ASSIGNED,
+                title='Ride Assigned',
+                body=f'You have been assigned to Scheduled Ride {ride.reference}.',
+                data={'ride_id': str(ride.id)},
+            )
+            if old_driver:
+                ScheduledRideDriverInterest.objects.filter(
+                    ride=ride,
+                    driver=old_driver,
+                    status='assigned',
+                ).update(status='interested')
+
         return Response(BusAssignmentReadSerializer(bus).data)
 
     def delete(self, request, ride_id, bus_id):
@@ -578,8 +609,6 @@ class DriverAvailableScheduledRidesView(generics.ListAPIView):
         return ScheduledRide.objects.filter(
             Q(allowed_vehicle_types__contains=[profile.vehicle_type]) | Q(allowed_vehicle_types=[]) | Q(allowed_vehicle_types__isnull=True),
             status=ScheduledRideStatus.SCHEDULED,
-        ).exclude(
-            bus_assignments__driver=self.request.user,
         ).order_by('departure_date', 'window_start')
         
     def list(self, request, *args, **kwargs):
@@ -587,10 +616,10 @@ class DriverAvailableScheduledRidesView(generics.ListAPIView):
         page = self.paginate_queryset(queryset)
         
         # Annotate with whether this driver has already expressed interest
-        interested_ids = set(
+        interested_map = dict(
             ScheduledRideDriverInterest.objects.filter(
-                driver=request.user, status='interested'
-            ).values_list('ride_id', flat=True)
+                driver=request.user
+            ).exclude(status='withdrawn_with_fine').values_list('ride_id', 'status')
         )
         
         from .scheduled_serializers import ScheduledRideListSerializer
@@ -600,14 +629,14 @@ class DriverAvailableScheduledRidesView(generics.ListAPIView):
             for item in data:
                 import uuid as _uuid
                 rid = _uuid.UUID(str(item['id']))
-                item['driver_interest_status'] = 'interested' if rid in interested_ids else None
+                item['driver_interest_status'] = interested_map.get(rid)
             return self.get_paginated_response(data)
 
         data = ScheduledRideListSerializer(queryset, many=True).data
         for item in data:
             import uuid as _uuid
             rid = _uuid.UUID(str(item['id']))
-            item['driver_interest_status'] = 'interested' if rid in interested_ids else None
+            item['driver_interest_status'] = interested_map.get(rid)
         return Response(data)
 
 class DriverExpressInterestView(APIView):
@@ -647,7 +676,7 @@ class DriverExpressInterestView(APIView):
         return Response({'message': 'Interest expressed successfully.'}, status=status.HTTP_201_CREATED)
 
     def delete(self, request, ride_id):
-        """Driver withdraws interest in a scheduled ride."""
+        """Driver withdraws interest in a scheduled ride (before assignment)."""
         if request.user.role != UserRole.DRIVER:
             return Response({'error': 'Only drivers can withdraw interest.'}, status=status.HTTP_403_FORBIDDEN)
         try:
@@ -658,8 +687,64 @@ class DriverExpressInterestView(APIView):
             ride=ride, driver=request.user, status='interested'
         ).delete()
         if not deleted:
-            return Response({'error': 'No active interest found to withdraw.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'No active interest found to withdraw or you are already assigned.'}, status=status.HTTP_400_BAD_REQUEST)
         return Response({'message': 'Interest withdrawn successfully.'}, status=status.HTTP_200_OK)
+
+
+class DriverCancelScheduledAssignmentView(APIView):
+    """Driver cancels their assignment after being assigned, incurring a fine."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, ride_id):
+        if request.user.role != UserRole.DRIVER:
+            return Response({'error': 'Only drivers can cancel assignment.'}, status=status.HTTP_403_FORBIDDEN)
+        
+        reason = request.data.get('reason', '').strip()
+        if not reason:
+            return Response({'error': 'A reason is required to cancel your assignment.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            ride = ScheduledRide.objects.get(id=ride_id)
+        except ScheduledRide.DoesNotExist:
+            raise NotFound('Scheduled ride not found.')
+
+        try:
+            bus = ScheduledRideBusAssignment.objects.select_for_update().get(ride=ride, driver=request.user)
+        except ScheduledRideBusAssignment.DoesNotExist:
+            return Response({'error': 'You are not assigned to this ride.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if bus.status != BusAssignmentStatus.ASSIGNED:
+            return Response({'error': 'Cannot cancel a bus that has already begun loading or departed.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Debit a flat fine of NGN 1000
+        fine_amount = Decimal('1000.00')
+        WalletService.debit(
+            user=request.user,
+            amount=fine_amount,
+            source=WalletTransaction.Source.DRIVER_PENALTY,
+            narration=f'Penalty for cancelling assignment on ride {ride.reference}',
+            ride=None,
+            scheduled_ride_id=str(ride.id)
+        )
+
+        # Reassign seated passengers to unassigned
+        ScheduledRidePassenger.objects.filter(bus_assignment=bus).update(bus_assignment=None, seat_type=None)
+
+        # Detach driver from bus assignment so admin sees it empty
+        bus.driver = None
+        bus.save(update_fields=['driver'])
+
+        # Update driver interest status so they can't easily re-apply
+        ScheduledRideDriverInterest.objects.filter(
+            ride=ride,
+            driver=request.user
+        ).update(status='withdrawn_with_fine')
+
+        return Response({
+            'message': 'Assignment cancelled successfully. A fine has been applied.',
+            'fine_amount': str(fine_amount)
+        }, status=status.HTTP_200_OK)
 
 
 class DriverMyInterestedRidesView(APIView):
@@ -671,11 +756,25 @@ class DriverMyInterestedRidesView(APIView):
             return Response({'error': 'Only drivers can access this.'}, status=status.HTTP_403_FORBIDDEN)
         from .scheduled_serializers import ScheduledRideListSerializer
         ride_ids = ScheduledRideDriverInterest.objects.filter(
-            driver=request.user, status='interested'
-        ).values_list('ride_id', flat=True)
+            driver=request.user
+        ).exclude(status='withdrawn_with_fine').values_list('ride_id', flat=True)
         rides = ScheduledRide.objects.filter(id__in=ride_ids, status=ScheduledRideStatus.SCHEDULED
             ).order_by('departure_date', 'window_start')
-        return Response(ScheduledRideListSerializer(rides, many=True).data)
+        
+        # We need to annotate them so they have the driver_interest_status
+        interested_map = dict(
+            ScheduledRideDriverInterest.objects.filter(
+                driver=request.user
+            ).exclude(status='withdrawn_with_fine').values_list('ride_id', 'status')
+        )
+        
+        data = ScheduledRideListSerializer(rides, many=True).data
+        for item in data:
+            import uuid as _uuid
+            rid = _uuid.UUID(str(item['id']))
+            item['driver_interest_status'] = interested_map.get(rid)
+            
+        return Response(data)
 
 class AdminInterestedDriversView(APIView):
     """Admin fetches interested drivers for a scheduled ride."""
