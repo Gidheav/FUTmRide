@@ -291,17 +291,12 @@ export default function CampusAdminTopNav() {
 
       {location.pathname === '/users' ? (
         <nav style={s.topNav}>
-          <button style={{ ...s.topNavBtn, color: T.textSecondary, background: 'transparent' }}>
+          <button 
+            style={{ ...s.topNavBtn, color: T.textSecondary, background: 'transparent' }}
+            onClick={() => toast('Data export is temporarily restricted for your current role.')}
+          >
             <Download size={13} strokeWidth={1.8} />
             <span>Export User Data</span>
-          </button>
-          <button style={{ ...s.topNavBtn, color: T.textSecondary, background: 'transparent' }}>
-            <Megaphone size={13} strokeWidth={1.8} />
-            <span>Broadcast Notification</span>
-          </button>
-          <button style={{ ...s.topNavBtn, color: T.accent, background: T.accentBg }}>
-            <UserPlus size={13} strokeWidth={1.8} />
-            <span>Add New User</span>
           </button>
         </nav>
       ) : location.pathname === '/users/verification' || location.pathname === '/users/account-verification' ? (

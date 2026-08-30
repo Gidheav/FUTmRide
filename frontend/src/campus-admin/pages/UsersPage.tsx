@@ -1,58 +1,269 @@
-import { useState, type CSSProperties } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState, useCallback, type CSSProperties } from 'react'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import {
-  Users, GraduationCap, ShieldCheck, Clock,
-  Search, Download, Megaphone,
-  Contact, BadgeCheck, FileWarning,
-  HeartPulse, BarChart3, ChevronRight, ArrowRight,
-  TrendingUp, Minus, UserCheck
+  Users, GraduationCap, BadgeCheck, Clock, Search,
+  UserCheck, ShieldCheck, ChevronRight, ChevronLeft, RotateCcw,
+  Activity, Phone, Mail, CalendarDays, Fingerprint,
+  Power, X, Shield,
 } from 'lucide-react'
 import api from '../../core/api'
 import { useNavigate } from 'react-router-dom'
+import { campusPanel } from '../shared/campusPanelStyles'
 import { T } from '../theme'
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   MOCK DATA  (replace with real API later)
-   ══════════════════════════════════════════════════════════════════════════════ */
+// ─── types ────────────────────────────────────────────────────────────────────
+interface UserRecord {
+  id: string
+  first_name: string
+  last_name: string
+  email?: string
+  phone_number?: string
+  role: 'student' | 'driver' | string
+  is_active: boolean
+  is_verified: boolean
+  created_at: string
+  driver_profile?: {
+    verification_status: string
+    vehicle_type?: string
+    plate_number?: string
+    vehicle_make?: string
+    vehicle_model?: string
+    is_online?: boolean
+  }
+  student_profile?: {
+    matric_number?: string
+    department?: string
+  }
+}
 
-const ACTIVITY_FEED = [
-  { icon: BadgeCheck, label: 'New driver application', desc: 'submitted by John Doe.', time: '10 mins ago', color: T.accent, bg: T.accentBg },
-  { icon: FileWarning, label: 'User account suspended', desc: 'for multiple policy violations.', time: '45 mins ago', color: T.error, bg: 'rgba(239,68,68,0.1)' },
-  { icon: Download, label: 'Bulk student import', desc: 'completed successfully (450 records).', time: '2 hours ago', color: T.textSecondary, bg: T.bgCardHover },
-  { icon: Megaphone, label: 'System Notification', desc: 'sent to all active drivers.', time: '5 hours ago', color: T.purple, bg: 'rgba(139,92,246,0.1)' },
-]
+interface Stats {
+  total_users: number
+  students: number
+  drivers: number
+  verified_drivers: number
+}
 
-const CHART_BARS = [
-  { h: 30, label: 'W1', val: '120' },
-  { h: 45, label: 'W2', val: '180' },
-  { h: 60, label: 'W3', val: '240' },
-  { h: 50, label: 'W4', val: '200' },
-  { h: 85, label: 'W5', val: '340' },
-]
+type RoleFilter = 'all' | 'student' | 'driver'
+type StatusFilter = 'all' | 'active' | 'inactive'
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   MAIN COMPONENT
-   ══════════════════════════════════════════════════════════════════════════════ */
+const PAGE_SIZE = 25
 
-export default function UsersPage() {
-  const [search, setSearch] = useState('')
-  const [chartPeriod, setChartPeriod] = useState('month')
-  const navigate = useNavigate()
+const fmtDate = (s?: string) =>
+  s ? new Date(s).toLocaleDateString('en-NG', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['campus-admin-users', search],
-    queryFn: async () => {
-      let url = '/users/?page=1&page_size=100000&role=driver'
-      if (search) url += `&search=${encodeURIComponent(search)}`
-      return (await api.get(url)).data
-    },
-    staleTime: 20000,
+// ─── sub-components ───────────────────────────────────────────────────────────
+function KpiTile({ icon: Icon, label, value, sub, accent, isLoading }: {
+  icon: React.FC<{ size: number; color?: string }>
+  label: string; value: string; sub: string; accent: string; isLoading?: boolean
+}) {
+  return (
+    <div style={{ ...campusPanel.card, borderTop: `2px solid ${accent}`, padding: '14px 16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+        <span style={{ fontSize: 9, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
+        <Icon size={13} color={accent} />
+      </div>
+      <div style={{ fontSize: 24, fontWeight: 800, color: accent, fontFamily: 'monospace', lineHeight: 1 }}>
+        {isLoading ? '…' : value}
+      </div>
+      <div style={{ fontSize: 10, color: T.textMuted, marginTop: 6 }}>{sub}</div>
+    </div>
+  )
+}
+
+function SecHead({ icon: Icon, title, sub }: {
+  icon: React.FC<{ size: number; color?: string }>; title: string; sub?: string
+}) {
+  return (
+    <div style={{ padding: '9px 14px', borderBottom: `1px solid ${T.border}`, background: T.bgCard, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <Icon size={13} color={T.accent} />
+      <span style={{ fontSize: 11, fontWeight: 700, color: T.textPrimary }}>{title}</span>
+      {sub && <span style={{ fontSize: 9, color: T.textMuted, marginLeft: 2 }}>{sub}</span>}
+    </div>
+  )
+}
+
+function RolePill({ role }: { role: string }) {
+  const color = role === 'driver' ? T.accent : T.purple
+  const bg = role === 'driver' ? T.accentBg : 'rgba(139,92,246,0.12)'
+  return (
+    <span style={{ fontSize: 9, fontWeight: 700, color, background: bg, border: `1px solid ${color}`, padding: '2px 8px', textTransform: 'uppercase' as const, letterSpacing: 0.5 }}>
+      {role}
+    </span>
+  )
+}
+
+function StatusPill({ active }: { active: boolean }) {
+  return (
+    <span style={{
+      fontSize: 9, fontWeight: 700,
+      color: active ? '#10b981' : T.textMuted,
+      background: active ? 'rgba(16,185,129,0.1)' : T.bgInput,
+      border: `1px solid ${active ? 'rgba(16,185,129,0.3)' : T.border}`,
+      padding: '2px 8px', textTransform: 'uppercase' as const, letterSpacing: 0.5,
+    }}>
+      {active ? 'Active' : 'Suspended'}
+    </span>
+  )
+}
+
+// ─── User Detail Drawer ────────────────────────────────────────────────────────
+function UserDrawer({ userId, onClose, onToggle }: {
+  userId: string; onClose: () => void; onToggle: (id: string) => void
+}) {
+  const { data: user, isLoading } = useQuery<UserRecord>({
+    queryKey: ['user-detail', userId],
+    queryFn: () => api.get(`/users/${userId}/`).then(r => r.data),
+    staleTime: 10000,
   })
 
-  const users = data?.results || []
-  const totalUsersCount = data?.pagination?.total_items ?? users.length
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', justifyContent: 'flex-end' }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }} />
+      <div style={{ position: 'relative', width: 380, background: T.bgPanel, borderLeft: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+        <div style={{ padding: '14px 16px', borderBottom: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: T.bgCard, position: 'sticky', top: 0, zIndex: 1 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: T.textPrimary }}>User Detail</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.textMuted, padding: 4 }}><X size={16} /></button>
+        </div>
 
-  const { data: stats } = useQuery({
+        {isLoading ? (
+          <div style={{ padding: 32, textAlign: 'center', color: T.textMuted }}>
+            <Activity size={24} /><p style={{ marginTop: 12, fontSize: 12 }}>Loading…</p>
+          </div>
+        ) : user ? (
+          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {/* Avatar */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 16, background: T.bgCard, border: `1px solid ${T.border}` }}>
+              <div style={{ width: 48, height: 48, borderRadius: '50%', background: T.accentBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700, color: T.accent, flexShrink: 0 }}>
+                {user.first_name?.[0]}{user.last_name?.[0]}
+              </div>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: T.textPrimary }}>{user.first_name} {user.last_name}</div>
+                <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' as const }}>
+                  <RolePill role={user.role} />
+                  <StatusPill active={user.is_active} />
+                </div>
+              </div>
+            </div>
+
+            {/* Contact */}
+            <div style={campusPanel.card}>
+              <SecHead icon={Phone} title="Contact" />
+              <div style={{ padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {([
+                  [Phone, 'Phone', user.phone_number || '—'],
+                  [Mail, 'Email', user.email || '—'],
+                  [CalendarDays, 'Joined', fmtDate(user.created_at)],
+                  [Fingerprint, 'ID', user.id.slice(0, 8).toUpperCase()],
+                ] as const).map(([Icon, label, val]) => (
+                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontSize: 10, color: T.textMuted, display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <Icon size={11} /> {label}
+                    </span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: T.textPrimary, fontFamily: 'monospace' }}>{val}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Driver profile */}
+            {user.driver_profile && (
+              <div style={campusPanel.card}>
+                <SecHead icon={BadgeCheck} title="Driver Profile" />
+                <div style={{ padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[
+                    ['Vehicle', `${user.driver_profile.vehicle_make ?? ''} ${user.driver_profile.vehicle_model ?? ''}`.trim() || '—'],
+                    ['Plate', user.driver_profile.plate_number || '—'],
+                    ['Type', user.driver_profile.vehicle_type || '—'],
+                    ['Verification', user.driver_profile.verification_status],
+                    ['Online now', user.driver_profile.is_online ? 'Yes' : 'No'],
+                  ].map(([label, val]) => (
+                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                      <span style={{ fontSize: 10, color: T.textMuted }}>{label}</span>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: T.textPrimary, fontFamily: 'monospace' }}>{val}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Student profile */}
+            {user.student_profile && (
+              <div style={campusPanel.card}>
+                <SecHead icon={GraduationCap} title="Student Profile" />
+                <div style={{ padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[
+                    ['Matric no.', user.student_profile.matric_number || '—'],
+                    ['Department', user.student_profile.department || '—'],
+                  ].map(([label, val]) => (
+                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                      <span style={{ fontSize: 10, color: T.textMuted }}>{label}</span>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: T.textPrimary, fontFamily: 'monospace' }}>{val}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <button
+                type="button"
+                style={{
+                  ...campusPanel.btnSecondary, justifyContent: 'center', padding: '10px',
+                  color: user.is_active ? T.error : '#10b981',
+                  borderColor: user.is_active ? 'rgba(239,68,68,0.4)' : 'rgba(16,185,129,0.4)',
+                }}
+                onClick={() => onToggle(user.id)}
+              >
+                <Power size={13} />
+                {user.is_active ? 'Suspend Account' : 'Reactivate Account'}
+              </button>
+              {user.role === 'driver' && (
+                <button
+                  type="button"
+                  style={{ ...campusPanel.btnSecondary, justifyContent: 'center', padding: '10px' }}
+                  onClick={() => { window.location.href = '/users/verification' }}
+                >
+                  <Shield size={13} /> Go to Verification
+                </button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div style={{ padding: 32, textAlign: 'center', color: T.textMuted, fontSize: 12 }}>Could not load user details.</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
+export default function UsersPage() {
+  const [search, setSearch] = useState('')
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [page, setPage] = useState(1)
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
+  const navigate = useNavigate()
+  const qc = useQueryClient()
+
+  const buildParams = useCallback(() => {
+    const p: Record<string, string> = { page: String(page), page_size: String(PAGE_SIZE) }
+    if (search) p.search = search
+    if (roleFilter !== 'all') p.role = roleFilter
+    if (statusFilter === 'active') p.is_active = 'true'
+    if (statusFilter === 'inactive') p.is_active = 'false'
+    return p
+  }, [search, roleFilter, statusFilter, page])
+
+  const { data, isLoading, isFetching, refetch } = useQuery({
+    queryKey: ['users', roleFilter, statusFilter, search, page],
+    queryFn: () => api.get('/users/', { params: buildParams() }).then(r => r.data),
+    staleTime: 20000,
+    placeholderData: keepPreviousData,
+  })
+
+  const { data: stats, isLoading: statsLoading } = useQuery<Stats>({
     queryKey: ['admin-summary-stats'],
     queryFn: () => api.get('/users/admin/summary-stats/').then(r => r.data),
     staleTime: 60000,
@@ -64,517 +275,169 @@ export default function UsersPage() {
     staleTime: 30000,
   })
 
-  const pendingCount = pendingData?.count ?? 0
+  const toggleActive = useMutation({
+    mutationFn: (userId: string) => api.patch(`/users/${userId}/toggle-active/`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['users'] })
+      qc.invalidateQueries({ queryKey: ['user-detail', selectedUserId] })
+      qc.invalidateQueries({ queryKey: ['admin-summary-stats'] })
+    },
+  })
+
+  // Provide a safe fallback type for our results 
+  type ResultList = { results?: UserRecord[], pagination?: { total_items: number }, count?: number }
+  const typedData = data as ResultList | undefined
+
+  const users: UserRecord[] = typedData?.results || []
+  const totalCount: number = typedData?.pagination?.total_items ?? typedData?.count ?? users.length
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
+  const pendingCount: number = (pendingData as { count?: number })?.count ?? 0
+
+  const handleSearch = (val: string) => { setSearch(val); setPage(1) }
+  const handleRoleFilter = (r: RoleFilter) => { setRoleFilter(r); setPage(1) }
+  const handleStatusFilter = (s: StatusFilter) => { setStatusFilter(s); setPage(1) }
+
+  const inp: CSSProperties = { background: T.bgInput, border: `1px solid ${T.border}`, color: T.textPrimary, padding: '7px 10px', fontSize: 12, outline: 'none', width: '100%', boxSizing: 'border-box' }
+
+  const tabBtn = (active: boolean): CSSProperties => ({
+    padding: '5px 12px', fontSize: 10, fontWeight: 700, cursor: 'pointer',
+    border: `1px solid ${active ? T.accent : T.border}`,
+    background: active ? T.accentBg : T.bgInput,
+    color: active ? T.accent : T.textMuted,
+    textTransform: 'uppercase', letterSpacing: 0.4,
+  })
 
   return (
-    <div style={s.scroll}>
-      <div style={s.main}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      <style>{`
+        .usr-row { cursor: pointer; transition: background 0.1s; }
+        .usr-row:hover { background: ${T.bgCardHover} !important; }
+        .usr-arrow { opacity: 0; transition: opacity 0.12s; }
+        .usr-row:hover .usr-arrow { opacity: 1; }
+      `}</style>
 
+      <div style={{ flex: 1, overflowY: 'auto', padding: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
 
-        {/* ── Executive Summary Cards ─────────────────────────────────────── */}
-        <div style={s.statsGrid}>
-          <StatCard icon={Users} label="Total Drivers" value={(stats?.drivers ?? 0).toLocaleString()} trend="+12%" up />
-          <StatCard icon={ShieldCheck} label="Verified Drivers" value={(stats?.verified_drivers ?? 0).toLocaleString()} trend="0%" />
-          <StatCard icon={Clock} label="Pending Applications" value={pendingCount.toString()} isError />
+        {/* KPI tiles */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 2 }}>
+          <KpiTile icon={Users} label="Total Users" value={(stats?.total_users ?? 0).toLocaleString()} sub={`${stats?.students ?? 0} students · ${stats?.drivers ?? 0} drivers`} accent={T.accent} isLoading={statsLoading} />
+          <KpiTile icon={GraduationCap} label="Students" value={(stats?.students ?? 0).toLocaleString()} sub="Registered riders on platform" accent={T.purple} isLoading={statsLoading} />
+          <KpiTile icon={BadgeCheck} label="Drivers" value={(stats?.drivers ?? 0).toLocaleString()} sub={`${stats?.verified_drivers ?? 0} fully verified`} accent="#10b981" isLoading={statsLoading} />
+          <KpiTile icon={Clock} label="Pending Verification" value={pendingCount.toLocaleString()} sub={pendingCount > 0 ? 'Action required' : 'All clear'} accent={pendingCount > 0 ? T.error : T.textMuted} />
         </div>
 
-        {/* ── Split Container: Independently Scrollable Panes ─────────────── */}
-        <div style={s.splitContainer}>
-
-          {/* Left Pane (Scrollable) */}
-          <div style={s.leftPane}>
-            <div style={s.segmentsGrid}>
-              {/* Student Directory */}
-              <SegmentCard
-                icon={Contact}
-                title="Student Directory"
-                sub={`Manage ${(stats?.students ?? 0).toLocaleString()} active riders`}
-                cta="View Directory"
-              />
-              {/* Driver Management */}
-              <SegmentCard
-                icon={BadgeCheck}
-                title="Driver Management Hub"
-                sub={`Manage ${(stats?.drivers ?? 0).toLocaleString()} active drivers`}
-                cta="Manage Drivers"
-              />
-            </div>
-
-            {/* Verification Center */}
-            <div style={s.verifyCard}>
-              <div style={s.verifyTop}>
-                <div style={s.verifyInfo}>
-                  <div style={s.segIconWrap}>
-                    <ShieldCheck size={20} color={T.textSecondary} />
-                  </div>
-                  <div>
-                    <h4 style={s.segTitle}>Verification Center</h4>
-                    <p style={s.segSub}>Review pending documents and background checks</p>
-                  </div>
-                </div>
-                <span style={s.pendingBadge}>{pendingCount} Pending</span>
+        {/* Quick action cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 2 }}>
+          {[
+            { icon: UserCheck, title: 'Account Verification', sub: `${pendingCount} pending review`, accent: pendingCount > 0 ? T.error : T.accent, onClick: () => navigate('/users/account-verification') },
+            { icon: BadgeCheck, title: 'Vehicle Verification', sub: 'Driver document checks', accent: T.accent, onClick: () => navigate('/users/verification') },
+            { icon: ShieldCheck, title: 'Driver Registry', sub: `${stats?.drivers ?? 0} total drivers`, accent: '#10b981', onClick: () => handleRoleFilter('driver') },
+            { icon: GraduationCap, title: 'Student Directory', sub: `${stats?.students ?? 0} active riders`, accent: T.purple, onClick: () => handleRoleFilter('student') },
+          ].map(card => (
+            <button key={card.title} type="button" onClick={card.onClick} style={{ ...campusPanel.card, borderLeft: `3px solid ${card.accent}`, padding: '14px 16px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 32, height: 32, background: `${card.accent}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <card.icon size={16} color={card.accent} />
               </div>
-              <div style={s.verifyLinksGrid}>
-                <VerifyLink
-                  icon={UserCheck}
-                  label="Account Verification"
-                  onClick={() => navigate('/users/account-verification')}
-                />
-                <VerifyLink
-                  icon={BadgeCheck}
-                  label="Vehicle Verification"
-                  onClick={() => navigate('/users/verification')}
-                />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary, marginBottom: 3 }}>{card.title}</div>
+                <div style={{ fontSize: 10, color: T.textMuted }}>{card.sub}</div>
               </div>
-            </div>
+              <ChevronRight size={14} color={T.textMuted} style={{ marginLeft: 'auto', flexShrink: 0 }} />
+            </button>
+          ))}
+        </div>
 
-            {/* Bottom segment cards */}
-            <div style={s.segmentsGrid}>
-              <SegmentCard
-                icon={HeartPulse}
-                title="Safety & Complaints"
-                sub="12 Active Reports"
-                cta=""
-                isError
-              />
-              <SegmentCard
-                icon={BarChart3}
-                title="Performance Analytics"
-                sub="User retention & growth"
-                cta=""
-              />
-            </div>
-            {/* ── User Table ──────────────────────────────────────────────────── */}
-            <div style={{ marginTop: 0 }}>
-              <style>{`
-                .user-table-row:hover { background: ${T.bgCardHover} !important; }
-              `}</style>
-              <div style={s.toolbar}>
-                <div style={s.searchWrap}>
-                  <Search size={14} color={T.textMuted} style={s.searchIcon} />
-                  <input
-                    style={s.searchInput}
-                    placeholder="Search users..."
-                    value={search}
-                    onChange={e => setSearch(e.target.value)}
-                  />
-                </div>
-              </div>
+        {/* User table */}
+        <div style={{ ...campusPanel.card, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 400 }}>
 
-              <div style={s.tableCard}>
-                <div style={s.tableHead}>
-                  <div>User</div>
-                  <div>Phone</div>
-                  <div>Role</div>
-                  <div>Status</div>
-                </div>
-                {isLoading ? (
-                  <div style={s.tableEmpty}>Loading users...</div>
-                ) : users.length === 0 ? (
-                  <div style={s.tableEmpty}>No users found</div>
-                ) : (
-                  users.map((u: any) => (
-                    <div key={u.id} className="user-table-row" style={s.tableRow} onClick={() => navigate(`/users/${u.id}/verify`)}>
-                      <div>
-                        <div style={{ fontWeight: 600, color: T.textPrimary, fontSize: 13 }}>{u.first_name} {u.last_name}</div>
-                        <div style={{ color: T.textMuted, fontSize: 12, marginTop: 2 }}>{u.email || 'No email'}</div>
-                      </div>
-                      <div style={{ color: T.textSecondary, fontSize: 13 }}>{u.phone_number}</div>
-                      <div><span style={s.rolePill}>{u.role}</span></div>
-                      <div style={{ color: u.is_verified ? T.accent : T.textMuted, fontSize: 12, fontWeight: 600 }}>
-                        {u.is_verified ? 'Verified' : 'Unverified'}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
+          {/* Toolbar */}
+          <div style={{ padding: '10px 14px', borderBottom: `1px solid ${T.border}`, background: T.bgCard, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: '1 1 160px', minWidth: 0 }}>
+              <Users size={13} color={T.accent} />
+              <span style={{ fontSize: 11, fontWeight: 700, color: T.textPrimary }}>User Registry</span>
+              {isFetching && <Activity size={11} color={T.textMuted} />}
+              <span style={{ fontSize: 9, color: T.textMuted }}>{totalCount.toLocaleString()} total</span>
             </div>
-
-            <div style={{ height: 32 }} />
+            <div style={{ position: 'relative', flex: '1 1 180px', minWidth: 0 }}>
+              <Search size={12} color={T.textMuted} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              <input style={{ ...inp, paddingLeft: 28 }} placeholder="Search name, email, phone…" value={search} onChange={e => handleSearch(e.target.value)} />
+            </div>
+            <div style={{ display: 'flex', gap: 2 }}>
+              {(['all', 'student', 'driver'] as RoleFilter[]).map(r => (
+                <button key={r} type="button" style={tabBtn(roleFilter === r)} onClick={() => handleRoleFilter(r)}>
+                  {r === 'all' ? 'All' : r}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 2 }}>
+              {(['all', 'active', 'inactive'] as StatusFilter[]).map(s => (
+                <button key={s} type="button" style={tabBtn(statusFilter === s)} onClick={() => handleStatusFilter(s)}>
+                  {s === 'all' ? 'Any' : s}
+                </button>
+              ))}
+            </div>
+            <button type="button" style={{ ...campusPanel.btnSecondary, padding: '5px 8px' }} onClick={() => refetch()} title="Refresh">
+              <RotateCcw size={12} />
+            </button>
           </div>
 
-          {/* Right Pane (Scrollable) */}
-          <div style={s.rightPane}>
-
-            {/* User Growth Chart */}
-            <div style={s.chartCard}>
-              <div style={s.chartHeader}>
-                <h3 style={s.sectionTitleSm}>User Growth</h3>
-                <select
-                  value={chartPeriod}
-                  onChange={e => setChartPeriod(e.target.value)}
-                  style={s.chartSelect}
-                >
-                  <option value="month">This Month</option>
-                  <option value="last">Last Month</option>
-                </select>
-              </div>
-              <div style={s.chartArea}>
-                {/* grid lines */}
-                {[0, 1, 2, 3].map(i => (
-                  <div key={i} style={{ ...s.gridLine, top: `${i * 25}%` }} />
-                ))}
-                {/* bars */}
-                {CHART_BARS.map((b, i) => (
-                  <div key={i} style={s.barCol}>
-                    <div
-                      style={{
-                        ...s.bar,
-                        height: `${b.h}%`,
-                        opacity: 0.25 + (i * 0.18),
-                        background: T.accent,
-                      }}
-                      title={b.val}
-                    />
-                    <span style={s.barLabel}>{b.label}</span>
-                  </div>
-                ))}
-                {/* trend svg */}
-                <svg style={s.trendSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
-                  <path d="M 10 70 Q 30 55, 50 40 T 90 15" fill="none" stroke={T.accent} strokeWidth="2" strokeLinecap="round" />
-                </svg>
-              </div>
-            </div>
-
-            {/* Recent Activity */}
-            <div style={s.activityCard}>
-              <h3 style={s.sectionTitleSm}>Recent Activity</h3>
-              <div style={s.activityList}>
-                {/* timeline line */}
-                <div style={s.timelineLine} />
-                {ACTIVITY_FEED.map((item, i) => {
-                  const Icon = item.icon
-                  return (
-                    <div key={i} style={s.activityRow}>
-                      <div style={{ ...s.activityDot, background: item.bg, borderColor: T.bgCard }}>
-                        <Icon size={14} color={item.color} />
-                      </div>
-                      <div>
-                        <p style={s.activityText}>
-                          <strong>{item.label}</strong> {item.desc}
-                        </p>
-                        <span style={s.activityTime}>{item.time}</span>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-              <button style={s.viewAllBtn}>View All Activity</button>
-            </div>
-            <div style={{ height: 32 }} />
+          {/* Table head */}
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.2fr 80px 90px 80px 28px', padding: '7px 14px', borderBottom: `1px solid ${T.border}`, background: T.bgCard }}>
+            {['User', 'Contact', 'Role', 'Status', 'Joined', ''].map(h => (
+              <div key={h} style={{ fontSize: 9, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase' as const, letterSpacing: 0.4 }}>{h}</div>
+            ))}
           </div>
+
+          {/* Rows */}
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {isLoading ? (
+              <div style={{ padding: 32, textAlign: 'center', color: T.textMuted }}><Activity size={22} /><p style={{ marginTop: 10, fontSize: 12 }}>Loading users…</p></div>
+            ) : users.length === 0 ? (
+              <div style={{ padding: 32, textAlign: 'center', color: T.textMuted, fontSize: 12 }}>No users match the current filters.</div>
+            ) : users.map((u, i) => (
+              <div
+                key={u.id}
+                className="usr-row"
+                style={{ display: 'grid', gridTemplateColumns: '2fr 1.2fr 80px 90px 80px 28px', padding: '10px 14px', borderBottom: `1px solid ${T.border}`, background: i % 2 ? T.bgInput : 'transparent', alignItems: 'center' }}
+                onClick={() => setSelectedUserId(u.id)}
+              >
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: T.textPrimary }}>{u.first_name} {u.last_name}</div>
+                  <div style={{ fontSize: 10, color: T.textMuted, marginTop: 2 }}>{u.email || '—'}</div>
+                </div>
+                <div style={{ fontSize: 11, color: T.textSecondary, fontFamily: 'monospace' }}>{u.phone_number || '—'}</div>
+                <div><RolePill role={u.role} /></div>
+                <div><StatusPill active={u.is_active} /></div>
+                <div style={{ fontSize: 10, color: T.textMuted, fontFamily: 'monospace' }}>{fmtDate(u.created_at)}</div>
+                <div className="usr-arrow" style={{ display: 'flex', justifyContent: 'flex-end' }}><ChevronRight size={13} color={T.textMuted} /></div>
+              </div>
+            ))}
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div style={{ padding: '8px 14px', borderTop: `1px solid ${T.border}`, background: T.bgCard, display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 10, color: T.textMuted }}>Page {page} of {totalPages} ({totalCount.toLocaleString()} total)</span>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button type="button" style={{ ...campusPanel.btnSecondary, padding: '4px 10px', fontSize: 10 }} disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}>
+                  <ChevronLeft size={12} /> Prev
+                </button>
+                <button type="button" style={{ ...campusPanel.btnSecondary, padding: '4px 10px', fontSize: 10 }} disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}>
+                  Next <ChevronRight size={12} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
-    </div>
-  )
-}
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   SUB-COMPONENTS
-   ══════════════════════════════════════════════════════════════════════════════ */
-
-function StatCard({ icon: Icon, label, value, trend, up, isError }: {
-  icon: any; label: string; value: string; trend?: string; up?: boolean; isError?: boolean
-}) {
-  return (
-    <div style={{ ...s.statCard, ...(isError ? { position: 'relative' as const, overflow: 'hidden' } : {}) }}>
-      {isError && <div style={s.errorCorner} />}
-      <div style={s.statTop}>
-        <div style={{ ...s.statIconWrap, background: isError ? 'rgba(239,68,68,0.12)' : T.accentBg }}>
-          <Icon size={18} color={isError ? T.error : T.accent} />
-        </div>
-        {trend && (
-          <span style={{ ...s.statTrend, color: up ? T.accent : T.textMuted }}>
-            {up ? <TrendingUp size={12} style={{ marginRight: 3 }} /> : <Minus size={12} style={{ marginRight: 3 }} />}
-            {trend}
-          </span>
-        )}
-      </div>
-      <p style={s.statLabel}>{label}</p>
-      <h3 style={{ ...s.statValue, color: isError ? T.error : T.textPrimary }}>{value}</h3>
-    </div>
-  )
-}
-
-function SegmentCard({ icon: Icon, title, sub, cta, isError }: {
-  icon: any; title: string; sub: string; cta: string; isError?: boolean
-}) {
-  return (
-    <div style={{ ...s.segCard, ...(isError ? {} : {}) }}>
-      <div style={s.segCardTop}>
-        <div style={{
-          ...s.segIconWrap,
-          background: isError ? 'rgba(239,68,68,0.12)' : T.bgCardHover,
-        }}>
-          <Icon size={20} color={isError ? T.error : T.textSecondary} />
-        </div>
-        <div>
-          <h4 style={s.segTitle}>{title}</h4>
-          <p style={s.segSub}>{sub}</p>
-        </div>
-      </div>
-      {cta && (
-        <div style={s.segBottom}>
-          <span style={{ ...s.segCta, color: T.accent }}>{cta}</span>
-          <ArrowRight size={14} color={T.accent} />
-        </div>
+      {selectedUserId && (
+        <UserDrawer
+          userId={selectedUserId}
+          onClose={() => setSelectedUserId(null)}
+          onToggle={(id) => { toggleActive.mutate(id); setSelectedUserId(null) }}
+        />
       )}
     </div>
   )
-}
-
-function VerifyLink({ icon: Icon, label, onClick }: { icon: any; label: string; onClick?: () => void }) {
-  return (
-    <div style={s.verifyLink} onClick={onClick}>
-      <div style={s.verifyLinkInner}>
-        <Icon size={16} color={T.textSecondary} />
-        <span style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary }}>{label}</span>
-      </div>
-      <ChevronRight size={16} color={T.textMuted} />
-    </div>
-  )
-}
-
-/* ══════════════════════════════════════════════════════════════════════════════
-   STYLES  (all theme-reactive via T tokens)
-   ══════════════════════════════════════════════════════════════════════════════ */
-
-const FONT = T.fontFamily
-
-const s: Record<string, CSSProperties> = {
-  scroll: {
-    flex: 1, display: 'flex', flexDirection: 'column', background: T.bg, minHeight: 0,
-    overflow: 'hidden',
-  },
-  main: {
-    width: '100%', margin: 0, padding: 0,
-    fontFamily: FONT, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0,
-  },
-
-
-  /* Stats Grid */
-  statsGrid: {
-    display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
-    gap: 1, background: T.border, marginBottom: 0,
-    borderTop: `1px solid ${T.border}`, flexShrink: 0,
-  },
-  statCard: {
-    background: T.bgPanel, padding: '16px 20px', borderRadius: 0,
-  },
-  errorCorner: {
-    position: 'absolute' as const, top: 0, right: 0, width: 40, height: 40,
-    background: 'rgba(239,68,68,0.1)', borderLeft: `1px solid rgba(239,68,68,0.2)`, borderBottom: `1px solid rgba(239,68,68,0.2)`,
-  },
-  statTop: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-    marginBottom: 14,
-  },
-  statIconWrap: {
-    width: 28, height: 28, borderRadius: 0, display: 'flex',
-    alignItems: 'center', justifyContent: 'center',
-    border: `1px solid ${T.border}`,
-  },
-  statTrend: {
-    display: 'inline-flex', alignItems: 'center',
-    fontSize: 11, fontWeight: 600, letterSpacing: '0.02em',
-  },
-  statLabel: {
-    fontSize: 11, fontWeight: 700, color: T.textMuted,
-    textTransform: 'uppercase' as const, letterSpacing: '0.08em', margin: 0,
-  },
-  statValue: {
-    fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em',
-    lineHeight: '32px', marginTop: 4, fontFamily: FONT, margin: 0,
-  },
-
-  /* Split Container & Panes */
-  splitContainer: {
-    display: 'flex', flex: 1, minHeight: 0,
-    background: T.border, gap: 1,
-    borderTop: `1px solid ${T.border}`,
-  },
-  leftPane: {
-    flex: 2, display: 'flex', flexDirection: 'column', gap: 1, background: T.border,
-    overflowY: 'auto',
-  },
-  rightPane: {
-    flex: 1, display: 'flex', flexDirection: 'column', gap: 1, background: T.border,
-    overflowY: 'auto',
-  },
-
-  sectionTitle: {
-    fontSize: 14, fontWeight: 700, color: T.textPrimary,
-    letterSpacing: '-0.01em', margin: 0, textTransform: 'uppercase' as const,
-    padding: '12px 20px', background: T.bgPanel, borderBottom: `1px solid ${T.border}`
-  },
-  sectionTitleSm: {
-    fontSize: 12, fontWeight: 700, color: T.textPrimary,
-    letterSpacing: '-0.01em', margin: 0, textTransform: 'uppercase' as const,
-  },
-
-  /* Segment cards */
-  segmentsGrid: {
-    display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: T.border,
-  },
-  segCard: {
-    background: T.bgPanel, padding: 16, borderRadius: 0,
-    cursor: 'pointer', transition: 'background 0.2s',
-    position: 'relative' as const, overflow: 'hidden',
-  },
-  segCardTop: { display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 8 },
-  segIconWrap: {
-    width: 32, height: 32, borderRadius: 0, display: 'flex',
-    alignItems: 'center', justifyContent: 'center', border: `1px solid ${T.border}`,
-    flexShrink: 0,
-  },
-  segTitle: {
-    fontSize: 13, fontWeight: 700, color: T.textPrimary, margin: 0,
-    letterSpacing: '-0.01em',
-  },
-  segSub: { fontSize: 11, color: T.textMuted, margin: '2px 0 0' },
-  segBottom: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    marginTop: 12,
-  },
-  segCta: { fontSize: 11, fontWeight: 600 },
-
-  /* Verification card */
-  verifyCard: {
-    background: T.bgPanel, padding: '16px 20px', borderRadius: 0,
-  },
-  verifyTop: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-    marginBottom: 18, gap: 12, flexWrap: 'wrap' as const,
-  },
-  verifyInfo: { display: 'flex', alignItems: 'center', gap: 14 },
-  pendingBadge: {
-    background: 'rgba(239,68,68,0.12)', color: T.error,
-    padding: '4px 12px', borderRadius: 999, fontSize: 11, fontWeight: 700,
-    whiteSpace: 'nowrap' as const,
-  },
-  verifyLinksGrid: {
-    display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, background: T.border, border: `1px solid ${T.border}`,
-  },
-  verifyLink: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '10px 14px', borderRadius: 0,
-    background: T.bgCard,
-    cursor: 'pointer', transition: 'background 0.15s',
-  },
-  verifyLinkInner: { display: 'flex', alignItems: 'center', gap: 10 },
-
-  /* Chart */
-  chartCard: {
-    background: T.bgPanel, padding: '16px 20px', borderRadius: 0, flex: 1,
-  },
-  chartHeader: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    marginBottom: 20,
-  },
-  chartSelect: {
-    background: 'transparent', border: `1px solid ${T.border}`, borderRadius: 0,
-    color: T.textSecondary, fontSize: 11, fontWeight: 600,
-    padding: '2px 6px', outline: 'none', fontFamily: FONT,
-    cursor: 'pointer',
-  },
-  chartArea: {
-    position: 'relative' as const, height: 160,
-    display: 'flex', alignItems: 'flex-end', gap: 8,
-    paddingTop: 8, borderBottom: `1px solid ${T.border}`,
-  },
-  gridLine: {
-    position: 'absolute' as const, left: 0, right: 0, height: 0,
-    borderTop: `1px dashed ${T.border}`, opacity: 0.4,
-  },
-  barCol: {
-    flex: 1, display: 'flex', flexDirection: 'column' as const,
-    alignItems: 'center', gap: 6, zIndex: 2,
-  },
-  bar: {
-    width: '100%', borderRadius: 0,
-    transition: 'height 0.3s ease',
-    minHeight: 4,
-  },
-  barLabel: {
-    fontSize: 10, fontWeight: 600, color: T.textMuted,
-    position: 'absolute' as const, bottom: -18,
-  },
-  trendSvg: {
-    position: 'absolute' as const, inset: 0,
-    width: '100%', height: '100%', zIndex: 3,
-    pointerEvents: 'none' as const,
-  },
-
-  /* Activity */
-  activityCard: {
-    background: T.bgPanel, padding: '16px 20px', borderRadius: 0,
-  },
-  activityList: {
-    position: 'relative' as const, marginTop: 18,
-    display: 'flex', flexDirection: 'column' as const, gap: 20,
-  },
-  timelineLine: {
-    position: 'absolute' as const, left: 15, top: 8, bottom: 8,
-    width: 2, background: T.border, zIndex: 0,
-  },
-  activityRow: {
-    position: 'relative' as const, zIndex: 1,
-    display: 'flex', gap: 12, alignItems: 'flex-start',
-  },
-  activityDot: {
-    width: 24, height: 24, borderRadius: 0,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    flexShrink: 0, borderWidth: 1, borderStyle: 'solid',
-  },
-  activityText: { fontSize: 12, color: T.textPrimary, lineHeight: '18px', margin: 0 },
-  activityTime: { fontSize: 10, color: T.textMuted, fontWeight: 600 },
-  viewAllBtn: {
-    width: '100%', marginTop: 18, padding: '8px 0',
-    background: 'none', border: 'none', cursor: 'pointer',
-    color: T.accent, fontSize: 12, fontWeight: 600,
-    fontFamily: FONT, borderRadius: 8,
-    transition: 'background 0.15s',
-  },
-
-  /* User Table */
-  toolbar: { padding: '12px 20px', background: T.bgPanel, borderBottom: `1px solid ${T.border}` },
-  searchWrap: { position: 'relative' as const, maxWidth: 320 },
-  searchIcon: {
-    position: 'absolute' as const, left: 12, top: '50%',
-    transform: 'translateY(-50%)', pointerEvents: 'none' as const,
-  },
-  searchInput: {
-    width: '100%', height: 32,
-    border: `1px solid ${T.border}`, background: 'transparent',
-    color: T.textPrimary, borderRadius: 0,
-    padding: '0 12px 0 32px', outline: 'none',
-    fontSize: 12, fontFamily: FONT,
-  },
-  tableCard: {
-    background: T.bgPanel, borderBottom: `1px solid ${T.border}`,
-    borderRadius: 0, overflow: 'hidden',
-  },
-  tableHead: {
-    display: 'grid', gridTemplateColumns: '2fr 1.2fr 1fr 1fr',
-    padding: '12px 18px', alignItems: 'center',
-    borderBottom: `1px solid ${T.borderLight}`,
-    fontSize: 11, color: T.textMuted,
-    textTransform: 'uppercase' as const, letterSpacing: '0.06em', fontWeight: 700,
-  },
-  tableRow: {
-    display: 'grid', gridTemplateColumns: '2fr 1.2fr 1fr 1fr',
-    padding: '10px 20px', alignItems: 'center',
-    borderBottom: `1px solid ${T.borderLight}`,
-    transition: 'background 0.12s',
-    cursor: 'pointer',
-  },
-  tableEmpty: {
-    padding: '28px 20px', textAlign: 'center' as const,
-    color: T.textMuted, fontSize: 12,
-  },
-  rolePill: {
-    display: 'inline-block', padding: '2px 8px', borderRadius: 0,
-    fontSize: 10, fontWeight: 700, background: T.accentBg, color: T.accent,
-    textTransform: 'uppercase' as const, border: `1px solid ${T.accent}`,
-  },
 }

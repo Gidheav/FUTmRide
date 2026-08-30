@@ -7,11 +7,9 @@ const SIDEBAR_ICONS = [
   { icon: LayoutDashboard, path: '/' },
   { icon: Navigation, path: '/dispatch' },
   { icon: RadioTower, path: '/operations' },
-  { icon: FlaskConical, path: '/test' },
   { icon: Calculator, path: '/engine' },
   { icon: Banknote, path: '/financial' },
   { icon: Users, path: '/users' },
-  { icon: BookOpen, path: '/docs' },
   { icon: Bell, path: '/notifications' },
   { icon: Settings, path: '/settings' },
 ]
