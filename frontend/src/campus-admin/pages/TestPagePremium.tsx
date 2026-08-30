@@ -543,8 +543,38 @@ export default function TestPagePremium() {
                         <option value="sports">Sports Facility</option>
                         <option value="ict">ICT Centre</option>
                         <option value="canteen">Canteen / Cafeteria</option>
-                        <option value="mosque">Mosque</option>
+                        <option value="worship">Place of Worship</option>
                         <option value="laboratory">Laboratory</option>
+                        <option value="workshop">Workshop / Tech Lab</option>
+                        <option value="auditorium">Auditorium / Hall</option>
+                        <option value="parking">Parking Area</option>
+                        <option value="faculty">Faculty / Department Office</option>
+                        <option value="senate">Senate / Admin Directorate</option>
+                        <optgroup label="── Off-Campus (Minna) ──">
+                        <option value="bosso">Bosso</option>
+                        <option value="talba">Talba</option>
+                        <option value="kpakungu">Kpakungu</option>
+                        <option value="maitumbi">Maitumbi</option>
+                        <option value="tunga">Tunga</option>
+                        <option value="chanchaga">Chanchaga</option>
+                        <option value="minna_central">Minna Central</option>
+                        <option value="kwamba">Kwamba</option>
+                        <option value="sango">Sango</option>
+                        <option value="dutsen_kura">Dutsen Kura</option>
+                        <option value="barkin_sale">Barkin Sale</option>
+                        <option value="mobile">Mobile Layout</option>
+                        <option value="gbangban">Gbangban</option>
+                        <option value="sauka_kahuta">Sauka Kahuta</option>
+                        <option value="shango">Shango</option>
+                        <option value="aliyu_makama">Aliyu Makama Road</option>
+                        <option value="paikon_kore">Paikon Kore</option>
+                        <option value="maikunkele">Maikunkele</option>
+                        <option value="ibb_way">IBB Way</option>
+                        <option value="airport_road">Airport Road</option>
+                        <option value="wushishi">Wushishi</option>
+                        <option value="faith_gate">Faith Gate Area</option>
+                        <option value="others">Others</option>
+                        </optgroup>
                       </select>
                     </div>
 

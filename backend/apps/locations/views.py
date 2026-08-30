@@ -224,14 +224,23 @@ class LocationAdminWipeView(APIView):
     """
     POST /api/v1/locations/admin/wipe/
     Requires Admin privileges.
-    Deletes ALL locations in the database.
+    Deletes ALL locations in the database and publishes a new empty snapshot
+    so mobile clients detect the version change and download empty data.
     """
     permission_classes = [IsAdminUser]
 
     def post(self, request):
         count, _ = Location.objects.all().delete()
+
+        # CRITICAL: publish a new empty snapshot so mobile clients see a version
+        # bump and pull the empty dataset on their next "Update Map" call.
+        # Without this, the old snapshot is still served and users still get
+        # the previously cached locations.
+        result = publish_locations(published_by=request.user, allow_empty=True)
+
         return JsonResponse({
-            'message': f'Successfully wiped {count} location(s). Database is now empty.',
+            'message': f'✓ Wiped {count} location(s). New empty snapshot published (v{result.get("version", "?")}). Mobile clients will receive empty map on next update.',
             'count': count,
+            'snapshot_version': result.get('version'),
         })
 

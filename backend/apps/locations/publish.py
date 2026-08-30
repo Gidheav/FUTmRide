@@ -16,7 +16,7 @@ def _decimal_default(obj):
     raise TypeError(f'Object of type {type(obj)} is not JSON serializable')
 
 
-def publish_locations(published_by=None):
+def publish_locations(published_by=None, allow_empty=False):
     """
     Build and save a new LocationSnapshot from all active Location records.
 
@@ -39,7 +39,10 @@ def publish_locations(published_by=None):
         .order_by('category', 'name')
     )
 
-    if not active_locations:
+    # Only block empty publishes from the normal publish action.
+    # When called from wipe (allow_empty=True), we MUST publish the empty
+    # snapshot so mobile clients see a version bump and pull empty data.
+    if not active_locations and not allow_empty:
         return {
             'success': False,
             'error': 'No active locations found. Add locations before publishing.',
