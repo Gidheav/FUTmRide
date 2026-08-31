@@ -719,13 +719,16 @@ class DriverCancelScheduledAssignmentView(APIView):
 
         # Debit a flat fine of NGN 1000
         fine_amount = Decimal('1000.00')
-        WalletService.debit(
-            user=request.user,
-            amount=fine_amount,
-            source=WalletTransaction.Source.DRIVER_PENALTY,
-            narration=f'Penalty for cancelling assignment on ride {ride.reference}',
-            metadata={'scheduled_ride_id': str(ride.id)}
-        )
+        try:
+            WalletService.debit(
+                user=request.user,
+                amount=fine_amount,
+                source=WalletTransaction.Source.DRIVER_PENALTY,
+                narration=f'Penalty for cancelling assignment on ride {ride.reference}',
+                metadata={'scheduled_ride_id': str(ride.id)}
+            )
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         # Reassign seated passengers to unassigned
         ScheduledRidePassenger.objects.filter(bus_assignment=bus).update(bus_assignment=None, seat_type=None)
