@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from 'react'
+import { Platform } from 'react-native'
 import {
   FlatList,
   RefreshControl,
@@ -60,11 +61,54 @@ const formatTime = (timeStr: string) => {
   return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
 
+const getTimeRemaining = (windowStart: string, windowEnd: string, departureDate: string) => {
+  if (!windowStart || !departureDate) return null
+  
+  // Parse the departure date and window start time
+  const [startH, startM] = windowStart.split(':')
+  const [endH, endM] = windowEnd.split(':')
+  
+  const now = new Date()
+  const departureDateObj = new Date(departureDate)
+  
+  // Create date objects for window start and end
+  const windowStartObj = new Date(departureDateObj)
+  windowStartObj.setHours(parseInt(startH, 10), parseInt(startM, 10), 0, 0)
+  
+  const windowEndObj = new Date(departureDateObj)
+  windowEndObj.setHours(parseInt(endH, 10), parseInt(endM, 10), 0, 0)
+  
+  // Check if current time is past window end
+  if (now > windowEndObj) {
+    return { inProgress: false, expired: true, text: 'Started' }
+  }
+  
+  // Check if current time is within window (ride in progress)
+  if (now >= windowStartObj) {
+    return { inProgress: true, expired: false, text: 'In Progress' }
+  }
+  
+  // Calculate time remaining until window start
+  const diffMs = windowStartObj.getTime() - now.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMins / 60)
+  const remainingMins = diffMins % 60
+  
+  if (diffHours > 0) {
+    return { inProgress: false, expired: false, text: `${diffHours}h ${remainingMins}m` }
+  } else if (diffMins > 0) {
+    return { inProgress: false, expired: false, text: `${diffMins}m` }
+  } else {
+    return { inProgress: false, expired: false, text: '1m' }
+  }
+}
+
 export default function ScheduledTab({ isActive }: { isActive?: boolean }) {
   const [rides, setRides] = useState<ScheduledRide[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [currentTime, setCurrentTime] = useState(new Date())
   
   const [selectedRide, setSelectedRide] = useState<ScheduledRide | null>(null)
 
@@ -122,6 +166,14 @@ export default function ScheduledTab({ isActive }: { isActive?: boolean }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive])
 
+  // Update current time every minute for countdown timers
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date())
+    }, 60000) // Update every minute
+    return () => clearInterval(timer)
+  }, [])
+
   const onRefresh = useCallback(() => {
     setRefreshing(true)
     fetchRides()
@@ -130,6 +182,7 @@ export default function ScheduledTab({ isActive }: { isActive?: boolean }) {
   const renderItem = useCallback(({ item }: { item: ScheduledRide }) => {
     const timeRange = `${formatTime(item.window_start)} - ${formatTime(item.window_end)}`
     const isJoined = item.is_joined_by_me
+    const timeRemaining = getTimeRemaining(item.window_start, item.window_end, item.departure_date)
 
     return (
       <TouchableOpacity 
@@ -140,20 +193,22 @@ export default function ScheduledTab({ isActive }: { isActive?: boolean }) {
         {/* "Your Ride" badge at the top */}
         {isJoined && (
           <View style={styles.yourRideBanner}>
-            <MaterialIcons name="check-circle" size={14} color="#ffffff" />
-            <Text style={styles.yourRideText}>Your Ride</Text>
+            <View style={styles.yourRideLeft}>
+              <MaterialIcons name="check-circle" size={14} color="#ffffff" />
+              <Text style={styles.yourRideText}>Your Ride</Text>
+            </View>
+            {timeRemaining && (
+              <View style={[styles.countdownBadge, timeRemaining.inProgress && styles.countdownBadgeRed]}>
+                <MaterialIcons name="schedule" size={12} color={timeRemaining.inProgress ? '#ffffff' : 'rgba(255,255,255,0.8)'} />
+                <Text style={[styles.countdownText, timeRemaining.inProgress && styles.countdownTextRed]}>
+                  {timeRemaining.text}
+                </Text>
+              </View>
+            )}
           </View>
         )}
 
-        {/* Assigned vehicle info for checked-in students */}
-        {isJoined && item.checked_in_at && (
-          <View style={styles.vehicleInfoBanner}>
-            <MaterialIcons name="directions-bus" size={14} color="#ffffff" />
-            <Text style={styles.vehicleInfoText}>
-              {item.assigned_plate_number || item.assigned_bus_label || 'Vehicle Assigned'}
-            </Text>
-          </View>
-        )}
+
 
         <View style={styles.cardTop}>
           <View style={[styles.timeWrap, isJoined && styles.timeWrapJoined]}>
@@ -170,39 +225,46 @@ export default function ScheduledTab({ isActive }: { isActive?: boolean }) {
           </View>
         </View>
 
-        <View style={styles.routeWrap}>
-          <View style={[styles.routeLine, isJoined && styles.routeLineJoined]} />
-          <View style={styles.routePoint}>
-            <View style={[styles.dotOrigin, isJoined && styles.dotOriginJoined]} />
-            <Text style={[styles.routeText, isJoined && styles.routeTextJoined]} numberOfLines={1}>{item.origin_name || item.origin_address}</Text>
+        <View style={styles.routeSection}>
+          {/* Main route column */}
+          <View style={styles.routeColumn}>
+            <View style={[styles.routeLine, isJoined && styles.routeLineJoined]} />
+            <View style={styles.routePoint}>
+              <View style={[styles.dotOrigin, isJoined && styles.dotOriginJoined]} />
+              <Text style={[styles.routeText, isJoined && styles.routeTextJoined]} numberOfLines={1}>{item.origin_name || item.origin_address}</Text>
+            </View>
+            <View style={[styles.routePoint, { marginTop: 12 }]}>
+              <MaterialIcons name="location-pin" size={16} color={isJoined ? '#fbbf24' : '#b91c1c'} style={styles.pinDest} />
+              <Text style={[styles.routeText, isJoined && styles.routeTextJoined]} numberOfLines={1}>{item.destination_name || item.destination_address}</Text>
+            </View>
           </View>
-          <View style={[styles.routePoint, { marginTop: 12 }]}>
-            <MaterialIcons name="location-pin" size={16} color={isJoined ? '#fbbf24' : '#b91c1c'} style={styles.pinDest} />
-            <Text style={[styles.routeText, isJoined && styles.routeTextJoined]} numberOfLines={1}>{item.destination_name || item.destination_address}</Text>
-          </View>
-        </View>
 
-        {/* Joined ride: show booked stop details */}
-        {isJoined && item.my_ticket && (
-          <View style={styles.ticketRow}>
-            <View style={styles.ticketStop}>
-              <MaterialIcons name="hail" size={13} color="rgba(255,255,255,0.8)" />
-              <Text style={styles.ticketStopText} numberOfLines={1}>{item.my_ticket.boarding_stop_name || 'First stop'}</Text>
+          {/* Student stops column - only when joined */}
+          {isJoined && item.my_ticket && (
+            <View style={styles.stopsColumn}>
+              <View style={styles.stopRow}>
+                <MaterialIcons name="hail" size={12} color={isJoined ? 'rgba(255,255,255,0.8)' : '#6A1B9A'} />
+                <Text style={[styles.stopText, isJoined && styles.stopTextJoined]} numberOfLines={1}>{item.my_ticket.boarding_stop_name || 'First stop'}</Text>
+              </View>
+              <View style={[styles.stopRow, { marginTop: 8 }]}>
+                <MaterialIcons name="directions-walk" size={12} color={isJoined ? 'rgba(255,255,255,0.8)' : '#6A1B9A'} />
+                <Text style={[styles.stopText, isJoined && styles.stopTextJoined]} numberOfLines={1}>{item.my_ticket.alighting_stop_name || 'Last stop'}</Text>
+              </View>
             </View>
-            <MaterialIcons name="arrow-forward" size={13} color="rgba(255,255,255,0.6)" />
-            <View style={styles.ticketStop}>
-              <MaterialIcons name="directions-walk" size={13} color="rgba(255,255,255,0.8)" />
-              <Text style={styles.ticketStopText} numberOfLines={1}>{item.my_ticket.alighting_stop_name || 'Last stop'}</Text>
-            </View>
-          </View>
-        )}
+          )}
+        </View>
 
         <View style={[styles.divider, isJoined && styles.dividerJoined]} />
 
         <View style={styles.cardBottom}>
+          {/* Vehicle/Driver info - show vehicle when checked in, otherwise driver */}
           <View style={styles.metaRow}>
-            <MaterialIcons name="person" size={14} color={isJoined ? 'rgba(255,255,255,0.7)' : '#6b7280'} />
-            <Text style={[styles.metaText, isJoined && styles.metaTextJoined]}>{item.assigned_driver_name || 'Driver pending'}</Text>
+            <MaterialIcons name="directions-bus" size={14} color={isJoined ? 'rgba(255,255,255,0.7)' : '#6b7280'} />
+            <Text style={[styles.metaText, isJoined && styles.metaTextJoined]}>
+              {isJoined && item.checked_in_at
+                ? (item.assigned_plate_number || item.assigned_bus_label || item.assigned_driver_name || 'Checked in')
+                : (item.assigned_driver_name || 'Driver pending')}
+            </Text>
           </View>
           <View style={styles.metaRow}>
             <MaterialIcons name="people" size={14} color={isJoined ? 'rgba(255,255,255,0.7)' : '#6b7280'} />
@@ -292,7 +354,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: 2,
-    paddingHorizontal: 6,
+    paddingHorizontal: 1,
     paddingBottom: 40,
     gap: 2,
   },
@@ -341,8 +403,13 @@ const styles = StyleSheet.create({
   yourRideBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    justifyContent: 'space-between',
     marginBottom: 12,
+  },
+  yourRideLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
   yourRideText: {
     fontSize: 12,
@@ -351,22 +418,27 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
-  vehicleInfoBanner: {
+  countdownBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    marginBottom: 8,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 4,
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
   },
-  vehicleInfoText: {
+  countdownBadgeRed: {
+    backgroundColor: '#dc2626',
+  },
+  countdownText: {
     fontSize: 11,
-    fontWeight: '600',
-    color: '#ffffff',
-    letterSpacing: 0.3,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.9)',
   },
+  countdownTextRed: {
+    color: '#ffffff',
+  },
+
   cardTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -423,8 +495,13 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Medium',
     color: '#6A1B9A',
   },
-  routeWrap: {
+  routeSection: {
+    flexDirection: 'row',
+    gap: 16,
     paddingLeft: 4,
+  },
+  routeColumn: {
+    flex: 1,
     position: 'relative',
   },
   routeLine: {
@@ -470,33 +547,28 @@ const styles = StyleSheet.create({
   routeTextJoined: {
     color: 'rgba(255,255,255,0.95)',
   },
-  // Joined-only stop summary row
-  ticketRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 12,
-    backgroundColor: 'rgba(0,0,0,0.12)',
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 8,
-  },
-  ticketStop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+  stopsColumn: {
     flex: 1,
+    justifyContent: 'center',
   },
-  ticketStopText: {
+  stopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  stopText: {
     fontSize: 12,
-    color: 'rgba(255,255,255,0.9)',
+    color: '#6A1B9A',
     fontWeight: '600',
     flex: 1,
+  },
+  stopTextJoined: {
+    color: 'rgba(255,255,255,0.9)',
   },
   divider: {
     height: 1,
     backgroundColor: '#f0f0f0',
-    marginVertical: 14,
+    marginVertical: 10,
   },
   dividerJoined: {
     backgroundColor: 'rgba(255,255,255,0.15)',

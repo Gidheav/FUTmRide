@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Platform } from 'react-native'
 import {
   ActivityIndicator,
   Alert,
@@ -14,6 +15,32 @@ import { MaterialIcons } from '@expo/vector-icons'
 import api from '../../../core/api'
 import { ScheduledRide } from './ScheduledTab'
 import LoadingOverlay from '../LoadingOverlay'
+
+const getTimeRemaining = (windowStart: string, windowEnd: string, departureDate: string) => {
+  if (!windowStart || !departureDate) return null
+  
+  const [startH, startM] = windowStart.split(':')
+  const [endH, endM] = windowEnd.split(':')
+  
+  const now = new Date()
+  const departureDateObj = new Date(departureDate)
+  
+  const windowStartObj = new Date(departureDateObj)
+  windowStartObj.setHours(parseInt(startH, 10), parseInt(startM, 10), 0, 0)
+  
+  const windowEndObj = new Date(departureDateObj)
+  windowEndObj.setHours(parseInt(endH, 10), parseInt(endM, 10), 0, 0)
+  
+  if (now > windowEndObj) {
+    return { inProgress: false, expired: true }
+  }
+  
+  if (now >= windowStartObj) {
+    return { inProgress: true, expired: false }
+  }
+  
+  return { inProgress: false, expired: false }
+}
 
 type Stop = {
   id: string
@@ -63,6 +90,8 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
   const PIN_ROWS = [['1','2','3'],['4','5','6'],['7','8','9'],['','0','back']]
 
   const isLeaveMode = ride.is_joined_by_me
+  const timeStatus = getTimeRemaining(ride.window_start, ride.window_end, ride.departure_date)
+  const isRideTimeReached = timeStatus?.expired || timeStatus?.inProgress
 
   useEffect(() => {
     const fetchDetail = async () => {
@@ -247,45 +276,59 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
                     </View>
                   </View>
 
-                  <View style={styles.routeWrap}>
-                    <View style={[styles.routeLine, isLeaveMode && styles.routeLineLeave]} />
-                    <View style={styles.routePoint}>
-                      <View style={[styles.dotOrigin, isLeaveMode && styles.dotOriginLeave]} />
-                      <Text style={[styles.routeAddressText, isLeaveMode && styles.routeAddressTextLeave]} numberOfLines={1}>{detail.origin_name || detail.origin_address}</Text>
-                    </View>
-                    <View style={[styles.routePoint, { marginTop: 12 }]}>
-                      <MaterialIcons name="location-pin" size={16} color={isLeaveMode ? '#fbbf24' : '#b91c1c'} style={styles.pinDest} />
-                      <Text style={[styles.routeAddressText, isLeaveMode && styles.routeAddressTextLeave]} numberOfLines={1}>{detail.destination_name || detail.destination_address}</Text>
-                    </View>
-                  </View>
+                  {isLeaveMode && ride.my_ticket ? (
+                    <>
+                      <View style={[styles.myTicketRow, { marginBottom: 12 }]}>
+                        <View style={styles.myTicketStop}>
+                          <MaterialIcons name="hail" size={16} color="#ffffff" />
+                          <View>
+                            <Text style={[styles.myTicketLabel, { color: 'rgba(255,255,255,0.7)' }]}>Boarding</Text>
+                            <Text style={[styles.myTicketValue, { color: '#ffffff' }]}>{ride.my_ticket.boarding_stop_name || 'First stop'}</Text>
+                          </View>
+                        </View>
+                        <MaterialIcons name="arrow-forward" size={18} color="rgba(255,255,255,0.5)" />
+                        <View style={styles.myTicketStop}>
+                          <MaterialIcons name="directions-walk" size={16} color="#ffffff" />
+                          <View>
+                            <Text style={[styles.myTicketLabel, { color: 'rgba(255,255,255,0.7)' }]}>Alighting</Text>
+                            <Text style={[styles.myTicketValue, { color: '#ffffff' }]}>{ride.my_ticket.alighting_stop_name || 'Last stop'}</Text>
+                          </View>
+                        </View>
+                      </View>
+                      <View style={[styles.ticketRefRow, { borderTopColor: 'rgba(255,255,255,0.2)' }]}>
+                        <MaterialIcons name="confirmation-number" size={14} color="rgba(255,255,255,0.7)" />
+                        <Text style={[styles.ticketRefText, { color: 'rgba(255,255,255,0.7)' }]}>Ticket: {ride.my_ticket.ticket_ref}</Text>
+                        <Text style={[styles.ticketAmtText, { color: '#ffffff' }]}>₦{ride.my_ticket.amount_paid}</Text>
+                      </View>
+                    </>
+                  ) : null}
                 </View>
 
-                {/* Leave mode: show my booked stops as read-only info */}
+                {/* Leave mode: second card - vehicle details */}
                 {isLeaveMode && ride.my_ticket ? (
-                  <View style={styles.myTicketCard}>
-                    <View style={styles.myTicketRow}>
-                      <View style={styles.myTicketStop}>
-                        <MaterialIcons name="hail" size={16} color="#6A1B9A" />
-                        <View>
-                          <Text style={styles.myTicketLabel}>Boarding</Text>
-                          <Text style={styles.myTicketValue}>{ride.my_ticket.boarding_stop_name || 'First stop'}</Text>
+                  <>
+                    {/* Vehicle assignment details - only when checked in */}
+                    {ride.checked_in_at && (ride.assigned_plate_number || ride.assigned_bus_label) && (
+                      <View style={styles.vehicleCard}>
+                        <View style={styles.vehicleCardHeader}>
+                          <MaterialIcons name="directions-bus" size={18} color="#6A1B9A" />
+                          <Text style={styles.vehicleCardTitle}>Your Vehicle</Text>
+                        </View>
+                        <View style={styles.vehicleDetailsRow}>
+                          <View style={styles.vehicleDetailItem}>
+                            <Text style={styles.vehicleDetailLabel}>Vehicle</Text>
+                            <Text style={styles.vehicleDetailValue}>{ride.assigned_plate_number || ride.assigned_bus_label}</Text>
+                          </View>
+                          {ride.assigned_driver_name && (
+                            <View style={styles.vehicleDetailItem}>
+                              <Text style={styles.vehicleDetailLabel}>Driver</Text>
+                              <Text style={styles.vehicleDetailValue}>{ride.assigned_driver_name}</Text>
+                            </View>
+                          )}
                         </View>
                       </View>
-                      <MaterialIcons name="arrow-forward" size={18} color="#d1d5db" />
-                      <View style={styles.myTicketStop}>
-                        <MaterialIcons name="directions-walk" size={16} color="#6A1B9A" />
-                        <View>
-                          <Text style={styles.myTicketLabel}>Alighting</Text>
-                          <Text style={styles.myTicketValue}>{ride.my_ticket.alighting_stop_name || 'Last stop'}</Text>
-                        </View>
-                      </View>
-                    </View>
-                    <View style={styles.ticketRefRow}>
-                      <MaterialIcons name="confirmation-number" size={14} color="#6b7280" />
-                      <Text style={styles.ticketRefText}>Ticket: {ride.my_ticket.ticket_ref}</Text>
-                      <Text style={styles.ticketAmtText}>₦{ride.my_ticket.amount_paid}</Text>
-                    </View>
-                  </View>
+                    )}
+                  </>
                 ) : !isLeaveMode ? (
                   <>
                     {/* Join mode: Tier selector */}
@@ -396,17 +439,21 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
               <View style={styles.footer}>
                 {isLeaveMode ? (
                   <>
-                    {!detail.is_joinable ? (
-                      <Text style={styles.infoText}>The join window has passed. You can no longer leave this ride.</Text>
+                    {!detail.is_joinable || isRideTimeReached ? (
+                      <Text style={styles.infoText}>
+                        {isRideTimeReached 
+                          ? 'The ride has started. You can no longer leave this ride.' 
+                          : 'The join window has passed. You can no longer leave this ride.'}
+                      </Text>
                     ) : (
                       <Text style={styles.leaveWarning}>
                         Leaving will cancel your ticket. Any refund depends on the cancellation policy.
                       </Text>
                     )}
                     <TouchableOpacity
-                      style={[styles.leaveBtn, !detail.is_joinable && styles.btnDisabled]}
+                      style={[styles.leaveBtn, (!detail.is_joinable || isRideTimeReached) && styles.btnDisabled]}
                       onPress={handleLeave}
-                      disabled={working || !detail.is_joinable}
+                      disabled={working || !detail.is_joinable || isRideTimeReached}
                     >
                       <MaterialIcons name="exit-to-app" size={20} color="#ffffff" />
                       <Text style={styles.leaveBtnText}>Leave Ride</Text>
@@ -588,51 +635,6 @@ const styles = StyleSheet.create({
   passengerTextLeave: {
     color: '#ffffff',
   },
-  routeWrap: {
-    position: 'relative',
-    paddingLeft: 8,
-  },
-  routeLine: {
-    position: 'absolute',
-    left: 12,
-    top: 8,
-    bottom: 8,
-    width: 2,
-    backgroundColor: '#e5e7eb',
-    borderRadius: 1,
-  },
-  routeLineLeave: {
-    backgroundColor: 'rgba(255,255,255,0.3)',
-  },
-  routePoint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  dotOrigin: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#1a1c1c',
-    borderWidth: 2,
-    borderColor: '#ffffff',
-  },
-  dotOriginLeave: {
-    backgroundColor: '#ffffff',
-    borderColor: '#6A1B9A',
-  },
-  pinDest: {
-    marginLeft: -3,
-  },
-  routeAddressText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1a1c1c',
-    flex: 1,
-  },
-  routeAddressTextLeave: {
-    color: 'rgba(255,255,255,0.95)',
-  },
   // ── My ticket (leave mode) ───────────────────────────────────────────────────
   myTicketCard: {
     backgroundColor: '#f9f9f9',
@@ -640,7 +642,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e5e7eb',
     padding: 14,
-    marginBottom: 20,
+    marginBottom: 12,
     gap: 12,
   },
   myTicketRow: {
@@ -725,6 +727,47 @@ const styles = StyleSheet.create({
   ticketAmtText: {
     fontSize: 13,
     color: '#6A1B9A',
+    fontWeight: '700',
+  },
+  // ── Vehicle assignment card (leave mode) ─────────────────────────────────────
+  vehicleCard: {
+    backgroundColor: '#F3E5F5',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E1BEE7',
+    padding: 14,
+    marginBottom: 20,
+    gap: 12,
+  },
+  vehicleCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  vehicleCardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#6A1B9A',
+  },
+  vehicleDetailsRow: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  vehicleDetailItem: {
+    flex: 1,
+  },
+  vehicleDetailLabel: {
+    fontSize: 11,
+    color: '#9ca3af',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 2,
+  },
+  vehicleDetailValue: {
+    fontSize: 14,
+    color: '#1a1c1c',
     fontWeight: '700',
   },
   // ── Stop chip selectors (join mode) ─────────────────────────────────────────

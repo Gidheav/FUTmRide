@@ -561,7 +561,7 @@ class ScheduledRideListSerializer(serializers.ModelSerializer):
             ride=obj,
             student=request.user,
         ).exclude(status=PassengerStatus.CANCELLED).select_related(
-            'boarding_stop', 'alighting_stop'
+            'boarding_stop', 'alighting_stop', 'bus_assignment', 'bus_assignment__driver'
         ).first()
 
     def get_is_joined_by_me(self, obj):
@@ -601,6 +601,17 @@ class ScheduledRideListSerializer(serializers.ModelSerializer):
         if not passenger or not passenger.bus_assignment:
             return None
         return passenger.bus_assignment.bus_label
+
+    def get_assigned_driver_name(self, obj):
+        # Override to get driver from student's specific bus assignment
+        passenger = self._get_my_passenger(obj)
+        if not passenger or not passenger.bus_assignment:
+            # Fall back to ride-level driver if no bus assignment
+            return obj.assigned_driver.full_name if obj.assigned_driver else None
+        bus = passenger.bus_assignment
+        if not bus.driver:
+            return None
+        return bus.driver.full_name
 
     def get_checked_in_at(self, obj):
         passenger = self._get_my_passenger(obj)
@@ -777,6 +788,100 @@ class StudentScheduledRideDetailSerializer(ScheduledRideDetailSerializer):
     class Meta(ScheduledRideDetailSerializer.Meta):
         fields = [field for field in ScheduledRideDetailSerializer.Meta.fields if field != 'passengers']
         read_only_fields = fields
+
+    def _get_my_passenger(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user or not request.user.is_authenticated:
+            return None
+        return ScheduledRidePassenger.objects.filter(
+            ride=obj,
+            student=request.user,
+        ).exclude(status=PassengerStatus.CANCELLED).select_related(
+            'boarding_stop', 'alighting_stop', 'bus_assignment', 'bus_assignment__driver'
+        ).first()
+
+    def get_assigned_driver_name(self, obj):
+        # Override to get driver from student's specific bus assignment
+        passenger = self._get_my_passenger(obj)
+        if not passenger or not passenger.bus_assignment:
+            # Fall back to ride-level driver if no bus assignment
+            return obj.assigned_driver.full_name if obj.assigned_driver else None
+        bus = passenger.bus_assignment
+        if not bus.driver:
+            return None
+        return bus.driver.full_name
+
+    def get_assigned_plate_number(self, obj):
+        passenger = self._get_my_passenger(obj)
+        if not passenger or not passenger.bus_assignment:
+            return None
+        bus = passenger.bus_assignment
+        if not bus.driver:
+            return None
+        try:
+            driver_profile = bus.driver.driver_profile
+            return driver_profile.plate_number
+        except Exception:
+            return None
+
+    def get_assigned_bus_label(self, obj):
+        passenger = self._get_my_passenger(obj)
+        if not passenger or not passenger.bus_assignment:
+            return None
+        return passenger.bus_assignment.bus_label
+
+    def get_checked_in_at(self, obj):
+        passenger = self._get_my_passenger(obj)
+        if not passenger:
+            return None
+        return passenger.checked_in_at.isoformat() if passenger.checked_in_at else None
+
+    def _get_my_passenger(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user or not request.user.is_authenticated:
+            return None
+        return ScheduledRidePassenger.objects.filter(
+            ride=obj,
+            student=request.user,
+        ).exclude(status=PassengerStatus.CANCELLED).select_related(
+            'boarding_stop', 'alighting_stop', 'bus_assignment', 'bus_assignment__driver'
+        ).first()
+
+    def get_assigned_driver_name(self, obj):
+        # Override to get driver from student's specific bus assignment
+        passenger = self._get_my_passenger(obj)
+        if not passenger or not passenger.bus_assignment:
+            # Fall back to ride-level driver if no bus assignment
+            return obj.assigned_driver.full_name if obj.assigned_driver else None
+        bus = passenger.bus_assignment
+        if not bus.driver:
+            return None
+        return bus.driver.full_name
+
+    def get_assigned_plate_number(self, obj):
+        passenger = self._get_my_passenger(obj)
+        if not passenger or not passenger.bus_assignment:
+            return None
+        bus = passenger.bus_assignment
+        if not bus.driver:
+            return None
+        try:
+            driver_profile = bus.driver.driver_profile
+            return driver_profile.plate_number
+        except Exception:
+            return None
+
+    def get_assigned_bus_label(self, obj):
+        passenger = self._get_my_passenger(obj)
+        if not passenger or not passenger.bus_assignment:
+            return None
+        return passenger.bus_assignment.bus_label
+
+    def get_checked_in_at(self, obj):
+        passenger = self._get_my_passenger(obj)
+        if not passenger:
+            return None
+        return passenger.checked_in_at.isoformat() if passenger.checked_in_at else None
 
 
 class ScheduledRideJoinSerializer(serializers.Serializer):
