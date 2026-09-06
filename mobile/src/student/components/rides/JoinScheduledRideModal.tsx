@@ -74,7 +74,6 @@ type Props = {
 }
 
 export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft }: Props) {
-  console.log('Modal received ride:', ride)
   const [detail, setDetail] = useState<RideDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [working, setWorking] = useState(false)
@@ -99,7 +98,6 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
       try {
         const res = await api.get(`rides/scheduled/${ride.id}/detail/`)
         const data = res.data
-        console.log('Detail API response:', data)
         setDetail(data)
 
         if (!isLeaveMode && data.stops && data.stops.length >= 2) {

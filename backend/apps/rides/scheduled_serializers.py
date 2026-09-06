@@ -785,56 +785,13 @@ class ScheduledRideDetailSerializer(serializers.ModelSerializer):
 
 
 class StudentScheduledRideDetailSerializer(ScheduledRideDetailSerializer):
+    assigned_plate_number = serializers.SerializerMethodField()
+    assigned_bus_label = serializers.SerializerMethodField()
+    checked_in_at = serializers.SerializerMethodField()
+
     class Meta(ScheduledRideDetailSerializer.Meta):
-        fields = [field for field in ScheduledRideDetailSerializer.Meta.fields if field != 'passengers']
+        fields = [field for field in ScheduledRideDetailSerializer.Meta.fields if field != 'passengers'] + ['assigned_plate_number', 'assigned_bus_label', 'checked_in_at']
         read_only_fields = fields
-
-    def _get_my_passenger(self, obj):
-        request = self.context.get('request')
-        if not request or not request.user or not request.user.is_authenticated:
-            return None
-        return ScheduledRidePassenger.objects.filter(
-            ride=obj,
-            student=request.user,
-        ).exclude(status=PassengerStatus.CANCELLED).select_related(
-            'boarding_stop', 'alighting_stop', 'bus_assignment', 'bus_assignment__driver'
-        ).first()
-
-    def get_assigned_driver_name(self, obj):
-        # Override to get driver from student's specific bus assignment
-        passenger = self._get_my_passenger(obj)
-        if not passenger or not passenger.bus_assignment:
-            # Fall back to ride-level driver if no bus assignment
-            return obj.assigned_driver.full_name if obj.assigned_driver else None
-        bus = passenger.bus_assignment
-        if not bus.driver:
-            return None
-        return bus.driver.full_name
-
-    def get_assigned_plate_number(self, obj):
-        passenger = self._get_my_passenger(obj)
-        if not passenger or not passenger.bus_assignment:
-            return None
-        bus = passenger.bus_assignment
-        if not bus.driver:
-            return None
-        try:
-            driver_profile = bus.driver.driver_profile
-            return driver_profile.plate_number
-        except Exception:
-            return None
-
-    def get_assigned_bus_label(self, obj):
-        passenger = self._get_my_passenger(obj)
-        if not passenger or not passenger.bus_assignment:
-            return None
-        return passenger.bus_assignment.bus_label
-
-    def get_checked_in_at(self, obj):
-        passenger = self._get_my_passenger(obj)
-        if not passenger:
-            return None
-        return passenger.checked_in_at.isoformat() if passenger.checked_in_at else None
 
     def _get_my_passenger(self, obj):
         request = self.context.get('request')
