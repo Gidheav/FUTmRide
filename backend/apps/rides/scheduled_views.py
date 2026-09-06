@@ -452,7 +452,7 @@ class StudentScheduledRideDetailView(generics.RetrieveAPIView):
         return StudentAvailableScheduledRidesView().get_queryset()
 
     def get_object(self):
-        qs = ScheduledRide.objects.prefetch_related('stops').select_related('assigned_driver').filter(id=self.kwargs['ride_id'])
+        qs = ScheduledRide.objects.prefetch_related('stops').prefetch_related('bus_assignments__driver').select_related('assigned_driver').filter(id=self.kwargs['ride_id'])
         try:
             campus = self.request.user.student_profile.campus
         except Exception:

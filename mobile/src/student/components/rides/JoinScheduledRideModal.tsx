@@ -74,6 +74,7 @@ type Props = {
 }
 
 export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft }: Props) {
+  console.log('Modal received ride:', ride)
   const [detail, setDetail] = useState<RideDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [working, setWorking] = useState(false)
@@ -98,8 +99,9 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
       try {
         const res = await api.get(`rides/scheduled/${ride.id}/detail/`)
         const data = res.data
+        console.log('Detail API response:', data)
         setDetail(data)
-        
+
         if (!isLeaveMode && data.stops && data.stops.length >= 2) {
           // Intentionally do not auto-select so the user must pick a boarding stop first
         }
@@ -307,22 +309,34 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
                 {/* Leave mode: second card - vehicle details */}
                 {isLeaveMode && ride.my_ticket ? (
                   <>
-                    {/* Vehicle assignment details - only when checked in */}
-                    {ride.checked_in_at && (ride.assigned_plate_number || ride.assigned_bus_label) && (
+                    {/* Vehicle assignment details - show when checked in */}
+                    {(ride.checked_in_at || detail?.checked_in_at) && (
                       <View style={styles.vehicleCard}>
                         <View style={styles.vehicleCardHeader}>
                           <MaterialIcons name="directions-bus" size={18} color="#6A1B9A" />
                           <Text style={styles.vehicleCardTitle}>Your Vehicle</Text>
                         </View>
                         <View style={styles.vehicleDetailsRow}>
-                          <View style={styles.vehicleDetailItem}>
-                            <Text style={styles.vehicleDetailLabel}>Vehicle</Text>
-                            <Text style={styles.vehicleDetailValue}>{ride.assigned_plate_number || ride.assigned_bus_label}</Text>
-                          </View>
-                          {ride.assigned_driver_name && (
+                          {(detail?.assigned_plate_number || detail?.assigned_bus_label || ride.assigned_plate_number || ride.assigned_bus_label) ? (
+                            <View style={styles.vehicleDetailItem}>
+                              <Text style={styles.vehicleDetailLabel}>Vehicle</Text>
+                              <Text style={styles.vehicleDetailValue}>{detail?.assigned_plate_number || detail?.assigned_bus_label || ride.assigned_plate_number || ride.assigned_bus_label}</Text>
+                            </View>
+                          ) : (
+                            <View style={styles.vehicleDetailItem}>
+                              <Text style={styles.vehicleDetailLabel}>Vehicle</Text>
+                              <Text style={styles.vehicleDetailValue}>Assignment pending</Text>
+                            </View>
+                          )}
+                          {(detail?.assigned_driver_name || ride.assigned_driver_name) ? (
                             <View style={styles.vehicleDetailItem}>
                               <Text style={styles.vehicleDetailLabel}>Driver</Text>
-                              <Text style={styles.vehicleDetailValue}>{ride.assigned_driver_name}</Text>
+                              <Text style={styles.vehicleDetailValue}>{detail?.assigned_driver_name || ride.assigned_driver_name}</Text>
+                            </View>
+                          ) : (
+                            <View style={styles.vehicleDetailItem}>
+                              <Text style={styles.vehicleDetailLabel}>Driver</Text>
+                              <Text style={styles.vehicleDetailValue}>Assignment pending</Text>
                             </View>
                           )}
                         </View>
