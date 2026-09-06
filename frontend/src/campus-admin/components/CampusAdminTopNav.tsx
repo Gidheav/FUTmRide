@@ -78,7 +78,7 @@ export default function CampusAdminTopNav() {
   const activeTab = searchParams.get('tab') || 'personal'
   const isOpenRequestsPanel = location.pathname === '/' && searchParams.get('panel') === 'open'
   const testAreaMatch = searchParams.get('area')
-  const testArea = testAreaMatch === 'rides' ? 'rides' : testAreaMatch === 'map' ? 'map' : testAreaMatch === 'calibration' ? 'calibration' : 'account'
+  const testArea = testAreaMatch === 'rides' ? 'rides' : testAreaMatch === 'map' ? 'map' : 'account'
 
   const dashboardNavItems = NAV_ITEMS.filter((item) => item.path === '/')
 
@@ -94,6 +94,10 @@ export default function CampusAdminTopNav() {
   }
 
   const setTestArea = (area: 'account' | 'rides' | 'map' | 'calibration') => {
+    if (area === 'calibration') {
+      toast('Restricted: Technical team alone')
+      return
+    }
     const params = new URLSearchParams()
     params.set('area', area)
     params.set('section', area === 'rides' ? 'create' : (area === 'map' || area === 'calibration') ? 'manage' : 'student')

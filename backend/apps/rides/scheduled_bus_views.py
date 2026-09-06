@@ -1,7 +1,10 @@
 from decimal import Decimal
+import logging
 
 from django.db import transaction
 from django.utils import timezone
+
+logger = logging.getLogger('apps.rides')
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
@@ -13,6 +16,7 @@ from apps.notifications.services import NotificationService
 from apps.notifications.models import Notification
 from apps.payments.models import WalletTransaction
 from apps.payments.services import WalletService
+from .notifications import notify_student_checked_in
 from .scheduled_models import (
     BusAssignmentStatus,
     PassengerStatus,
@@ -268,6 +272,12 @@ class BusAutoCheckInView(APIView):
             pax.save(update_fields=['checked_in_at', 'status'])
             checked_in_count += 1
 
+            # Send notification to student (non-blocking)
+            try:
+                notify_student_checked_in(pax)
+            except Exception as e:
+                logger.error(f'Failed to send check-in notification for passenger {pax.id}: {str(e)}')
+
         # 2. Fill remaining capacity from unassigned passengers
         unassigned = ScheduledRidePassenger.objects.filter(
             ride=ride, bus_assignment__isnull=True,
@@ -284,6 +294,14 @@ class BusAutoCheckInView(APIView):
                 pax.status = PassengerStatus.BOARDED
                 pax.save(update_fields=['bus_assignment', 'seat_type', 'checked_in_at', 'status'])
                 allocated_and_checked_in += 1
+
+                # Send notification to student (non-blocking)
+                try:
+                    notify_student_checked_in(pax)
+                except Exception as e:
+                    import logging
+                    logger = logging.getLogger('apps.rides')
+                    logger.error(f'Failed to send check-in notification for passenger {pax.id}: {str(e)}')
             elif pax.pricing_tier == 'standing' and bus.standing_available > 0:
                 pax.bus_assignment = bus
                 pax.seat_type = SeatType.STANDING
@@ -291,6 +309,14 @@ class BusAutoCheckInView(APIView):
                 pax.status = PassengerStatus.BOARDED
                 pax.save(update_fields=['bus_assignment', 'seat_type', 'checked_in_at', 'status'])
                 allocated_and_checked_in += 1
+
+                # Send notification to student (non-blocking)
+                try:
+                    notify_student_checked_in(pax)
+                except Exception as e:
+                    import logging
+                    logger = logging.getLogger('apps.rides')
+                    logger.error(f'Failed to send check-in notification for passenger {pax.id}: {str(e)}')
 
         return Response({
             'bus': BusAssignmentReadSerializer(bus).data,
@@ -447,6 +473,14 @@ class PassengerCheckInView(APIView):
         pax.checked_in_at = timezone.now()
         pax.status = PassengerStatus.BOARDED
         pax.save(update_fields=['checked_in_at', 'status'])
+
+        # Send notification to student (non-blocking, won't fail check-in if notification fails)
+        try:
+            notify_student_checked_in(pax)
+        except Exception as e:
+            # Log error but don't fail the check-in process
+            logger.error(f'Failed to send check-in notification for passenger {pax.id}: {str(e)}')
+
         return Response(PassengerManifestSerializer(pax).data)
 
 

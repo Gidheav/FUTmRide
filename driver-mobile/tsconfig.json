@@ -10,6 +10,7 @@
     "resolveJsonModule": true,
     "moduleResolution": "bundler",
     "module": "esnext",
+    "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],

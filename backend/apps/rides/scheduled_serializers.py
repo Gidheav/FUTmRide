@@ -533,6 +533,9 @@ class ScheduledRideListSerializer(serializers.ModelSerializer):
     fare_summary = serializers.SerializerMethodField()
     is_joined_by_me = serializers.SerializerMethodField()
     my_ticket = serializers.SerializerMethodField()
+    assigned_plate_number = serializers.SerializerMethodField()
+    assigned_bus_label = serializers.SerializerMethodField()
+    checked_in_at = serializers.SerializerMethodField()
 
     class Meta:
         model = ScheduledRide
@@ -546,7 +549,7 @@ class ScheduledRideListSerializer(serializers.ModelSerializer):
             'premium_enabled', 'premium_price', 'freight_enabled', 'freight_price',
             'passenger_count', 'is_joinable', 'enabled_tiers', 'stops', 'stops_count',
             'created_by_name', 'admin_notes', 'fare_summary', 'created_at',
-            'is_joined_by_me', 'my_ticket',
+            'is_joined_by_me', 'my_ticket', 'assigned_plate_number', 'assigned_bus_label', 'checked_in_at',
         ]
         read_only_fields = fields
 
@@ -579,6 +582,31 @@ class ScheduledRideListSerializer(serializers.ModelSerializer):
             'amount_paid': str(passenger.amount_paid),
             'joined_at': passenger.joined_at.isoformat() if passenger.joined_at else None,
         }
+
+    def get_assigned_plate_number(self, obj):
+        passenger = self._get_my_passenger(obj)
+        if not passenger or not passenger.bus_assignment:
+            return None
+        bus = passenger.bus_assignment
+        if not bus.driver:
+            return None
+        try:
+            driver_profile = bus.driver.driver_profile
+            return driver_profile.plate_number
+        except Exception:
+            return None
+
+    def get_assigned_bus_label(self, obj):
+        passenger = self._get_my_passenger(obj)
+        if not passenger or not passenger.bus_assignment:
+            return None
+        return passenger.bus_assignment.bus_label
+
+    def get_checked_in_at(self, obj):
+        passenger = self._get_my_passenger(obj)
+        if not passenger:
+            return None
+        return passenger.checked_in_at.isoformat() if passenger.checked_in_at else None
 
     def get_stops_count(self, obj):
         return obj.stops.count()

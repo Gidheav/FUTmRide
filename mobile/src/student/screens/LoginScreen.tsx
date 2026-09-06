@@ -418,7 +418,7 @@ export default function StudentLoginScreen() {
               <Image source={ILLUSTRATION_IMAGE} style={styles.heroImage} />
               <View style={styles.heroOverlay} />
               <View style={styles.heroLabelWrap}>
-                <Text style={styles.heroLabel}>Secure, fast, and reliable rides across Minna.</Text>
+                <Text style={styles.heroLabel}>Campus Transit</Text>
                 <Text style={styles.welcomeSubtitle}>
                   Secure, fast, and reliable rides across Minna.
                 </Text>

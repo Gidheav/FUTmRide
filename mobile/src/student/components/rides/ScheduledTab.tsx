@@ -45,6 +45,9 @@ export type ScheduledRide = {
   assigned_driver_name: string | null
   is_joined_by_me: boolean
   my_ticket: MyTicket | null
+  assigned_plate_number: string | null
+  assigned_bus_label: string | null
+  checked_in_at: string | null
 }
 
 const formatTime = (timeStr: string) => {
@@ -139,6 +142,16 @@ export default function ScheduledTab({ isActive }: { isActive?: boolean }) {
           <View style={styles.yourRideBanner}>
             <MaterialIcons name="check-circle" size={14} color="#ffffff" />
             <Text style={styles.yourRideText}>Your Ride</Text>
+          </View>
+        )}
+
+        {/* Assigned vehicle info for checked-in students */}
+        {isJoined && item.checked_in_at && (
+          <View style={styles.vehicleInfoBanner}>
+            <MaterialIcons name="directions-bus" size={14} color="#ffffff" />
+            <Text style={styles.vehicleInfoText}>
+              {item.assigned_plate_number || item.assigned_bus_label || 'Vehicle Assigned'}
+            </Text>
           </View>
         )}
 
@@ -337,6 +350,22 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
+  },
+  vehicleInfoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 8,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 4,
+  },
+  vehicleInfoText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#ffffff',
+    letterSpacing: 0.3,
   },
   cardTop: {
     flexDirection: 'row',

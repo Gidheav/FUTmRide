@@ -1,6 +1,7 @@
 from apps.notifications.models import Notification
 from apps.notifications.services import NotificationService
 from .models import Ride, RideStatus
+from .scheduled_models import ScheduledRidePassenger, ScheduledRideBusAssignment
 
 
 def notify_student_ride_status(ride: Ride):
@@ -66,6 +67,62 @@ def notify_student_ride_status(ride: Ride):
     return NotificationService.notify(
         user=ride.student,
         notification_type=notification_type,
+        title=title,
+        body=body,
+        data=payload,
+    )
+
+
+def notify_student_checked_in(passenger: ScheduledRidePassenger):
+    """Send notification to student when they are checked in by admin."""
+    if not passenger.student:
+        return None
+
+    bus = passenger.bus_assignment
+    if not bus:
+        return None
+
+    # Extract vehicle details
+    driver_name = bus.driver.full_name if bus.driver else 'Driver'
+    plate_number = None
+    bus_label = bus.bus_label or 'Bus'
+
+    # Get plate number from driver profile
+    if bus.driver:
+        try:
+            driver_profile = bus.driver.driver_profile
+            plate_number = driver_profile.plate_number
+        except Exception:
+            plate_number = None
+
+    # Build vehicle identification string
+    vehicle_id = f"{plate_number}" if plate_number else f"{bus_label}"
+    if plate_number and bus_label:
+        vehicle_id = f"{plate_number} ({bus_label})"
+
+    # Get meeting location
+    meeting_location = "Your pickup location"
+    if passenger.boarding_stop:
+        meeting_location = passenger.boarding_stop.name
+
+    # Create notification
+    title = 'You have been checked in'
+    body = f'You are assigned to {vehicle_id}. Please be at {meeting_location} on time.'
+
+    payload = {
+        'passenger_id': str(passenger.id),
+        'ride_id': str(passenger.ride.id),
+        'bus_id': str(bus.id),
+        'plate_number': plate_number,
+        'bus_label': bus_label,
+        'driver_name': driver_name,
+        'meeting_location': meeting_location,
+        'checked_in_at': passenger.checked_in_at.isoformat() if passenger.checked_in_at else None,
+    }
+
+    return NotificationService.notify(
+        user=passenger.student,
+        notification_type=Notification.NotificationType.STUDENT_CHECKED_IN,
         title=title,
         body=body,
         data=payload,

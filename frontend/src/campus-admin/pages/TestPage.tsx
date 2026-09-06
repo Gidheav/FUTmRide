@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback, type CSSProperties, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
+import toast from 'react-hot-toast'
 import {
   AlertTriangle,
   Bus,
@@ -127,7 +128,7 @@ export default function TestPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const queryArea = searchParams.get('area')
-  const area = queryArea === 'rides' ? 'rides' : queryArea === 'map' ? 'map' : queryArea === 'calibration' ? 'calibration' : 'account'
+  const area = queryArea === 'rides' ? 'rides' : queryArea === 'map' ? 'map' : 'account'
   const validAccountSections = ['student', 'driver', 'admin']
   const initialSection = searchParams.get('section')
   const defaultSection = area === 'rides' ? 'create' : (area === 'map' || (area as any) === 'calibration') ? 'manage' : (initialSection && validAccountSections.includes(initialSection) ? initialSection : 'student')
@@ -242,6 +243,10 @@ export default function TestPage() {
   }
 
   const setArea = (nextArea: 'account' | 'rides' | 'map' | 'calibration') => {
+    if (nextArea === 'calibration') {
+      toast('Restricted: Technical team alone')
+      return
+    }
     const params = new URLSearchParams()
     params.set('area', nextArea)
     const currentSection = searchParams.get('section')
@@ -412,7 +417,7 @@ export default function TestPage() {
 
       <div style={{ ...campusPanel.scrollMain, ...campusPanel.thinScroll, padding: 0, position: 'relative', zIndex: 1, pointerEvents: 'none' }}>
         {/* ── Calibration Lab: full-bleed, bypasses stats/sidebar ── */}
-        {(area as any) === 'calibration' ? (
+        {false && (area as any) === 'calibration' ? (
           <div style={{ pointerEvents: 'auto', width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
             <CalibrationTab settings={settings} />
           </div>
@@ -445,7 +450,7 @@ export default function TestPage() {
               </button>
               <button 
                 style={premiumStyles.mainNavTab((area as any) === 'calibration')} 
-                onClick={() => setArea('calibration')}
+                onClick={() => toast('Restricted: Technical team alone')}
               >
                 <Settings size={16} />
                 <span>Calibration</span>

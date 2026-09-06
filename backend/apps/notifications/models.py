@@ -11,6 +11,7 @@ class Notification(models.Model):
         DRIVER_ARRIVED = 'driver_arrived', 'Driver Arrived'
         TRIP_STARTED = 'trip_started', 'Trip Started'
         TRIP_COMPLETED = 'trip_completed', 'Trip Completed'
+        STUDENT_CHECKED_IN = 'student_checked_in', 'Student Checked In'
         RIDE_CANCELLED = 'ride_cancelled', 'Ride Cancelled'
         PAYMENT_RECEIVED = 'payment_received', 'Payment Received'
         PAYMENT_DEBITED = 'payment_debited', 'Payment Debited'
