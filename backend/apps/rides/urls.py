@@ -192,6 +192,8 @@ urlpatterns = [
     path('scheduled/<uuid:ride_id>/interest/', DriverExpressInterestView.as_view(), name='driver-scheduled-interest'),
     path('scheduled/<uuid:ride_id>/cancel-assignment/', DriverCancelScheduledAssignmentView.as_view(), name='driver-cancel-assignment'),
     path('scheduled/<uuid:ride_id>/interested-drivers/', AdminInterestedDriversView.as_view(), name='admin-interested-drivers'),
+    path('scheduled/<uuid:ride_id>/passengers/', DriverPassengerListView.as_view(), name='driver-passenger-list'),
+    path('scheduled/passengers/<uuid:passenger_id>/', DriverPassengerUpdateView.as_view(), name='driver-passenger-update'),
 
     # Test-only bulk tools. Guarded by DEBUG or ENABLE_TEST_TOOLS.
     path('test-tools/summary/', TestToolSummaryView.as_view(), name='test-tools-summary'),

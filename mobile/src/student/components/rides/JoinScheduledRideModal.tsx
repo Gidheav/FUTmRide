@@ -98,11 +98,6 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
       try {
         const res = await api.get(`rides/scheduled/${ride.id}/detail/`)
         const data = res.data
-        console.log('DEBUG MOBILE: Detail API response:', data)
-        console.log('DEBUG MOBILE: assigned_driver_name:', data.assigned_driver_name)
-        console.log('DEBUG MOBILE: assigned_plate_number:', data.assigned_plate_number)
-        console.log('DEBUG MOBILE: assigned_bus_label:', data.assigned_bus_label)
-        console.log('DEBUG MOBILE: checked_in_at:', data.checked_in_at)
         setDetail(data)
 
         if (!isLeaveMode && data.stops && data.stops.length >= 2) {
@@ -318,6 +313,11 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
                         <View style={styles.vehicleCardHeader}>
                           <MaterialIcons name="directions-bus" size={18} color="#6A1B9A" />
                           <Text style={styles.vehicleCardTitle}>Your Vehicle</Text>
+                          {(detail?.bus_order || ride.bus_order) && (
+                            <View style={styles.busOrderBadge}>
+                              <Text style={styles.busOrderText}>#{detail?.bus_order || ride.bus_order}</Text>
+                            </View>
+                          )}
                         </View>
                         <View style={styles.vehicleDetailsRow}>
                           {(detail?.assigned_plate_number || detail?.assigned_bus_label || ride.assigned_plate_number || ride.assigned_bus_label) ? (
@@ -766,6 +766,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#6A1B9A',
+  },
+  busOrderBadge: {
+    backgroundColor: '#6A1B9A',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  busOrderText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#ffffff',
   },
   vehicleDetailsRow: {
     flexDirection: 'row',

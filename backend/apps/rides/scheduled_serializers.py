@@ -536,6 +536,7 @@ class ScheduledRideListSerializer(serializers.ModelSerializer):
     assigned_plate_number = serializers.SerializerMethodField()
     assigned_bus_label = serializers.SerializerMethodField()
     checked_in_at = serializers.SerializerMethodField()
+    bus_order = serializers.SerializerMethodField()
 
     class Meta:
         model = ScheduledRide
@@ -549,7 +550,7 @@ class ScheduledRideListSerializer(serializers.ModelSerializer):
             'premium_enabled', 'premium_price', 'freight_enabled', 'freight_price',
             'passenger_count', 'is_joinable', 'enabled_tiers', 'stops', 'stops_count',
             'created_by_name', 'admin_notes', 'fare_summary', 'created_at',
-            'is_joined_by_me', 'my_ticket', 'assigned_plate_number', 'assigned_bus_label', 'checked_in_at',
+            'is_joined_by_me', 'my_ticket', 'assigned_plate_number', 'assigned_bus_label', 'checked_in_at', 'bus_order',
         ]
         read_only_fields = fields
 
@@ -620,6 +621,12 @@ class ScheduledRideListSerializer(serializers.ModelSerializer):
         if not passenger:
             return None
         return passenger.checked_in_at.isoformat() if passenger.checked_in_at else None
+
+    def get_bus_order(self, obj):
+        passenger = self._get_my_passenger(obj)
+        if not passenger or not passenger.bus_assignment:
+            return None
+        return passenger.bus_assignment.order
 
     def get_stops_count(self, obj):
         return obj.stops.count()
@@ -787,9 +794,10 @@ class StudentScheduledRideDetailSerializer(ScheduledRideDetailSerializer):
     assigned_plate_number = serializers.SerializerMethodField()
     assigned_bus_label = serializers.SerializerMethodField()
     checked_in_at = serializers.SerializerMethodField()
+    bus_order = serializers.SerializerMethodField()
 
     class Meta(ScheduledRideDetailSerializer.Meta):
-        fields = [field for field in ScheduledRideDetailSerializer.Meta.fields if field != 'passengers'] + ['assigned_plate_number', 'assigned_bus_label', 'checked_in_at']
+        fields = [field for field in ScheduledRideDetailSerializer.Meta.fields if field != 'passengers'] + ['assigned_plate_number', 'assigned_bus_label', 'checked_in_at', 'bus_order']
         read_only_fields = fields
 
     def _get_my_passenger(self, obj):
@@ -840,6 +848,12 @@ class StudentScheduledRideDetailSerializer(ScheduledRideDetailSerializer):
         if not passenger:
             return None
         return passenger.checked_in_at.isoformat() if passenger.checked_in_at else None
+
+    def get_bus_order(self, obj):
+        passenger = self._get_my_passenger(obj)
+        if not passenger or not passenger.bus_assignment:
+            return None
+        return passenger.bus_assignment.order
 
 
 class ScheduledRideJoinSerializer(serializers.Serializer):

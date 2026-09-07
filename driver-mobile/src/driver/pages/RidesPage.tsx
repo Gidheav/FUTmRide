@@ -1376,6 +1376,10 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
   const [cancelAssignmentModalVisible, setCancelAssignmentModalVisible] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [cancellingAssignmentId, setCancellingAssignmentId] = useState<string | null>(null);
+  const [passengersModalVisible, setPassengersModalVisible] = useState(false);
+  const [selectedRideForPassengers, setSelectedRideForPassengers] = useState<any>(null);
+  const [passengersList, setPassengersList] = useState<any[]>([]);
+  const [loadingPassengers, setLoadingPassengers] = useState(false);
 
   const handleCancelAssignmentSubmit = async () => {
     if (!cancellingAssignmentId || !cancelReason.trim()) return;
@@ -1403,7 +1407,36 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
     }
   };
 
+  const handleLoadPassengers = async (ride: any) => {
+    setLoadingPassengers(true);
+    try {
+      const response = await driverApi.getScheduledRidePassengers(ride.id);
+      setPassengersList(response.data || []);
+    } catch (err: any) {
+      Alert.alert('Error', 'Failed to load passengers list.');
+    } finally {
+      setLoadingPassengers(false);
+    }
+  };
+
+  const handleTogglePassengerBoarded = async (passengerId: string, boarded: boolean) => {
+    try {
+      await driverApi.markPassengerBoarded(passengerId, boarded);
+      setPassengersList(prev => prev.map(p => 
+        p.id === passengerId ? { ...p, boarded } : p
+      ));
+    } catch (err: any) {
+      Alert.alert('Error', 'Failed to update passenger status.');
+    }
+  };
+
   const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    if (passengersModalVisible && selectedRideForPassengers) {
+      handleLoadPassengers(selectedRideForPassengers);
+    }
+  }, [passengersModalVisible, selectedRideForPassengers]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -1997,21 +2030,27 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
                 {/* Action buttons */}
                 <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
                   {isAssigned ? (
-                    <TouchableOpacity
-                      style={[styles.mapSheetAcceptButton, { flex: 1, backgroundColor: COLORS.errorContainer, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' }]}
-                      onPress={() => { 
-                        setCancellingAssignmentId(ride.id);
-                        setCancelAssignmentModalVisible(true);
-                      }}
-                      activeOpacity={0.85}
-                    >
-                      <MaterialIcons name="close" size={20} color={COLORS.error} />
-                      <Text style={[FONTS.labelLg, { color: COLORS.error }]}>Not going</Text>
-                    </TouchableOpacity>
+                    <>
+                      <TouchableOpacity
+                        style={[styles.mapSheetAcceptButton, { flex: 1, backgroundColor: COLORS.primary, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' }]}
+                        onPress={() => { 
+                          setSelectedRideForPassengers(ride);
+                          setPassengersModalVisible(true);
+                        }}
+                        activeOpacity={0.85}
+                      >
+                        <MaterialIcons name="people" size={20} color={COLORS.onPrimary} />
+                        <Text style={[FONTS.labelLg, { color: COLORS.onPrimary }]}>View Passengers</Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : isWithdrawn ? (
+                    <View style={[styles.mapSheetAcceptButton, { flex: 1, backgroundColor: COLORS.surfaceContainer, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' }]}>
+                      <Text style={[FONTS.labelLg, { color: COLORS.onSurfaceVariant }]}>Interest Withdrawn</Text>
+                    </View>
                   ) : isInterested ? (
                     <TouchableOpacity
                       style={[styles.mapSheetAcceptButton, { flex: 1, backgroundColor: COLORS.errorContainer, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' }]}
-                      onPress={() => { handleCancelInterest(ride.id); setDetailedScheduledRide(null); }}
+                      onPress={() => handleCancelInterest(ride.id)}
                       disabled={isCan}
                       activeOpacity={0.85}
                     >
@@ -2023,10 +2062,6 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
                           </>
                       }
                     </TouchableOpacity>
-                  ) : isWithdrawn ? (
-                    <View style={[styles.mapSheetAcceptButton, { flex: 1, backgroundColor: COLORS.surfaceContainer, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' }]}>
-                      <Text style={[FONTS.labelLg, { color: COLORS.onSurfaceVariant }]}>Interest Withdrawn</Text>
-                    </View>
                   ) : (
                     <TouchableOpacity
                       style={[styles.mapSheetAcceptButton, { flex: 1, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' }]}
@@ -2097,6 +2132,66 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
                 <Text style={[FONTS.labelLg, { color: COLORS.onError }]}>Confirm Fine</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Passengers Modal */}
+      <Modal visible={passengersModalVisible} transparent animationType="slide">
+        <View style={styles.mapSheetOverlay}>
+          <View style={[styles.mapSheetContainer, { paddingBottom: insets.bottom + 16 }]}>
+            <View style={styles.mapSheetHandleWrap}>
+              <View style={styles.mapSheetHandle} />
+            </View>
+            
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <Text style={[FONTS.titleLg, { color: COLORS.onSurface }]}>Your Passengers</Text>
+              <TouchableOpacity onPress={() => setPassengersModalVisible(false)} style={{ padding: 4 }}>
+                <MaterialIcons name="close" size={24} color={COLORS.onSurfaceVariant} />
+              </TouchableOpacity>
+            </View>
+
+            {loadingPassengers ? (
+              <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+                <LoadingOverlay visible={true} inline size={40} />
+              </View>
+            ) : passengersList.length === 0 ? (
+              <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+                <MaterialIcons name="people-outline" size={48} color={COLORS.onSurfaceVariant} />
+                <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, marginTop: 12 }]}>No passengers assigned yet</Text>
+              </View>
+            ) : (
+              <ScrollView style={{ maxHeight: 400 }}>
+                {passengersList.map((passenger, index) => (
+                  <View key={passenger.id} style={[styles.passengerItem, { marginBottom: index < passengersList.length - 1 ? 12 : 0 }]}>
+                    <View style={styles.passengerOrderBadge}>
+                      <Text style={[FONTS.labelMd, { color: COLORS.onPrimary }]}>{passenger.bus_order || index + 1}</Text>
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={[FONTS.bodyMd, { color: COLORS.onSurface, fontWeight: '600' }]}>{passenger.student_name}</Text>
+                      <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant }]}>Ticket: {passenger.ticket_ref}</Text>
+                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                        <View style={styles.passengerStopBadge}>
+                          <MaterialIcons name="hail" size={12} color={COLORS.onSurfaceVariant} />
+                          <Text style={[FONTS.labelSm, { color: COLORS.onSurfaceVariant, marginLeft: 4 }]}>{passenger.boarding_stop_name}</Text>
+                        </View>
+                        <View style={styles.passengerStopBadge}>
+                          <MaterialIcons name="directions-walk" size={12} color={COLORS.onSurfaceVariant} />
+                          <Text style={[FONTS.labelSm, { color: COLORS.onSurfaceVariant, marginLeft: 4 }]}>{passenger.alighting_stop_name}</Text>
+                        </View>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.passengerCheckbox, passenger.boarded && styles.passengerCheckboxChecked]}
+                      onPress={() => handleTogglePassengerBoarded(passenger.id, !passenger.boarded)}
+                      activeOpacity={0.7}
+                    >
+                      {passenger.boarded && <MaterialIcons name="check" size={18} color={COLORS.onPrimary} />}
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
           </View>
         </View>
       </Modal>
@@ -3089,6 +3184,42 @@ const styles = StyleSheet.create({
   },
   mapSheetBackdrop: {
     ...StyleSheet.absoluteFillObject,
+  },
+  passengerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surfaceContainerLow,
+    borderRadius: 12,
+    padding: 12,
+  },
+  passengerOrderBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  passengerStopBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surfaceContainerHigh,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  passengerCheckbox: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: COLORS.outline,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  passengerCheckboxChecked: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
   },
   mapSheetContainer: {
     backgroundColor: COLORS.surface,

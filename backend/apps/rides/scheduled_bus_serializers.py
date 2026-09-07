@@ -132,20 +132,23 @@ class PassengerManifestSerializer(serializers.ModelSerializer):
     student_name = serializers.SerializerMethodField()
     student_email = serializers.SerializerMethodField()
     bus_label = serializers.SerializerMethodField()
+    bus_order = serializers.SerializerMethodField()
+    ticket_ref = serializers.SerializerMethodField()
     boarding_stop_name = serializers.SerializerMethodField()
     alighting_stop_name = serializers.SerializerMethodField()
+    boarded = serializers.SerializerMethodField()
 
     class Meta:
         model = ScheduledRidePassenger
         fields = [
             'id', 'student', 'student_name', 'student_email',
-            'pricing_tier', 'bus_assignment', 'bus_label',
-            'seat_type', 'checked_in_at',
+            'pricing_tier', 'bus_assignment', 'bus_label', 'bus_order',
+            'seat_type', 'checked_in_at', 'ticket_ref',
             'boarding_stop', 'boarding_stop_name',
             'alighting_stop', 'alighting_stop_name',
             'amount_paid', 'payment_reference',
             'cargo_description', 'cargo_weight_kg',
-            'status', 'joined_at',
+            'status', 'joined_at', 'boarded',
         ]
         read_only_fields = fields
 
@@ -158,11 +161,20 @@ class PassengerManifestSerializer(serializers.ModelSerializer):
     def get_bus_label(self, obj):
         return obj.bus_assignment.bus_label if obj.bus_assignment else None
 
+    def get_bus_order(self, obj):
+        return obj.bus_assignment.order if obj.bus_assignment else None
+
+    def get_ticket_ref(self, obj):
+        return obj.ticket_ref
+
     def get_boarding_stop_name(self, obj):
         return obj.boarding_stop.name if obj.boarding_stop else None
 
     def get_alighting_stop_name(self, obj):
         return obj.alighting_stop.name if obj.alighting_stop else None
+
+    def get_boarded(self, obj):
+        return obj.status == PassengerStatus.BOARDED
 
 
 class ReassignPassengerSerializer(serializers.Serializer):

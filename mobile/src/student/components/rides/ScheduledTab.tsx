@@ -49,6 +49,7 @@ export type ScheduledRide = {
   assigned_plate_number: string | null
   assigned_bus_label: string | null
   checked_in_at: string | null
+  bus_order: number | null
 }
 
 const formatTime = (timeStr: string) => {

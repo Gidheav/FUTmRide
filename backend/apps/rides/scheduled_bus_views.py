@@ -457,6 +457,60 @@ class RidePassengerListView(generics.ListAPIView):
         ).order_by('joined_at')
 
 
+class DriverPassengerListView(generics.ListAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = PassengerManifestSerializer
+
+    def get_queryset(self):
+        ride_id = self.kwargs['ride_id']
+        try:
+            ride = ScheduledRide.objects.get(id=ride_id)
+        except ScheduledRide.DoesNotExist:
+            raise NotFound('Ride not found.')
+        
+        # Only allow drivers to see passengers assigned to their bus
+        try:
+            bus_assignment = ScheduledRideBusAssignment.objects.get(
+                ride=ride, 
+                driver=self.request.user
+            )
+        except ScheduledRideBusAssignment.DoesNotExist:
+            raise NotFound('You are not assigned to this ride.')
+        
+        return ScheduledRidePassenger.objects.filter(
+            ride=ride, 
+            bus_assignment=bus_assignment
+        ).select_related(
+            'student', 'bus_assignment', 'boarding_stop', 'alighting_stop',
+        ).order_by('joined_at')
+
+
+class DriverPassengerUpdateView(generics.UpdateAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = PassengerManifestSerializer
+
+    def get_queryset(self):
+        return ScheduledRidePassenger.objects.filter(
+            bus_assignment__driver=self.request.user
+        ).select_related('student', 'bus_assignment', 'boarding_stop', 'alighting_stop')
+
+    def patch(self, request, *args, **kwargs):
+        passenger = self.get_object()
+        boarded = request.data.get('boarded')
+        
+        if boarded is not None:
+            if boarded:
+                passenger.status = PassengerStatus.BOARDED
+                passenger.checked_in_at = timezone.now()
+            else:
+                passenger.status = PassengerStatus.CONFIRMED
+                passenger.checked_in_at = None
+            
+            passenger.save(update_fields=['status', 'checked_in_at'])
+        
+        return Response(PassengerManifestSerializer(passenger).data)
+
+
 class PassengerCheckInView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
 
