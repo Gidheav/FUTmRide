@@ -178,17 +178,11 @@ urlpatterns = [
     path('scheduled/<uuid:ride_id>/driver-depart/', DriverBusDepartView.as_view(), name='driver-bus-depart'),
     path('scheduled/<uuid:ride_id>/buses/<uuid:bus_id>/arrive/', BusArriveView.as_view(), name='bus-arrive'),
     path('scheduled/<uuid:ride_id>/buses/<uuid:bus_id>/complete/', BusCompleteView.as_view(), name='bus-complete'),
-    path('scheduled/<uuid:ride_id>/passengers/', RidePassengerListView.as_view(), name='ride-passenger-list'),
+    path('scheduled/<uuid:ride_id>/admin-passengers/', RidePassengerListView.as_view(), name='ride-passenger-list'),
     path('scheduled/<uuid:ride_id>/passengers/<uuid:pax_id>/check-in/', PassengerCheckInView.as_view(), name='passenger-check-in'),
     path('scheduled/<uuid:ride_id>/passengers/<uuid:pax_id>/no-show/', PassengerNoShowView.as_view(), name='passenger-no-show'),
     path('scheduled/<uuid:ride_id>/passengers/<uuid:pax_id>/reassign/', PassengerReassignView.as_view(), name='passenger-reassign'),
     path('scheduled/<uuid:ride_id>/auto-allocate/', RideAutoAllocateView.as_view(), name='ride-auto-allocate'),
-
-    # ── Scheduled Rides (Student) ────────────────────────────────────────────
-    path('scheduled/available/', StudentAvailableScheduledRidesView.as_view(), name='scheduled-ride-available'),
-    path('scheduled/<uuid:ride_id>/detail/', StudentScheduledRideDetailView.as_view(), name='student-scheduled-ride-detail'),
-    path('scheduled/<uuid:ride_id>/join/', StudentJoinScheduledRideView.as_view(), name='scheduled-ride-join'),
-    path('scheduled/<uuid:ride_id>/leave/', StudentLeaveScheduledRideView.as_view(), name='scheduled-ride-leave'),
 
     # ── Scheduled Rides (Driver Bidding) ─────────────────────────────────────
     path('scheduled/driver/available/', DriverAvailableScheduledRidesView.as_view(), name='driver-scheduled-available'),
@@ -198,6 +192,12 @@ urlpatterns = [
     path('scheduled/<uuid:ride_id>/interested-drivers/', AdminInterestedDriversView.as_view(), name='admin-interested-drivers'),
     path('scheduled/<uuid:ride_id>/passengers/', DriverPassengerListView.as_view(), name='driver-passenger-list'),
     path('scheduled/passengers/<uuid:passenger_id>/', DriverPassengerUpdateView.as_view(), name='driver-passenger-update'),
+
+    # ── Scheduled Rides (Student) ────────────────────────────────────────────
+    path('scheduled/available/', StudentAvailableScheduledRidesView.as_view(), name='scheduled-ride-available'),
+    path('scheduled/<uuid:ride_id>/detail/', StudentScheduledRideDetailView.as_view(), name='student-scheduled-ride-detail'),
+    path('scheduled/<uuid:ride_id>/join/', StudentJoinScheduledRideView.as_view(), name='scheduled-ride-join'),
+    path('scheduled/<uuid:ride_id>/leave/', StudentLeaveScheduledRideView.as_view(), name='scheduled-ride-leave'),
 
     # Test-only bulk tools. Guarded by DEBUG or ENABLE_TEST_TOOLS.
     path('test-tools/summary/', TestToolSummaryView.as_view(), name='test-tools-summary'),

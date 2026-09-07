@@ -507,7 +507,7 @@ class ApiService {
   // ── Passenger Management (Route Ops) ──────────────────────────────────────
 
   async getRidePassengers(rideId: string): Promise<any[]> {
-    const res = await this.get<any>(`rides/scheduled/${rideId}/passengers/?page_size=100000`)
+    const res = await this.get<any>(`rides/scheduled/${rideId}/admin-passengers/?page_size=100000`)
     return res?.results || res
   }
 
