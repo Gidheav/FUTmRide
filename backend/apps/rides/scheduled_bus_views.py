@@ -295,6 +295,7 @@ class BusAutoCheckInView(APIView):
             if pax.checked_in_at is not None:
                 continue
             if pax.pricing_tier != 'standing' and bus.seats_available > 0:
+                # Standard passenger with seated capacity available
                 pax.bus_assignment = bus
                 pax.seat_type = SeatType.SEATED
                 pax.checked_in_at = now
@@ -309,7 +310,24 @@ class BusAutoCheckInView(APIView):
                     import logging
                     logger = logging.getLogger('apps.rides')
                     logger.error(f'Failed to send check-in notification for passenger {pax.id}: {str(e)}')
+            elif pax.pricing_tier != 'standing' and bus.standing_available > 0:
+                # Standard passenger with only standing capacity available - downgrade to standing
+                pax.bus_assignment = bus
+                pax.seat_type = SeatType.STANDING
+                pax.checked_in_at = now
+                pax.status = PassengerStatus.BOARDED
+                pax.save(update_fields=['bus_assignment', 'seat_type', 'checked_in_at', 'status'])
+                allocated_and_checked_in += 1
+
+                # Send notification to student (non-blocking)
+                try:
+                    notify_student_checked_in(pax)
+                except Exception as e:
+                    import logging
+                    logger = logging.getLogger('apps.rides')
+                    logger.error(f'Failed to send check-in notification for passenger {pax.id}: {str(e)}')
             elif pax.pricing_tier == 'standing' and bus.standing_available > 0:
+                # Standing passenger with standing capacity available
                 pax.bus_assignment = bus
                 pax.seat_type = SeatType.STANDING
                 pax.checked_in_at = now
@@ -341,16 +359,28 @@ class BusAutoCheckInView(APIView):
                 if pax.checked_in_at is not None:
                     continue
                 if pax.pricing_tier != 'standing' and bus.seats_available > 0:
+                    # Standard passenger with seated capacity available
                     pax.bus_assignment = bus
+                    pax.seat_type = SeatType.SEATED
                     pax.checked_in_at = now
                     pax.status = PassengerStatus.BOARDED
-                    pax.save(update_fields=['bus_assignment', 'checked_in_at', 'status'])
+                    pax.save(update_fields=['bus_assignment', 'seat_type', 'checked_in_at', 'status'])
+                    allocated_and_checked_in += 1
+                elif pax.pricing_tier != 'standing' and bus.standing_available > 0:
+                    # Standard passenger with only standing capacity available - downgrade to standing
+                    pax.bus_assignment = bus
+                    pax.seat_type = SeatType.STANDING
+                    pax.checked_in_at = now
+                    pax.status = PassengerStatus.BOARDED
+                    pax.save(update_fields=['bus_assignment', 'seat_type', 'checked_in_at', 'status'])
                     allocated_and_checked_in += 1
                 elif pax.pricing_tier == 'standing' and bus.standing_available > 0:
+                    # Standing passenger with standing capacity available
                     pax.bus_assignment = bus
+                    pax.seat_type = SeatType.STANDING
                     pax.checked_in_at = now
                     pax.status = PassengerStatus.BOARDED
-                    pax.save(update_fields=['bus_assignment', 'checked_in_at', 'status'])
+                    pax.save(update_fields=['bus_assignment', 'seat_type', 'checked_in_at', 'status'])
                     allocated_and_checked_in += 1
 
         return Response({

@@ -1512,10 +1512,18 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
   };
 
   const [refreshing, setRefreshing] = useState(false);
+  const passengersLoadedRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (passengersModalVisible && selectedRideForPassengers) {
-      handleLoadPassengers(selectedRideForPassengers);
+      // Only load passengers if we haven't loaded them for this ride yet
+      if (passengersLoadedRef.current !== selectedRideForPassengers.id) {
+        handleLoadPassengers(selectedRideForPassengers);
+        passengersLoadedRef.current = selectedRideForPassengers.id;
+      }
+    } else if (!passengersModalVisible) {
+      // Reset the ref when modal closes
+      passengersLoadedRef.current = null;
     }
   }, [passengersModalVisible, selectedRideForPassengers]);
 
