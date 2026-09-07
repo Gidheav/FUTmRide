@@ -1,5 +1,6 @@
 from decimal import Decimal
 import logging
+from datetime import datetime as dt_datetime
 
 from django.db import transaction
 from django.utils import timezone
@@ -332,6 +333,66 @@ class BusDepartView(APIView):
     def post(self, request, ride_id, bus_id):
         ride = _get_scoped_ride(request.user, ride_id)
         bus = _get_bus(ride, bus_id, for_update=True)
+
+        try:
+            bus.transition_to(BusAssignmentStatus.DEPARTED)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        bus.departed_at = timezone.now()
+        bus.save(update_fields=['status', 'departed_at', 'updated_at'])
+
+        # Mark unchecked-in passengers as no-show and refund
+        no_shows = list(
+            ScheduledRidePassenger.objects.filter(
+                bus_assignment=bus, checked_in_at__isnull=True,
+            ).exclude(
+                status__in=[PassengerStatus.CANCELLED, PassengerStatus.NO_SHOW,
+                            PassengerStatus.BOARDED, PassengerStatus.ALIGHTED],
+            ).select_related('student', 'ride')
+        )
+
+        freed_seats = 0
+
+
+class DriverBusDepartView(APIView):
+    """Driver can depart their assigned bus when 80-90% full and after window start time."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, ride_id):
+        try:
+            ride = ScheduledRide.objects.get(id=ride_id)
+            # Get the driver's bus assignment for this ride
+            bus = ScheduledRideBusAssignment.objects.get(ride=ride, driver=request.user)
+        except (ScheduledRide.DoesNotExist, ScheduledRideBusAssignment.DoesNotExist):
+            raise NotFound('Ride or bus assignment not found.')
+
+        # Check time constraint - cannot depart before window start
+        now = timezone.now()
+        window_start = timezone.make_aware(
+            dt_datetime.combine(ride.departure_date, ride.window_start)
+        )
+        if now < window_start:
+            return Response({
+                'detail': f'Cannot depart before {ride.window_start}. Current time: {now.strftime("%H:%M")}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check capacity constraint - must be at least 80% full
+        total_capacity = bus.seated_capacity + bus.standing_capacity
+        checked_in_count = ScheduledRidePassenger.objects.filter(
+            bus_assignment=bus,
+            checked_in_at__isnull=False
+        ).exclude(
+            status__in=[PassengerStatus.CANCELLED, PassengerStatus.NO_SHOW]
+        ).count()
+
+        if total_capacity > 0:
+            fill_percentage = (checked_in_count / total_capacity) * 100
+            if fill_percentage < 80:
+                return Response({
+                    'detail': f'Bus must be at least 80% full to depart. Current: {fill_percentage:.1f}% ({checked_in_count}/{total_capacity})'
+                }, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             bus.transition_to(BusAssignmentStatus.DEPARTED)
@@ -710,6 +771,15 @@ class DriverAvailableScheduledRidesView(generics.ListAPIView):
             ).exclude(status='withdrawn_with_fine').values_list('ride_id', 'status')
         )
         
+        # Get bus assignments for this driver with capacity info
+        bus_assignments = {}
+        for bus in ScheduledRideBusAssignment.objects.filter(driver=request.user):
+            bus_assignments[bus.ride_id] = {
+                'id': str(bus.id),
+                'seated_capacity': bus.seated_capacity,
+                'standing_capacity': bus.standing_capacity,
+            }
+        
         from .scheduled_serializers import ScheduledRideListSerializer
         
         if page is not None:
@@ -718,6 +788,11 @@ class DriverAvailableScheduledRidesView(generics.ListAPIView):
                 import uuid as _uuid
                 rid = _uuid.UUID(str(item['id']))
                 item['driver_interest_status'] = interested_map.get(rid)
+                bus_info = bus_assignments.get(rid)
+                if bus_info:
+                    item['bus_assignment_id'] = bus_info['id']
+                    item['seated_capacity'] = bus_info['seated_capacity']
+                    item['standing_capacity'] = bus_info['standing_capacity']
             return self.get_paginated_response(data)
 
         data = ScheduledRideListSerializer(queryset, many=True).data
@@ -725,6 +800,11 @@ class DriverAvailableScheduledRidesView(generics.ListAPIView):
             import uuid as _uuid
             rid = _uuid.UUID(str(item['id']))
             item['driver_interest_status'] = interested_map.get(rid)
+            bus_info = bus_assignments.get(rid)
+            if bus_info:
+                item['bus_assignment_id'] = bus_info['id']
+                item['seated_capacity'] = bus_info['seated_capacity']
+                item['standing_capacity'] = bus_info['standing_capacity']
         return Response(data)
 
 class DriverExpressInterestView(APIView):

@@ -1380,6 +1380,7 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
   const [selectedRideForPassengers, setSelectedRideForPassengers] = useState<any>(null);
   const [passengersList, setPassengersList] = useState<any[]>([]);
   const [loadingPassengers, setLoadingPassengers] = useState(false);
+  const [departingBusId, setDepartingBusId] = useState<string | null>(null);
 
   const handleCancelAssignmentSubmit = async () => {
     if (!cancellingAssignmentId || !cancelReason.trim()) return;
@@ -1427,6 +1428,25 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
       ));
     } catch (err: any) {
       Alert.alert('Error', 'Failed to update passenger status.');
+    }
+  };
+
+  const handleDepartBus = async (rideId: string) => {
+    setDepartingBusId(rideId);
+    try {
+      await driverApi.departScheduledBus(rideId);
+      Alert.alert('Departed', 'Your bus has departed successfully.');
+      setPassengersModalVisible(false);
+      setDetailedScheduledRide(null);
+      // Refresh the rides list
+      const res = await driverApi.getAvailableScheduledRides();
+      const data = res?.data;
+      setAvailableScheduledRides(Array.isArray(data) ? data : (data?.results ?? []));
+    } catch (err: any) {
+      const errorMessage = err?.response?.data?.detail || err?.message || 'Failed to depart bus.';
+      Alert.alert('Error', errorMessage);
+    } finally {
+      setDepartingBusId(null);
     }
   };
 
@@ -2161,36 +2181,96 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
                 <Text style={[FONTS.bodyMd, { color: COLORS.onSurfaceVariant, marginTop: 12 }]}>No passengers assigned yet</Text>
               </View>
             ) : (
-              <ScrollView style={{ maxHeight: 400 }}>
-                {passengersList.map((passenger, index) => (
-                  <View key={passenger.id} style={[styles.passengerItem, { marginBottom: index < passengersList.length - 1 ? 12 : 0 }]}>
-                    <View style={styles.passengerOrderBadge}>
-                      <Text style={[FONTS.labelMd, { color: COLORS.onPrimary }]}>{passenger.bus_order || index + 1}</Text>
-                    </View>
-                    <View style={{ flex: 1, marginLeft: 12 }}>
-                      <Text style={[FONTS.bodyMd, { color: COLORS.onSurface, fontWeight: '600' }]}>{passenger.student_name}</Text>
-                      <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant }]}>Ticket: {passenger.ticket_ref}</Text>
-                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-                        <View style={styles.passengerStopBadge}>
-                          <MaterialIcons name="hail" size={12} color={COLORS.onSurfaceVariant} />
-                          <Text style={[FONTS.labelSm, { color: COLORS.onSurfaceVariant, marginLeft: 4 }]}>{passenger.boarding_stop_name}</Text>
-                        </View>
-                        <View style={styles.passengerStopBadge}>
-                          <MaterialIcons name="directions-walk" size={12} color={COLORS.onSurfaceVariant} />
-                          <Text style={[FONTS.labelSm, { color: COLORS.onSurfaceVariant, marginLeft: 4 }]}>{passenger.alighting_stop_name}</Text>
+              <>
+                <ScrollView style={{ maxHeight: 400 }}>
+                  {passengersList.map((passenger, index) => (
+                    <View key={passenger.id} style={[styles.passengerItem, { marginBottom: index < passengersList.length - 1 ? 12 : 0 }]}>
+                      <View style={styles.passengerOrderBadge}>
+                        <Text style={[FONTS.labelMd, { color: COLORS.onPrimary }]}>{passenger.bus_order || index + 1}</Text>
+                      </View>
+                      <View style={{ flex: 1, marginLeft: 12 }}>
+                        <Text style={[FONTS.bodyMd, { color: COLORS.onSurface, fontWeight: '600' }]}>{passenger.student_name}</Text>
+                        <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant }]}>Ticket: {passenger.ticket_ref}</Text>
+                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                          <View style={styles.passengerStopBadge}>
+                            <MaterialIcons name="hail" size={12} color={COLORS.onSurfaceVariant} />
+                            <Text style={[FONTS.labelSm, { color: COLORS.onSurfaceVariant, marginLeft: 4 }]}>{passenger.boarding_stop_name}</Text>
+                          </View>
+                          <View style={styles.passengerStopBadge}>
+                            <MaterialIcons name="directions-walk" size={12} color={COLORS.onSurfaceVariant} />
+                            <Text style={[FONTS.labelSm, { color: COLORS.onSurfaceVariant, marginLeft: 4 }]}>{passenger.alighting_stop_name}</Text>
+                          </View>
                         </View>
                       </View>
+                      <TouchableOpacity
+                        style={[styles.passengerCheckbox, passenger.boarded && styles.passengerCheckboxChecked]}
+                        onPress={() => handleTogglePassengerBoarded(passenger.id, !passenger.boarded)}
+                        activeOpacity={0.7}
+                      >
+                        {passenger.boarded && <MaterialIcons name="check" size={18} color={COLORS.onPrimary} />}
+                      </TouchableOpacity>
                     </View>
-                    <TouchableOpacity
-                      style={[styles.passengerCheckbox, passenger.boarded && styles.passengerCheckboxChecked]}
-                      onPress={() => handleTogglePassengerBoarded(passenger.id, !passenger.boarded)}
-                      activeOpacity={0.7}
-                    >
-                      {passenger.boarded && <MaterialIcons name="check" size={18} color={COLORS.onPrimary} />}
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </ScrollView>
+                  ))}
+                </ScrollView>
+
+                {/* Depart Button */}
+                {selectedRideForPassengers && (() => {
+                  const ride = selectedRideForPassengers;
+                  const busAssignmentId = ride.bus_assignment_id;
+                  
+                  if (!busAssignmentId) {
+                    return (
+                      <View style={{ marginTop: 16, padding: 12, backgroundColor: COLORS.surfaceContainerHigh, borderRadius: 8 }}>
+                        <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, textAlign: 'center' }]}>
+                          No bus assignment found. Contact admin for assignment.
+                        </Text>
+                      </View>
+                    );
+                  }
+
+                  const seatedCapacity = ride.seated_capacity || 50;
+                  const standingCapacity = ride.standing_capacity || 0;
+                  const totalCapacity = seatedCapacity + standingCapacity;
+                  const boardedCount = passengersList.filter(p => p.boarded).length;
+                  const fillPercentage = totalCapacity > 0 ? (boardedCount / totalCapacity) * 100 : 0;
+                  const now = new Date();
+                  const windowStart = new Date(`${ride.departure_date}T${ride.window_start}`);
+                  const canDepart = fillPercentage >= 80 && now >= windowStart;
+
+                  return (
+                    <View style={{ marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: COLORS.surfaceContainerHigh }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                        <View>
+                          <Text style={[FONTS.bodyMd, { color: COLORS.onSurface, fontWeight: '600' }]}>
+                            Capacity: {boardedCount}/{totalCapacity} ({fillPercentage.toFixed(0)}%)
+                          </Text>
+                          <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant }]}>
+                            {canDepart ? 'Ready to depart' : 'Need 80% capacity and after departure time'}
+                          </Text>
+                        </View>
+                      </View>
+                      <TouchableOpacity
+                        style={[styles.mapSheetAcceptButton, { 
+                          backgroundColor: canDepart ? COLORS.primary : COLORS.surfaceContainerHigh,
+                          opacity: canDepart ? 1 : 0.6
+                        }]}
+                        onPress={() => handleDepartBus(ride.id)}
+                        disabled={!canDepart || departingBusId === ride.id}
+                        activeOpacity={0.85}
+                      >
+                        {departingBusId === ride.id ? (
+                          <LoadingOverlay visible={true} inline size={22} />
+                        ) : (
+                          <>
+                            <MaterialIcons name="directions-bus" size={20} color={canDepart ? COLORS.onPrimary : COLORS.onSurfaceVariant} />
+                            <Text style={[FONTS.labelLg, { color: canDepart ? COLORS.onPrimary : COLORS.onSurfaceVariant }]}>Depart Bus</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })()}
+              </>
             )}
           </View>
         </View>

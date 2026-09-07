@@ -852,18 +852,16 @@ export default function RouteOpsPanel() {
                                     Unassign
                                   </button>
                                 ) : (
-                                  <button style={{ ...s.busActionBtn, flex: 1, justifyContent: 'center', color: '#f59e0b', background: 'rgba(245,158,11,0.1)', opacity: disableDispatch ? 0.5 : 1, cursor: disableDispatch ? 'not-allowed' : 'pointer' }}
-                                    onClick={() => handleBusAction(bus.id, 'depart')} disabled={disableDispatch}>
-                                    <Play size={11} /> Board / Depart
-                                  </button>
+                                  <div style={{ ...s.busActionBtn, flex: 1, justifyContent: 'center', color: T.textMuted, opacity: 0.7 }}>
+                                    Driver controls departure
+                                  </div>
                                 )}
                               </>
                             )}
                             {bus.status === 'boarding' && (
-                              <button style={{ ...s.busActionBtn, flex: 1, justifyContent: 'center', color: '#10b981', background: 'rgba(16,185,129,0.1)', opacity: disableDispatch ? 0.5 : 1, cursor: disableDispatch ? 'not-allowed' : 'pointer' }}
-                                onClick={() => handleBusAction(bus.id, 'depart')} disabled={disableDispatch}>
-                                <Navigation size={11} /> Depart
-                              </button>
+                              <div style={{ ...s.busActionBtn, flex: 1, justifyContent: 'center', color: T.textMuted, opacity: 0.7 }}>
+                                Driver controls departure
+                              </div>
                             )}
                             {(bus.status === 'departed' || bus.status === 'en_route') && (
                               <button style={{ ...s.busActionBtn, flex: 1, justifyContent: 'center', color: '#6366f1', background: 'rgba(99,102,241,0.1)' }}

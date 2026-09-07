@@ -264,6 +264,7 @@ export const driverApi = {
   cancelScheduledAssignment: (rideId: string, reason: string) => api.post(`rides/scheduled/${rideId}/cancel-assignment/`, { reason }),
   getScheduledRidePassengers: (rideId: string) => api.get(`rides/scheduled/${rideId}/passengers/`),
   markPassengerBoarded: (passengerId: string, boarded: boolean) => api.patch(`rides/scheduled/passengers/${passengerId}/`, { boarded }),
+  departScheduledBus: (rideId: string) => api.post(`rides/scheduled/${rideId}/driver-depart/`),
 }
 
 export const verificationApi = {
