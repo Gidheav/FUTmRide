@@ -22,6 +22,7 @@ from .scheduled_models import (
     ScheduledRidePassenger,
     ScheduledRideStatus,
     ScheduledRideStop,
+    SeatType,
     VehicleClass,
 )
 
@@ -956,6 +957,7 @@ class ScheduledRideJoinSerializer(serializers.Serializer):
             ride=ride,
             student=student,
             pricing_tier=tier,
+            seat_type=SeatType.STANDING if tier == PricingTier.STANDING else SeatType.SEATED,
             boarding_stop=boarding_stop,
             alighting_stop=alighting_stop,
             amount_paid=price,

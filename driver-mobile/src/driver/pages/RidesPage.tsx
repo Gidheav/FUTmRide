@@ -2260,13 +2260,25 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
             ) : (
               <>
                 <ScrollView style={{ maxHeight: 400 }}>
-                  {passengersList.map((passenger, index) => (
+                  {passengersList.map((passenger, index) => {
+                    const isStanding = passenger.seat_type === 'standing' || passenger.pricing_tier === 'standing';
+                    return (
                     <View key={passenger.id} style={[styles.passengerItem, { marginBottom: index < passengersList.length - 1 ? 12 : 0 }]}>
                       <View style={styles.passengerOrderBadge}>
                         <Text style={[FONTS.labelMd, { color: COLORS.onPrimary }]}>{index + 1}</Text>
                       </View>
                       <View style={{ flex: 1, marginLeft: 12 }}>
-                        <Text style={[FONTS.bodyMd, { color: COLORS.onSurface, fontWeight: '600' }]}>{passenger.student_name}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <Text style={[FONTS.bodyMd, { color: COLORS.onSurface, fontWeight: '600' }]}>{passenger.student_name}</Text>
+                          <View style={[
+                            styles.passengerSeatBadge,
+                            { backgroundColor: isStanding ? COLORS.error : COLORS.primary }
+                          ]}>
+                            <Text style={[FONTS.labelSm, { color: COLORS.onPrimary }]}>
+                              {isStanding ? 'Standing' : 'Sitting'}
+                            </Text>
+                          </View>
+                        </View>
                         <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant }]}>Ticket: {passenger.ticket_ref}</Text>
                         <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
                           <View style={styles.passengerStopBadge}>
@@ -2279,21 +2291,16 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
                           </View>
                         </View>
                       </View>
-                      {passenger.boarded ? (
-                        <View style={[styles.passengerCheckbox, styles.passengerCheckboxChecked]}>
-                          <MaterialIcons name="check" size={18} color={COLORS.onPrimary} />
-                        </View>
-                      ) : (
-                        <TouchableOpacity
-                          style={styles.passengerCheckbox}
-                          onPress={() => handleTogglePassengerBoarded(passenger.id, true)}
-                          activeOpacity={0.7}
-                        >
-                          <MaterialIcons name="check" size={18} color={COLORS.onSurfaceVariant} />
-                        </TouchableOpacity>
-                      )}
+                      <TouchableOpacity
+                        style={passenger.boarded ? [styles.passengerCheckbox, styles.passengerCheckboxChecked] : styles.passengerCheckbox}
+                        onPress={() => handleTogglePassengerBoarded(passenger.id, !passenger.boarded)}
+                        activeOpacity={0.7}
+                      >
+                        <MaterialIcons name="check" size={18} color={passenger.boarded ? COLORS.onPrimary : COLORS.onSurfaceVariant} />
+                      </TouchableOpacity>
                     </View>
-                  ))}
+                    );
+                  })}
                 </ScrollView>
 
                 {/* Depart Button */}
@@ -3380,6 +3387,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
+  },
+  passengerSeatBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   passengerCheckbox: {
     width: 28,
