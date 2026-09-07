@@ -406,7 +406,13 @@ export default function RouteOpsPanel() {
       addLog(`${res.student_name} checked in`, 'success')
       await fetchRideDetails(selectedRideId)
     } catch (e: any) {
-      addLog(`Check-in failed: ${e?.message || 'Error'}`, 'error')
+      let errorMessage = 'Check-in failed';
+      if (e?.response?.data?.detail) {
+        errorMessage = e.response.data.detail;
+      } else if (e?.message) {
+        errorMessage = e.message;
+      }
+      addLog(`${errorMessage}`, 'error')
     } finally { setActionLoading(null) }
   }
 

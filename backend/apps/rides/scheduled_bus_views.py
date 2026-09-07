@@ -268,6 +268,9 @@ class BusAutoCheckInView(APIView):
         checked_in_count = 0
         now = timezone.now()
         for pax in assigned_unchecked:
+            # Double-check to prevent race conditions
+            if pax.checked_in_at is not None:
+                continue
             pax.checked_in_at = now
             pax.status = PassengerStatus.BOARDED
             pax.save(update_fields=['checked_in_at', 'status'])
@@ -288,6 +291,9 @@ class BusAutoCheckInView(APIView):
 
         allocated_and_checked_in = 0
         for pax in unassigned:
+            # Double-check to prevent race conditions
+            if pax.checked_in_at is not None:
+                continue
             if pax.pricing_tier != 'standing' and bus.seats_available > 0:
                 pax.bus_assignment = bus
                 pax.seat_type = SeatType.SEATED
@@ -331,6 +337,9 @@ class BusAutoCheckInView(APIView):
             ).order_by('joined_at')
             
             for pax in passengers_on_other_buses:
+                # Double-check to prevent race conditions
+                if pax.checked_in_at is not None:
+                    continue
                 if pax.pricing_tier != 'standing' and bus.seats_available > 0:
                     pax.bus_assignment = bus
                     pax.checked_in_at = now
@@ -590,6 +599,8 @@ class DriverPassengerUpdateView(generics.UpdateAPIView):
         
         if boarded is not None:
             if boarded:
+                if passenger.checked_in_at is not None:
+                    return Response({'detail': 'Passenger is already checked in.'}, status=status.HTTP_400_BAD_REQUEST)
                 passenger.status = PassengerStatus.BOARDED
                 passenger.checked_in_at = timezone.now()
             else:
@@ -613,6 +624,9 @@ class PassengerCheckInView(APIView):
 
         if pax.status in [PassengerStatus.CANCELLED, PassengerStatus.NO_SHOW]:
             return Response({'detail': 'Cannot check in a cancelled/no-show passenger.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if pax.checked_in_at is not None:
+            return Response({'detail': 'Passenger is already checked in.'}, status=status.HTTP_400_BAD_REQUEST)
 
         pax.checked_in_at = timezone.now()
         pax.status = PassengerStatus.BOARDED
@@ -800,13 +814,43 @@ class DriverAvailableScheduledRidesView(generics.ListAPIView):
             ).exclude(status='withdrawn_with_fine').values_list('ride_id', 'status')
         )
         
-        # Get bus assignments for this driver with capacity info
+        # Get bus assignments for this driver with capacity info and passenger counts
         bus_assignments = {}
         for bus in ScheduledRideBusAssignment.objects.filter(driver=request.user):
+            # Get passenger count for this specific bus
+            passenger_count = ScheduledRidePassenger.objects.filter(
+                bus_assignment=bus
+            ).exclude(
+                status__in=[PassengerStatus.CANCELLED, PassengerStatus.NO_SHOW]
+            ).count()
+            
+            boarded_count = ScheduledRidePassenger.objects.filter(
+                bus_assignment=bus,
+                status=PassengerStatus.BOARDED
+            ).count()
+            
+            seated_assigned = ScheduledRidePassenger.objects.filter(
+                bus_assignment=bus,
+                seat_type=SeatType.SEATED
+            ).exclude(
+                status__in=[PassengerStatus.CANCELLED, PassengerStatus.NO_SHOW]
+            ).count()
+            
+            standing_assigned = ScheduledRidePassenger.objects.filter(
+                bus_assignment=bus,
+                seat_type=SeatType.STANDING
+            ).exclude(
+                status__in=[PassengerStatus.CANCELLED, PassengerStatus.NO_SHOW]
+            ).count()
+            
             bus_assignments[bus.ride_id] = {
                 'id': str(bus.id),
                 'seated_capacity': bus.seated_capacity,
                 'standing_capacity': bus.standing_capacity,
+                'passenger_count': passenger_count,
+                'boarded_count': boarded_count,
+                'seated_assigned': seated_assigned,
+                'standing_assigned': standing_assigned,
             }
         
         from .scheduled_serializers import ScheduledRideListSerializer
@@ -822,6 +866,10 @@ class DriverAvailableScheduledRidesView(generics.ListAPIView):
                     item['bus_assignment_id'] = bus_info['id']
                     item['seated_capacity'] = bus_info['seated_capacity']
                     item['standing_capacity'] = bus_info['standing_capacity']
+                    item['passenger_count'] = bus_info['passenger_count']
+                    item['boarded_count'] = bus_info['boarded_count']
+                    item['seated_assigned'] = bus_info['seated_assigned']
+                    item['standing_assigned'] = bus_info['standing_assigned']
             return self.get_paginated_response(data)
 
         data = ScheduledRideListSerializer(queryset, many=True).data
@@ -834,6 +882,10 @@ class DriverAvailableScheduledRidesView(generics.ListAPIView):
                 item['bus_assignment_id'] = bus_info['id']
                 item['seated_capacity'] = bus_info['seated_capacity']
                 item['standing_capacity'] = bus_info['standing_capacity']
+                item['passenger_count'] = bus_info['passenger_count']
+                item['boarded_count'] = bus_info['boarded_count']
+                item['seated_assigned'] = bus_info['seated_assigned']
+                item['standing_assigned'] = bus_info['standing_assigned']
         return Response(data)
 
 class DriverExpressInterestView(APIView):

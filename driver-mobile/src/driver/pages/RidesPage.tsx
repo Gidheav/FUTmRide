@@ -1419,6 +1419,48 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
       const passengers = response?.data?.results || [];
       console.log('Parsed passengers:', passengers);
       setPassengersList(passengers);
+      
+      // Update the ride object with the actual passenger count for this driver's bus
+      const totalAssigned = passengers.length;
+      const boardedCount = passengers.filter((p: any) => p.boarded).length;
+      const seatedAssigned = passengers.filter((p: any) => p.seat_type === 'seated' || (!p.seat_type && p.pricing_tier !== 'standing')).length;
+      const standingAssigned = passengers.filter((p: any) => p.seat_type === 'standing' || p.pricing_tier === 'standing').length;
+      
+      // Update the ride object with the correct passenger counts
+      setSelectedRideForPassengers((prev: any) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          passenger_count: totalAssigned,
+          boarded_count: boardedCount,
+          seated_assigned: seatedAssigned,
+          standing_assigned: standingAssigned,
+        };
+      });
+      
+      // Also update the detailed scheduled ride object
+      setDetailedScheduledRide((prev: any) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          passenger_count: totalAssigned,
+          boarded_count: boardedCount,
+          seated_assigned: seatedAssigned,
+          standing_assigned: standingAssigned,
+        };
+      });
+      
+      // Update the main rides list to reflect the new passenger counts
+      setAvailableScheduledRides((prev: any[]) => prev.map((r: any) => 
+        r.id === ride.id ? { 
+          ...r, 
+          passenger_count: totalAssigned, 
+          boarded_count: boardedCount,
+          seated_assigned: seatedAssigned,
+          standing_assigned: standingAssigned,
+        } : r
+      ));
+      
     } catch (err: any) {
       console.error('Error loading passengers:', err);
       Alert.alert('Error', 'Failed to load passengers list.');
@@ -1431,11 +1473,22 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
   const handleTogglePassengerBoarded = async (passengerId: string, boarded: boolean) => {
     try {
       await driverApi.markPassengerBoarded(passengerId, boarded);
-      setPassengersList(prev => prev.map(p => 
-        p.id === passengerId ? { ...p, boarded } : p
-      ));
+      // Reload passenger list to get updated state from server
+      if (selectedRideForPassengers) {
+        await handleLoadPassengers(selectedRideForPassengers);
+      }
+      // Also refresh the main rides list to update the ride cards
+      const res = await driverApi.getAvailableScheduledRides();
+      const data = res?.data;
+      setAvailableScheduledRides(Array.isArray(data) ? data : (data?.results ?? []));
     } catch (err: any) {
-      Alert.alert('Error', 'Failed to update passenger status.');
+      let errorMessage = 'Failed to update passenger status.';
+      if (err?.response?.data?.detail) {
+        errorMessage = err.response.data.detail;
+      } else if (err?.message) {
+        errorMessage = err.message;
+      }
+      Alert.alert('Error', errorMessage);
     }
   };
 
@@ -1479,6 +1532,10 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
         const list = Array.isArray(data) ? data : (data?.results ?? []);
         setMarketplaceRequests(list as RideListItem[]);
         setCachedRequests(list as RideListItem[]);
+      } else if (driverMode === 'scheduled') {
+        const res = await driverApi.getAvailableScheduledRides();
+        const data = res?.data;
+        setAvailableScheduledRides(Array.isArray(data) ? data : (data?.results ?? []));
       }
     } catch (e) {
       console.error(e);
@@ -2030,7 +2087,11 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
                   </View>
                   <View style={styles.premiumCardInfoItem}>
                     <MaterialIcons name="people" size={14} color={COLORS.outline} />
-                    <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginLeft: 5 }]}>{ride.passenger_count || 0} pax</Text>
+                    <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant, marginLeft: 5 }]}>
+                      {ride.bus_assignment_id ? 
+                        `${ride.seated_assigned || 0}/${ride.seated_capacity || 0} seated, ${ride.standing_assigned || 0}/${ride.standing_capacity || 0} standing` : 
+                        `${ride.passenger_count || 0} pax`}
+                    </Text>
                   </View>
                   {(ride.stops_count > 0) && (
                     <View style={styles.premiumCardInfoItem}>
@@ -2210,13 +2271,19 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
                           </View>
                         </View>
                       </View>
-                      <TouchableOpacity
-                        style={[styles.passengerCheckbox, passenger.boarded && styles.passengerCheckboxChecked]}
-                        onPress={() => handleTogglePassengerBoarded(passenger.id, !passenger.boarded)}
-                        activeOpacity={0.7}
-                      >
-                        {passenger.boarded && <MaterialIcons name="check" size={18} color={COLORS.onPrimary} />}
-                      </TouchableOpacity>
+                      {passenger.boarded ? (
+                        <View style={[styles.passengerCheckbox, styles.passengerCheckboxChecked]}>
+                          <MaterialIcons name="check" size={18} color={COLORS.onPrimary} />
+                        </View>
+                      ) : (
+                        <TouchableOpacity
+                          style={styles.passengerCheckbox}
+                          onPress={() => handleTogglePassengerBoarded(passenger.id, true)}
+                          activeOpacity={0.7}
+                        >
+                          <MaterialIcons name="check" size={18} color={COLORS.onSurfaceVariant} />
+                        </TouchableOpacity>
+                      )}
                     </View>
                   ))}
                 </ScrollView>
@@ -2239,21 +2306,31 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
                   const seatedCapacity = ride.seated_capacity || 50;
                   const standingCapacity = ride.standing_capacity || 0;
                   const totalCapacity = seatedCapacity + standingCapacity;
+                  const totalAssigned = passengersList.length;
                   const boardedCount = passengersList.filter(p => p.boarded).length;
-                  const fillPercentage = totalCapacity > 0 ? (boardedCount / totalCapacity) * 100 : 0;
+                  const seatedAssigned = passengersList.filter(p => p.seat_type === 'seated' || (!p.seat_type && p.pricing_tier !== 'standing')).length;
+                  const standingAssigned = passengersList.filter(p => p.seat_type === 'standing' || p.pricing_tier === 'standing').length;
+                  const fillPercentage = totalCapacity > 0 ? (totalAssigned / totalCapacity) * 100 : 0;
                   const now = new Date();
                   const windowStart = new Date(`${ride.departure_date}T${ride.window_start}`);
-                  const canDepart = fillPercentage >= 80 && now >= windowStart;
+                  const isDepartureTime = now >= windowStart;
+                  const checkInRate = totalAssigned > 0 ? (boardedCount / totalAssigned) : 0;
+                  const canDepart = isDepartureTime && (fillPercentage >= 80 || checkInRate >= 0.8);
 
                   return (
                     <View style={{ marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: COLORS.surfaceContainerHigh }}>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                         <View>
                           <Text style={[FONTS.bodyMd, { color: COLORS.onSurface, fontWeight: '600' }]}>
-                            Capacity: {boardedCount}/{totalCapacity} ({fillPercentage.toFixed(0)}%)
+                            {seatedAssigned}/{seatedCapacity} seated, {standingAssigned}/{standingCapacity} standing
                           </Text>
                           <Text style={[FONTS.bodySm, { color: COLORS.onSurfaceVariant }]}>
-                            {canDepart ? 'Ready to depart' : 'Need 80% capacity and after departure time'}
+                            {boardedCount} checked in, {totalAssigned - boardedCount} waiting
+                          </Text>
+                        </View>
+                        <View style={{ backgroundColor: fillPercentage >= 80 ? COLORS.primaryContainer : COLORS.surfaceContainerHigh, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }}>
+                          <Text style={[FONTS.labelMd, { color: fillPercentage >= 80 ? COLORS.primary : COLORS.onSurfaceVariant }]}>
+                            {fillPercentage.toFixed(0)}% full
                           </Text>
                         </View>
                       </View>
