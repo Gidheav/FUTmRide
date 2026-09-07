@@ -98,6 +98,11 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
       try {
         const res = await api.get(`rides/scheduled/${ride.id}/detail/`)
         const data = res.data
+        console.log('DEBUG MOBILE: Detail API response:', data)
+        console.log('DEBUG MOBILE: assigned_driver_name:', data.assigned_driver_name)
+        console.log('DEBUG MOBILE: assigned_plate_number:', data.assigned_plate_number)
+        console.log('DEBUG MOBILE: assigned_bus_label:', data.assigned_bus_label)
+        console.log('DEBUG MOBILE: checked_in_at:', data.checked_in_at)
         setDetail(data)
 
         if (!isLeaveMode && data.stops && data.stops.length >= 2) {
