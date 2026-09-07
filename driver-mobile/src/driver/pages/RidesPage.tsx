@@ -12,6 +12,7 @@ import {
   Platform,
   UIManager,
   Alert,
+  ScrollView,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -226,8 +227,9 @@ const resolveMediaUrl = (value?: string | null) => {
   if (/^https?:\/\//i.test(value)) return value;
 
   try {
-    const apiUrl = new URL(API_ROOT_URL);
-    return `${apiUrl.origin}${value.startsWith('/') ? value : `/${value}`}`;
+    const apiUrl = new URL(API_ROOT_URL as string);
+    const origin = (apiUrl as any).protocol + '//' + (apiUrl as any).host;
+    return `${origin}${value.startsWith('/') ? value : `/${value}`}`;
   } catch {
     return value;
   }
@@ -543,7 +545,7 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
 
   useEffect(() => {
     let isMounted = true;
-    let timer: NodeJS.Timeout;
+    let timer: ReturnType<typeof setTimeout>;
 
     const fetchLoc = async () => {
       if (!isOnline) return;
@@ -1412,9 +1414,15 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
     setLoadingPassengers(true);
     try {
       const response = await driverApi.getScheduledRidePassengers(ride.id);
-      setPassengersList(response.data || []);
+      console.log('Passengers API response:', response);
+      // Handle paginated response structure: { data: { results: [...] } }
+      const passengers = response?.data?.results || [];
+      console.log('Parsed passengers:', passengers);
+      setPassengersList(passengers);
     } catch (err: any) {
+      console.error('Error loading passengers:', err);
       Alert.alert('Error', 'Failed to load passengers list.');
+      setPassengersList([]);
     } finally {
       setLoadingPassengers(false);
     }
@@ -2186,7 +2194,7 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
                   {passengersList.map((passenger, index) => (
                     <View key={passenger.id} style={[styles.passengerItem, { marginBottom: index < passengersList.length - 1 ? 12 : 0 }]}>
                       <View style={styles.passengerOrderBadge}>
-                        <Text style={[FONTS.labelMd, { color: COLORS.onPrimary }]}>{passenger.bus_order || index + 1}</Text>
+                        <Text style={[FONTS.labelMd, { color: COLORS.onPrimary }]}>{index + 1}</Text>
                       </View>
                       <View style={{ flex: 1, marginLeft: 12 }}>
                         <Text style={[FONTS.bodyMd, { color: COLORS.onSurface, fontWeight: '600' }]}>{passenger.student_name}</Text>
@@ -2194,11 +2202,11 @@ export default function RidesPage({ route, onBack, onRideFinished, requestedFilt
                         <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
                           <View style={styles.passengerStopBadge}>
                             <MaterialIcons name="hail" size={12} color={COLORS.onSurfaceVariant} />
-                            <Text style={[FONTS.labelSm, { color: COLORS.onSurfaceVariant, marginLeft: 4 }]}>{passenger.boarding_stop_name}</Text>
+                            <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant, marginLeft: 4 }]}>{passenger.boarding_stop_name}</Text>
                           </View>
                           <View style={styles.passengerStopBadge}>
                             <MaterialIcons name="directions-walk" size={12} color={COLORS.onSurfaceVariant} />
-                            <Text style={[FONTS.labelSm, { color: COLORS.onSurfaceVariant, marginLeft: 4 }]}>{passenger.alighting_stop_name}</Text>
+                            <Text style={[FONTS.labelMd, { color: COLORS.onSurfaceVariant, marginLeft: 4 }]}>{passenger.alighting_stop_name}</Text>
                           </View>
                         </View>
                       </View>

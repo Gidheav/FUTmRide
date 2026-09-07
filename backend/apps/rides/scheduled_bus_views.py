@@ -319,9 +319,38 @@ class BusAutoCheckInView(APIView):
                     logger = logging.getLogger('apps.rides')
                     logger.error(f'Failed to send check-in notification for passenger {pax.id}: {str(e)}')
 
+        # 3. If still has capacity, reassign passengers from other buses that aren't checked in yet
+        if bus.seats_available > 0 or bus.standing_available > 0:
+            passengers_on_other_buses = ScheduledRidePassenger.objects.filter(
+                ride=ride, 
+                bus_assignment__isnull=False,
+                checked_in_at__isnull=True,
+            ).exclude(
+                bus_assignment=bus,
+                status__in=[PassengerStatus.CANCELLED, PassengerStatus.NO_SHOW],
+            ).order_by('joined_at')
+            
+            for pax in passengers_on_other_buses:
+                if pax.pricing_tier != 'standing' and bus.seats_available > 0:
+                    pax.bus_assignment = bus
+                    pax.checked_in_at = now
+                    pax.status = PassengerStatus.BOARDED
+                    pax.save(update_fields=['bus_assignment', 'checked_in_at', 'status'])
+                    allocated_and_checked_in += 1
+                elif pax.pricing_tier == 'standing' and bus.standing_available > 0:
+                    pax.bus_assignment = bus
+                    pax.checked_in_at = now
+                    pax.status = PassengerStatus.BOARDED
+                    pax.save(update_fields=['bus_assignment', 'checked_in_at', 'status'])
+                    allocated_and_checked_in += 1
+
         return Response({
             'bus': BusAssignmentReadSerializer(bus).data,
             'checked_in_count': checked_in_count + allocated_and_checked_in,
+            'checked_in_details': {
+                'already_assigned_checked_in': checked_in_count,
+                'newly_allocated': allocated_and_checked_in,
+            }
         })
 
 

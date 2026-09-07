@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { Platform } from 'react-native'
 import {
   ActivityIndicator,
   Alert,
@@ -12,9 +11,11 @@ import {
   View,
 } from 'react-native'
 import { MaterialIcons } from '@expo/vector-icons'
+import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated'
 import api from '../../../core/api'
 import { ScheduledRide } from './ScheduledTab'
 import LoadingOverlay from '../LoadingOverlay'
+import PremiumBottomSheet from '../premium/PremiumBottomSheet'
 
 const getTimeRemaining = (windowStart: string, windowEnd: string, departureDate: string) => {
   if (!windowStart || !departureDate) return null
@@ -87,7 +88,15 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
   const [pinError, setPinError] = useState('')
   const [pinLoading, setPinLoading] = useState(false)
   const [pendingAction, setPendingAction] = useState<'join' | 'leave' | null>(null)
-  const PIN_ROWS = [['1','2','3'],['4','5','6'],['7','8','9'],['','0','back']]
+  const PIN_ROWS = [[1,2,3],[4,5,6],[7,8,9],[null,0,'back']]
+
+  // Reset pin input when modal opens
+  useEffect(() => {
+    if (pinModalVisible) {
+      setPinInput('')
+      setPinError('')
+    }
+  }, [pinModalVisible])
 
   const isLeaveMode = ride.is_joined_by_me
   const timeStatus = getTimeRemaining(ride.window_start, ride.window_end, ride.departure_date)
@@ -124,8 +133,6 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
     }
 
     setPendingAction('join')
-    setPinInput('')
-    setPinError('')
     setPinModalVisible(true)
   }
 
@@ -180,8 +187,6 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
 
   const handleLeave = () => {
     setPendingAction('leave')
-    setPinInput('')
-    setPinError('')
     setPinModalVisible(true)
   }
 
@@ -202,31 +207,34 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
     }
   }
 
-  const handlePinDigit = async (digit: string) => {
-    if (pinLoading) return
-    if (!digit) return
-    if (digit === 'back') { setPinInput((p) => p.slice(0, -1)); return }
-    setPinError('')
-    if (pinInput.length >= 4) return
-    const next = `${pinInput}${digit}`
-    setPinInput(next)
-    if (next.length === 4) {
-      setPinLoading(true)
-      try {
-        await api.post('auth/settings/pin/verify/', { pin: next })
-        setPinModalVisible(false)
-        setPinInput('')
-        if (pendingAction === 'join') {
-          void doJoin()
-        } else if (pendingAction === 'leave') {
-          void doLeave()
+  const handlePinDigit = async (digit: string | number | null) => {
+    if (!digit || pinLoading) return
+    if (digit === 'back') {
+      setPinInput((p) => p.slice(0, -1))
+      if (pinError) setPinError('')
+      return
+    }
+    if (pinInput.length < 4) {
+      const next = `${pinInput}${digit}`
+      setPinInput(next)
+      if (next.length === 4) {
+        setPinLoading(true)
+        try {
+          await api.post('auth/settings/pin/verify/', { pin: next })
+          setPinModalVisible(false)
+          setPinInput('')
+          if (pendingAction === 'join') {
+            void doJoin()
+          } else if (pendingAction === 'leave') {
+            void doLeave()
+          }
+        } catch (err: any) {
+          const msg = err?.response?.data?.message || err?.response?.data?.error?.message || 'Incorrect Transaction PIN.'
+          setPinError(String(msg))
+          setPinInput('')
+        } finally {
+          setPinLoading(false)
         }
-      } catch (err: any) {
-        const msg = err?.response?.data?.message || err?.response?.data?.error?.message || 'Incorrect Transaction PIN.'
-        setPinError(String(msg))
-        setPinInput('')
-      } finally {
-        setPinLoading(false)
       }
     }
   }
@@ -237,7 +245,7 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
   const currentSegmentFare = pricingTier === 'standing' ? currentSegment?.standing_fare : currentSegment?.standard_fare
 
   return (
-    <Modal visible animationType="slide" transparent>
+    <>
       {/* Full-screen loading overlay */}
       {working && (
         <View style={styles.workingOverlay}>
@@ -246,297 +254,324 @@ export default function JoinScheduledRideModal({ ride, onClose, onJoined, onLeft
         </View>
       )}
 
-      <View style={styles.overlay}>
-        <View style={styles.modalCard}>
-          <View style={[styles.header, isLeaveMode && styles.headerLeave]}>
-            <Text style={[styles.title, isLeaveMode && styles.titleLeave]}>
-              {isLeaveMode ? 'Your Booking' : 'Join Ride'}
-            </Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <MaterialIcons name="close" size={24} color={isLeaveMode ? '#ffffff' : '#1a1c1c'} />
-            </TouchableOpacity>
-          </View>
-
-          {loading || !detail ? (
-            <View style={styles.loaderWrap}>
-              <LoadingOverlay visible={true} inline size={40} />
+      <Modal visible animationType="slide" transparent>
+        <View style={styles.overlay}>
+          <View style={styles.modalCard}>
+            <View style={[styles.header, isLeaveMode && styles.headerLeave]}>
+              <Text style={[styles.title, isLeaveMode && styles.titleLeave]}>
+                {isLeaveMode ? 'Your Booking' : 'Join Ride'}
+              </Text>
+              <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+                <MaterialIcons name="close" size={24} color={isLeaveMode ? '#ffffff' : '#1a1c1c'} />
+              </TouchableOpacity>
             </View>
-          ) : (
-            <>
-              <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
-                {/* Route summary card */}
-                <View style={[styles.infoCard, isLeaveMode && styles.infoCardLeave]}>
-                  <View style={styles.infoCardHeader}>
-                    <View style={[styles.refBadge, isLeaveMode && styles.refBadgeLeave]}>
-                      <Text style={styles.refText}>#{detail.reference}</Text>
+
+            {loading || !detail ? (
+              <View style={styles.loaderWrap}>
+                <LoadingOverlay visible={true} inline size={40} />
+              </View>
+            ) : (
+              <>
+                <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
+                  {/* Route summary card */}
+                  <View style={[styles.infoCard, isLeaveMode && styles.infoCardLeave]}>
+                    <View style={styles.infoCardHeader}>
+                      <View style={[styles.refBadge, isLeaveMode && styles.refBadgeLeave]}>
+                        <Text style={styles.refText}>#{detail.reference}</Text>
+                      </View>
+                      <View style={styles.passengerBadge}>
+                        <MaterialIcons name="people" size={14} color={isLeaveMode ? '#ffffff' : '#6A1B9A'} />
+                        <Text style={[styles.passengerText, isLeaveMode && styles.passengerTextLeave]}>{detail.passenger_count} Joined</Text>
+                      </View>
                     </View>
-                    <View style={styles.passengerBadge}>
-                      <MaterialIcons name="people" size={14} color={isLeaveMode ? '#ffffff' : '#6A1B9A'} />
-                      <Text style={[styles.passengerText, isLeaveMode && styles.passengerTextLeave]}>{detail.passenger_count} Joined</Text>
-                    </View>
+
+                    {isLeaveMode && ride.my_ticket ? (
+                      <>
+                        <View style={[styles.myTicketRow, { marginBottom: 12 }]}>
+                          <View style={styles.myTicketStop}>
+                            <MaterialIcons name="hail" size={16} color="#ffffff" />
+                            <View>
+                              <Text style={[styles.myTicketLabel, { color: 'rgba(255,255,255,0.7)' }]}>Boarding</Text>
+                              <Text style={[styles.myTicketValue, { color: '#ffffff' }]}>{ride.my_ticket.boarding_stop_name || 'First stop'}</Text>
+                            </View>
+                          </View>
+                          <MaterialIcons name="arrow-forward" size={18} color="rgba(255,255,255,0.5)" />
+                          <View style={styles.myTicketStop}>
+                            <MaterialIcons name="directions-walk" size={16} color="#ffffff" />
+                            <View>
+                              <Text style={[styles.myTicketLabel, { color: 'rgba(255,255,255,0.7)' }]}>Alighting</Text>
+                              <Text style={[styles.myTicketValue, { color: '#ffffff' }]}>{ride.my_ticket.alighting_stop_name || 'Last stop'}</Text>
+                            </View>
+                          </View>
+                        </View>
+                        <View style={[styles.ticketRefRow, { borderTopColor: 'rgba(255,255,255,0.2)' }]}>
+                          <MaterialIcons name="confirmation-number" size={14} color="rgba(255,255,255,0.7)" />
+                          <Text style={[styles.ticketRefText, { color: 'rgba(255,255,255,0.7)' }]}>Ticket: {ride.my_ticket.ticket_ref}</Text>
+                          <Text style={[styles.ticketAmtText, { color: '#ffffff' }]}>₦{ride.my_ticket.amount_paid}</Text>
+                        </View>
+                      </>
+                    ) : null}
                   </View>
 
+                  {/* Leave mode: second card - vehicle details */}
                   {isLeaveMode && ride.my_ticket ? (
                     <>
-                      <View style={[styles.myTicketRow, { marginBottom: 12 }]}>
-                        <View style={styles.myTicketStop}>
-                          <MaterialIcons name="hail" size={16} color="#ffffff" />
-                          <View>
-                            <Text style={[styles.myTicketLabel, { color: 'rgba(255,255,255,0.7)' }]}>Boarding</Text>
-                            <Text style={[styles.myTicketValue, { color: '#ffffff' }]}>{ride.my_ticket.boarding_stop_name || 'First stop'}</Text>
+                      {/* Vehicle assignment details - show when checked in */}
+                      {(ride.checked_in_at || detail?.checked_in_at) && (
+                        <View style={styles.vehicleCard}>
+                          <View style={styles.vehicleCardHeader}>
+                            <MaterialIcons name="directions-bus" size={18} color="#6A1B9A" />
+                            <Text style={styles.vehicleCardTitle}>Your Vehicle</Text>
+                            {(detail?.bus_order || ride.bus_order) && (
+                              <View style={styles.busOrderBadge}>
+                                <Text style={styles.busOrderText}>#{detail?.bus_order || ride.bus_order}</Text>
+                              </View>
+                            )}
+                          </View>
+                          <View style={styles.vehicleDetailsRow}>
+                            {(detail?.assigned_plate_number || detail?.assigned_bus_label || ride.assigned_plate_number || ride.assigned_bus_label) ? (
+                              <View style={styles.vehicleDetailItem}>
+                                <Text style={styles.vehicleDetailLabel}>Vehicle</Text>
+                                <Text style={styles.vehicleDetailValue}>{detail?.assigned_plate_number || detail?.assigned_bus_label || ride.assigned_plate_number || ride.assigned_bus_label}</Text>
+                              </View>
+                            ) : (
+                              <View style={styles.vehicleDetailItem}>
+                                <Text style={styles.vehicleDetailLabel}>Vehicle</Text>
+                                <Text style={styles.vehicleDetailValue}>Assignment pending</Text>
+                              </View>
+                            )}
+                            {(detail?.assigned_driver_name || ride.assigned_driver_name) ? (
+                              <View style={styles.vehicleDetailItem}>
+                                <Text style={styles.vehicleDetailLabel}>Driver</Text>
+                                <Text style={styles.vehicleDetailValue}>{detail?.assigned_driver_name || ride.assigned_driver_name}</Text>
+                              </View>
+                            ) : (
+                              <View style={styles.vehicleDetailItem}>
+                                <Text style={styles.vehicleDetailLabel}>Driver</Text>
+                                <Text style={styles.vehicleDetailValue}>Assignment pending</Text>
+                              </View>
+                            )}
                           </View>
                         </View>
-                        <MaterialIcons name="arrow-forward" size={18} color="rgba(255,255,255,0.5)" />
-                        <View style={styles.myTicketStop}>
-                          <MaterialIcons name="directions-walk" size={16} color="#ffffff" />
-                          <View>
-                            <Text style={[styles.myTicketLabel, { color: 'rgba(255,255,255,0.7)' }]}>Alighting</Text>
-                            <Text style={[styles.myTicketValue, { color: '#ffffff' }]}>{ride.my_ticket.alighting_stop_name || 'Last stop'}</Text>
-                          </View>
+                      )}
+                    </>
+                  ) : !isLeaveMode ? (
+                    <>
+                      {/* Join mode: Tier selector */}
+                      {detail.standing_enabled && (
+                        <View style={styles.tierContainer}>
+                          <TouchableOpacity
+                            style={[styles.tierOption, pricingTier === 'standard' && styles.tierOptionActive]}
+                            onPress={() => setPricingTier('standard')}
+                            activeOpacity={0.7}
+                          >
+                            <MaterialIcons name="event-seat" size={20} color={pricingTier === 'standard' ? '#6A1B9A' : '#6b7280'} />
+                            <Text style={[styles.tierOptionTitle, pricingTier === 'standard' && styles.tierOptionTitleActive]}>Standard</Text>
+                            <Text style={styles.tierOptionDesc}>Assigned seat</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={[styles.tierOption, pricingTier === 'standing' && styles.tierOptionActive]}
+                            onPress={() => setPricingTier('standing')}
+                            activeOpacity={0.7}
+                          >
+                            <MaterialIcons name="directions-run" size={20} color={pricingTier === 'standing' ? '#6A1B9A' : '#6b7280'} />
+                            <Text style={[styles.tierOptionTitle, pricingTier === 'standing' && styles.tierOptionTitleActive]}>Standing</Text>
+                            <Text style={styles.tierOptionDesc}>Discounted</Text>
+                          </TouchableOpacity>
                         </View>
+                      )}
+
+                      {/* Join mode: stop selectors */}
+                      <View style={[styles.sectionHeaderRow, detail.standing_enabled && { marginTop: 24 }]}>
+                        <MaterialIcons name="my-location" size={18} color="#1a1c1c" />
+                        <Text style={styles.sectionTitle}>Boarding Stop</Text>
                       </View>
-                      <View style={[styles.ticketRefRow, { borderTopColor: 'rgba(255,255,255,0.2)' }]}>
-                        <MaterialIcons name="confirmation-number" size={14} color="rgba(255,255,255,0.7)" />
-                        <Text style={[styles.ticketRefText, { color: 'rgba(255,255,255,0.7)' }]}>Ticket: {ride.my_ticket.ticket_ref}</Text>
-                        <Text style={[styles.ticketAmtText, { color: '#ffffff' }]}>₦{ride.my_ticket.amount_paid}</Text>
+                      
+                      <View style={styles.optionsList}>
+                        {detail.stops.filter((s) => {
+                          if (!s.is_pickup) return false
+                          const maxOrder = Math.max(...detail.stops.map(x => x.order))
+                          return s.order < maxOrder
+                        }).map((stop) => {
+                          const isActive = boardingStopId === stop.id
+                          return (
+                            <TouchableOpacity
+                              key={`board-${stop.id}`}
+                              style={[styles.stopChip, isActive && styles.stopChipActive]}
+                              onPress={() => {
+                                if (isActive) {
+                                  // Deselect if tapped again
+                                  setBoardingStopId(null)
+                                  setAlightingStopId(null)
+                                } else {
+                                  setBoardingStopId(stop.id)
+                                  // If current alighting stop is before or equal to this new boarding stop, reset it
+                                  const alightingStop = detail.stops.find(x => x.id === alightingStopId)
+                                  if (alightingStop && alightingStop.order <= stop.order) {
+                                    setAlightingStopId(null)
+                                  }
+                                }
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <MaterialIcons name="hail" size={16} color={isActive ? '#6A1B9A' : '#6b7280'} />
+                              <Text style={[styles.stopChipText, isActive && styles.stopChipTextActive]}>
+                                {stop.name || stop.address}
+                              </Text>
+                            </TouchableOpacity>
+                          )
+                        })}
+                      </View>
+
+                      <View style={[styles.sectionHeaderRow, { marginTop: 24 }]}>
+                        <MaterialIcons name="pin-drop" size={18} color="#1a1c1c" />
+                        <Text style={styles.sectionTitle}>Alighting Stop</Text>
+                      </View>
+
+                      <View style={styles.optionsList}>
+                        {detail.stops.filter((s) => {
+                          if (!s.is_dropoff) return false
+                          const minOrder = Math.min(...detail.stops.map(x => x.order))
+                          return s.order > minOrder
+                        }).map((stop) => {
+                          const isActive = alightingStopId === stop.id
+                          // Disable this alighting option if it comes before the selected boarding stop OR if no boarding stop is selected
+                          const boardingStop = detail.stops.find(x => x.id === boardingStopId)
+                          const isDisabled = !boardingStop || stop.order <= boardingStop.order
+
+                          return (
+                            <TouchableOpacity
+                              key={`alight-${stop.id}`}
+                              style={[styles.stopChip, isActive && styles.stopChipActive, isDisabled && styles.btnDisabled]}
+                              onPress={() => !isDisabled && setAlightingStopId(stop.id)}
+                              activeOpacity={0.7}
+                              disabled={isDisabled}
+                            >
+                              <MaterialIcons name="directions-walk" size={16} color={isActive ? '#6A1B9A' : (isDisabled ? '#d1d5db' : '#6b7280')} />
+                              <Text style={[styles.stopChipText, isActive && styles.stopChipTextActive, isDisabled && { color: '#d1d5db' }]}>
+                                {stop.name || stop.address}
+                              </Text>
+                            </TouchableOpacity>
+                          )
+                        })}
                       </View>
                     </>
                   ) : null}
+
+                  <View style={{ height: 40 }} />
+                </ScrollView>
+
+                <View style={styles.footer}>
+                  {isLeaveMode ? (
+                    <>
+                      {!detail.is_joinable || isRideTimeReached ? (
+                        <Text style={styles.infoText}>
+                          {isRideTimeReached 
+                            ? 'The ride has started. You can no longer leave this ride.' 
+                            : 'The join window has passed. You can no longer leave this ride.'}
+                        </Text>
+                      ) : (
+                        <Text style={styles.leaveWarning}>
+                          Leaving will cancel your ticket. Any refund depends on the cancellation policy.
+                        </Text>
+                      )}
+                      <TouchableOpacity
+                        style={[styles.leaveBtn, (!detail.is_joinable || isRideTimeReached) && styles.btnDisabled]}
+                        onPress={handleLeave}
+                        disabled={working || !detail.is_joinable || isRideTimeReached}
+                      >
+                        <MaterialIcons name="exit-to-app" size={20} color="#ffffff" />
+                        <Text style={styles.leaveBtnText}>Leave Ride</Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <>
+                      {!detail.is_joinable && (
+                        <Text style={styles.closedText}>This ride is no longer accepting passengers.</Text>
+                      )}
+                      <TouchableOpacity 
+                        style={[styles.joinBtn, (working || !detail.is_joinable) && styles.btnDisabled]}
+                        onPress={handleJoin} 
+                        disabled={working || !detail.is_joinable}
+                      >
+                        <MaterialIcons name="fingerprint" size={20} color="#ffffff" />
+                        <Text style={styles.joinBtnText}>
+                          {currentSegmentFare ? `Confirm & Pay ₦${currentSegmentFare}` : 'Confirm & Pay'}
+                        </Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
                 </View>
-
-                {/* Leave mode: second card - vehicle details */}
-                {isLeaveMode && ride.my_ticket ? (
-                  <>
-                    {/* Vehicle assignment details - show when checked in */}
-                    {(ride.checked_in_at || detail?.checked_in_at) && (
-                      <View style={styles.vehicleCard}>
-                        <View style={styles.vehicleCardHeader}>
-                          <MaterialIcons name="directions-bus" size={18} color="#6A1B9A" />
-                          <Text style={styles.vehicleCardTitle}>Your Vehicle</Text>
-                          {(detail?.bus_order || ride.bus_order) && (
-                            <View style={styles.busOrderBadge}>
-                              <Text style={styles.busOrderText}>#{detail?.bus_order || ride.bus_order}</Text>
-                            </View>
-                          )}
-                        </View>
-                        <View style={styles.vehicleDetailsRow}>
-                          {(detail?.assigned_plate_number || detail?.assigned_bus_label || ride.assigned_plate_number || ride.assigned_bus_label) ? (
-                            <View style={styles.vehicleDetailItem}>
-                              <Text style={styles.vehicleDetailLabel}>Vehicle</Text>
-                              <Text style={styles.vehicleDetailValue}>{detail?.assigned_plate_number || detail?.assigned_bus_label || ride.assigned_plate_number || ride.assigned_bus_label}</Text>
-                            </View>
-                          ) : (
-                            <View style={styles.vehicleDetailItem}>
-                              <Text style={styles.vehicleDetailLabel}>Vehicle</Text>
-                              <Text style={styles.vehicleDetailValue}>Assignment pending</Text>
-                            </View>
-                          )}
-                          {(detail?.assigned_driver_name || ride.assigned_driver_name) ? (
-                            <View style={styles.vehicleDetailItem}>
-                              <Text style={styles.vehicleDetailLabel}>Driver</Text>
-                              <Text style={styles.vehicleDetailValue}>{detail?.assigned_driver_name || ride.assigned_driver_name}</Text>
-                            </View>
-                          ) : (
-                            <View style={styles.vehicleDetailItem}>
-                              <Text style={styles.vehicleDetailLabel}>Driver</Text>
-                              <Text style={styles.vehicleDetailValue}>Assignment pending</Text>
-                            </View>
-                          )}
-                        </View>
-                      </View>
-                    )}
-                  </>
-                ) : !isLeaveMode ? (
-                  <>
-                    {/* Join mode: Tier selector */}
-                    {detail.standing_enabled && (
-                      <View style={styles.tierContainer}>
-                        <TouchableOpacity
-                          style={[styles.tierOption, pricingTier === 'standard' && styles.tierOptionActive]}
-                          onPress={() => setPricingTier('standard')}
-                          activeOpacity={0.7}
-                        >
-                          <MaterialIcons name="event-seat" size={20} color={pricingTier === 'standard' ? '#6A1B9A' : '#6b7280'} />
-                          <Text style={[styles.tierOptionTitle, pricingTier === 'standard' && styles.tierOptionTitleActive]}>Standard</Text>
-                          <Text style={styles.tierOptionDesc}>Assigned seat</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={[styles.tierOption, pricingTier === 'standing' && styles.tierOptionActive]}
-                          onPress={() => setPricingTier('standing')}
-                          activeOpacity={0.7}
-                        >
-                          <MaterialIcons name="directions-run" size={20} color={pricingTier === 'standing' ? '#6A1B9A' : '#6b7280'} />
-                          <Text style={[styles.tierOptionTitle, pricingTier === 'standing' && styles.tierOptionTitleActive]}>Standing</Text>
-                          <Text style={styles.tierOptionDesc}>Discounted</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-
-                    {/* Join mode: stop selectors */}
-                    <View style={[styles.sectionHeaderRow, detail.standing_enabled && { marginTop: 24 }]}>
-                      <MaterialIcons name="my-location" size={18} color="#1a1c1c" />
-                      <Text style={styles.sectionTitle}>Boarding Stop</Text>
-                    </View>
-                    
-                    <View style={styles.optionsList}>
-                      {detail.stops.filter((s) => {
-                        if (!s.is_pickup) return false
-                        const maxOrder = Math.max(...detail.stops.map(x => x.order))
-                        return s.order < maxOrder
-                      }).map((stop) => {
-                        const isActive = boardingStopId === stop.id
-                        return (
-                          <TouchableOpacity
-                            key={`board-${stop.id}`}
-                            style={[styles.stopChip, isActive && styles.stopChipActive]}
-                            onPress={() => {
-                              if (isActive) {
-                                // Deselect if tapped again
-                                setBoardingStopId(null)
-                                setAlightingStopId(null)
-                              } else {
-                                setBoardingStopId(stop.id)
-                                // If current alighting stop is before or equal to this new boarding stop, reset it
-                                const alightingStop = detail.stops.find(x => x.id === alightingStopId)
-                                if (alightingStop && alightingStop.order <= stop.order) {
-                                  setAlightingStopId(null)
-                                }
-                              }
-                            }}
-                            activeOpacity={0.7}
-                          >
-                            <MaterialIcons name="hail" size={16} color={isActive ? '#6A1B9A' : '#6b7280'} />
-                            <Text style={[styles.stopChipText, isActive && styles.stopChipTextActive]}>
-                              {stop.name || stop.address}
-                            </Text>
-                          </TouchableOpacity>
-                        )
-                      })}
-                    </View>
-
-                    <View style={[styles.sectionHeaderRow, { marginTop: 24 }]}>
-                      <MaterialIcons name="pin-drop" size={18} color="#1a1c1c" />
-                      <Text style={styles.sectionTitle}>Alighting Stop</Text>
-                    </View>
-
-                    <View style={styles.optionsList}>
-                      {detail.stops.filter((s) => {
-                        if (!s.is_dropoff) return false
-                        const minOrder = Math.min(...detail.stops.map(x => x.order))
-                        return s.order > minOrder
-                      }).map((stop) => {
-                        const isActive = alightingStopId === stop.id
-                        // Disable this alighting option if it comes before the selected boarding stop OR if no boarding stop is selected
-                        const boardingStop = detail.stops.find(x => x.id === boardingStopId)
-                        const isDisabled = !boardingStop || stop.order <= boardingStop.order
-
-                        return (
-                          <TouchableOpacity
-                            key={`alight-${stop.id}`}
-                            style={[styles.stopChip, isActive && styles.stopChipActive, isDisabled && styles.btnDisabled]}
-                            onPress={() => !isDisabled && setAlightingStopId(stop.id)}
-                            activeOpacity={0.7}
-                            disabled={isDisabled}
-                          >
-                            <MaterialIcons name="directions-walk" size={16} color={isActive ? '#6A1B9A' : (isDisabled ? '#d1d5db' : '#6b7280')} />
-                            <Text style={[styles.stopChipText, isActive && styles.stopChipTextActive, isDisabled && { color: '#d1d5db' }]}>
-                              {stop.name || stop.address}
-                            </Text>
-                          </TouchableOpacity>
-                        )
-                      })}
-                    </View>
-                  </>
-                ) : null}
-
-                <View style={{ height: 40 }} />
-              </ScrollView>
-
-              <View style={styles.footer}>
-                {isLeaveMode ? (
-                  <>
-                    {!detail.is_joinable || isRideTimeReached ? (
-                      <Text style={styles.infoText}>
-                        {isRideTimeReached 
-                          ? 'The ride has started. You can no longer leave this ride.' 
-                          : 'The join window has passed. You can no longer leave this ride.'}
-                      </Text>
-                    ) : (
-                      <Text style={styles.leaveWarning}>
-                        Leaving will cancel your ticket. Any refund depends on the cancellation policy.
-                      </Text>
-                    )}
-                    <TouchableOpacity
-                      style={[styles.leaveBtn, (!detail.is_joinable || isRideTimeReached) && styles.btnDisabled]}
-                      onPress={handleLeave}
-                      disabled={working || !detail.is_joinable || isRideTimeReached}
-                    >
-                      <MaterialIcons name="exit-to-app" size={20} color="#ffffff" />
-                      <Text style={styles.leaveBtnText}>Leave Ride</Text>
-                    </TouchableOpacity>
-                  </>
-                ) : (
-                  <>
-                    {!detail.is_joinable && (
-                      <Text style={styles.closedText}>This ride is no longer accepting passengers.</Text>
-                    )}
-                    <TouchableOpacity 
-                      style={[styles.joinBtn, (working || !detail.is_joinable) && styles.btnDisabled]}
-                      onPress={handleJoin} 
-                      disabled={working || !detail.is_joinable}
-                    >
-                      <MaterialIcons name="fingerprint" size={20} color="#ffffff" />
-                      <Text style={styles.joinBtnText}>
-                        {currentSegmentFare ? `Confirm & Pay ₦${currentSegmentFare}` : 'Confirm & Pay'}
-                      </Text>
-                    </TouchableOpacity>
-                  </>
-                )}
-              </View>
-            </>
-          )}
-        </View>
-      </View>
-
-      <Modal visible={pinModalVisible} animationType="fade" transparent onRequestClose={() => setPinModalVisible(false)}>
-        <View style={pinStyles.backdrop}>
-          <View style={pinStyles.card}>
-            <Text style={pinStyles.title}>Confirm Action</Text>
-            <Text style={pinStyles.subtitle}>
-              Enter your Transaction PIN to {pendingAction === 'join' ? (currentSegmentFare ? `pay ₦${currentSegmentFare} and join` : 'join') : 'leave'} this ride.
-            </Text>
-            {pinError ? <Text style={pinStyles.error}>{pinError}</Text> : null}
-            <View style={pinStyles.dotsRow}>
-              {[0, 1, 2, 3].map((i) => (
-                <View key={i} style={[pinStyles.dot, pinInput.length > i && pinStyles.dotFilled]} />
-              ))}
-            </View>
-            <View style={pinStyles.pad}>
-              {PIN_ROWS.map((row, ri) => (
-                <View key={ri} style={pinStyles.row}>
-                  {row.map((digit, ci) => (
-                    <Pressable
-                      key={`${ri}-${ci}`}
-                      style={({ pressed }) => [pinStyles.key, (!digit || pinLoading) && pinStyles.keyHidden, pressed && pinStyles.keyPressed]}
-                      onPress={() => handlePinDigit(digit)}
-                      disabled={!digit || pinLoading}
-                    >
-                      {digit === 'back'
-                        ? <Text style={pinStyles.keyText}>⌫</Text>
-                        : <Text style={pinStyles.keyText}>{digit}</Text>}
-                    </Pressable>
-                  ))}
-                </View>
-              ))}
-            </View>
-            <TouchableOpacity style={pinStyles.cancelBtn} onPress={() => { setPinModalVisible(false); setPinInput(''); setPinError('') }} disabled={pinLoading}>
-              <Text style={pinStyles.cancelText}>Cancel</Text>
-            </TouchableOpacity>
+              </>
+            )}
           </View>
         </View>
       </Modal>
-    </Modal>
+
+      <PremiumBottomSheet visible={pinModalVisible} onClose={() => { setPinModalVisible(false); setPinInput(''); setPinError('') }} snapPoints={["75%", "90%"]}>
+        <Text style={pinStyles.modalTitle}>Confirm Action</Text>
+        <Text style={pinStyles.modalSubtitle}>
+          Enter your 4-digit Transaction PIN to {pendingAction === 'join' ? (currentSegmentFare ? `pay ₦${currentSegmentFare} and join` : 'join') : 'leave'} this ride.
+        </Text>
+        
+        <View style={pinStyles.pinDotsRow}>
+          {[0, 1, 2, 3].map((idx) => (
+            <View
+              key={`pin-dot-${idx}`}
+              style={[pinStyles.pinDot, pinInput.length > idx && pinStyles.pinDotFilled]}
+            />
+          ))}
+        </View>
+        
+        {pinError ? (
+          <Animated.View 
+            entering={FadeInDown.duration(300).springify()} 
+            exiting={FadeOutUp.duration(200)}
+            style={pinStyles.errorContainer}
+          >
+            <MaterialIcons name="error-outline" size={16} color="#ef4444" />
+            <Text style={pinStyles.errorText}>{pinError}</Text>
+          </Animated.View>
+        ) : null}
+        
+        <View style={pinStyles.pinPad}>
+          {PIN_ROWS.map((row, rowIndex) => (
+            <View key={`pin-row-${rowIndex}`} style={pinStyles.pinRow}>
+              {row.map((digit, colIndex) => (
+                <TouchableOpacity
+                  key={`pin-${rowIndex}-${colIndex}`}
+                  style={[pinStyles.pinKey, (!digit || pinLoading) && pinStyles.pinKeyDisabled]}
+                  activeOpacity={0.85}
+                  onPress={() => handlePinDigit(digit)}
+                  disabled={!digit || pinLoading}
+                >
+                  {digit === 'back' ? (
+                    <MaterialIcons name="backspace" size={20} color="#1a1c1c" />
+                  ) : (
+                    <Text style={pinStyles.pinKeyText}>{digit}</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          ))}
+        </View>
+        
+        <TouchableOpacity
+          style={pinStyles.modalCancel}
+          onPress={() => {
+            setPinModalVisible(false);
+            setPinInput('');
+            setPinError('');
+          }}
+          disabled={pinLoading}
+        >
+          <Text style={pinStyles.modalCancelText}>Cancel</Text>
+        </TouchableOpacity>
+        
+        <LoadingOverlay visible={pinLoading} />
+      </PremiumBottomSheet>
+    </>
   )
 }
 
@@ -899,33 +934,83 @@ const styles = StyleSheet.create({
 })
 
 const pinStyles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+  modalTitle: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 22,
+    color: '#1a1c1c',
+    marginBottom: 6,
+  },
+  modalSubtitle: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 32,
+    lineHeight: 20,
+  },
+  pinDotsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 24,
+    marginBottom: 40,
+  },
+  pinDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#e5e7eb',
+  },
+  pinDotFilled: {
+    backgroundColor: '#6A1B9A',
+  },
+  pinPad: {
+    gap: 16,
+    marginBottom: 32,
+  },
+  pinRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 32,
+  },
+  pinKey: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#f9fafb',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
   },
-  card: {
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    padding: 24,
-    width: '100%',
-    maxWidth: 360,
+  pinKeyDisabled: {
+    backgroundColor: 'transparent',
+  },
+  pinKeyText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 24,
+    color: '#1a1c1c',
+  },
+  modalCancel: {
+    paddingVertical: 14,
     alignItems: 'center',
+    borderRadius: 14,
+    backgroundColor: '#f3f4f6',
   },
-  title: { fontSize: 17, fontWeight: '700', color: '#1a1c1c', marginBottom: 6 },
-  subtitle: { fontSize: 13, color: '#6b7280', marginBottom: 8, textAlign: 'center' },
-  error: { color: '#ba1a1a', fontSize: 12, fontWeight: '600', marginBottom: 6, textAlign: 'center' },
-  dotsRow: { flexDirection: 'row', gap: 14, marginVertical: 16 },
-  dot: { width: 14, height: 14, borderRadius: 7, borderWidth: 2, borderColor: '#6A1B9A', backgroundColor: 'transparent' },
-  dotFilled: { backgroundColor: '#6A1B9A' },
-  pad: { width: '100%', gap: 8 },
-  row: { flexDirection: 'row', justifyContent: 'center', gap: 12 },
-  key: { width: 72, height: 52, borderRadius: 12, backgroundColor: '#f5f5f5', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#e2e2e2' },
-  keyHidden: { opacity: 0 },
-  keyPressed: { backgroundColor: '#ede5f5' },
-  keyText: { fontSize: 20, fontWeight: '600', color: '#1a1c1c' },
-  cancelBtn: { marginTop: 16, paddingVertical: 10, paddingHorizontal: 24 },
-  cancelText: { color: '#6A1B9A', fontWeight: '600', fontSize: 14 },
+  modalCancelText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 15,
+    color: '#374151',
+  },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef2f2',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 24,
+    gap: 8,
+  },
+  errorText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 13,
+    color: '#ef4444',
+    flex: 1,
+  },
 })
