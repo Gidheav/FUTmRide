@@ -564,19 +564,6 @@ class ScheduledRideListSerializer(serializers.ModelSerializer):
             'boarding_stop', 'alighting_stop', 'bus_assignment', 'bus_assignment__driver'
         ).first()
 
-        # Debug logging
-        if passenger:
-            logger.info(f"DEBUG LIST: Passenger {passenger.id} found for student {request.user.id} on ride {obj.id}")
-            logger.info(f"DEBUG LIST: Bus assignment: {passenger.bus_assignment}")
-            logger.info(f"DEBUG LIST: Checked in at: {passenger.checked_in_at}")
-            if passenger.bus_assignment:
-                logger.info(f"DEBUG LIST: Bus assignment driver: {passenger.bus_assignment.driver}")
-                logger.info(f"DEBUG LIST: Bus assignment label: {passenger.bus_assignment.bus_label}")
-            else:
-                logger.info(f"DEBUG LIST: No bus assignment found for passenger")
-        else:
-            logger.info(f"DEBUG LIST: No passenger found for student {request.user.id} on ride {obj.id}")
-
         return passenger
 
     def get_is_joined_by_me(self, obj):
@@ -600,19 +587,6 @@ class ScheduledRideListSerializer(serializers.ModelSerializer):
 
     def get_assigned_plate_number(self, obj):
         passenger = self._get_my_passenger(obj)
-        logger.info(f"DEBUG LIST get_assigned_plate_number: passenger={passenger}")
-        if not passenger or not passenger.bus_assignment:
-            return None
-        bus = passenger.bus_assignment
-        if not bus.driver:
-            return None
-        try:
-            driver_profile = bus.driver.driver_profile
-            logger.info(f"DEBUG LIST get_assigned_plate_number: plate={driver_profile.plate_number}")
-            return driver_profile.plate_number
-        except Exception as e:
-            logger.error(f"DEBUG LIST get_assigned_plate_number error: {e}")
-            return None
         if not passenger or not passenger.bus_assignment:
             return None
         bus = passenger.bus_assignment
@@ -626,26 +600,20 @@ class ScheduledRideListSerializer(serializers.ModelSerializer):
 
     def get_assigned_bus_label(self, obj):
         passenger = self._get_my_passenger(obj)
-        logger.info(f"DEBUG LIST get_assigned_bus_label: passenger={passenger}")
         if not passenger or not passenger.bus_assignment:
             return None
-        bus_label = passenger.bus_assignment.bus_label
-        logger.info(f"DEBUG LIST get_assigned_bus_label: bus_label={bus_label}")
-        return bus_label
+        return passenger.bus_assignment.bus_label
 
     def get_assigned_driver_name(self, obj):
         # Override to get driver from student's specific bus assignment
         passenger = self._get_my_passenger(obj)
-        logger.info(f"DEBUG LIST get_assigned_driver_name: passenger={passenger}, ride_driver={obj.assigned_driver}")
         if not passenger or not passenger.bus_assignment:
             # Fall back to ride-level driver if no bus assignment
             return obj.assigned_driver.full_name if obj.assigned_driver else None
         bus = passenger.bus_assignment
         if not bus.driver:
             return None
-        driver_name = bus.driver.full_name
-        logger.info(f"DEBUG LIST get_assigned_driver_name: driver_name={driver_name}")
-        return driver_name
+        return bus.driver.full_name
 
     def get_checked_in_at(self, obj):
         passenger = self._get_my_passenger(obj)
@@ -664,9 +632,6 @@ class ScheduledRideListSerializer(serializers.ModelSerializer):
 
     def get_created_by_name(self, obj):
         return obj.created_by.full_name
-
-    def get_assigned_driver_name(self, obj):
-        return obj.assigned_driver.full_name if obj.assigned_driver else None
 
     def get_fare_summary(self, obj):
         return get_full_route_fare_summary(obj)
@@ -838,50 +803,21 @@ class StudentScheduledRideDetailSerializer(ScheduledRideDetailSerializer):
             'boarding_stop', 'alighting_stop', 'bus_assignment', 'bus_assignment__driver'
         ).first()
 
-        # Debug logging
-        if passenger:
-            logger.info(f"DEBUG DETAIL: Passenger {passenger.id} found for student {request.user.id} on ride {obj.id}")
-            logger.info(f"DEBUG DETAIL: Bus assignment: {passenger.bus_assignment}")
-            logger.info(f"DEBUG DETAIL: Checked in at: {passenger.checked_in_at}")
-            if passenger.bus_assignment:
-                logger.info(f"DEBUG DETAIL: Bus assignment driver: {passenger.bus_assignment.driver}")
-                logger.info(f"DEBUG DETAIL: Bus assignment label: {passenger.bus_assignment.bus_label}")
-            else:
-                logger.info(f"DEBUG DETAIL: No bus assignment found for passenger")
-        else:
-            logger.info(f"DEBUG DETAIL: No passenger found for student {request.user.id} on ride {obj.id}")
-
         return passenger
 
     def get_assigned_driver_name(self, obj):
         # Override to get driver from student's specific bus assignment
         passenger = self._get_my_passenger(obj)
-        logger.info(f"DEBUG DETAIL get_assigned_driver_name: passenger={passenger}, ride_driver={obj.assigned_driver}")
         if not passenger or not passenger.bus_assignment:
             # Fall back to ride-level driver if no bus assignment
             return obj.assigned_driver.full_name if obj.assigned_driver else None
         bus = passenger.bus_assignment
         if not bus.driver:
             return None
-        driver_name = bus.driver.full_name
-        logger.info(f"DEBUG DETAIL get_assigned_driver_name: driver_name={driver_name}")
-        return driver_name
+        return bus.driver.full_name
 
     def get_assigned_plate_number(self, obj):
         passenger = self._get_my_passenger(obj)
-        logger.info(f"DEBUG DETAIL get_assigned_plate_number: passenger={passenger}")
-        if not passenger or not passenger.bus_assignment:
-            return None
-        bus = passenger.bus_assignment
-        if not bus.driver:
-            return None
-        try:
-            driver_profile = bus.driver.driver_profile
-            logger.info(f"DEBUG DETAIL get_assigned_plate_number: plate={driver_profile.plate_number}")
-            return driver_profile.plate_number
-        except Exception as e:
-            logger.error(f"DEBUG DETAIL get_assigned_plate_number error: {e}")
-            return None
         if not passenger or not passenger.bus_assignment:
             return None
         bus = passenger.bus_assignment
@@ -895,21 +831,15 @@ class StudentScheduledRideDetailSerializer(ScheduledRideDetailSerializer):
 
     def get_assigned_bus_label(self, obj):
         passenger = self._get_my_passenger(obj)
-        logger.info(f"DEBUG DETAIL get_assigned_bus_label: passenger={passenger}")
         if not passenger or not passenger.bus_assignment:
             return None
-        bus_label = passenger.bus_assignment.bus_label
-        logger.info(f"DEBUG DETAIL get_assigned_bus_label: bus_label={bus_label}")
-        return bus_label
+        return passenger.bus_assignment.bus_label
 
     def get_checked_in_at(self, obj):
         passenger = self._get_my_passenger(obj)
-        logger.info(f"DEBUG DETAIL get_checked_in_at: passenger={passenger}")
         if not passenger:
             return None
-        checked_in = passenger.checked_in_at.isoformat() if passenger.checked_in_at else None
-        logger.info(f"DEBUG DETAIL get_checked_in_at: checked_in={checked_in}")
-        return checked_in
+        return passenger.checked_in_at.isoformat() if passenger.checked_in_at else None
 
 
 class ScheduledRideJoinSerializer(serializers.Serializer):
