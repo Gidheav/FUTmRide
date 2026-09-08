@@ -615,6 +615,22 @@ class AdminUserDetailView(generics.RetrieveUpdateAPIView):
                 models.Q(student_profile__campus=campus) | 
                 models.Q(driver_profile__campus=campus)
             )
+        
+        # Log for debugging - include verification and active status
+        user_id = self.kwargs.get('pk')
+        if user_id:
+            logger.info(f"AdminUserDetailView: Fetching user {user_id} for admin {self.request.user.id}")
+            user_exists = qs.filter(id=user_id).exists()
+            if not user_exists:
+                # Check if user exists at all in the system
+                system_user = User.objects.filter(id=user_id).first()
+                if system_user:
+                    logger.warning(f"User {user_id} exists in system but not in admin queryset. Role: {system_user.role}, Active: {system_user.is_active}, Verified: {system_user.is_verified}")
+                    if system_user.role == UserRole.DRIVER and hasattr(system_user, 'driver_profile'):
+                        logger.warning(f"Driver verification status: {system_user.driver_profile.verification_status}")
+                else:
+                    logger.warning(f"User {user_id} does not exist in the system")
+        
         return qs
 
     def get_object(self):
