@@ -493,48 +493,7 @@ function SettingsRightSidebarReplica() {
 
   return (
     <div style={{ position: 'sticky', top: 24 }}>
-      <h3 style={{ fontSize: 16, fontWeight: 700, color: T.textPrimary, marginBottom: 24, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <BookOpen size={18} color={T.accent} />
-        What to expect
-      </h3>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-          <div style={{ width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 4, background: T.bgCard, border: `1px solid ${T.borderLight}` }}>
-            <MailCheck size={14} style={{ color: T.textMuted }} />
-          </div>
-          <div>
-            <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 4, color: T.textPrimary }}>Email Changes</h4>
-            <p style={{ fontSize: 12, lineHeight: 1.5, color: T.textMuted }}>Providing your current password alongside your new email results in an immediate update to your profile. No secondary confirmation required.</p>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-          <div style={{ width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 4, background: `${T.accent}1a`, border: `1px solid ${T.accent}4d` }}>
-            <ShieldCheck size={14} color={T.accent} />
-          </div>
-          <div>
-            <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 4, color: T.textPrimary }}>Password Changes</h4>
-            <p style={{ fontSize: 12, lineHeight: 1.5, color: T.textMuted }}>You must first verify intent by requesting a 6-digit OTP code to your registered email before a new password can be set.</p>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-          <div style={{ width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 4, background: 'rgba(239,68,68,0.1)', border: `1px solid rgba(239,68,68,0.3)` }}>
-            <LogOut size={14} color="#f87171" />
-          </div>
-          <div>
-            <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 4, color: T.textPrimary }}>Session Handling</h4>
-            <p style={{ fontSize: 12, lineHeight: 1.5, color: T.textMuted }}>A successful password change will immediately invalidate all active sessions across all devices. You will be redirected to the login screen.</p>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ marginTop: 32, paddingTop: 24, borderTop: `1px solid ${T.border}` }}>
-        <a href="#" style={{ fontSize: 14, display: 'flex', alignItems: 'center', gap: 4, color: '#4f90ff', textDecoration: 'none' }}>
-          Read Security Policy <ArrowRight size={16} />
-        </a>
-      </div>
+      {/* Content removed as requested */}
     </div>
   )
 }
@@ -2702,42 +2661,7 @@ export default function SettingsPage() {
             </div>
 
             <aside style={s.sidebarCard} className="settings-sidebar">
-              <div style={s.sidebarHeader}>
-                <div style={s.sidebarIcon}>
-                  <ShieldCheck size={18} color={T.accent} />
-                </div>
-                <div>
-                  <div style={s.sidebarTitle}>What to expect</div>
-                  <div style={s.sidebarText}>The settings interface is categorized into distinct domains.</div>
-                </div>
-              </div>
-
-              <div style={s.checklist}>
-                {activeTab === 'notifications' ? (
-                  <SecurityChecklistItem
-                    icon={Bell}
-                    title="Actionable Alerts"
-                    text="Customize which operational events trigger sound notifications or dashboard popups."
-                  />
-                ) : activeTab === 'system' ? (
-                  <SecurityChecklistItem
-                    icon={Sliders}
-                    title="Global Constraints"
-                    text="System rules affect all active operations and can only be modified by root administrators."
-                  />
-                ) : (
-                  <SecurityChecklistItem
-                    icon={Settings}
-                    title="Section Overview"
-                    text="These settings manage specific operational domains of the campus ride platform."
-                  />
-                )}
-              </div>
-
-              <div style={s.sidebarFooter}>
-                <ArrowRight size={14} color={T.textMuted} />
-                <span style={s.sidebarFooterText}>No changes were made to request payloads or endpoints.</span>
-              </div>
+              {/* Content removed as requested */}
             </aside>
           </div>
 

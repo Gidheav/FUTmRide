@@ -598,7 +598,6 @@ class AdminUserListView(generics.ListAPIView):
 class AdminUserDetailView(generics.RetrieveUpdateAPIView):
     serializer_class = UserProfileSerializer
     permission_classes = [permissions.IsAuthenticated, IsAdminOrCampusAdmin]
-    lookup_field = 'id'
 
     def get_queryset(self):
         qs = User.objects.exclude(
