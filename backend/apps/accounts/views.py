@@ -579,9 +579,20 @@ class AdminUserListView(generics.ListAPIView):
     ordering = ['-created_at']
 
     def get_queryset(self):
-        return User.objects.exclude(
+        qs = User.objects.exclude(
             role__in=[UserRole.ADMIN, UserRole.CAMPUS_ADMIN]
         ).select_related('student_profile', 'driver_profile')
+        if self.request.user.role == UserRole.CAMPUS_ADMIN:
+            try:
+                campus = self.request.user.campus_admin_profile.campus
+            except CampusAdminProfile.DoesNotExist:
+                return User.objects.none()
+            # Filter users by campus - check both student and driver profiles
+            qs = qs.filter(
+                models.Q(student_profile__campus=campus) | 
+                models.Q(driver_profile__campus=campus)
+            )
+        return qs
 
 
 class AdminUserDetailView(generics.RetrieveUpdateAPIView):
@@ -598,11 +609,20 @@ class AdminUserDetailView(generics.RetrieveUpdateAPIView):
                 campus = self.request.user.campus_admin_profile.campus
             except CampusAdminProfile.DoesNotExist:
                 return User.objects.none()
+            # Filter users by campus - check both student and driver profiles
+            # Handle cases where profiles might be missing
             qs = qs.filter(
-                models.Q(student_profile__campus=campus)
-                | models.Q(driver_profile__campus=campus)
+                models.Q(student_profile__campus=campus) | 
+                models.Q(driver_profile__campus=campus)
             )
         return qs
+
+    def get_object(self):
+        try:
+            return super().get_object()
+        except Exception as e:
+            logger.error(f"Failed to retrieve user detail: {str(e)}", exc_info=True)
+            raise
 
 
 class AdminDriverListView(generics.ListAPIView):

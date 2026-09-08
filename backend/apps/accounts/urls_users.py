@@ -20,7 +20,7 @@ urlpatterns = [
 
     # Admin endpoints
     path('', AdminUserListView.as_view(), name='admin-user-list'),
-    path('<uuid:id>/', AdminUserDetailView.as_view(), name='admin-user-detail'),
+    path('<uuid:pk>/', AdminUserDetailView.as_view(), name='admin-user-detail'),
     path('<uuid:pk>/toggle-active/', AdminToggleUserActiveView.as_view(), name='admin-user-toggle-active'),
     path('drivers/', AdminDriverListView.as_view(), name='admin-driver-list'),
     path('drivers/<int:pk>/verify/', AdminDriverVerifyView.as_view(), name='admin-driver-verify'),
