@@ -110,10 +110,11 @@ function StatusPill({ active }: { active: boolean }) {
 function UserDrawer({ userId, onClose, onToggle }: {
   userId: string; onClose: () => void; onToggle: (id: string) => void
 }) {
-  const { data: user, isLoading } = useQuery<UserRecord>({
+  const { data: user, isLoading, error, refetch } = useQuery<UserRecord>({
     queryKey: ['user-detail', userId],
     queryFn: () => api.get(`/users/${userId}/`).then(r => r.data),
     staleTime: 10000,
+    retry: 2,
   })
 
   return (
@@ -128,6 +129,31 @@ function UserDrawer({ userId, onClose, onToggle }: {
         {isLoading ? (
           <div style={{ padding: 32, textAlign: 'center', color: T.textMuted }}>
             <Activity size={24} /><p style={{ marginTop: 12, fontSize: 12 }}>Loading…</p>
+          </div>
+        ) : error ? (
+          <div style={{ padding: 32, textAlign: 'center', color: T.textMuted, fontSize: 12 }}>
+            <Activity size={24} />
+            <p style={{ marginTop: 12, fontSize: 12 }}>Unable to load user details.</p>
+            <p style={{ marginTop: 8, fontSize: 10, color: T.textMuted }}>
+              {error instanceof Error ? error.message : 'Please try again or refresh the page.'}
+            </p>
+            <button 
+              type="button"
+              onClick={() => refetch()}
+              style={{ 
+                marginTop: 16, 
+                padding: '8px 16px', 
+                background: T.accent, 
+                color: 'white', 
+                border: 'none', 
+                borderRadius: 4, 
+                cursor: 'pointer',
+                fontSize: 11,
+                fontWeight: 600
+              }}
+            >
+              Retry
+            </button>
           </div>
         ) : user ? (
           <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>

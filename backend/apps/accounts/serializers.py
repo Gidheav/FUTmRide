@@ -323,15 +323,18 @@ class UserProfileSerializer(serializers.ModelSerializer):
     wallet_balance = serializers.SerializerMethodField()
     campus = serializers.SerializerMethodField()
     profile_photo = serializers.ImageField(required=False, allow_null=True)
+    driver_profile = serializers.SerializerMethodField()
+    student_profile = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             "id", "phone_number", "first_name", "last_name", "full_name",
             "email", "role", "is_verified", "is_phone_verified", "is_active", "profile_photo",
-            "fcm_token", "wallet_balance", "campus", "created_at", "home_address"
+            "fcm_token", "wallet_balance", "campus", "created_at", "home_address",
+            "driver_profile", "student_profile"
         ]
-        read_only_fields = ["id", "role", "is_verified", "is_phone_verified", "is_active", "created_at", "full_name", "campus"]
+        read_only_fields = ["id", "role", "is_verified", "is_phone_verified", "is_active", "created_at", "full_name", "campus", "driver_profile", "student_profile"]
 
     def get_wallet_balance(self, obj):
         try:
@@ -351,6 +354,34 @@ class UserProfileSerializer(serializers.ModelSerializer):
                 return {"id": str(obj.driver_profile.campus.id), "name": obj.driver_profile.campus.name}
             elif obj.role == UserRole.CAMPUS_ADMIN and hasattr(obj, 'campus_admin_profile'):
                 return {"id": str(obj.campus_admin_profile.campus.id), "name": obj.campus_admin_profile.campus.name}
+        except Exception:
+            pass
+        return None
+
+    def get_driver_profile(self, obj):
+        try:
+            if obj.role == UserRole.DRIVER and hasattr(obj, 'driver_profile'):
+                profile = obj.driver_profile
+                return {
+                    'verification_status': profile.verification_status,
+                    'vehicle_type': profile.vehicle_type,
+                    'plate_number': profile.plate_number,
+                    'vehicle_make': profile.vehicle_make,
+                    'vehicle_model': profile.vehicle_model,
+                    'is_online': profile.is_online,
+                }
+        except Exception:
+            pass
+        return None
+
+    def get_student_profile(self, obj):
+        try:
+            if obj.role == UserRole.STUDENT and hasattr(obj, 'student_profile'):
+                profile = obj.student_profile
+                return {
+                    'matric_number': profile.matric_number,
+                    'department': profile.department,
+                }
         except Exception:
             pass
         return None
