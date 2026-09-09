@@ -46,7 +46,7 @@ interface Stats {
 type RoleFilter = 'all' | 'student' | 'driver'
 type StatusFilter = 'all' | 'active' | 'inactive'
 
-const PAGE_SIZE = 25
+const PAGE_SIZE = 100
 
 const fmtDate = (s?: string) =>
   s ? new Date(s).toLocaleDateString('en-NG', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'

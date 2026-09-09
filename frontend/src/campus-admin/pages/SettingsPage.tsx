@@ -1151,12 +1151,12 @@ function PromotionsReplica() {
     <div style={{ width: '100%', margin: 0, display: 'flex', flexDirection: 'column', gap: 32 }}>
       <div className="gis-grid">
         {/* Active ROI */}
-        <section style={{ ...panelStyle, gridColumn: 'span 4' }}>
+        <section style={{ ...panelStyle, gridColumn: 'span 4', height: '100%', display: 'flex', flexDirection: 'column' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <h3 style={{ fontSize: 16, fontWeight: 700, color: T.textPrimary }}>Active ROI</h3>
             <TrendingUp size={18} color={T.accent} />
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderBottom: `1px solid ${T.borderLight}`, paddingBottom: 12 }}>
               <span style={{ fontSize: 13, color: T.textSecondary }}>Coupon Conversion</span>
               <span style={{ fontSize: 18, fontWeight: 700, color: T.accent }}>24.8%</span>
@@ -1173,47 +1173,52 @@ function PromotionsReplica() {
         </section>
 
         {/* Promo Code Generator */}
-        <section style={{ ...panelStyle, gridColumn: 'span 8' }}>
+        <section style={{ ...panelStyle, gridColumn: 'span 8', height: '100%', display: 'flex', flexDirection: 'column' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Ticket size={18} color={T.textMuted} />
               <h3 style={{ fontSize: 16, fontWeight: 700, color: T.textPrimary }}>Promo Code Generator</h3>
             </div>
-            <button style={{ background: 'none', border: 'none', color: T.accent, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>View All</button>
+            <button disabled style={{ background: 'none', border: 'none', color: T.textMuted, fontSize: 12, fontWeight: 600, cursor: 'not-allowed', opacity: 0.5 }}>View All</button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: T.textMuted }}>Code Name</label>
-              <input type="text" placeholder="e.g. WELCOME24" style={{ background: 'transparent', border: 'none', padding: '10px 12px', borderRadius: 0, color: T.textPrimary, fontSize: 13 }} />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: T.textMuted }}>Discount Value</label>
-              <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: T.textMuted, fontSize: 13 }}>₦</span>
-                <input type="number" placeholder="500" style={{ width: '100%', background: 'transparent', border: 'none', padding: '10px 12px 10px 28px', borderRadius: 0, color: T.textPrimary, fontSize: 13, boxSizing: 'border-box' }} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, flex: 1 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: T.textMuted }}>Code Name</label>
+                <input type="text" placeholder="e.g. WELCOME24" disabled style={{ background: 'transparent', border: 'none', padding: '10px 12px', borderRadius: 0, color: T.textMuted, fontSize: 13, cursor: 'not-allowed', opacity: 0.5 }} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: T.textMuted }}>Discount Value</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: T.textMuted, fontSize: 13 }}>₦</span>
+                  <input type="number" placeholder="500" disabled style={{ width: '100%', background: 'transparent', border: 'none', padding: '10px 12px 10px 28px', borderRadius: 0, color: T.textMuted, fontSize: 13, boxSizing: 'border-box', cursor: 'not-allowed', opacity: 0.5 }} />
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: T.textMuted }}>Usage Limit</label>
+                <input type="number" placeholder="1000" disabled style={{ background: 'transparent', border: 'none', padding: '10px 12px', borderRadius: 0, color: T.textMuted, fontSize: 13, cursor: 'not-allowed', opacity: 0.5 }} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: T.textMuted }}>Expiry Date</label>
+                <input type="date" disabled style={{ background: 'transparent', border: 'none', padding: '10px 12px', borderRadius: 0, color: T.textMuted, fontSize: 13, fontFamily: 'inherit', cursor: 'not-allowed', opacity: 0.5 }} />
               </div>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: T.textMuted }}>Usage Limit</label>
-              <input type="number" placeholder="1000" style={{ background: 'transparent', border: 'none', padding: '10px 12px', borderRadius: 0, color: T.textPrimary, fontSize: 13 }} />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: T.textMuted }}>Expiry Date</label>
-              <input type="date" style={{ background: 'transparent', border: 'none', padding: '10px 12px', borderRadius: 0, color: T.textPrimary, fontSize: 13, fontFamily: 'inherit' }} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'auto' }}>
+              <button disabled style={{ background: T.textMuted, color: T.bg, border: 'none', padding: '10px 24px', borderRadius: 0, fontSize: 13, fontWeight: 600, cursor: 'not-allowed', opacity: 0.5 }}>Generate Code</button>
             </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-            <button style={{ background: T.textPrimary, color: T.bg, border: 'none', padding: '10px 24px', borderRadius: 0, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Generate Code</button>
+            <button disabled style={{ background: T.textMuted, color: T.bg, border: 'none', padding: '10px 24px', borderRadius: 0, fontSize: 13, fontWeight: 600, cursor: 'not-allowed', opacity: 0.5 }}>Generate Code</button>
           </div>
         </section>
 
         {/* Loyalty Tiers */}
-        <section style={{ ...panelStyle, gridColumn: 'span 6' }}>
+        <section style={{ ...panelStyle, gridColumn: 'span 6', height: '100%', display: 'flex', flexDirection: 'column' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
             <Star size={18} color="#FB9129" />
             <h3 style={{ fontSize: 16, fontWeight: 700, color: T.textPrimary }}>Loyalty Tiers</h3>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, flex: 1 }}>
             {/* Bronze */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 16, background: T.bgCard, border: `1px solid ${T.borderLight}`, borderRadius: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -1259,11 +1264,11 @@ function PromotionsReplica() {
         </section>
 
         {/* Referral Rules */}
-        <section style={{ display: 'flex', flexDirection: 'column', gap: 32, gridColumn: 'span 6' }}>
-          <div style={panelStyle}>
+        <section style={{ display: 'flex', flexDirection: 'column', gap: 0, gridColumn: 'span 6', height: '100%' }}>
+          <div style={{ ...panelStyle, flex: 1, display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <h3 style={{ fontSize: 16, fontWeight: 700, color: T.textPrimary }}>Referral Rules</h3>
-              <input type="checkbox" defaultChecked style={{ width: 40, height: 20 }} />
+              <input type="checkbox" defaultChecked disabled style={{ width: 40, height: 20, cursor: 'not-allowed', opacity: 0.5 }} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div style={{ background: 'transparent', padding: 16, borderRadius: 0 }}>
@@ -1275,29 +1280,26 @@ function PromotionsReplica() {
                 <p style={{ fontSize: 18, fontWeight: 700, color: T.textPrimary }}>₦200 + First Ride Free</p>
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 16, color: '#ef4444', fontSize: 12 }}>
-              <Shield size={14} /> Fraud detection active (Device ID + IP check)
-            </div>
           </div>
 
-          <div style={panelStyle}>
+          <div style={{ ...panelStyle, flex: 1, display: 'flex', flexDirection: 'column' }}>
             <h3 style={{ fontSize: 16, fontWeight: 700, color: T.textPrimary, marginBottom: 16 }}>Active Targeted Campaigns</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 8, borderRadius: 0, cursor: 'pointer', background: T.bgCardHover }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 8, borderRadius: 0, cursor: 'not-allowed', background: T.bgCard, opacity: 0.6 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: T.accent }} />
                   <span style={{ fontSize: 13, color: T.textPrimary }}>Exam Week Night Owls</span>
                 </div>
                 <span style={{ fontSize: 11, color: T.textMuted }}>Edit</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 8, borderRadius: 0, cursor: 'pointer', background: T.bgCardHover }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 8, borderRadius: 0, cursor: 'not-allowed', background: T.bgCard, opacity: 0.6 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#FB9129' }} />
                   <span style={{ fontSize: 13, color: T.textPrimary }}>Dorm A to Main Gate Morning</span>
                 </div>
                 <span style={{ fontSize: 11, color: T.textMuted }}>Edit</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 8, borderRadius: 0, cursor: 'pointer', background: T.bgCardHover }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 8, borderRadius: 0, cursor: 'not-allowed', background: T.bgCard, opacity: 0.6 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: T.textSecondary }} />
                   <span style={{ fontSize: 13, color: T.textPrimary }}>Inactive Users (&gt;14 days)</span>

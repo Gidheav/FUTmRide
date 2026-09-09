@@ -363,15 +363,17 @@ class UserProfileSerializer(serializers.ModelSerializer):
             if obj.role == UserRole.DRIVER and hasattr(obj, 'driver_profile'):
                 profile = obj.driver_profile
                 return {
-                    'verification_status': profile.verification_status,
-                    'vehicle_type': profile.vehicle_type,
-                    'plate_number': profile.plate_number,
-                    'vehicle_make': profile.vehicle_make,
-                    'vehicle_model': profile.vehicle_model,
-                    'is_online': profile.is_online,
+                    'verification_status': profile.verification_status if hasattr(profile, 'verification_status') else 'unknown',
+                    'vehicle_type': profile.vehicle_type if hasattr(profile, 'vehicle_type') else None,
+                    'plate_number': profile.plate_number if hasattr(profile, 'plate_number') else None,
+                    'vehicle_make': profile.vehicle_make if hasattr(profile, 'vehicle_make') else None,
+                    'vehicle_model': profile.vehicle_model if hasattr(profile, 'vehicle_model') else None,
+                    'is_online': profile.is_online if hasattr(profile, 'is_online') else False,
                 }
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logger = logging.getLogger('apps.accounts')
+            logger.error(f"Error serializing driver profile for user {obj.id}: {str(e)}")
         return None
 
     def get_student_profile(self, obj):
@@ -379,11 +381,13 @@ class UserProfileSerializer(serializers.ModelSerializer):
             if obj.role == UserRole.STUDENT and hasattr(obj, 'student_profile'):
                 profile = obj.student_profile
                 return {
-                    'matric_number': profile.matric_number,
-                    'department': profile.department,
+                    'matric_number': profile.matric_number if hasattr(profile, 'matric_number') else None,
+                    'department': profile.department if hasattr(profile, 'department') else None,
                 }
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logger = logging.getLogger('apps.accounts')
+            logger.error(f"Error serializing student profile for user {obj.id}: {str(e)}")
         return None
 
     def validate_phone_number(self, value):

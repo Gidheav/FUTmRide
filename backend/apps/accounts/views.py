@@ -577,6 +577,8 @@ class AdminUserListView(generics.ListAPIView):
     search_fields = ['first_name', 'last_name', 'phone_number', 'email']
     ordering_fields = ['created_at', 'first_name']
     ordering = ['-created_at']
+    from core.pagination import StandardResultsPagination
+    pagination_class = StandardResultsPagination
 
     def get_queryset(self):
         qs = User.objects.exclude(
@@ -588,10 +590,24 @@ class AdminUserListView(generics.ListAPIView):
             except CampusAdminProfile.DoesNotExist:
                 return User.objects.none()
             # Filter users by campus - check both student and driver profiles
+            # Use OR logic to include users with either profile matching the campus
+            # Also include users without campus assignments for now to prevent filtering issues
             qs = qs.filter(
-                models.Q(student_profile__campus=campus) | 
-                models.Q(driver_profile__campus=campus)
+                models.Q(student_profile__campus=campus) |
+                models.Q(driver_profile__campus=campus) |
+                models.Q(student_profile__isnull=True) |
+                models.Q(driver_profile__isnull=True)
             )
+        
+        # Log queryset size for debugging
+        total_count = qs.count()
+        logger.info(f"AdminUserListView: Queryset count for user {self.request.user.id}: {total_count}")
+        
+        # Log individual user IDs for debugging
+        if total_count > 0:
+            user_ids = list(qs.values_list('id', flat=True)[:20])  # Log first 20 IDs
+            logger.info(f"AdminUserListView: Sample user IDs: {user_ids}")
+        
         return qs
 
 
